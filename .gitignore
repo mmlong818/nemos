@@ -1,0 +1,27 @@
+# Build artifacts
+node_modules/
+dist/
+*.tgz
+
+# SQLite runtime files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# PoC runtime state (含用户实际分析数据，不入 git)
+examples/web-test/state.json
+examples/web-test/_tmp_*.bin
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+.nyc_output/

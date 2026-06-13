@@ -1,0 +1,64 @@
+{
+  "name": "@mnemos/sdk",
+  "version": "0.4.0",
+  "description": "Open-source memory infrastructure for AI agents — embed in any AI product",
+  "license": "Apache-2.0",
+  "author": "mnemos founding team",
+  "homepage": "https://github.com/mnemos-org/mnemos",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mnemos-org/mnemos.git",
+    "directory": "sdk/typescript"
+  },
+  "keywords": [
+    "memory",
+    "ai",
+    "agent",
+    "llm",
+    "embedding",
+    "rag",
+    "personal-memory",
+    "mnemos"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "commonjs",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "tsx --test tests/unit/*.test.ts tests/integration/*.test.ts tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts",
+    "test:unit": "tsx --test tests/unit/*.test.ts tests/v02/unit/*.test.ts tests/v03/unit/*.test.ts tests/v04/unit/*.test.ts",
+    "test:v02": "tsx --test tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts",
+    "test:v03": "tsx --test tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts",
+    "test:v04": "tsx --test tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0"
+  },
+  "optionalDependencies": {
+    "sqlite-vec": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": "*",
+    "openai": "*"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": { "optional": true },
+    "openai": { "optional": true }
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0",
+    "@types/node": "^20.10.0",
+    "@types/better-sqlite3": "^7.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

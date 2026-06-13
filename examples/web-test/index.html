@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mnemos · Web Test PoC</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top-bar">
+  <div class="brand">
+    <span class="logo">⌬</span>
+    <span class="title">mnemos</span>
+    <span class="subtitle">web test PoC v0.1</span>
+  </div>
+  <div class="toolbar">
+    <select id="analyzer-mode" title="选择分析器">
+      <option value="mock">Mock（启发式，无需 key）</option>
+      <option value="claude-cli">Claude CLI（订阅，经 bridge）</option>
+      <option value="anthropic">Anthropic API key</option>
+      <option value="openai">OpenAI API key</option>
+    </select>
+    <input type="password" id="api-key" placeholder="API key（仅当选 LLM 模式）" autocomplete="off">
+    <button id="btn-export" title="导出 JSON-LD">导出</button>
+    <button id="btn-clear" title="清空所有 memory" class="danger">清空</button>
+  </div>
+</header>
+
+<main class="two-pane">
+
+  <!-- 左 pane: 上传 + 日志 -->
+  <section class="left-pane">
+    <div class="card">
+      <h2>上传内容</h2>
+      <p class="hint">粘贴文本、日记、聊天片段、文档摘录都可以。LLM/Mock 会按 mnemos schema 分析并分层存入。</p>
+      <textarea id="input-content" placeholder="在这里粘贴或输入任何内容…&#10;&#10;示例：&#10;- 「我今晚和妈妈吵架了，她又提到我表哥结婚的事」&#10;- 「我决定从明天开始每天早上跑步30分钟」&#10;- 「项目X使用Next.js 15 + Postgres，部署在Vercel」"></textarea>
+      <div class="input-controls">
+        <label class="scope-input">
+          scope:
+          <input type="text" id="input-scope" value="global" placeholder="global / project:<name> / task:<id>">
+        </label>
+        <label class="scope-input" title="双 pass 并行分析 + 第三 pass LLM 审查合并，3× 调用，更稳健">
+          <input type="checkbox" id="verify-mode"> 双 pass + 校验
+        </label>
+        <button id="btn-analyze" class="primary">分析并存入</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>处理日志</h2>
+      <div id="log" class="log-area">
+        <div class="log-entry log-info">就绪。粘贴内容后点"分析并存入"。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 右 pane: 5 层 -->
+  <section class="right-pane">
+    <h2 class="pane-title">五层记忆 <span id="total-count" class="count-badge">0</span></h2>
+
+    <div class="layer-filter">
+      <label><input type="checkbox" id="filter-auth-true" checked> 仅 authoritative</label>
+      <label><input type="checkbox" id="filter-auth-false" checked> 含 derived</label>
+    </div>
+
+    <div class="layers">
+      <div class="layer" data-layer="archival">
+        <header class="layer-header">
+          <span class="layer-dot archival"></span>
+          <span class="layer-name">Archival</span>
+          <span class="layer-count" id="count-archival">0</span>
+          <span class="layer-desc">immutable 原文备份</span>
+        </header>
+        <div class="layer-items" id="layer-archival"></div>
+      </div>
+
+      <div class="layer" data-layer="episodic">
+        <header class="layer-header">
+          <span class="layer-dot episodic"></span>
+          <span class="layer-name">Episodic</span>
+          <span class="layer-count" id="count-episodic">0</span>
+          <span class="layer-desc">事件 / 瞬间观察</span>
+        </header>
+        <div class="layer-items" id="layer-episodic"></div>
+      </div>
+
+      <div class="layer" data-layer="semantic">
+        <header class="layer-header">
+          <span class="layer-dot semantic"></span>
+          <span class="layer-name">Semantic</span>
+          <span class="layer-count" id="count-semantic">0</span>
+          <span class="layer-desc">一般事实</span>
+        </header>
+        <div class="layer-items" id="layer-semantic"></div>
+      </div>
+
+      <div class="layer" data-layer="personal_semantic">
+        <header class="layer-header">
+          <span class="layer-dot personal_semantic"></span>
+          <span class="layer-name">Personal Semantic</span>
+          <span class="layer-count" id="count-personal_semantic">0</span>
+          <span class="layer-desc">关于用户的事实</span>
+        </header>
+        <div class="layer-items" id="layer-personal_semantic"></div>
+      </div>
+
+      <div class="layer" data-layer="procedural">
+        <header class="layer-header">
+          <span class="layer-dot procedural"></span>
+          <span class="layer-name">Procedural</span>
+          <span class="layer-count" id="count-procedural">0</span>
+          <span class="layer-desc">行为模式 / how-to</span>
+        </header>
+        <div class="layer-items" id="layer-procedural"></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="bottom-bar">
+  <span>mnemos PoC · 数据全在浏览器 IndexedDB · </span>
+  <a href="README.md" target="_blank">README</a> ·
+  <a href="../../spec/00-overview.md" target="_blank">spec</a> ·
+  <a href="../../rfcs/0001-mnemos-design-principles.md" target="_blank">原则</a>
+</footer>
+
+<!-- 详情弹窗 -->
+<div id="modal" class="modal hidden">
+  <div class="modal-content">
+    <header class="modal-header">
+      <h3 id="modal-title">Memory 详情</h3>
+      <button class="close-btn" id="modal-close">×</button>
+    </header>
+    <pre id="modal-body" class="modal-body"></pre>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
