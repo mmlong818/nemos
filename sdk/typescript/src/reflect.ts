@@ -12,6 +12,11 @@ import type { EmbeddingProvider, LLMProvider, LogLevel, Memory, MnemosConfig } f
 import { SCHEMA_VERSION } from "./types.js";
 import type { Storage } from "./storage.js";
 import { persistDerivedList } from "./persist-derived.js";
+import {
+  runDomainEvolution,
+  runProspectiveVerification,
+  type DomainEvolutionResult,
+} from "./reflect-domain.js";
 import { detectArousalSignals, estimateArousal, estimateSurprise } from "./utils/arousal.js";
 import { newId, nowIso } from "./utils/id.js";
 
@@ -114,12 +119,20 @@ export interface ReflectInput {
   userId: string;
   defaultScope: string;
   recentLimit?: number;
+  /** v0.5：开启领域演化（birth/split/merge/sleep）。默认 false。 */
+  domainsEnabled?: boolean;
+  /** v0.5：开启前瞻预测-验证闭环。默认 false。 */
+  prospectiveEnabled?: boolean;
 }
 
 export interface ReflectResult {
   episodicConsumed: number;
   anchorCount: number;
   derived: Memory[];
+  /** v0.5：领域演化统计（domainsEnabled 时）。 */
+  domainEvolution?: DomainEvolutionResult;
+  /** v0.5：本轮验证的前瞻条数（prospectiveEnabled 时）。 */
+  prospectiveVerified?: number;
 }
 
 export async function runReflect(
@@ -172,10 +185,38 @@ export async function runReflect(
     anchor: anchor.length,
     derived_out: persisted.length,
   });
+
+  // v0.5：领域演化（RFC 0005）+ 前瞻验证（RFC 0006），全部离线。默认关 → 等价 v0.4。
+  let domainEvolution: DomainEvolutionResult | undefined;
+  if (input.domainsEnabled) {
+    domainEvolution = await runDomainEvolution(
+      storage,
+      llm,
+      embedding,
+      log,
+      { tenantId: input.tenantId, userId: input.userId, defaultScope: input.defaultScope },
+      { enabled: true, minClusterSize: 3 },
+    );
+    log("info", "[mnemos reflect] domain evolution", { ...domainEvolution });
+  }
+  let prospectiveVerified: number | undefined;
+  if (input.prospectiveEnabled) {
+    const r = await runProspectiveVerification(
+      storage,
+      llm,
+      log,
+      { tenantId: input.tenantId, userId: input.userId },
+      episodic,
+    );
+    prospectiveVerified = r.verified;
+  }
+
   return {
     episodicConsumed: episodic.length,
     anchorCount: anchor.length,
     derived: persisted,
+    domainEvolution,
+    prospectiveVerified,
   };
 }
 

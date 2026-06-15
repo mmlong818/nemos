@@ -125,7 +125,13 @@ export class MnemosWorker {
       this.deps.embedding,
       this.deps.log,
       this.reflectConfig,
-      { tenantId, userId, defaultScope },
+      {
+        tenantId,
+        userId,
+        defaultScope,
+        domainsEnabled: this.features.features?.domains?.enabled === true,
+        prospectiveEnabled: this.features.features?.prospective?.enabled === true,
+      },
     );
   }
 

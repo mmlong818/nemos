@@ -6,6 +6,14 @@ import { analyze } from "./analyzer.js";
 import { resolveScenario } from "./prompts.js";
 import { DEFAULT_PERSPECTIVES } from "./perspectives.js";
 import type { EmbeddingProvider } from "./types.js";
+import {
+  resolveDomainsConfig,
+  resolveProspectiveConfig,
+  rerankByActivation,
+  buildProspectiveContext,
+  type DomainsRuntimeConfig,
+} from "./domains.js";
+import { createRouter } from "./router.js";
 import { persistDerivedList } from "./persist-derived.js";
 import { reinforceStability } from "./decay.js";
 import type { ReflectResult } from "./reflect.js";
@@ -393,6 +401,12 @@ export class UserMemory {
       if (results.length > topK) results = results.slice(0, topK);
     }
 
+    // v0.5：四级稀疏激活 rerank（RFC 0005）。仅当 domains.enabled 且有结果时。
+    const domainsCfg = resolveDomainsConfig(this.config);
+    if (domainsCfg.enabled && results.length > 0) {
+      results = await this.applyDomainActivation(query, results, domainsCfg);
+    }
+
     // v0.4：search 命中 → 强化 stability（decay enabled 时才更新；archival 永远跳过）
     const decayCfg = this.worker.getDecayConfig();
     if (decayCfg.enabled && results.length > 0) {
@@ -423,31 +437,143 @@ export class UserMemory {
   }
 
   /**
+   * v0.5：四级稀疏激活 rerank。路由 → 按领域归属重排（soft 降权不剔除）。
+   * 逃生阀：fallback / 低置信 → 原样返回全局结果。失败不影响检索。
+   */
+  private async applyDomainActivation(
+    query: string,
+    results: Memory[],
+    cfg: DomainsRuntimeConfig,
+  ): Promise<Memory[]> {
+    try {
+      this.storage.ensureGlobalDomain(this.tenantId, this.userId);
+      const domains = this.storage.listDomains(this.tenantId, this.userId);
+      let queryVec: Float32Array | null = null;
+      if (this.embedding) {
+        try {
+          queryVec = await this.embedding.embed(query);
+        } catch {
+          queryVec = null;
+        }
+      }
+      const router = createRouter(cfg.router ?? { provider: "llm" }, this.llm);
+      const route = await router.route(query, queryVec, domains);
+      if (route.fallback || route.confidence < cfg.routeConfidenceThreshold || !route.l1) {
+        return results; // 逃生阀：隔离是优化不是牢笼
+      }
+      const links = this.storage.getMemoryDomainsFor(
+        this.tenantId,
+        this.userId,
+        results.map((m) => m.id),
+      );
+      const byMem = new Map<string, string[]>();
+      for (const l of links) {
+        const arr = byMem.get(l.memory_id) ?? [];
+        arr.push(l.domain_id);
+        byMem.set(l.memory_id, arr);
+      }
+      const reranked = rerankByActivation(
+        results,
+        route,
+        (id) => byMem.get(id) ?? [],
+        cfg.routeConfidenceThreshold,
+      );
+      const now = nowIso();
+      this.storage.touchDomainRouted(this.tenantId, this.userId, route.l1, now);
+      for (const d of route.l2) {
+        this.storage.touchDomainRouted(this.tenantId, this.userId, d, now);
+      }
+      return reranked;
+    } catch (e) {
+      this.log("warn", "[mnemos] 领域激活失败，退回全局结果", {
+        err: e instanceof Error ? e.message : String(e),
+      });
+      return results;
+    }
+  }
+
+  /**
    * 取出与 query 相关的上下文，拼成 markdown 直接喂给 LLM prompt。
    * 这是朋友最常用的方法之一。
    */
   async getRelevantContext(query: string, options: ContextOptions = {}): Promise<string> {
     const memories = await this.search(query, options);
+    // v0.5：前瞻通道（RFC 0006）——全局 cue 匹配，与领域路由并列、独立。
+    const prospectiveLines = await this.collectProspective(query);
     const asMarkdown = options.asMarkdown !== false;
     if (!asMarkdown) {
-      return memories.map((m) => m.content).join("\n\n");
+      const body = memories.map((m) => m.content).join("\n\n");
+      return prospectiveLines.length > 0
+        ? `${prospectiveLines.join("\n")}\n\n${body}`
+        : body;
     }
     const maxChars = options.maxTokens ? options.maxTokens * 4 : undefined;
     const format = options.format ?? "flat";
+    let base: string;
     if (format === "tiered") {
-      return memoriesToMarkdownTiered(memories, maxChars);
-    }
-    if (format === "narrative") {
+      base = memoriesToMarkdownTiered(memories, maxChars);
+    } else if (format === "narrative") {
       try {
-        return await memoriesToMarkdownNarrative(memories, this.llm, maxChars);
+        base = await memoriesToMarkdownNarrative(memories, this.llm, maxChars);
       } catch (e) {
         this.log("warn", "[mnemos] narrative 合成失败，降级 tiered", {
           err: e instanceof Error ? e.message : String(e),
         });
-        return memoriesToMarkdownTiered(memories, maxChars);
+        base = memoriesToMarkdownTiered(memories, maxChars);
       }
+    } else {
+      base = memoriesToMarkdown(memories, maxChars);
     }
-    return memoriesToMarkdown(memories, maxChars);
+    if (prospectiveLines.length === 0) return base;
+    return `${prospectiveLines.join("\n")}\n\n${base}`;
+  }
+
+  /**
+   * v0.5：收集命中的固化前瞻（RFC 0006）。全局 cue 匹配，不受领域路由约束。
+   * 命中即记 pending（fire-and-forget，不阻塞热路径）。低置信不返回。
+   */
+  private async collectProspective(query: string): Promise<string[]> {
+    const pcfg = resolveProspectiveConfig(this.config);
+    if (!pcfg.enabled) return [];
+    try {
+      let queryVec: Float32Array | null = null;
+      if (this.embedding) {
+        try {
+          queryVec = await this.embedding.embed(query);
+        } catch {
+          queryVec = null;
+        }
+      }
+      const hits = this.storage.searchProspectiveByCue(
+        this.tenantId,
+        this.userId,
+        query,
+        queryVec,
+        5,
+      );
+      const kept = hits.filter((h) => h.prospective.confidence >= pcfg.minConfidence);
+      // fire-and-forget：给命中前瞻记 pending 预测（不 await，不阻塞返回）
+      const now = nowIso();
+      for (const h of kept) {
+        const p = h.prospective;
+        const log = [
+          ...p.prediction_log,
+          { predicted_at: now, predicted: p.projection, resolved: false },
+        ];
+        void Promise.resolve().then(() =>
+          this.storage.updateProspective(this.tenantId, this.userId, p.id, {
+            prediction_log: log,
+            last_accessed: now,
+          }),
+        );
+      }
+      return buildProspectiveContext(kept, pcfg.minConfidence);
+    } catch (e) {
+      this.log("warn", "[mnemos] 前瞻通道失败，跳过", {
+        err: e instanceof Error ? e.message : String(e),
+      });
+      return [];
+    }
   }
 
   /**
