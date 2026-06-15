@@ -463,6 +463,7 @@ export type LLMConfig =
 
 export type EmbeddingConfig =
   | { provider: "openai"; apiKey: string; model?: string }
+  | { provider: "zhipu"; apiKey: string; model?: string }
   | { provider: "none" } // 关闭 embedding，search 退化为 FTS
   | {
       provider: "custom";
