@@ -22,6 +22,12 @@ export function newId(layer: Layer): string {
   return `${LAYER_PREFIX[layer]}_${uuid}`;
 }
 
+/** v0.5：通用前缀 id（领域 "dom"、前瞻 "prosp" 等，非 5 层实体用）。 */
+export function newPrefixedId(prefix: string): string {
+  const uuid = randomUUID().replace(/-/g, "");
+  return `${prefix}_${uuid}`;
+}
+
 export function nowIso(): string {
   return new Date().toISOString();
 }

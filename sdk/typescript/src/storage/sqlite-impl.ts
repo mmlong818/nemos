@@ -26,6 +26,15 @@ import {
 } from "./row-mapper.js";
 import * as queueOps from "./queue-ops-sqlite.js";
 import * as decayOps from "./decay-ops-sqlite.js";
+import * as domainOps from "./domain-ops-sqlite.js";
+import * as prospectiveOps from "./prospective-ops-sqlite.js";
+import type {
+  Domain,
+  DomainAffinity,
+  MemoryDomain,
+  Prospective,
+} from "../types.js";
+import type { ProspectivePatch } from "./types.js";
 
 export class SqliteStorage implements Storage {
   private readonly db: Database.Database;
@@ -521,6 +530,85 @@ export class SqliteStorage implements Storage {
       }
     }
     return { total, by_layer: byLayer, by_scope: byScope };
+  }
+
+  // v0.5 领域轴 ---------------------------------------------------------------
+  ensureGlobalDomain(tenantId: string, userId: string): Domain {
+    return domainOps.ensureGlobalDomain(this.db, tenantId, userId);
+  }
+  upsertDomain(tenantId: string, userId: string, domain: Domain): void {
+    domainOps.upsertDomain(this.db, tenantId, userId, domain);
+  }
+  getDomain(tenantId: string, userId: string, id: string): Domain | null {
+    return domainOps.getDomain(this.db, tenantId, userId, id);
+  }
+  listDomains(tenantId: string, userId: string, opts?: { includeCold?: boolean }): Domain[] {
+    return domainOps.listDomains(this.db, tenantId, userId, opts);
+  }
+  setMemoryDomains(
+    tenantId: string,
+    userId: string,
+    memoryId: string,
+    links: MemoryDomain[],
+  ): void {
+    domainOps.setMemoryDomains(this.db, tenantId, userId, memoryId, links);
+  }
+  getMemoryDomainsFor(tenantId: string, userId: string, memoryIds: string[]): MemoryDomain[] {
+    return domainOps.getMemoryDomainsFor(this.db, tenantId, userId, memoryIds);
+  }
+  getDomainMemberIds(tenantId: string, userId: string, domainId: string): string[] {
+    return domainOps.getDomainMemberIds(this.db, tenantId, userId, domainId);
+  }
+  getEmbedding(tenantId: string, userId: string, recordId: string): Float32Array | null {
+    return domainOps.getEmbedding(this.db, tenantId, userId, recordId);
+  }
+  touchDomainRouted(tenantId: string, userId: string, domainId: string, at: string): void {
+    domainOps.touchDomainRouted(this.db, tenantId, userId, domainId, at);
+  }
+  listAffinities(tenantId: string, userId: string, domainId: string): DomainAffinity[] {
+    return domainOps.listAffinities(this.db, tenantId, userId, domainId);
+  }
+  upsertAffinity(
+    tenantId: string,
+    userId: string,
+    domainA: string,
+    domainB: string,
+    affinityDelta: number,
+    at: string,
+  ): void {
+    domainOps.upsertAffinity(this.db, tenantId, userId, domainA, domainB, affinityDelta, at);
+  }
+
+  // v0.5 前瞻记忆 -------------------------------------------------------------
+  insertProspective(tenantId: string, userId: string, p: Prospective): Prospective {
+    return prospectiveOps.insertProspective(this.db, tenantId, userId, p);
+  }
+  getProspective(tenantId: string, userId: string, id: string): Prospective | null {
+    return prospectiveOps.getProspective(this.db, tenantId, userId, id);
+  }
+  listProspective(
+    tenantId: string,
+    userId: string,
+    opts?: { limit?: number; scope?: string },
+  ): Prospective[] {
+    return prospectiveOps.listProspective(this.db, tenantId, userId, opts);
+  }
+  searchProspectiveByCue(
+    tenantId: string,
+    userId: string,
+    query: string,
+    queryVec: Float32Array | null,
+    topK: number,
+  ): Array<{ prospective: Prospective; score: number }> {
+    return prospectiveOps.searchProspectiveByCue(this.db, tenantId, userId, query, queryVec, topK);
+  }
+  updateProspective(
+    tenantId: string,
+    userId: string,
+    id: string,
+    patch: ProspectivePatch,
+  ): void {
+    prospectiveOps.updateProspective(this.db, tenantId, userId, id, patch);
   }
 
   close(): void {

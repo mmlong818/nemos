@@ -86,3 +86,8 @@
 | 编号 | 标题 | 状态 |
 |---|---|---|
 | 0001 | mnemos Design Principles | accepted（founding document） |
+| 0002 | Scenario Profiles & Content Awareness | accepted |
+| 0003 | Production Pipeline | accepted |
+| 0004 | Forgetting & Consolidation | accepted |
+| 0005 | Domain Experts & Sparse Activation Routing | draft |
+| 0006 | Prospective Memory & Prediction-Verification Loop | draft |

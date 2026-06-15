@@ -443,6 +443,124 @@ export interface EmbeddingProvider {
 }
 
 // ============================================================================
+// v0.5：领域轴（RFC 0005 — Domain Experts & Sparse Activation Routing）
+// ============================================================================
+
+/** 共享层 L0 的特殊领域 id：无条件注入，不参与路由打分。 */
+export const GLOBAL_DOMAIN_ID = "GLOBAL";
+
+export type DomainStatus = "hot" | "warm" | "cold";
+export type DomainOrigin = "seed" | "emergent";
+
+/** 领域 = embedding 锚点（质心）+ 层级位置，叠加在 5 层功能轴之上的正交索引。 */
+export interface Domain {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  label: string;
+  /** 质心向量；GLOBAL 共享层为 null（不参与路由打分）。 */
+  prototype_vec: Float32Array | null;
+  /** split 后子领域回指父；顶层 undefined。 */
+  parent_id?: string;
+  /** 层级深度，顶层 = 0。 */
+  level: number;
+  status: DomainStatus;
+  origin: DomainOrigin;
+  /** GLOBAL = true：无条件注入，路由跳过。 */
+  always_on: boolean;
+  /** 被路由命中次数。 */
+  load_count: number;
+  /** 领域级 retrievability（FSRS 粒度提升到领域）。 */
+  retrievability: number;
+  last_routed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 记忆对领域的 soft membership（连续隶属度，可多归属）。 */
+export interface MemoryDomain {
+  memory_id: string;
+  domain_id: string;
+  membership_weight: number;
+  is_primary: boolean;
+}
+
+/** 领域间亲和度（共激活 + 共边统计），驱动 L2 邻接与 merge。 */
+export interface DomainAffinity {
+  domain_a: string;
+  domain_b: string;
+  affinity: number;
+  updated_at: string;
+}
+
+/** 路由结果：L1 主领域 + L2 邻接 + 置信 + 低置信回退标记。 */
+export interface RouteResult {
+  l1: string | null;
+  l2: string[];
+  confidence: number;
+  /** 置信不足 → 退化为全局检索（逃生阀）。 */
+  fallback: boolean;
+}
+
+/** 路由是单一职责模块，与 LLMProvider / EmbeddingProvider 同构。 */
+export interface RouterProvider {
+  route(
+    query: string,
+    queryVec: Float32Array | null,
+    domains: Domain[],
+  ): Promise<RouteResult>;
+  readonly name: string;
+}
+
+// ============================================================================
+// v0.5：时态轴 — 前瞻记忆（RFC 0006 — Prospective Memory）
+// ============================================================================
+
+/** 当前仅固化态落库；按需生成不持久。 */
+export type ProspectiveStatus = "crystallized";
+
+/** 历次「预测 vs 现实」对照。 */
+export interface ProspectivePrediction {
+  predicted_at: string;
+  /** 命中时的 projection 快照。 */
+  predicted: string;
+  /** reflect 离线匹配到的现实事件；未匹配前 undefined（pending）。 */
+  actual?: string;
+  /** 预测误差（surprise 的第二身份）。 */
+  surprise?: number;
+  resolved: boolean;
+}
+
+/**
+ * 前瞻记忆：面对某类情境「可能/应当如何行为与思考」的建构性模板。
+ * 恒为 derived，永不进 personal_semantic（原则 1）。独立形态、专用表，可多归属。
+ */
+export interface Prospective {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  scope: string;
+  /** 归属标注（可多归属）；仅供 reflect 归并，不作检索分区。 */
+  domain_ids: string[];
+  /** 「面对什么情境」——检索匹配的 key。 */
+  cue: string;
+  cue_vec?: Float32Array;
+  /** 「可能/应当如何行为与思考」——内容，发散。 */
+  projection: string;
+  /** = f(证据量, 历史命中率)。 */
+  confidence: number;
+  /** 支撑它的回溯记忆 id（可追溯）。 */
+  evidence_refs: string[];
+  prediction_log: ProspectivePrediction[];
+  /** 复用 FSRS：长期不触发/验证则衰减。 */
+  retrievability: number;
+  status: ProspectiveStatus;
+  created_at: string;
+  last_accessed: string;
+  last_verified_at?: string;
+}
+
+// ============================================================================
 // SDK config
 // ============================================================================
 
@@ -468,6 +586,25 @@ export type EmbeddingConfig =
       embed: (text: string) => Promise<Float32Array>;
       modelId: string;
       dim: number;
+    };
+
+/**
+ * v0.5：路由器选型（RFC 0005 §5），随规模叠加演化。
+ * - 'llm'：LLMRouter 保底，复用 config.llm。
+ * - 'centroid'：CentroidRouter 纯数值 top-k（守 100ms）。
+ * - 'custom'：调用方自带 RouterProvider。
+ */
+export type RouterConfig =
+  | { provider: "llm" }
+  | { provider: "centroid" }
+  | {
+      provider: "custom";
+      route: (
+        query: string,
+        queryVec: Float32Array | null,
+        domains: Domain[],
+      ) => Promise<RouteResult>;
+      name?: string;
     };
 
 export interface MnemosConfig {
@@ -524,13 +661,43 @@ export interface MnemosConfig {
       /** reflect 时是否把现有 personal_semantic 当 anchor 输入 LLM。默认 true。 */
       includePersonalSemantic?: boolean;
     };
+    /**
+     * v0.5：领域专家与稀疏激活路由（RFC 0005）。默认 enabled=false（向后兼容）。
+     * 关闭时检索等价 v0.4 全局检索；存量记忆默认归 GLOBAL 单领域。
+     */
+    domains?: {
+      /** 总开关。默认 false。 */
+      enabled?: boolean;
+      /** 路由器选型。默认 { provider: 'llm' }。 */
+      router?: RouterConfig;
+      /** top-1 置信 < 此值 → 全局回退（逃生阀）。默认 0.35。 */
+      routeConfidenceThreshold?: number;
+      /** L2 邻接领域最大数。默认 3。 */
+      l2Max?: number;
+      /** L3 跨域扩散每个 seed 的限额。默认 5。 */
+      l3SpreadLimit?: number;
+    };
+    /**
+     * v0.5：前瞻记忆与预测-验证闭环（RFC 0006）。默认 enabled=false。
+     * 关闭时检索不含前瞻通道；开启后热路径只取固化前瞻，按需生成异步。
+     */
+    prospective?: {
+      /** 总开关。默认 false。 */
+      enabled?: boolean;
+      /** 低于此 confidence 的前瞻不返回调用方。默认 0.4。 */
+      minConfidence?: number;
+      /** 是否允许 query 时按需 LLM 合成（异步固化供下次）。默认 false。 */
+      onDemand?: boolean;
+    };
   };
   /** v0.3：worker 配置；不传 = 默认 long-running 模式。 */
   worker?: WorkerConfig;
   logger?: (level: LogLevel, msg: string, meta?: Record<string, unknown>) => void;
 }
 
-export const SCHEMA_VERSION = "0.4";
+export const SCHEMA_VERSION = "0.5";
+/** v0.4 schema 字符串常量。 */
+export const SCHEMA_VERSION_V04 = "0.4";
 /** v0.3 schema 字符串常量。 */
 export const SCHEMA_VERSION_V03 = "0.3";
 /** v0.2 schema 字符串常量。 */

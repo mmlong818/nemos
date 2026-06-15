@@ -229,6 +229,102 @@ export function applyMigrations(db: Database.Database): void {
       tokenize='unicode61'
     );
   `);
+
+  applyV05Migrations(db);
+}
+
+/**
+ * v0.5：领域轴（RFC 0005）+ 前瞻记忆（RFC 0006）。纯新增表，5 层 schema 不动。
+ * GLOBAL 共享层按 (tenant,user) 在运行时 lazy 注入（见 domain-ops），非建表时。
+ */
+function applyV05Migrations(db: Database.Database): void {
+  // 领域：embedding 锚点 + 层级，soft 多归属。prototype 以 BLOB 存。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS domains (
+      id              TEXT NOT NULL,
+      tenant_id       TEXT NOT NULL,
+      user_id         TEXT NOT NULL,
+      label           TEXT NOT NULL,
+      prototype_blob  BLOB,
+      prototype_dim   INTEGER,
+      parent_id       TEXT,
+      level           INTEGER NOT NULL DEFAULT 0,
+      status          TEXT NOT NULL DEFAULT 'warm',
+      origin          TEXT NOT NULL DEFAULT 'emergent',
+      always_on       INTEGER NOT NULL DEFAULT 0,
+      load_count      INTEGER NOT NULL DEFAULT 0,
+      retrievability  REAL NOT NULL DEFAULT 1.0,
+      last_routed_at  TEXT,
+      created_at      TEXT NOT NULL,
+      updated_at      TEXT NOT NULL,
+      PRIMARY KEY (tenant_id, user_id, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_domains_tu ON domains(tenant_id, user_id, status);
+  `);
+
+  // 记忆↔领域 soft membership。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS memory_domain (
+      tenant_id         TEXT NOT NULL,
+      user_id           TEXT NOT NULL,
+      memory_id         TEXT NOT NULL,
+      domain_id         TEXT NOT NULL,
+      membership_weight REAL NOT NULL DEFAULT 1.0,
+      is_primary        INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (tenant_id, user_id, memory_id, domain_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_md_domain ON memory_domain(tenant_id, user_id, domain_id);
+    CREATE INDEX IF NOT EXISTS idx_md_memory ON memory_domain(tenant_id, user_id, memory_id);
+  `);
+
+  // 领域间亲和度。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS domain_affinity (
+      tenant_id   TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      domain_a    TEXT NOT NULL,
+      domain_b    TEXT NOT NULL,
+      affinity    REAL NOT NULL DEFAULT 0,
+      updated_at  TEXT NOT NULL,
+      PRIMARY KEY (tenant_id, user_id, domain_a, domain_b)
+    );
+  `);
+
+  // 前瞻记忆：独立形态，恒 derived。cue 以 BLOB 存向量，另建 FTS 兜底。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS prospective (
+      id                  TEXT NOT NULL,
+      tenant_id           TEXT NOT NULL,
+      user_id             TEXT NOT NULL,
+      scope               TEXT NOT NULL,
+      domain_ids_json     TEXT NOT NULL,
+      cue                 TEXT NOT NULL,
+      cue_blob            BLOB,
+      cue_dim             INTEGER,
+      projection          TEXT NOT NULL,
+      confidence          REAL NOT NULL DEFAULT 0.5,
+      evidence_refs_json  TEXT NOT NULL,
+      prediction_log_json TEXT NOT NULL,
+      retrievability      REAL NOT NULL DEFAULT 1.0,
+      status              TEXT NOT NULL DEFAULT 'crystallized',
+      created_at          TEXT NOT NULL,
+      last_accessed       TEXT NOT NULL,
+      last_verified_at    TEXT,
+      PRIMARY KEY (tenant_id, user_id, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_prosp_tu ON prospective(tenant_id, user_id);
+  `);
+
+  // 前瞻 cue 全局通道（不受领域路由约束，RFC 0006）。
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS prospective_cue_fts USING fts5(
+      id UNINDEXED,
+      tenant_id UNINDEXED,
+      user_id UNINDEXED,
+      cue,
+      tokenize='unicode61'
+    );
+  `);
 }
 
 /**
