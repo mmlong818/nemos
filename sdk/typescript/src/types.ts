@@ -454,6 +454,7 @@ export type StorageConfig =
 export type LLMConfig =
   | { provider: "anthropic"; apiKey: string; model?: string }
   | { provider: "openai"; apiKey: string; model?: string }
+  | { provider: "zhipu"; apiKey: string; model?: string }
   | {
       provider: "custom";
       chat: (system: string, user: string) => Promise<string>;

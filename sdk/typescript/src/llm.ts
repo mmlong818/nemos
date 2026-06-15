@@ -7,6 +7,8 @@ import type { LLMConfig, LLMProvider } from "./types.js";
 
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 const DEFAULT_OPENAI_MODEL = "gpt-4o";
+const DEFAULT_ZHIPU_MODEL = "glm-5.1";
+const ZHIPU_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const MAX_TOKENS = 4000;
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 500;
@@ -90,6 +92,46 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
+export class ZhipuProvider implements LLMProvider {
+  readonly name = "zhipu";
+  private readonly apiKey: string;
+  private readonly model: string;
+
+  constructor(apiKey: string, model?: string) {
+    if (!apiKey) throw new Error("[mnemos] Zhipu provider 缺少 apiKey");
+    this.apiKey = apiKey;
+    this.model = model || DEFAULT_ZHIPU_MODEL;
+  }
+
+  async chat(system: string, user: string): Promise<string> {
+    return withRetry(async () => {
+      const resp = await fetch(ZHIPU_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          response_format: { type: "json_object" },
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text();
+        throw makeHttpError("Zhipu", resp.status, body);
+      }
+      const data = (await resp.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      return data.choices?.[0]?.message?.content || "";
+    });
+  }
+}
+
 export class CustomProvider implements LLMProvider {
   readonly name: string;
   private readonly fn: (system: string, user: string) => Promise<string>;
@@ -113,6 +155,8 @@ export function makeProvider(config: LLMConfig): LLMProvider {
       return new AnthropicProvider(config.apiKey, config.model);
     case "openai":
       return new OpenAIProvider(config.apiKey, config.model);
+    case "zhipu":
+      return new ZhipuProvider(config.apiKey, config.model);
     case "custom":
       return new CustomProvider(config.chat, config.name);
     default: {
