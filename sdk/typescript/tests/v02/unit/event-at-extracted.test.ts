@@ -2,11 +2,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeScenarioAwareMockLLMConfig } from "../../helpers.js";
 
 test("启用 temporal.extractEventDate 后 derived 带 event_at", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeScenarioAwareMockLLMConfig(),
     features: { doubleCheck: false },
@@ -25,7 +25,7 @@ test("启用 temporal.extractEventDate 后 derived 带 event_at", async () => {
 });
 
 test("contentDate 写入 archival.event_at", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeScenarioAwareMockLLMConfig(),
     features: { doubleCheck: false },
@@ -40,7 +40,7 @@ test("contentDate 写入 archival.event_at", async () => {
 
 test("非 ISO 8601 的 event_at 被拒收（不写入）", async () => {
   // 制造一个 mock 输出非法 event_at
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: {
       provider: "custom",

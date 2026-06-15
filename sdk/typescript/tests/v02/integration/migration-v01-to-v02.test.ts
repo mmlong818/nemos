@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { SCHEMA_VERSION } from "../../../src/types.js";
 import { makeMockLLMConfig } from "../../helpers.js";
 
@@ -73,13 +73,13 @@ function makeV01Db(path: string): void {
 }
 
 test("v0.1 SQLite 加载 v0.2 SDK 自动 ALTER TABLE 加新列", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mnemos-mig-"));
+  const dir = mkdtempSync(join(tmpdir(), "nemos-mig-"));
   const dbPath = join(dir, "v01.db");
   try {
     makeV01Db(dbPath);
 
     // 用 v0.2 SDK 打开
-    const mem = new Mnemos({
+    const mem = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makeMockLLMConfig(),
       features: { doubleCheck: false },
@@ -104,7 +104,7 @@ test("v0.1 SQLite 加载 v0.2 SDK 自动 ALTER TABLE 加新列", async () => {
     mem.close();
 
     // 二次打开：migration 幂等（不重复 ALTER）
-    const mem2 = new Mnemos({
+    const mem2 = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makeMockLLMConfig(),
       features: { doubleCheck: false },

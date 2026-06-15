@@ -3,11 +3,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 import { makeMockLLMConfig } from "../helpers.js";
 
 test("ingest 一段文本后能通过 FTS 关键词搜回", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -22,7 +22,7 @@ test("ingest 一段文本后能通过 FTS 关键词搜回", async () => {
 });
 
 test("两个 userId 之间数据完全隔离", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -45,7 +45,7 @@ test("两个 userId 之间数据完全隔离", async () => {
 });
 
 test("getRelevantContext 返回 markdown 格式", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -58,7 +58,7 @@ test("getRelevantContext 返回 markdown 格式", async () => {
 });
 
 test("stats() 反映 layer 与 scope 的分布", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },

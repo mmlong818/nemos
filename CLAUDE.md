@@ -1,4 +1,4 @@
-# mnemos
+# nemos
 
 AI 工具记忆系统——让 AI 记住你的偏好和上下文，跨 session、跨工具持久化。
 

@@ -7,7 +7,7 @@ import {
   memoriesToMarkdown,
   memoriesToMarkdownNarrative,
   memoriesToMarkdownTiered,
-  Mnemos,
+  Nemos,
   type LLMProvider,
   type Memory,
 } from "../../../src/index.js";
@@ -77,7 +77,7 @@ test("v0.4 narrative: LLM 合成的自然段（无 bullet / 无层标题）", as
   const llm: LLMProvider = {
     name: "narr-test",
     chat: async (system, user) => {
-      assert.ok(system.includes("mnemos 记忆叙事器"));
+      assert.ok(system.includes("nemos 记忆叙事器"));
       assert.ok(user.includes("personal_semantic"));
       return "用户偏好早起，最近确认项目截止日期。";
     },
@@ -101,7 +101,7 @@ test("v0.4 narrative: 剥 markdown 围栏", async () => {
 });
 
 test("v0.4 getRelevantContext({ format: 'tiered' }) 走 tiered 分支", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -115,7 +115,7 @@ test("v0.4 getRelevantContext({ format: 'tiered' }) 走 tiered 分支", async ()
 });
 
 test("v0.4 getRelevantContext({ format: 'narrative' }) 走 LLM", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeNarrativeMockLLMConfig("用户偏好早起，常去咖啡馆。"),
     features: { doubleCheck: false },
@@ -136,15 +136,15 @@ test("v0.4 narrative 失败时降级 tiered（不抛错）", async () => {
       throw new Error("simulated LLM error");
     },
   };
-  // 直接通过 Mnemos 用 custom llm（覆盖 narrative 路径）
-  const mem = new Mnemos({
+  // 直接通过 Nemos 用 custom llm（覆盖 narrative 路径）
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: {
       provider: "custom",
       name: "fail",
       chat: async (system, user) => {
         // ingest 用的 mock：返回最小 JSON
-        if (system.includes("mnemos 记忆叙事器")) throw new Error("simulated LLM error");
+        if (system.includes("nemos 记忆叙事器")) throw new Error("simulated LLM error");
         if (system.includes("记忆审查官")) return JSON.stringify({ derived: [], stats: {} });
         return JSON.stringify({
           archival: { arousal: { value: 0, signal_sources: [] }, surprise: { value: 0, basis: "r" } },

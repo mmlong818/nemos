@@ -12,7 +12,7 @@
 
 import type { LLMProvider } from "./types.js";
 
-export const ENTITY_EXTRACT_PROMPT = `你是 mnemos entity 抽取器。
+export const ENTITY_EXTRACT_PROMPT = `你是 nemos entity 抽取器。
 
 任务：从给定文本中识别最多 10 个有信息价值的 entity（命名实体），按出现顺序输出。
 

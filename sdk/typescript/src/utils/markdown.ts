@@ -95,7 +95,7 @@ function formatConfidenceTag(m: Memory): string {
 /**
  * v0.4 narrative 形态：调 LLM 把 memory 列表合成成自然段。
  *
- * 调用方需提供 mnemos 配置的 llm provider。LLM 失败 / 未配 → 调用方应降级到 tiered。
+ * 调用方需提供 nemos 配置的 llm provider。LLM 失败 / 未配 → 调用方应降级到 tiered。
  * 本函数仅负责拼 prompt + 解析；不处理降级（保持职责单一）。
  */
 export async function memoriesToMarkdownNarrative(
@@ -107,7 +107,7 @@ export async function memoriesToMarkdownNarrative(
   // 给 LLM 一个紧凑的输入：tiered 形态本身已经按层分组
   const tiered = memoriesToMarkdownTiered(memories);
   const system =
-    "你是 mnemos 记忆叙事器。把下方按层分组的 memory 整合成一段流畅自然语言（中文），" +
+    "你是 nemos 记忆叙事器。把下方按层分组的 memory 整合成一段流畅自然语言（中文），" +
     "向 AI agent 介绍这位用户。要求：\n" +
     "1. 一段或两段（视信息量），不要 bullet、不要分节标题\n" +
     "2. 区分稳定特征（personal_semantic / semantic）与近期事件（episodic）\n" +
@@ -121,7 +121,7 @@ export async function memoriesToMarkdownNarrative(
     narrative = await llm.chat(system, user);
   } catch (e) {
     throw new Error(
-      `[mnemos] narrative 合成失败：${e instanceof Error ? e.message : String(e)}`,
+      `[nemos] narrative 合成失败：${e instanceof Error ? e.message : String(e)}`,
     );
   }
   // 去掉可能的围栏

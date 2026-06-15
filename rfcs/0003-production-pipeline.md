@@ -2,7 +2,7 @@
 rfc_number: 0003
 title: Production Pipeline — Background Queue + Multi-Perspective + Cross-Memory Linking
 authors:
-  - mnemos founding team
+  - nemos founding team
 status: accepted
 created_at: 2026-06-05
 updated_at: 2026-06-05
@@ -13,7 +13,7 @@ supersedes: []
 
 # Summary
 
-把 mnemos SDK 从「sync 单线」升级到「生产级 pipeline」：三件事一起做——
+把 nemos SDK 从「sync 单线」升级到「生产级 pipeline」：三件事一起做——
 - **B2 后台分析队列**：ingest 立刻返回 archival，derived 抽取走后台
 - **B4 多视角抽取**：取代单一 prompt 双 pass，改为多个专注角度（事实/情绪/方法论/决策）并行抽 + 合并
 - **B5 跨 memory 自动连接**：写入时识别 entity，自动填 `related` 字段，检索时支持 spreading activation
@@ -51,7 +51,7 @@ const status = await userMem.getIngestStatus(handle.id);
 ### 实现
 
 - **队列存储**：SQLite 表 `ingest_queue`（id / content / scope / scenario / created_at / status / attempts / last_error）
-- **Worker**：SDK 启动时启 `MnemosWorker`（per Mnemos 实例），单线程串行处理（v0.3 不做并行）
+- **Worker**：SDK 启动时启 `NemosWorker`（per Nemos 实例），单线程串行处理（v0.3 不做并行）
 - **触发**：`ingest({ background: true })` 写队列 → worker tick 轮询（poll interval 1s default）
 - **完成**：worker 跑完 analyzer + write derived，更新 queue 状态
 - **失败**：3 次重试 backoff（1s/4s/16s），最后失败标 status='failed' + last_error
@@ -99,7 +99,7 @@ archival 仍 sync 写入。background 仅延后 derived。这守住「即便 der
 朋友配置：
 
 ```typescript
-new Mnemos({
+new Nemos({
   ...,
   features: {
     perspectives: ['fact', 'emotion'],   // 选 2 个；默认 ['fact', 'method', 'decision']
@@ -155,7 +155,7 @@ source.confidence: 'high' | 'medium' | 'low' | 'conflict';
 ### 关闭选项
 
 ```typescript
-new Mnemos({
+new Nemos({
   features: {
     autoLinking: false,   // 默认 true
   }

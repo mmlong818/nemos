@@ -2,12 +2,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 import { getMockCallCount, makeMockLLMConfig, resetMockCount } from "../helpers.js";
 
 test("doubleCheck: true 触发 3 次 LLM 调用（pass A + pass B + check）", async () => {
   resetMockCount();
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: true },
@@ -19,7 +19,7 @@ test("doubleCheck: true 触发 3 次 LLM 调用（pass A + pass B + check）", a
 });
 
 test("doubleCheck 后 derived 带 confidence 字段", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: true },
@@ -35,7 +35,7 @@ test("doubleCheck 后 derived 带 confidence 字段", async () => {
 });
 
 test("confidenceMin='high' 过滤 search 结果", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: true },
@@ -55,7 +55,7 @@ test("confidenceMin='high' 过滤 search 结果", async () => {
 
 test("doubleCheck: false 只调 1 次 LLM", async () => {
   resetMockCount();
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },

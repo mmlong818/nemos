@@ -1,7 +1,7 @@
 // analyzer.js — 内容分析器（Mock + Anthropic + OpenAI）
-// 输出 mnemos schema 结构：1 条 archival + N 条 derived
+// 输出 nemos schema 结构：1 条 archival + N 条 derived
 
-const CHECK_SYSTEM_PROMPT = `你是 mnemos 记忆审查官。
+const CHECK_SYSTEM_PROMPT = `你是 nemos 记忆审查官。
 
 你将收到对**同一份原文**做的两次独立 derived 抽取（A 集合、B 集合）。任务：
 1. **去重**：A、B 中表达相同事实的条目合并为一条；保留最清晰、信息密度最高的版本
@@ -44,7 +44,7 @@ const CHECK_SYSTEM_PROMPT = `你是 mnemos 记忆审查官。
 
 不要输出 JSON 以外的任何内容。`;
 
-const SYSTEM_PROMPT = `你是 mnemos 记忆分析器，遵循 mnemos schema（个人记忆基础设施）。
+const SYSTEM_PROMPT = `你是 nemos 记忆分析器，遵循 nemos schema（个人记忆基础设施）。
 
 任务：把用户上传内容分析成结构化 memory。
 
@@ -102,7 +102,7 @@ export async function analyze(content, scope, config) {
     default: throw new Error("unknown mode: " + config.mode);
   }
 
-  // 强制守住 mnemos 原则 4（immutable archive）：
+  // 强制守住 nemos 原则 4（immutable archive）：
   // archival.content 永远是用户原始输入的字节级副本，LLM 无权改写。
   // LLM 只能决定 archival 的元数据（arousal/surprise/scope）。
   if (!result.archival) result.archival = {};

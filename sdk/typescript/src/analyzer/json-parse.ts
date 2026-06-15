@@ -50,7 +50,7 @@ export function parseAnalyzeJson(raw: string): ParsedAnalyze {
     obj = JSON.parse(cleaned);
   } catch (e) {
     throw new Error(
-      `[mnemos] LLM 输出不是合法 JSON: ${
+      `[nemos] LLM 输出不是合法 JSON: ${
         e instanceof Error ? e.message : String(e)
       }\n片段: ${cleaned.slice(0, 240)}`,
     );
@@ -69,7 +69,7 @@ export function parseCheckJson(raw: string): ParsedCheck {
     obj = JSON.parse(cleaned);
   } catch (e) {
     throw new Error(
-      `[mnemos] Check pass JSON 解析失败: ${
+      `[nemos] Check pass JSON 解析失败: ${
         e instanceof Error ? e.message : String(e)
       }\n片段: ${cleaned.slice(0, 240)}`,
     );

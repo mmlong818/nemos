@@ -39,10 +39,10 @@ export async function analyzeMultiPerspective(
   options: AnalyzeOptions = {},
 ): Promise<IngestResult> {
   const trimmed = content.trim();
-  if (!trimmed) throw new Error("[mnemos] content is empty");
+  if (!trimmed) throw new Error("[nemos] content is empty");
   const perspectives = options.perspectives ?? [];
   if (perspectives.length === 0) {
-    throw new Error("[mnemos] analyzeMultiPerspective 需要 perspectives 非空");
+    throw new Error("[nemos] analyzeMultiPerspective 需要 perspectives 非空");
   }
 
   const profile = options.profile;

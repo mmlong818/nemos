@@ -2,12 +2,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeEntityMockLLMConfig } from "../../helpers.js";
 
 test("两条 memory 共享同 entity → related 双向 link", async () => {
   // 同时返回同样的 entity，模拟 LLM 抽出共同 entity
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeEntityMockLLMConfig(["项目 X", "团队 Alpha"]),
     features: {
@@ -44,7 +44,7 @@ test("两条 memory 共享同 entity → related 双向 link", async () => {
 });
 
 test("跨 user namespace 永不 link", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeEntityMockLLMConfig(["共享 entity"]),
     features: { perspectives: ["fact"], autoLinking: true },
@@ -74,7 +74,7 @@ test("跨 user namespace 永不 link", async () => {
 });
 
 test("autoLinking=false 时不写 related", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeEntityMockLLMConfig(["项目 X"]),
     features: { perspectives: ["fact"], autoLinking: false },

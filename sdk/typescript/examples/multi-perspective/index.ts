@@ -2,7 +2,7 @@
 //
 // 同一份内容用 v0.2 doubleCheck vs v0.3 multi-perspective 跑一遍，打印分类差异。
 
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 if (!apiKey) {
@@ -21,8 +21,8 @@ const CONTENT = `
 新指标库（暂代号 metric-lite）下周可用。
 `.trim();
 
-function buildMnemos(useMultiPerspective: boolean): Mnemos {
-  return new Mnemos({
+function buildNemos(useMultiPerspective: boolean): Nemos {
+  return new Nemos({
     storage: { type: "memory" },
     llm: { provider: "anthropic", apiKey: apiKey! },
     features: useMultiPerspective
@@ -33,7 +33,7 @@ function buildMnemos(useMultiPerspective: boolean): Mnemos {
 
 async function run(label: string, useMultiPerspective: boolean): Promise<void> {
   console.log(`\n========== ${label} ==========`);
-  const mem = buildMnemos(useMultiPerspective);
+  const mem = buildNemos(useMultiPerspective);
   try {
     const r = await mem.forUser("alice").ingest(CONTENT);
     console.log(`derived 总数: ${r.derived.length}`);

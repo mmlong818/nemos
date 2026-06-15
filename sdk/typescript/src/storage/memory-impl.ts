@@ -178,7 +178,7 @@ export class InMemoryStorage implements Storage {
 
   delete(tenantId: string, userId: string, layer: Layer, id: string): void {
     if (layer === "archival") {
-      throw new Error("[mnemos] archival 不允许直接 delete（spec I3）");
+      throw new Error("[nemos] archival 不允许直接 delete（spec I3）");
     }
     this.data.delete(this.key(tenantId, userId, layer, id));
     this.embeddings.delete(`${tenantId}|${userId}|${layer}|${id}`);

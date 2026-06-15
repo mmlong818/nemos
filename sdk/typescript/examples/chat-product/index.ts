@@ -1,4 +1,4 @@
-// examples/chat-product —— 模拟聊天产品集成 mnemos
+// examples/chat-product —— 模拟聊天产品集成 nemos
 //
 // 跑法：
 //   cd sdk/typescript
@@ -10,7 +10,7 @@
 //   2. AI 回复前会 getRelevantContext，把相关记忆拼进 prompt
 //   3. 第二条消息能用到第一条产生的偏好记忆
 
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 
 async function main(): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "sqlite", path: "./chat-product.db" },
     llm: { provider: "anthropic", apiKey },
     features: { doubleCheck: false }, // 示例求快，跳过双 pass

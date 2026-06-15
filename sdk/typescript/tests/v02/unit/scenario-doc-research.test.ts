@@ -2,11 +2,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeMockLLMConfig } from "../../helpers.js";
 
 test("scenario='doc-research' 时不产出 personal_semantic（exclude.layers 生效）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -26,7 +26,7 @@ test("scenario='doc-research' 时不产出 personal_semantic（exclude.layers �
 });
 
 test("scenario object 自定义可覆盖内置字段", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -47,7 +47,7 @@ test("scenario object 自定义可覆盖内置字段", async () => {
 });
 
 test("未知 string scenario throw", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },

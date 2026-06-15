@@ -88,10 +88,32 @@ const INDEX_DDL = (table: string): string => `
 `;
 
 /**
+ * 改名迁移：把 legacy mnemos_* 表 rename 到 nemos_*（幂等）。
+ * 仅当旧表存在且新表不存在时执行；FTS5 虚表 ALTER RENAME 由 SQLite 3.25+ 支持。
+ */
+function renameLegacyTables(db: Database.Database): void {
+  const renames: Array<[string, string]> = [
+    ["mnemos_embeddings", "nemos_embeddings"],
+    ["mnemos_entities_fts", "nemos_entities_fts"],
+  ];
+  const exists = (name: string): boolean =>
+    db.prepare(`SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1`).get(name) !== undefined;
+  for (const [oldName, newName] of renames) {
+    if (exists(oldName) && !exists(newName)) {
+      db.exec(`ALTER TABLE ${oldName} RENAME TO ${newName};`);
+    }
+  }
+}
+
+/**
  * 应用所有 schema migration（幂等）。
  * 启动时调用一次。
  */
 export function applyMigrations(db: Database.Database): void {
+  // 改名迁移（mnemos → nemos）：把 legacy 表 rename 到新名，必须在 CREATE 之前，
+  // 否则 CREATE IF NOT EXISTS 会建空的 nemos_* 表、把旧数据孤立。幂等。
+  renameLegacyTables(db);
+
   // 五层表
   for (const layer of LAYERS) {
     db.exec(`CREATE TABLE IF NOT EXISTS ${layer} (${COMMON_COLS});`);
@@ -152,7 +174,7 @@ export function applyMigrations(db: Database.Database): void {
     CREATE TRIGGER IF NOT EXISTS archival_no_update
     BEFORE UPDATE ON archival
     BEGIN
-      SELECT RAISE(ABORT, 'archival is immutable: UPDATE forbidden by mnemos I3');
+      SELECT RAISE(ABORT, 'archival is immutable: UPDATE forbidden by nemos I3');
     END;
 
     CREATE TRIGGER IF NOT EXISTS archival_no_delete
@@ -178,7 +200,7 @@ export function applyMigrations(db: Database.Database): void {
 
   // embedding 单独表（避免污染 5 层 schema；多个 layer 共用）
   db.exec(`
-    CREATE TABLE IF NOT EXISTS mnemos_embeddings (
+    CREATE TABLE IF NOT EXISTS nemos_embeddings (
       record_id   TEXT NOT NULL,
       layer       TEXT NOT NULL,
       tenant_id   TEXT NOT NULL,
@@ -189,7 +211,7 @@ export function applyMigrations(db: Database.Database): void {
       vector_blob BLOB NOT NULL,
       PRIMARY KEY (record_id, layer)
     );
-    CREATE INDEX IF NOT EXISTS idx_emb_tu ON mnemos_embeddings(tenant_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_emb_tu ON nemos_embeddings(tenant_id, user_id);
   `);
 
   // v0.3：后台 ingest 队列
@@ -219,7 +241,7 @@ export function applyMigrations(db: Database.Database): void {
 
   // v0.3：entity FTS 表（每条 memory 的 entities 拼字符串入 FTS）
   db.exec(`
-    CREATE VIRTUAL TABLE IF NOT EXISTS mnemos_entities_fts USING fts5(
+    CREATE VIRTUAL TABLE IF NOT EXISTS nemos_entities_fts USING fts5(
       record_id UNINDEXED,
       layer UNINDEXED,
       tenant_id UNINDEXED,

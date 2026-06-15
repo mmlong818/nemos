@@ -1,4 +1,4 @@
-# mnemos v0.1 — 数据 Schema (10-data-schema)
+# nemos v0.1 — 数据 Schema (10-data-schema)
 
 > **状态**：Draft，Round 1 输出
 > **版本**：v0.1
@@ -28,7 +28,7 @@
 
 ## 1. 多租户基础
 
-mnemos 是 day-1 多租户系统。所有数据都用三级隔离键：
+nemos 是 day-1 多租户系统。所有数据都用三级隔离键：
 
 | 键 | 类型 | 必填 | E2EE 可见 | 说明 |
 |---|---|---|---|---|
@@ -697,9 +697,9 @@ correction_context:
   notes: 在什么情境下错（架构版本、任务类型、特定 agent 等）
 ```
 
-### 6.2 ECC v2 → mnemos 字段映射
+### 6.2 ECC v2 → nemos 字段映射
 
-| ECC v2 字段 | mnemos 字段 |
+| ECC v2 字段 | nemos 字段 |
 |---|---|
 | `scope` (global / project:X / task:X) | `scope_id` (见 §7) |
 | `source.authoritative: bool` | `source.kind` + `source.authoritative` 双写（兼容） |
@@ -713,7 +713,7 @@ correction_context:
 | `stability` | `fsrs.stability` |
 | `private_zone` | `flags.private_zone` |
 
-ECC v2 用户从单租户 markdown 迁到 mnemos 时，import adapter 走此映射表自动转换（见 §10.6）。
+ECC v2 用户从单租户 markdown 迁到 nemos 时，import adapter 走此映射表自动转换（见 §10.6）。
 
 ---
 
@@ -799,7 +799,7 @@ v0.1 用弱 identity：principal_id 是用户 email 的 sha256 hash。
 
 ```
 1. User A 写一条 relational record (principals: [self, alice])
-2. 服务端检查 alice 是否有 mnemos account（按 email hash 查 user table）
+2. 服务端检查 alice 是否有 nemos account（按 email hash 查 user table）
 3. 若有：向 alice 发 share invitation
 4. alice 接受 → share_decisions[..].effective = true，alice 可读
 5. alice veto → effective = false，AgentMemoryCache invalidate
@@ -1043,13 +1043,13 @@ flags.surface_cooldown_reason:
 ```jsonc
 // memory-export.jsonld
 {
-  "@context": "https://mnemos.org/schema/v1",
+  "@context": "https://nemos.org/schema/v1",
   "@type": "PersonalMemoryArchive",
   "export_version": "1.0",
-  "mnemos_schema_version": "0.1",
+  "nemos_schema_version": "0.1",
   "exported_at": "2026-06-01T10:00:00Z",
   "exported_by": "user_self",
-  "exported_from": "mnemos-cloud-v0.1",
+  "exported_from": "nemos-cloud-v0.1",
   "user_id_hash": "sha256(user_email)",
   "tenant_id_hash": "sha256(tenant_id)",
   "lifetime_periods": [...],
@@ -1107,7 +1107,7 @@ flags.surface_cooldown_reason:
 
 ### 10.4 Markdown 双轨
 
-每条 record 同时输出 markdown（用户在无 mnemos 时也能读，与 ECC v2 兼容）：
+每条 record 同时输出 markdown（用户在无 nemos 时也能读，与 ECC v2 兼容）：
 
 ```markdown
 ---
@@ -1156,7 +1156,7 @@ User typed directly (authoritative, depth=0)
 ### 10.5 目录结构
 
 ```
-mnemos-export-20260601/
+nemos-export-20260601/
 ├── memory-export.jsonld
 ├── stores/
 │   ├── archival.jsonl
@@ -1181,14 +1181,14 @@ mnemos-export-20260601/
 
 ### 10.6 Import adapter（从 ECC v2 / mem0 / Letta）
 
-每个 import adapter 是独立小程序（`mnemos import --from=ecc-v2 --path=...`），由 mnemos CLI 提供：
+每个 import adapter 是独立小程序（`nemos import --from=ecc-v2 --path=...`），由 nemos CLI 提供：
 
 | 源 | 路径 |
 |---|---|
-| ECC v2 markdown | `mnemos-import-ecc-v2` |
-| mem0 export | `mnemos-import-mem0`（社区贡献） |
-| Letta archive | `mnemos-import-letta`（社区贡献） |
-| Memory-Palace | `mnemos-import-memory-palace`（社区贡献） |
+| ECC v2 markdown | `nemos-import-ecc-v2` |
+| mem0 export | `nemos-import-mem0`（社区贡献） |
+| Letta archive | `nemos-import-letta`（社区贡献） |
+| Memory-Palace | `nemos-import-memory-palace`（社区贡献） |
 
 Adapter 责任：
 - 字段映射（见 §6.2 for ECC v2）
@@ -1243,8 +1243,8 @@ schema_version:
 
 读取方按版本路由：
 - 同 minor → 直接读
-- 跨 minor → 走 migration adapter（mnemos-server 内置）
-- 跨 major → REJECT，提示用户运行 mnemos-cli migrate
+- 跨 minor → 走 migration adapter（nemos-server 内置）
+- 跨 major → REJECT，提示用户运行 nemos-cli migrate
 
 ### 11.3 向前/向后兼容承诺
 
@@ -1254,7 +1254,7 @@ schema_version:
 
 ### 11.4 Migration adapter 接口
 
-mnemos-server 内置 migration registry：
+nemos-server 内置 migration registry：
 ```
 migrations:
   - from: "0.1"
@@ -1267,7 +1267,7 @@ migrations:
         field: ...
 ```
 
-任何部署升级版本时必须先跑 `mnemos migrate --dry-run`。
+任何部署升级版本时必须先跑 `nemos migrate --dry-run`。
 
 ### 11.5 v0 → v1 路径
 

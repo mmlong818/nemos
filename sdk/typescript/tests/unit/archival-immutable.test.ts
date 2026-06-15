@@ -3,11 +3,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 import { makeMockLLMConfig } from "../helpers.js";
 
 test("archival.content 永远等于用户原始输入，LLM 改不了", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false }, // 简化路径
@@ -23,7 +23,7 @@ test("archival.content 永远等于用户原始输入，LLM 改不了", async ()
 });
 
 test("archival 经过 trim 后是字节级副本（前后空白被裁掉）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -36,7 +36,7 @@ test("archival 经过 trim 后是字节级副本（前后空白被裁掉）", as
 });
 
 test("skipAnalysis 模式只产 archival 不产 derived", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
   });

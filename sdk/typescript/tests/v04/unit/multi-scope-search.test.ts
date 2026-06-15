@@ -2,12 +2,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { resetMockCount, makeMockLLMConfig } from "../../helpers.js";
 
 function makeInstance() {
   resetMockCount();
-  return new Mnemos({
+  return new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     defaultScope: "global",

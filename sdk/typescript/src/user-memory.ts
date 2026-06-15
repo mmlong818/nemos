@@ -19,7 +19,7 @@ import { reinforceStability } from "./decay.js";
 import type { ReflectResult } from "./reflect.js";
 import { spreadActivation } from "./spreading.js";
 import type { Storage } from "./storage.js";
-import type { MnemosWorker } from "./queue.js";
+import type { NemosWorker } from "./queue.js";
 import {
   LAYERS,
   SCHEMA_VERSION,
@@ -38,7 +38,7 @@ import {
   type MemorySource,
   type MemoryStats,
   type MemorySurprise,
-  type MnemosConfig,
+  type NemosConfig,
   type Perspective,
   type SearchOptions,
   type WriteMemoryInput,
@@ -65,12 +65,12 @@ export class UserMemory {
     private readonly embedding: EmbeddingProvider | null,
     private readonly tenantId: string,
     private readonly userId: string,
-    private readonly config: MnemosConfig & {
+    private readonly config: NemosConfig & {
       defaultScope: string;
       tenantId: string;
     },
     private readonly log: (level: LogLevel, msg: string, meta?: Record<string, unknown>) => void,
-    private readonly worker: MnemosWorker,
+    private readonly worker: NemosWorker,
   ) {}
 
   // ===========================================================================
@@ -97,7 +97,7 @@ export class UserMemory {
   ): Promise<IngestResult | IngestHandle> {
     const scope = options.scope || this.config.defaultScope;
     const trimmed = (content || "").trim();
-    if (!trimmed) throw new Error("[mnemos] ingest content is empty");
+    if (!trimmed) throw new Error("[nemos] ingest content is empty");
 
     // skipAnalysis：直接造 archival，不走 LLM；与 background 互斥
     if (options.skipAnalysis === true) {
@@ -163,14 +163,14 @@ export class UserMemory {
     const hasConflict = this.linkPsemConflicts(persisted);
     if (hasConflict && this.config.features?.reflect?.enabled) {
       this.worker.runReflectFor(this.tenantId, this.userId, this.config.defaultScope).catch((e) => {
-        this.log("warn", "[mnemos] psem conflict-reflect 触发失败（不阻塞 ingest）", {
+        this.log("warn", "[nemos] psem conflict-reflect 触发失败（不阻塞 ingest）", {
           err: e instanceof Error ? e.message : String(e),
         });
       });
     } else {
       // v0.4：无冲突时走正常 episodic 累积阈值判定
       this.worker.maybeAutoReflect(this.tenantId, this.userId, this.config.defaultScope).catch((e) => {
-        this.log("warn", "[mnemos] auto-reflect 触发失败（不阻塞 ingest）", {
+        this.log("warn", "[nemos] auto-reflect 触发失败（不阻塞 ingest）", {
           err: e instanceof Error ? e.message : String(e),
         });
       });
@@ -216,17 +216,17 @@ export class UserMemory {
    */
   async write(input: WriteMemoryInput): Promise<Memory> {
     if (!LAYERS.includes(input.layer)) {
-      throw new Error(`[mnemos] 无效 layer: ${input.layer}`);
+      throw new Error(`[nemos] 无效 layer: ${input.layer}`);
     }
     if (input.layer === "archival" && input.source.authoritative !== true) {
       throw new Error(
-        "[mnemos] archival 必须 authoritative=true（spec I3）",
+        "[nemos] archival 必须 authoritative=true（spec I3）",
       );
     }
     // 硬约束：personal_semantic 拒绝 authoritative=true（spec I4）
     if (input.layer === "personal_semantic" && input.source.authoritative === true) {
       throw new Error(
-        "[mnemos] personal_semantic 不接受 authoritative=true 写入（spec I4）。" +
+        "[nemos] personal_semantic 不接受 authoritative=true 写入（spec I4）。" +
           "如需用户直接陈述偏好，请用 .ingest() 让 LLM 派生，或写到 episodic。",
       );
     }
@@ -234,7 +234,7 @@ export class UserMemory {
     const scope = input.scope || this.config.defaultScope;
     const now = nowIso();
     const content = input.content.trim();
-    if (!content) throw new Error("[mnemos] write content is empty");
+    if (!content) throw new Error("[nemos] write content is empty");
 
     const source: MemorySource = {
       authoritative: input.source.authoritative,
@@ -296,7 +296,7 @@ export class UserMemory {
       const hasConflict = this.linkPsemConflicts([memory]);
       if (hasConflict && this.config.features?.reflect?.enabled) {
         this.worker.runReflectFor(this.tenantId, this.userId, this.config.defaultScope).catch((e) => {
-          this.log("warn", "[mnemos] psem conflict-reflect 触发失败（不阻塞 write）", {
+          this.log("warn", "[nemos] psem conflict-reflect 触发失败（不阻塞 write）", {
             err: e instanceof Error ? e.message : String(e),
           });
         });
@@ -428,7 +428,7 @@ export class UserMemory {
     ) {
       this.log(
         "info",
-        "[mnemos] search 返回空 —— 若内容包含敏感主题（健康 / 财务 / 亲密关系等），" +
+        "[nemos] search 返回空 —— 若内容包含敏感主题（健康 / 财务 / 亲密关系等），" +
           "默认从结果隐藏。可传 { includeSensitive: true } 或 { sensitiveOnly: true } 查全集。",
       );
     }
@@ -485,7 +485,7 @@ export class UserMemory {
       }
       return reranked;
     } catch (e) {
-      this.log("warn", "[mnemos] 领域激活失败，退回全局结果", {
+      this.log("warn", "[nemos] 领域激活失败，退回全局结果", {
         err: e instanceof Error ? e.message : String(e),
       });
       return results;
@@ -516,7 +516,7 @@ export class UserMemory {
       try {
         base = await memoriesToMarkdownNarrative(memories, this.llm, maxChars);
       } catch (e) {
-        this.log("warn", "[mnemos] narrative 合成失败，降级 tiered", {
+        this.log("warn", "[nemos] narrative 合成失败，降级 tiered", {
           err: e instanceof Error ? e.message : String(e),
         });
         base = memoriesToMarkdownTiered(memories, maxChars);
@@ -569,7 +569,7 @@ export class UserMemory {
       }
       return buildProspectiveContext(kept, pcfg.minConfidence);
     } catch (e) {
-      this.log("warn", "[mnemos] 前瞻通道失败，跳过", {
+      this.log("warn", "[nemos] 前瞻通道失败，跳过", {
         err: e instanceof Error ? e.message : String(e),
       });
       return [];
@@ -612,7 +612,7 @@ export class UserMemory {
         return;
       }
     }
-    throw new Error(`[mnemos] memory not found (or is archival): ${memoryId}`);
+    throw new Error(`[nemos] memory not found (or is archival): ${memoryId}`);
   }
 
   async stats(): Promise<MemoryStats> {
@@ -657,7 +657,7 @@ export class UserMemory {
         return;
       }
     }
-    throw new Error(`[mnemos] memory not found: ${memoryId}`);
+    throw new Error(`[nemos] memory not found: ${memoryId}`);
   }
 
   // ===========================================================================
@@ -684,7 +684,7 @@ export class UserMemory {
       if (similar.length === 0) continue;
 
       found = true;
-      this.log("info", "[mnemos] personal_semantic 发现相似记录，建立 related 链", {
+      this.log("info", "[nemos] personal_semantic 发现相似记录，建立 related 链", {
         id: m.id,
         similarCount: similar.length,
       });

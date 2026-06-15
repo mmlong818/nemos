@@ -2,7 +2,7 @@
 
 ## 0.4.0 — 2026-06-05
 
-Forgetting & Consolidation：让 mnemos 从「全部记住」走向「有质量地记忆」。RFC 0004 实施。
+Forgetting & Consolidation：让 nemos 从「全部记住」走向「有质量地记忆」。RFC 0004 实施。
 
 ### 新增（B6）Sensitivity defaults
 
@@ -79,7 +79,7 @@ v0.1-v0.3 70 + v0.4 42 = **112/112 通过**：
 
 ### 兼容性
 
-- 朋友 `import { Mnemos, UserMemory, persistDerivedList, ... } from '@mnemos/sdk'` 一切照旧
+- 朋友 `import { Nemos, UserMemory, persistDerivedList, ... } from '@nemos/sdk'` 一切照旧
 - `features.decay` / `features.reflect` 不传 = v0.3 行为
 - v0.3 SQLite db 加载 v0.4 SDK 自动 ALTER + backfill；旧数据 0 丢失
 
@@ -116,7 +116,7 @@ v0.1-v0.3 70 + v0.4 42 = **112/112 通过**：
 |---|---|---|
 | `src/storage.ts` (1273 行) | `src/storage.ts` shim + `src/storage/` 7 文件 | 拆 schema / memory-ops / queue-ops / entity-ops / sqlite-impl / memory-impl / row-mapper |
 | `src/analyzer.ts` (663 行) | `src/analyzer.ts` shim + `src/analyzer/` 7 文件 | 拆 build-memory / json-parse / single-pass / multi-perspective / chunked / options / index |
-| `src/index.ts` (760 行) | `src/index.ts` (25 行 shim) + `src/mnemos.ts` + `src/user-memory.ts` + `src/persist-derived.ts` | Mnemos / UserMemory / helper 各居各位 |
+| `src/index.ts` (760 行) | `src/index.ts` (25 行 shim) + `src/nemos.ts` + `src/user-memory.ts` + `src/persist-derived.ts` | Nemos / UserMemory / helper 各居各位 |
 
 ### 当前文件 size 分布（最大 5 个）
 
@@ -134,9 +134,9 @@ v0.3 让 storage/index/analyzer 单文件爆到 600+ 行。v0.4 还要加 FSRS d
 
 ### 兼容性
 
-- 朋友 `import { Mnemos, UserMemory, persistDerivedList, ... } from '@mnemos/sdk'` 一切照旧
+- 朋友 `import { Nemos, UserMemory, persistDerivedList, ... } from '@nemos/sdk'` 一切照旧
 - 内部实现移动到子文件，但 v0.3 的 `from './storage.js'` / `from './analyzer.js'` 通过 shim 仍然 work
-- 不需要重新装包；但出了新 `mnemos-sdk-0.3.1.tgz` 与 0.1/0.2/0.3 三个 tarball 并存
+- 不需要重新装包；但出了新 `nemos-sdk-0.3.1.tgz` 与 0.1/0.2/0.3 三个 tarball 并存
 
 ### Verified
 
@@ -157,9 +157,9 @@ Production pipeline：后台 ingest 队列 + 多视角抽取 + 跨 memory 自动
   - 不传 = v0.2 同步路径（向后兼容）
 - **`UserMemory.getIngestStatus(id)`** —— 查 background 任务状态（queued / analyzing / completed / failed）
 - **`UserMemory.listPendingIngests()`** —— 列当前 user 的未完成 ingest（跨 user 隔离）
-- **`Mnemos.runWorkerTick()`** —— 手动跑一次 tick（serverless / cron 友好）
-- **`Mnemos.stopWorker()`** —— 优雅停止 worker
-- **`Mnemos.waitForIngest(id, timeoutMs?)`** —— 等待 background 任务进入终态（测试 / 同步等待场景）
+- **`Nemos.runWorkerTick()`** —— 手动跑一次 tick（serverless / cron 友好）
+- **`Nemos.stopWorker()`** —— 优雅停止 worker
+- **`Nemos.waitForIngest(id, timeoutMs?)`** —— 等待 background 任务进入终态（测试 / 同步等待场景）
 - **`WorkerConfig`** —— `enabled` / `pollIntervalMs` / `manualWorker` / `maxAttempts`
 - **崩溃恢复**：worker 启动时把 `status='analyzing'` 重置为 `'queued'`
 - **失败重试**：backoff 1s / 4s / 16s（attempts 1/2/3）；超出 → `failed`
@@ -199,7 +199,7 @@ Production pipeline：后台 ingest 队列 + 多视角抽取 + 跨 memory 自动
 - 加 `idx_entities_<layer>` 条件索引（仅非空）
 - 新表 `ingest_queue`：`id / archival_id / scope / content / scenario_json / origin_agent / content_date / perspectives_json / status / attempts / last_error / created_at / updated_at / completed_at / derived_count`
 - 索引 `idx_iq_status` + `idx_iq_tu`
-- 新虚表 `mnemos_entities_fts`（FTS5，按 entity 字符串匹配跨 memory）
+- 新虚表 `nemos_entities_fts`（FTS5，按 entity 字符串匹配跨 memory）
 - 新 memory `schema_version = "0.3"`；老 memory 保留原值（0.1 / 0.2）
 - v0.2 → v0.3 自动 ALTER + CREATE IF NOT EXISTS，**幂等**，旧数据零丢失
 
@@ -321,7 +321,7 @@ Production pipeline：后台 ingest 队列 + 多视角抽取 + 跨 memory 自动
 - 嵌入式 SQLite 存储（better-sqlite3），零运维
 - 5 层记忆模型（archival / episodic / semantic / personal_semantic / procedural）
 - 三维元数据（source / arousal / surprise）
-- 5 行接入：`new Mnemos({...}).forUser(id).ingest(text)`
+- 5 行接入：`new Nemos({...}).forUser(id).ingest(text)`
 - 多用户 namespace 隔离（`tenant_id + user_id`）
 - 双 pass + 校验合并（抗 LLM 非确定性）
 - LLM provider：Anthropic / OpenAI / Custom

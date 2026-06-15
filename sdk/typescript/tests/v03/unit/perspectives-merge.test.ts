@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deriveConfidence } from "../../../src/perspectives.js";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import {
   makePerspectiveMockLLMConfig,
   makeConflictPerspectiveMockLLMConfig,
@@ -29,7 +29,7 @@ test("deriveConfidence: conflict 优先", () => {
 });
 
 test("multi-perspective ingest → derived 带 perspectives + 推断 confidence", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makePerspectiveMockLLMConfig(),
     features: { perspectives: ["fact", "method", "decision"] },
@@ -54,7 +54,7 @@ test("multi-perspective ingest → derived 带 perspectives + 推断 confidence"
 });
 
 test("multi-perspective conflict → confidence='conflict' + perspectives_conflict=true", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeConflictPerspectiveMockLLMConfig(),
     features: { perspectives: ["fact", "emotion"] },
@@ -75,7 +75,7 @@ test("multi-perspective conflict → confidence='conflict' + perspectives_confli
 test("features.doubleCheck=true 与 features.perspectives 互斥 → throw", () => {
   assert.throws(
     () =>
-      new Mnemos({
+      new Nemos({
         storage: { type: "memory" },
         llm: { provider: "custom", chat: async () => "{}" },
         features: { doubleCheck: true, perspectives: ["fact"] },
@@ -85,7 +85,7 @@ test("features.doubleCheck=true 与 features.perspectives 互斥 → throw", () 
 });
 
 test("不传 perspectives = v0.2 doubleCheck 行为（向后兼容）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makePerspectiveMockLLMConfig(),
   });

@@ -4,13 +4,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeMockLLMConfig } from "../../helpers.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 test("v0.4: cold 默认从 search 隐藏；includeCold:true 才可见", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: {
@@ -43,7 +43,7 @@ test("v0.4: cold 默认从 search 隐藏；includeCold:true 才可见", async ()
 });
 
 test("v0.4: archival 永不 cold（即便跑 100 年 decay）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: {
@@ -69,7 +69,7 @@ test("v0.4: archival 永不 cold（即便跑 100 年 decay）", async () => {
 });
 
 test("v0.4: clearCold 后再次可见", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: {
@@ -94,7 +94,7 @@ test("v0.4: clearCold 后再次可见", async () => {
 });
 
 test("v0.4: 跨 user 隔离 — alice 的 cold 不会影响 bob", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: {

@@ -1,6 +1,6 @@
 # AI 应用集成指南
 
-给打算把 mnemos 集成进自己 AI 应用的开发者。
+给打算把 nemos 集成进自己 AI 应用的开发者。
 
 ---
 
@@ -33,7 +33,7 @@
 ## 用户授权流程
 
 ```
-[用户在 mnemos 控制台] → 创建 AI app 集成 token
+[用户在 nemos 控制台] → 创建 AI app 集成 token
                           ↓
                        选择允许的 scope + 能力
                           ↓
@@ -41,7 +41,7 @@
                           ↓
 [用户在 AI app 设置]    粘贴 API key
                           ↓
-[AI app] 用 key 调用 mnemos
+[AI app] 用 key 调用 nemos
 ```
 
 ## SKU 选择（用户视角）
@@ -62,29 +62,29 @@
 
 ### 集成步骤
 
-1. 在 mnemos 控制台开启 "shared identity" 模式
+1. 在 nemos 控制台开启 "shared identity" 模式
 2. 让每个 AI app 用同一用户的不同 API key
 3. AI app 在 hot-path 调用：
    ```
-   memories = mnemos.get_relevant(
+   memories = nemos.get_relevant(
      scope=["global", "project:current_project"],
      top_k=20
    )
    ```
 4. AI app 写新事实时：
    ```
-   mnemos.write(
+   nemos.write(
      content="...",
      scope="global" 或 "project:...",
      source={authoritative: false, origin_agent: "cursor"}
    )
    ```
-5. mnemos 自动处理跨 agent 共享语义（Manifest + Capability Registry）
+5. nemos 自动处理跨 agent 共享语义（Manifest + Capability Registry）
 
 ### 关键注意
 
 - 不要假设其他 AI app 写的 memory 是 authoritative——它们和你一样是 derived
-- 跨 agent contradiction 由 mnemos 检测，AI app 收到时已带 contradiction 标
+- 跨 agent contradiction 由 nemos 检测，AI app 收到时已带 contradiction 标
 - scope `agent:<self>` 用于只读不共享的私有 memory（罕见）
 
 ## Persona-2：创作者集成
@@ -96,8 +96,8 @@
 1. 引导用户创建 Lifetime Period（一个 chapter）
 2. AI app 在新 session 加载：
    ```
-   period = mnemos.get_active_period()
-   memories = mnemos.get_relevant(
+   period = nemos.get_active_period()
+   memories = nemos.get_relevant(
      scope=f"period:{period.id}",
      top_k=30,
      include_motifs=true,
@@ -106,13 +106,13 @@
    ```
 3. AI app 在 session 末写 reflection：
    ```
-   mnemos.write_reflection(
+   nemos.write_reflection(
      period_id=period.id,
      content="...",
      source={authoritative: false}
    )
    ```
-4. 用户可在 mnemos 控制台手动 `close period` + `start new period`
+4. 用户可在 nemos 控制台手动 `close period` + `start new period`
 
 ### 关键注意
 
@@ -127,34 +127,34 @@
 ```
 # 错
 memory = llm.summarize(conversation)
-mnemos.write(content=memory, source={authoritative: true})  # 撒谎
+nemos.write(content=memory, source={authoritative: true})  # 撒谎
 
 # 对
 memory = llm.summarize(conversation)
-mnemos.write(content=memory, source={authoritative: false, chain_depth: 1, origin_agent: "self"})
+nemos.write(content=memory, source={authoritative: false, chain_depth: 1, origin_agent: "self"})
 ```
 
 ### ❌ 跨 scope 混淆
 
 ```
 # 错（项目偏好被存为全局，导致跨项目污染）
-mnemos.write(content="prefer dark mode", scope="global")
+nemos.write(content="prefer dark mode", scope="global")
 
 # 对（如果只在某项目偏好）
-mnemos.write(content="prefer dark mode in projectX", scope="project:projectX")
+nemos.write(content="prefer dark mode in projectX", scope="project:projectX")
 ```
 
 ### ❌ 忽略 corrected_by 警告
 
 ```
 # 错（直接用 memory 内容，不看是否已被纠正）
-m = mnemos.get(id)
+m = nemos.get(id)
 return m.content
 
 # 对（检查 corrected_by，看是否需要读新版本）
-m = mnemos.get(id)
+m = nemos.get(id)
 if m.corrected_by:
-    m_new = mnemos.get(m.corrected_by[-1])
+    m_new = nemos.get(m.corrected_by[-1])
     return m_new.content
 return m.content
 ```
@@ -164,17 +164,17 @@ return m.content
 任何时候用户都能从 AI app 端触发：
 
 ```
-mnemos.export(format="json-ld" | "markdown")
+nemos.export(format="json-ld" | "markdown")
 ```
 
-导出全集 + 派生层 + 关系链。用户可拿到完整数据迁到其他 mnemos 实例或其他兼容产品。
+导出全集 + 派生层 + 关系链。用户可拿到完整数据迁到其他 nemos 实例或其他兼容产品。
 
 这是 [RFC 0001 原则 7] 的硬要求。
 
 ## 计费（如适用）
 
 - 自托管 SKU c：免费（自付基础设施）
-- 公共云 SKU a：免费层（1k 条 active memory）+ 容量阶梯（详 mnemos 控制台）
-- E2EE SKU b：付费（详 mnemos 控制台）
+- 公共云 SKU a：免费层（1k 条 active memory）+ 容量阶梯（详 nemos 控制台）
+- E2EE SKU b：付费（详 nemos 控制台）
 
-AI app 不直接付费——用户付费。AI app 可在 onboarding 显示 mnemos 计费说明，但不参与计费流程。
+AI app 不直接付费——用户付费。AI app 可在 onboarding 显示 nemos 计费说明，但不参与计费流程。

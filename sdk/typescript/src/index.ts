@@ -1,11 +1,11 @@
 // index.ts — 公开 API 入口（v0.3.1 后纯 re-export shim）
 //
 // 朋友 import 这里：
-//   import { Mnemos } from '@mnemos/sdk';
-//   const mem = new Mnemos({ storage: {...}, llm: {...} });
+//   import { Nemos } from '@nemos/sdk';
+//   const mem = new Nemos({ storage: {...}, llm: {...} });
 //   await mem.forUser('alice').ingest('...');
 //
-// v0.3.1 refactor：Mnemos 类拆到 mnemos.ts，UserMemory 拆到 user-memory.ts，
+// v0.3.1 refactor：Nemos 类拆到 nemos.ts，UserMemory 拆到 user-memory.ts，
 // persistDerivedList 拆到 persist-derived.ts；本文件仅做 re-export。
 
 // 重新导出公共类型（朋友 IDE intellisense 友好）
@@ -14,7 +14,7 @@ export type { Storage } from "./storage.js";
 export { SqliteStorage, InMemoryStorage } from "./storage.js";
 
 // 公开类
-export { Mnemos } from "./mnemos.js";
+export { Nemos } from "./nemos.js";
 export { UserMemory } from "./user-memory.js";
 
 // 共用 helper（被 worker / 其他高级用户使用）

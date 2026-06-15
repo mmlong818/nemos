@@ -3,11 +3,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 import { makeMaliciousMockLLMConfig, makeMockLLMConfig } from "../helpers.js";
 
 test("正常 LLM 输出的 derived 都是 authoritative=false", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -28,7 +28,7 @@ test("正常 LLM 输出的 derived 都是 authoritative=false", async () => {
 });
 
 test("恶意 LLM 试图把 derived 标 authoritative=true → SDK 强制改回 false", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMaliciousMockLLMConfig(),
     features: { doubleCheck: false },

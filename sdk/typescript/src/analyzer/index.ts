@@ -49,7 +49,7 @@ export async function analyze(
   options: AnalyzeOptions = {},
 ): Promise<IngestResult> {
   const trimmed = (content || "").trim();
-  if (!trimmed) throw new Error("[mnemos] content is empty");
+  if (!trimmed) throw new Error("[nemos] content is empty");
 
   const profile = options.profile;
   const maxChars = profile?.chunking?.maxChars ?? 8000;

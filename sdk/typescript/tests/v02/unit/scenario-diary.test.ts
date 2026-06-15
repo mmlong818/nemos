@@ -2,11 +2,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeMockLLMConfig } from "../../helpers.js";
 
 test("scenario='diary' 时所有 derived 标 sensitive=true", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -26,7 +26,7 @@ test("scenario='diary' 时所有 derived 标 sensitive=true", async () => {
 });
 
 test("sensitive=true 的 derived 默认不进 search 结果", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -43,7 +43,7 @@ test("sensitive=true 的 derived 默认不进 search 结果", async () => {
 });
 
 test("includeSensitive=true 时能搜到 sensitive 记录", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },

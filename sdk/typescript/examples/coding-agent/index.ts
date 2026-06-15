@@ -7,7 +7,7 @@
 // 跑法：
 //   ANTHROPIC_API_KEY=sk-... npx tsx examples/coding-agent/index.ts
 
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 
 async function main(): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -16,7 +16,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "sqlite", path: "./coding-agent.db" },
     llm: { provider: "anthropic", apiKey },
     defaultScope: "project:my-rust-app",
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   process.stdout.write("\n(close + reopen DB to simulate new session)\n");
 
   // ===== Session 2 =====
-  const mem2 = new Mnemos({
+  const mem2 = new Nemos({
     storage: { type: "sqlite", path: "./coding-agent.db" },
     llm: { provider: "anthropic", apiKey },
     defaultScope: "project:my-rust-app",

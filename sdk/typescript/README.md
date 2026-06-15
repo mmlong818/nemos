@@ -1,4 +1,4 @@
-# @mnemos/sdk
+# @nemos/sdk
 
 > **嵌入式 TypeScript 记忆系统 SDK** —— 给你的 AI 产品加上一套结构化、可持久化、可移植的记忆基础设施。5 行代码接入。
 
@@ -8,9 +8,9 @@
 
 ## 30 秒理解
 
-**mnemos 是什么**：开源的"AI 应用记忆系统"协议 + 实现。把 LLM 应用沉淀下来的零散对话/笔记/观察，分解到 5 个语义层（事件 / 知识 / 关于用户 / 习惯 / 不可变原文），打上来源/情绪/意外度元数据，供后续 AI 调用按需取用。
+**nemos 是什么**：开源的"AI 应用记忆系统"协议 + 实现。把 LLM 应用沉淀下来的零散对话/笔记/观察，分解到 5 个语义层（事件 / 知识 / 关于用户 / 习惯 / 不可变原文），打上来源/情绪/意外度元数据，供后续 AI 调用按需取用。
 
-**mnemos 不是什么**：
+**nemos 不是什么**：
 - 不是另一个向量数据库（vector DB 是它的一个组件，不是它的全部）
 - 不是 chat memory window 替代品（它的目标是**跨 session、跨 agent 的长期记忆**）
 - 不是端到端的对话系统（你的 AI 应用是它的客户，它是基础设施）
@@ -18,7 +18,7 @@
 **为什么用它**：
 - ✅ **5 行接入**：装个包，配 storage + LLM key，调 `ingest()` 和 `getRelevantContext()` 就能用
 - ✅ **嵌入式部署**：SQLite 单文件，零运维，你的产品自己拥有数据
-- ✅ **设计原则可信**：12 条 founding principles（[RFC 0001](../../rfcs/0001-mnemos-design-principles.md)）守住「AI 是仆人不是代理」「不可变原始层」「默认衰减 + 显式保留」等硬底线
+- ✅ **设计原则可信**：12 条 founding principles（[RFC 0001](../../rfcs/0001-nemos-design-principles.md)）守住「AI 是仆人不是代理」「不可变原始层」「默认衰减 + 显式保留」等硬底线
 - ✅ **数据可移植**：JSON-LD + Markdown 双轨导出，永远不被锁定
 - ✅ **可审计**：每条记忆都带 source / chain_depth / authoritative，能追溯是用户直说还是 AI 推断
 
@@ -29,17 +29,17 @@
 ### 1. 安装
 
 ```bash
-npm install @mnemos/sdk better-sqlite3
+npm install @nemos/sdk better-sqlite3
 npm install @anthropic-ai/sdk   # 或 npm install openai
 ```
 
 ### 2. 初始化
 
 ```typescript
-import { Mnemos } from '@mnemos/sdk';
+import { Nemos } from '@nemos/sdk';
 
-const mem = new Mnemos({
-  storage: { type: 'sqlite', path: './mnemos.db' },
+const mem = new Nemos({
+  storage: { type: 'sqlite', path: './nemos.db' },
   llm: { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY! },
 });
 ```
@@ -121,7 +121,7 @@ type ScenarioProfile = {
 
 | 字段 | 含义 | 来源 |
 |---|---|---|
-| `created_at` | 记忆**落地**到 mnemos 的时间 | SDK 强制写入 |
+| `created_at` | 记忆**落地**到 nemos 的时间 | SDK 强制写入 |
 | `event_at` | 内容里**事件实际发生**的时间 | LLM 抽取 / `contentDate` 覆盖 |
 
 ```typescript
@@ -220,7 +220,7 @@ const pending = await userMem.listPendingIngests();
 ### Worker 配置
 
 ```ts
-new Mnemos({
+new Nemos({
   ...,
   worker: {
     enabled: true,            // 默认 true；false 等价 manualWorker
@@ -239,7 +239,7 @@ mem.stopWorker();  // 或直接 mem.close()
 
 ### 崩溃恢复
 
-进程死掉时若有 `status='analyzing'` 的任务，下次 Mnemos 启动时自动重置为 `'queued'`，靠 `attempts` 字段防无限重试。
+进程死掉时若有 `status='analyzing'` 的任务，下次 Nemos 启动时自动重置为 `'queued'`，靠 `attempts` 字段防无限重试。
 
 ---
 
@@ -248,7 +248,7 @@ mem.stopWorker();  // 或直接 mem.close()
 v0.2 的"同 prompt 双 pass + check"对单一 prompt 的盲区无能为力。v0.3 改成多个特化视角并行抽 + merge：
 
 ```ts
-new Mnemos({
+new Nemos({
   ...,
   features: {
     perspectives: ['fact', 'method', 'decision'],
@@ -301,7 +301,7 @@ memory.source.confidence = 'high' | 'medium' | 'low' | 'conflict';
 
 ```ts
 // 默认开启
-new Mnemos({
+new Nemos({
   features: {
     autoLinking: true,        // 默认；false 关掉
     crossScopeLink: true,     // 默认；false 禁跨 scope
@@ -400,7 +400,7 @@ S  = stability （天，capped 365）
 ### 配置
 
 ```ts
-new Mnemos({
+new Nemos({
   features: {
     decay: {
       enabled: true,           // 默认 false（v0.4 opt-in；v0.5 改 true）
@@ -457,7 +457,7 @@ v0.3 → v0.4 自动加列 `difficulty / retrievability / last_decay_at / archiv
 ### 配置
 
 ```ts
-new Mnemos({
+new Nemos({
   features: {
     reflect: {
       enabled: true,                 // 默认 false（v0.4 opt-in）
@@ -484,7 +484,7 @@ new Mnemos({
 
 ## 完整 API
 
-### `new Mnemos(config)`
+### `new Nemos(config)`
 
 | 字段 | 类型 | 必填 | 默认 | 说明 |
 |---|---|---|---|---|
@@ -510,7 +510,7 @@ new Mnemos({
 
 ### `UserMemory.ingest(content, options?)`
 
-**最常用方法。** 把用户原文沉淀进 mnemos。
+**最常用方法。** 把用户原文沉淀进 nemos。
 
 ```typescript
 const r = await userMem.ingest(
@@ -600,7 +600,7 @@ const s = await userMem.stats();
 
 ```typescript
 // 生产推荐
-storage: { type: 'sqlite', path: './data/mnemos.db' }
+storage: { type: 'sqlite', path: './data/nemos.db' }
 
 // 仅测试
 storage: { type: 'memory' }
@@ -661,7 +661,7 @@ embedding: { provider: 'none' }
        │
        ▼
   ┌─────────┐
-  │ Mnemos  │
+  │ Nemos  │
   │.ingest()│
   └────┬────┘
        │
@@ -763,12 +763,12 @@ v0.1 不支持。Spec §10 设计了 E2EE SKU（客户端密钥 / 客户端 embe
 
 ```typescript
 mem.close();
-// 现在可以安全 cp mnemos.db backup-2026-06-04.db
+// 现在可以安全 cp nemos.db backup-2026-06-04.db
 ```
 
 ### 我的产品已经有数据库了，能集成吗？
 
-可以——`Mnemos` 用自己的 SQLite 文件，跟你现有数据库独立。也可以走 `storage: { type: 'memory' }` 在测试时跑。未来 v0.2+ 会加 `{ type: 'remote', endpoint }` 把这层抽掉。
+可以——`Nemos` 用自己的 SQLite 文件，跟你现有数据库独立。也可以走 `storage: { type: 'memory' }` 在测试时跑。未来 v0.2+ 会加 `{ type: 'remote', endpoint }` 把这层抽掉。
 
 ### 多个 agent 共享同一个用户的记忆？
 
@@ -784,7 +784,7 @@ mem.close();
 
 ## 与现有方案对比
 
-| 维度 | mem0 | Letta (MemGPT) | Memory-Palace | **mnemos** |
+| 维度 | mem0 | Letta (MemGPT) | Memory-Palace | **nemos** |
 |---|---|---|---|---|
 | 分层存储 | ❌ 单池 vector | ✅ 三层（core/recall/archival） | ✅ 多层 | ✅ **5 层 + 三维元数据** |
 | 不可变原始层 | ❌ | ❌ | 部分 | ✅ **I3 不变量 + DB trigger** |
@@ -801,7 +801,7 @@ mem.close();
 
 ## 设计原则（深度用户）
 
-完整 12 条 founding principles 见 [`rfcs/0001-mnemos-design-principles.md`](../../rfcs/0001-mnemos-design-principles.md)。
+完整 12 条 founding principles 见 [`rfcs/0001-nemos-design-principles.md`](../../rfcs/0001-nemos-design-principles.md)。
 
 最关键的 5 条：
 
@@ -852,7 +852,7 @@ v0.4+ 未做项（生产前提请知悉）：
 
 ---
 
-## v0.3 跟 mnemos spec 的对齐度
+## v0.3 跟 nemos spec 的对齐度
 
 > 这是 handoff 给 maintainer 的对照表。
 
@@ -940,16 +940,16 @@ v0.4+ 未做项（生产前提请知悉）：
 
 ## License
 
-Apache-2.0 © mnemos founding team. 见 [LICENSE](LICENSE)。
+Apache-2.0 © nemos founding team. 见 [LICENSE](LICENSE)。
 
-mnemos 是开源协议 + 实现。你可以商用、改造、内嵌进你的产品。唯一要求：保留 license header + 改动声明。
+nemos 是开源协议 + 实现。你可以商用、改造、内嵌进你的产品。唯一要求：保留 license header + 改动声明。
 
 ---
 
 ## 项目链接
 
-- 主仓库：[mnemos-org/mnemos](https://github.com/mnemos-org/mnemos)
+- 主仓库：[nemos-org/nemos](https://github.com/nemos-org/nemos)
 - Spec：[`spec/`](../../spec/)
 - RFCs：[`rfcs/`](../../rfcs/)
 - 架构总览：[`docs/architecture-overview.md`](../../docs/architecture-overview.md)
-- 设计原则（必读）：[`rfcs/0001-mnemos-design-principles.md`](../../rfcs/0001-mnemos-design-principles.md)
+- 设计原则（必读）：[`rfcs/0001-nemos-design-principles.md`](../../rfcs/0001-nemos-design-principles.md)

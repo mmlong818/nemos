@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { composeSystemPrompt, PROFILE_CHAT, PROFILE_DOC_RESEARCH, resolveScenario } from "../../../src/prompts.js";
 import { makeMockLLMConfig } from "../../helpers.js";
 
@@ -33,7 +33,7 @@ test("resolveScenario undefined 返回 default", () => {
 });
 
 test("scenario 标签写入存储", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -48,7 +48,7 @@ test("scenario 标签写入存储", async () => {
 });
 
 test("不传 scenario = default profile = v0.1 行为（无 sensitive / 无 scenario 字段）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },

@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { SCHEMA_VERSION, SCHEMA_VERSION_V02 } from "../../../src/types.js";
 import { makePerspectiveMockLLMConfig } from "../../helpers.js";
 
@@ -80,13 +80,13 @@ function makeV02Db(path: string): void {
 }
 
 test("v0.2 SQLite 加载 v0.3 SDK 自动 ALTER + ingest_queue 新建", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mnemos-mig03-"));
+  const dir = mkdtempSync(join(tmpdir(), "nemos-mig03-"));
   const dbPath = join(dir, "v02.db");
   try {
     makeV02Db(dbPath);
 
     // 用 v0.3 SDK 打开
-    const mem = new Mnemos({
+    const mem = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makePerspectiveMockLLMConfig(),
       features: { doubleCheck: false },
@@ -115,7 +115,7 @@ test("v0.2 SQLite 加载 v0.3 SDK 自动 ALTER + ingest_queue 新建", async () 
     mem.close();
 
     // 二次打开：migration 幂等
-    const mem2 = new Mnemos({
+    const mem2 = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makePerspectiveMockLLMConfig(),
       features: { doubleCheck: false },

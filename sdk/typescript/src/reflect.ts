@@ -8,7 +8,7 @@
 // - archival 永不被修改（reflect 只产新 derived，不 update 已有 archival）
 // - 跨 user namespace 永不互相 reflect
 
-import type { EmbeddingProvider, LLMProvider, LogLevel, Memory, MnemosConfig } from "./types.js";
+import type { EmbeddingProvider, LLMProvider, LogLevel, Memory, NemosConfig } from "./types.js";
 import { SCHEMA_VERSION } from "./types.js";
 import type { Storage } from "./storage.js";
 import { persistDerivedList } from "./persist-derived.js";
@@ -32,7 +32,7 @@ export const REFLECT_DEFAULTS: ReflectConfig = {
   includePersonalSemantic: true,
 };
 
-export function resolveReflectConfig(config: MnemosConfig): ReflectConfig {
+export function resolveReflectConfig(config: NemosConfig): ReflectConfig {
   const raw = config.features?.reflect;
   if (!raw) return { ...REFLECT_DEFAULTS };
   return {
@@ -46,7 +46,7 @@ export function resolveReflectConfig(config: MnemosConfig): ReflectConfig {
   };
 }
 
-export const REFLECT_SYSTEM_PROMPT = `你是 mnemos 反思整合器。
+export const REFLECT_SYSTEM_PROMPT = `你是 nemos 反思整合器。
 
 任务：读用户最近的 episodic 经验（事件流）与现有 personal_semantic（关于用户自身的稳定事实，作为 anchor），抽出可升入 semantic / personal_semantic 的 pattern。这模拟人脑睡眠期的记忆整合（consolidation）。
 
@@ -159,7 +159,7 @@ export async function runReflect(
     raw = await llm.chat(REFLECT_SYSTEM_PROMPT, userMessage);
   } catch (e) {
     throw new Error(
-      `[mnemos] reflect LLM 调用失败: ${e instanceof Error ? e.message : String(e)}`,
+      `[nemos] reflect LLM 调用失败: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
 
@@ -179,7 +179,7 @@ export async function runReflect(
     input.userId,
     built,
   );
-  log("info", "[mnemos reflect] consolidated", {
+  log("info", "[nemos reflect] consolidated", {
     user: input.userId,
     episodic_in: episodic.length,
     anchor: anchor.length,
@@ -197,7 +197,7 @@ export async function runReflect(
       { tenantId: input.tenantId, userId: input.userId, defaultScope: input.defaultScope },
       { enabled: true, minClusterSize: 3 },
     );
-    log("info", "[mnemos reflect] domain evolution", { ...domainEvolution });
+    log("info", "[nemos reflect] domain evolution", { ...domainEvolution });
   }
   let prospectiveVerified: number | undefined;
   if (input.prospectiveEnabled) {
@@ -264,7 +264,7 @@ function buildReflectDerived(
 ): Memory | null {
   const layerRaw = String(raw.layer || "").toLowerCase();
   if (layerRaw !== "semantic" && layerRaw !== "personal_semantic") {
-    log("warn", "[mnemos reflect] 跳过非 semantic/personal_semantic derived", { layer: raw.layer });
+    log("warn", "[nemos reflect] 跳过非 semantic/personal_semantic derived", { layer: raw.layer });
     return null;
   }
   const content = (raw.content || "").trim();
@@ -275,7 +275,7 @@ function buildReflectDerived(
     ? raw.consolidated_from.filter((id) => typeof id === "string" && epIdSet.has(id))
     : [];
   if (fromIds.length === 0) {
-    log("warn", "[mnemos reflect] 跳过没有 consolidated_from 的 derived（防止 LLM 编造）", {
+    log("warn", "[nemos reflect] 跳过没有 consolidated_from 的 derived（防止 LLM 编造）", {
       content: content.slice(0, 80),
     });
     return null;

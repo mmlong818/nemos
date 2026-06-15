@@ -23,7 +23,7 @@ superseded_by: <if applicable>
 - 目前的现状
 - 现状的痛点 / 限制
 - 本 RFC 解决的具体问题
-- 与 mnemos 设计原则（见 RFC 0001）的关系
+- 与 nemos 设计原则（见 RFC 0001）的关系
 
 # Detailed Design
 

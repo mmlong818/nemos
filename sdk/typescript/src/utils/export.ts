@@ -37,9 +37,9 @@ export function exportJsonLd(all: Memory[], tenantId: string, userId: string): s
   for (const m of all) byLayer[m.layer].push(m);
   return JSON.stringify(
     {
-      "@context": "https://mnemos.org/schema/v1",
+      "@context": "https://nemos.org/schema/v1",
       "@type": "PersonalMemoryArchive",
-      mnemos_schema_version: SCHEMA_VERSION,
+      nemos_schema_version: SCHEMA_VERSION,
       export_version: "1.0",
       exported_at: nowIso(),
       tenant_id: tenantId,

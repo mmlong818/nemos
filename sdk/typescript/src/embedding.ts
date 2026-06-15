@@ -17,7 +17,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   private readonly model: string;
 
   constructor(apiKey: string, model?: string) {
-    if (!apiKey) throw new Error("[mnemos] OpenAI embedding 缺少 apiKey");
+    if (!apiKey) throw new Error("[nemos] OpenAI embedding 缺少 apiKey");
     this.apiKey = apiKey;
     this.model = model || OPENAI_DEFAULT_MODEL;
     this.modelId = `openai-${this.model}-v1`;
@@ -36,14 +36,14 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     if (!resp.ok) {
       const body = await resp.text();
       throw new Error(
-        `[mnemos] OpenAI embedding HTTP ${resp.status}: ${body.slice(0, 240)}`,
+        `[nemos] OpenAI embedding HTTP ${resp.status}: ${body.slice(0, 240)}`,
       );
     }
     const data = (await resp.json()) as {
       data?: Array<{ embedding: number[] }>;
     };
     const vec = data.data?.[0]?.embedding;
-    if (!vec) throw new Error("[mnemos] OpenAI embedding 响应无 data[0].embedding");
+    if (!vec) throw new Error("[nemos] OpenAI embedding 响应无 data[0].embedding");
     return Float32Array.from(vec);
   }
 }
@@ -55,7 +55,7 @@ export class ZhipuEmbeddingProvider implements EmbeddingProvider {
   private readonly model: string;
 
   constructor(apiKey: string, model?: string) {
-    if (!apiKey) throw new Error("[mnemos] Zhipu embedding 缺少 apiKey");
+    if (!apiKey) throw new Error("[nemos] Zhipu embedding 缺少 apiKey");
     this.apiKey = apiKey;
     this.model = model || ZHIPU_DEFAULT_MODEL;
     this.modelId = `zhipu-${this.model}-v1`;
@@ -74,14 +74,14 @@ export class ZhipuEmbeddingProvider implements EmbeddingProvider {
     if (!resp.ok) {
       const body = await resp.text();
       throw new Error(
-        `[mnemos] Zhipu embedding HTTP ${resp.status}: ${body.slice(0, 240)}`,
+        `[nemos] Zhipu embedding HTTP ${resp.status}: ${body.slice(0, 240)}`,
       );
     }
     const data = (await resp.json()) as {
       data?: Array<{ embedding: number[] }>;
     };
     const vec = data.data?.[0]?.embedding;
-    if (!vec) throw new Error("[mnemos] Zhipu embedding 响应无 data[0].embedding");
+    if (!vec) throw new Error("[nemos] Zhipu embedding 响应无 data[0].embedding");
     return Float32Array.from(vec);
   }
 }
@@ -120,7 +120,7 @@ export function makeEmbeddingProvider(
     default: {
       const _exhaustive: never = config;
       void _exhaustive;
-      throw new Error("[mnemos] 未知 embedding provider");
+      throw new Error("[nemos] 未知 embedding provider");
     }
   }
 }

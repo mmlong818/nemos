@@ -1,4 +1,4 @@
-// types.ts — mnemos SDK 公共类型集中地
+// types.ts — nemos SDK 公共类型集中地
 //
 // 类型大体对齐 spec/10-data-schema.md 与 spec/40-sdk-contract.md，但 v0.1
 // 嵌入式 SDK 实施简化（详见 README §「Spec 对齐度」）。
@@ -101,7 +101,7 @@ export interface MemoryOwnership {
 
 /**
  * 单条 memory 记录。同时覆盖 5 层；type-specific 字段标 optional。
- * 字段命名采用 snake_case 以与 ECC v2 / mnemos 文件级 markdown 兼容。
+ * 字段命名采用 snake_case 以与 ECC v2 / nemos 文件级 markdown 兼容。
  */
 export interface Memory {
   id: string;
@@ -327,7 +327,7 @@ export interface IngestStatusInfo {
  * Worker 配置。
  */
 export interface WorkerConfig {
-  /** 自动跑 worker（true：构造 Mnemos 时启 setInterval）。默认 true。 */
+  /** 自动跑 worker（true：构造 Nemos 时启 setInterval）。默认 true。 */
   enabled?: boolean;
   /** 轮询间隔（ms）。默认 1000。 */
   pollIntervalMs?: number;
@@ -609,7 +609,7 @@ export type RouterConfig =
       name?: string;
     };
 
-export interface MnemosConfig {
+export interface NemosConfig {
   storage: StorageConfig;
   llm: LLMConfig;
   /** 默认 'none'。生产建议配 openai */
@@ -627,7 +627,7 @@ export interface MnemosConfig {
      * v0.3：多视角抽取。
      * - 不传 / undefined → 走 v0.2 doubleCheck 路径（兼容）
      * - 传数组（如 ['fact','method','decision']） → 走 v0.3 multi-perspective
-     * 与 doubleCheck 互斥：同时传两个 truthy 值 → 构造 Mnemos 时 throw。
+     * 与 doubleCheck 互斥：同时传两个 truthy 值 → 构造 Nemos 时 throw。
      */
     perspectives?: Perspective[];
     /** v0.3：worker 在 derived 写完后自动跑 entity 抽取 + cross-memory linking。默认 true。 */

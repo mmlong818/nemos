@@ -12,7 +12,7 @@ import {
   DOMAINS_DEFAULTS,
   PROSPECTIVE_DEFAULTS,
 } from "../../../src/domains.js";
-import { GLOBAL_DOMAIN_ID, type Memory, type MnemosConfig, type Prospective, type RouteResult } from "../../../src/types.js";
+import { GLOBAL_DOMAIN_ID, type Memory, type NemosConfig, type Prospective, type RouteResult } from "../../../src/types.js";
 
 function mem(id: string): Memory {
   return {
@@ -33,7 +33,7 @@ function mem(id: string): Memory {
   };
 }
 
-const baseConfig: MnemosConfig = {
+const baseConfig: NemosConfig = {
   storage: { type: "memory" },
   llm: { provider: "custom", chat: async () => "{}" },
 };

@@ -5,9 +5,9 @@ import { renderAll, bindFilters, bindModalClose } from "./renderer.js";
 
 // ===== 状态 =====
 const LS_KEYS = {
-  mode: "mnemos-poc.mode",
-  apiKey: "mnemos-poc.apiKey",
-  verifyMode: "mnemos-poc.verifyMode",
+  mode: "nemos-poc.mode",
+  apiKey: "nemos-poc.apiKey",
+  verifyMode: "nemos-poc.verifyMode",
 };
 
 let analyzerMode = localStorage.getItem(LS_KEYS.mode) || "mock";
@@ -36,7 +36,7 @@ async function syncToBridge() {
   try {
     const dump = await dumpAll();
     const payload = {
-      mnemos_version: "0.1",
+      nemos_version: "0.1",
       exported_at: new Date().toISOString(),
       layers: dump,
     };
@@ -140,7 +140,7 @@ async function onAnalyze() {
       }
       // 安全检查：personal_semantic 必须是 derived
       if (d.layer === "personal_semantic" && d.source?.authoritative === true) {
-        log(`⚠ personal_semantic 不接受 authoritative 派生（违反 mnemos I4 不变量），降级为 episodic`, "warn");
+        log(`⚠ personal_semantic 不接受 authoritative 派生（违反 nemos I4 不变量），降级为 episodic`, "warn");
         d.layer = "episodic";
       }
       await write(d.layer, { ...d });
@@ -164,7 +164,7 @@ async function onAnalyze() {
 async function onExport() {
   const dump = await dumpAll();
   const exportData = {
-    mnemos_version: "0.1",
+    nemos_version: "0.1",
     exported_at: new Date().toISOString(),
     format: "json-ld-lite",
     layers: dump,
@@ -173,7 +173,7 @@ async function onExport() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `mnemos-export-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `nemos-export-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
   log("已导出 JSON", "ok");

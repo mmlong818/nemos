@@ -1,10 +1,10 @@
-# mnemos 架构总览
+# nemos 架构总览
 
 5 分钟读完。如需详细 spec，参考 [`../spec/`](../spec/)。
 
 ---
 
-## mnemos 是什么
+## nemos 是什么
 
 一个开源 personal memory infrastructure，让任何 AI 应用（Claude Code、Cursor、ChatGPT、自定义 agent）能跨 session / 跨工具持有"关于用户的同一个我"，同时用户对自己的 AI 记忆保有审计、纠正、删除、迁移的主权。
 
@@ -12,7 +12,7 @@
 
 - ❌ 不是 vector DB（虽然内部用了 pgvector / hnswlib）
 - ❌ 不是 RAG 框架
-- ❌ 不是用户面向的 app（用户不直接打开 mnemos）
+- ❌ 不是用户面向的 app（用户不直接打开 nemos）
 - ❌ 不是单纯的 AI app（是 AI app 的底层）
 
 ## 三个 SKU（部署形态）
@@ -38,7 +38,7 @@ AI 应用 ──┬──→ SDK（npm/pip）        最低延迟，in-process
           ├──→ MCP Server            标准 MCP 协议接入
           └──→ REST API              任何语言任何工具 fallback
                   ↓
-                mnemos core
+                nemos core
                   ↓
             ┌─────┴─────┐
             ↓           ↓
@@ -51,13 +51,13 @@ AI 应用 ──┬──→ SDK（npm/pip）        最低延迟，in-process
 ```
 [用户发消息] → [AI 应用]
                   ↓ SDK.query(scope, top_k)
-                [mnemos.get_relevant_memories()]
+                [nemos.get_relevant_memories()]
                   ↓ hot-path P50 < 100ms
                 [PG + pgvector / 客户端 hnswlib (E2EE)]
                   ↓ top-k 含 metadata
                 [AI 应用消化，回应用户]
                   ↓ session 结束 / reflect 触发
-                [mnemos.write_new_memory(source: derived)]
+                [nemos.write_new_memory(source: derived)]
                   ↓ contradiction check
                 [新条目入 episodic + 触发衰减/重排]
 ```
@@ -97,7 +97,7 @@ AI 应用 ──┬──→ SDK（npm/pip）        最低延迟，in-process
 
 ## 与现有方案的差异
 
-| 维度 | mem0 / Letta | Graphiti / Zep | OpenRecall | **mnemos** |
+| 维度 | mem0 / Letta | Graphiti / Zep | OpenRecall | **nemos** |
 |---|---|---|---|---|
 | 抽象层级 | 单层 fact | KG + temporal | 全屏录制 | 5 层分离 |
 | 防 AI 自污染 | 弱 | 部分 | 无 | **强制 source 标签** |
@@ -111,7 +111,7 @@ AI 应用 ──┬──→ SDK（npm/pip）        最低延迟，in-process
 
 ## 设计原则（一句话每条）
 
-完整 12 条见 [`../rfcs/0001-mnemos-design-principles.md`](../rfcs/0001-mnemos-design-principles.md)。
+完整 12 条见 [`../rfcs/0001-nemos-design-principles.md`](../rfcs/0001-nemos-design-principles.md)。
 
 1. AI 是仆人不是代理
 2. 分层存储分通道处理
@@ -126,7 +126,7 @@ AI 应用 ──┬──→ SDK（npm/pip）        最低延迟，in-process
 11. 死后默认 archive-only
 12. 完全开源 Apache-2.0
 
-## Round 2 启动前 mnemos 还需要的决策（agent-v2r1b handoff）
+## Round 2 启动前 nemos 还需要的决策（agent-v2r1b handoff）
 
 本 task 范围之外但 Round 2 前必须定：
 

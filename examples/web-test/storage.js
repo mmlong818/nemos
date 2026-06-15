@@ -1,7 +1,7 @@
 // storage.js — IndexedDB wrapper，5 层独立 store + 全局元数据
 // 简化实现：纯 Promise，没用 Dexie 之类的库，方便审计。
 
-const DB_NAME = "mnemos-poc";
+const DB_NAME = "nemos-poc";
 const DB_VERSION = 1;
 const LAYERS = ["archival", "episodic", "semantic", "personal_semantic", "procedural"];
 

@@ -6,14 +6,14 @@
 
 ## 目前能做什么（Round 1 完成时）
 
-- 阅读 [`spec/`](../spec/) 了解 mnemos 协议设计
-- 阅读 [RFC 0001](../rfcs/0001-mnemos-design-principles.md) 理解核心设计原则
+- 阅读 [`spec/`](../spec/) 了解 nemos 协议设计
+- 阅读 [RFC 0001](../rfcs/0001-nemos-design-principles.md) 理解核心设计原则
 - 在 issue 提反馈、提议新 RFC
 - Star + Watch 跟踪进度
 
 ## 还不能做什么（等 Round 2）
 
-- 跑一个真实的 mnemos server
+- 跑一个真实的 nemos server
 - 用 SDK 集成到你的 AI 应用
 - 测试 MCP server 接入
 
@@ -24,8 +24,8 @@
 ### 5 分钟 Quickstart
 
 待 self-host binary 发布后补：
-- `mnemos init` 创建配置
-- `mnemos serve` 启动
+- `nemos init` 创建配置
+- `nemos serve` 启动
 - 用 curl 写第一条 memory
 - 用 SDK 读出来
 
@@ -62,7 +62,7 @@ Claude Code / Cursor / 其他 MCP client 的配置 snippet 待 mcp-server 实施
 
 1. **读 spec 和 RFC**，反馈设计层问题
 2. **提 RFC 提议**新原则或修改现有原则（走 [rfcs/](../rfcs/) 流程）
-3. **share 你的集成需求**——你打算把 mnemos 集成进什么 AI 应用？什么 persona？开 issue 让我们知道
+3. **share 你的集成需求**——你打算把 nemos 集成进什么 AI 应用？什么 persona？开 issue 让我们知道
 4. **报告 spec 内部矛盾**——75 份研究合流可能有遗漏的矛盾，找到一处就开 issue
 5. **翻译**（如果你愿意）—— RFC 0001 + architecture-overview 的英文版尤其需要
 
@@ -71,6 +71,6 @@ Claude Code / Cursor / 其他 MCP client 的配置 snippet 待 mcp-server 实施
 ## 不确定从哪开始？
 
 开一个 GitHub issue 自我介绍：
-- 你想用 mnemos 解决什么
+- 你想用 nemos 解决什么
 - 你能贡献什么类型（设计 / 代码 / 文档 / 用户研究）
 - 你期待 Round 2 优先看到什么

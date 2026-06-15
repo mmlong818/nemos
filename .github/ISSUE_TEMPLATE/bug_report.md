@@ -21,7 +21,7 @@ labels: bug
 
 ## 环境
 
-- mnemos 版本：
+- nemos 版本：
 - 部署 SKU（a 公共云 / b E2EE / c 自托管）：
 - 客户端：SDK (语言+版本) / MCP / REST
 - AI app（如适用）：

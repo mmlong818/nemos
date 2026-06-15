@@ -13,7 +13,7 @@
 //
 // 输出每个 profile 下的 layer 分布 + 是否带 event_at / sensitive。
 
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 
 const CONTENT = `# MiniMax M3 模型发布纪要
 
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: { provider: "anthropic", apiKey },
     features: { doubleCheck: false }, // 示例求快

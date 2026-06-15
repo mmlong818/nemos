@@ -17,7 +17,7 @@ export async function analyzeOnce(
   options: AnalyzeOptions = {},
 ): Promise<IngestResult> {
   const trimmed = content.trim();
-  if (!trimmed) throw new Error("[mnemos] content is empty");
+  if (!trimmed) throw new Error("[nemos] content is empty");
 
   const profile = options.profile;
   const systemPrompt = profile
@@ -54,7 +54,7 @@ export async function analyzeWithVerification(
   options: AnalyzeOptions = {},
 ): Promise<IngestResult> {
   const trimmed = content.trim();
-  if (!trimmed) throw new Error("[mnemos] content is empty");
+  if (!trimmed) throw new Error("[nemos] content is empty");
 
   const profile = options.profile;
   const [a, b] = await Promise.all([
