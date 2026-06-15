@@ -2,11 +2,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeMockLLMConfig } from "../../helpers.js";
 
 test("spreadingActivation=true 沿 related 拓展 2 跳", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -52,7 +52,7 @@ test("spreadingActivation=true 沿 related 拓展 2 跳", async () => {
 });
 
 test("spreadingActivation 不会跨 user namespace", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
   });

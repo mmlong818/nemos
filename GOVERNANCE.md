@@ -1,6 +1,6 @@
 # Governance
 
-mnemos 的决策、维护、与社区治理模型。
+nemos 的决策、维护、与社区治理模型。
 
 ---
 
@@ -54,7 +54,7 @@ Beta 阶段后，Core Maintainer 的加入：
 
 ## 商业化承诺（Pre-Alpha 阶段锁定）
 
-- mnemos 协议 + 引用实现 + 默认 SDK：**永久 Apache-2.0 OSS**
+- nemos 协议 + 引用实现 + 默认 SDK：**永久 Apache-2.0 OSS**
 - 引用云（cloud SKU a）：可能由作者/社区/第三方运营，运营方式不影响 OSS 部分
 - 任何商业衍生必须经过 60 天 RFC 公开讨论
 - 不接受任何包含"OSS 部分被商业版本反向蚕食"条款的资金来源

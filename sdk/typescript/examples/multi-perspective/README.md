@@ -23,7 +23,7 @@ ANTHROPIC_API_KEY=sk-... npx tsx examples/multi-perspective/index.ts
 ## 配置
 
 ```ts
-new Mnemos({
+new Nemos({
   features: {
     perspectives: ['fact', 'method', 'decision'], // 默认推荐组合
   }

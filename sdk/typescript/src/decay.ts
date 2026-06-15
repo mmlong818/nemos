@@ -12,7 +12,7 @@
 
 import type { Storage } from "./storage.js";
 import type { DecayCandidate } from "./storage/types.js";
-import type { LogLevel, MnemosConfig } from "./types.js";
+import type { LogLevel, NemosConfig } from "./types.js";
 
 export interface DecayConfig {
   enabled: boolean;
@@ -30,8 +30,8 @@ export const DECAY_DEFAULTS: DecayConfig = {
   stabilityCapDays: 365,
 };
 
-/** 从 MnemosConfig 解出 DecayConfig（缺省字段用默认值）。 */
-export function resolveDecayConfig(config: MnemosConfig): DecayConfig {
+/** 从 NemosConfig 解出 DecayConfig（缺省字段用默认值）。 */
+export function resolveDecayConfig(config: NemosConfig): DecayConfig {
   const raw = config.features?.decay;
   if (!raw) return { ...DECAY_DEFAULTS };
   return {
@@ -150,6 +150,6 @@ export function runDecayScan(
       cooled++;
     }
   }
-  log("info", "[mnemos decay] scan finished", { scanned: candidates.length, cooled });
+  log("info", "[nemos decay] scan finished", { scanned: candidates.length, cooled });
   return { scanned: candidates.length, cooled };
 }

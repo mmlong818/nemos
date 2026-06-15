@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chunkContent } from "../../../src/utils/chunking.js";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeMockLLMConfig, resetMockCount, getMockCallCount } from "../../helpers.js";
 
 test("短内容不切（≤ maxChars 单元素数组）", () => {
@@ -45,7 +45,7 @@ test("chunking 触发时自动关 doubleCheck（RFC 0002 决议 C）", async () 
   resetMockCount();
   // 制造长内容触发 chunking
   const longText = ("## 章节\n" + "a".repeat(3000) + "\n\n").repeat(4);
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: true }, // 配置开了；但 chunking 路径应该跳过

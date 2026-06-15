@@ -1,6 +1,6 @@
 # 给你（朋友）的试用包
 
-> 这个 tarball 是 mnemos 个人记忆基础设施 SDK 的 v0.1（embedded SQLite，无服务端）。
+> 这个 tarball 是 nemos 个人记忆基础设施 SDK 的 v0.1（embedded SQLite，无服务端）。
 > 想看你能不能 5 行接入你的 AI 产品。
 
 ---
@@ -9,7 +9,7 @@
 
 ```bash
 # 1. 装包（不走 npm registry，直接装本地 tar）
-npm install ./mnemos-sdk-0.1.0.tgz
+npm install ./nemos-sdk-0.1.0.tgz
 
 # 2. 装 peer dep（任选一个 LLM provider，或两个都装）
 npm install @anthropic-ai/sdk
@@ -19,10 +19,10 @@ npm install openai
 
 ```typescript
 // 3. 用
-import { Mnemos } from '@mnemos/sdk';
+import { Nemos } from '@nemos/sdk';
 
-const mem = new Mnemos({
-  storage: { type: 'sqlite', path: './mnemos.db' },
+const mem = new Nemos({
+  storage: { type: 'sqlite', path: './nemos.db' },
   llm: { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY! },
 });
 

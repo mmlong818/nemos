@@ -1,18 +1,18 @@
-// mnemos.ts — Mnemos class（顶层入口，管 storage + llm + embedding + worker）
+// nemos.ts — Nemos class（顶层入口，管 storage + llm + embedding + worker）
 //
-// 公开类，朋友 `new Mnemos(config)` 拿到实例。
+// 公开类，朋友 `new Nemos(config)` 拿到实例。
 
 import { makeEmbeddingProvider } from "./embedding.js";
 import type { EmbeddingProvider } from "./types.js";
 import { makeProvider } from "./llm.js";
 import { makeStorage, type Storage } from "./storage.js";
-import { MnemosWorker } from "./queue.js";
+import { NemosWorker } from "./queue.js";
 import { persistDerivedList } from "./persist-derived.js";
 import type {
   IngestStatusInfo,
   LLMProvider,
   LogLevel,
-  MnemosConfig,
+  NemosConfig,
 } from "./types.js";
 import { UserMemory } from "./user-memory.js";
 
@@ -20,12 +20,12 @@ const DEFAULT_SCOPE = "global";
 const DEFAULT_TENANT = "default";
 
 /**
- * mnemos SDK 主入口。
+ * nemos SDK 主入口。
  *
  * 使用示例：
  * ```ts
- * const mem = new Mnemos({
- *   storage: { type: 'sqlite', path: './mnemos.db' },
+ * const mem = new Nemos({
+ *   storage: { type: 'sqlite', path: './nemos.db' },
  *   llm: { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY! },
  * });
  * const userMem = mem.forUser('alice');
@@ -33,21 +33,21 @@ const DEFAULT_TENANT = "default";
  * const ctx = await userMem.getRelevantContext('写作偏好');
  * ```
  */
-export class Mnemos {
+export class Nemos {
   private readonly storage: Storage;
   private readonly llm: LLMProvider;
   private readonly embedding: EmbeddingProvider | null;
   private readonly config: Required<
-    Pick<MnemosConfig, "defaultScope" | "tenantId">
-  > & MnemosConfig;
+    Pick<NemosConfig, "defaultScope" | "tenantId">
+  > & NemosConfig;
   private readonly log: (level: LogLevel, msg: string, meta?: Record<string, unknown>) => void;
   /** v0.3：后台 worker。任何模式下都构造（队列状态查询需要）。 */
-  private readonly worker: MnemosWorker;
+  private readonly worker: NemosWorker;
 
-  constructor(config: MnemosConfig) {
+  constructor(config: NemosConfig) {
     if (config.storage.type === "remote") {
       throw new Error(
-        "[mnemos] storage.type='remote' 暂未实现（v0.1 仅嵌入式）。请用 'sqlite' 或 'memory'。",
+        "[nemos] storage.type='remote' 暂未实现（v0.1 仅嵌入式）。请用 'sqlite' 或 'memory'。",
       );
     }
 
@@ -55,7 +55,7 @@ export class Mnemos {
     const f = config.features;
     if (f && f.doubleCheck === true && Array.isArray(f.perspectives) && f.perspectives.length > 0) {
       throw new Error(
-        "[mnemos] features.doubleCheck 与 features.perspectives 互斥。" +
+        "[nemos] features.doubleCheck 与 features.perspectives 互斥。" +
           "doubleCheck=true 走 v0.2 双 pass 路径；perspectives 非空走 v0.3 多视角。" +
           "请只显式启用一个；或两个都不传以使用默认（doubleCheck=true）。",
       );
@@ -75,13 +75,13 @@ export class Mnemos {
         if (level === "error" || level === "warn") {
           // 仅在 error/warn 时输出到 stderr，info/debug 默认静默
           const line = meta ? `${msg} ${JSON.stringify(meta)}` : msg;
-          process.stderr.write(`[mnemos ${level}] ${line}\n`);
+          process.stderr.write(`[nemos ${level}] ${line}\n`);
         }
       });
 
     // 构造 worker（共享 storage/llm/embedding）
     // 注意：构造立即跑 resetStaleAnalyzing 触碰 ingest_queue 表
-    this.worker = new MnemosWorker(
+    this.worker = new NemosWorker(
       {
         storage: this.storage,
         llm: this.llm,
@@ -119,7 +119,7 @@ export class Mnemos {
   }
 
   /** v0.3：power-user 接口，暴露 worker。 */
-  workerHandle(): MnemosWorker {
+  workerHandle(): NemosWorker {
     return this.worker;
   }
 
@@ -129,7 +129,7 @@ export class Mnemos {
    */
   forUser(userId: string): UserMemory {
     if (!userId || typeof userId !== "string") {
-      throw new Error("[mnemos] forUser(userId) 需要非空字符串");
+      throw new Error("[nemos] forUser(userId) 需要非空字符串");
     }
     return new UserMemory(
       this.storage,

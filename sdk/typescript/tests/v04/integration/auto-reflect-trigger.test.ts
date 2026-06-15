@@ -4,11 +4,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeReflectMockLLMConfig } from "../../helpers.js";
 
 test("v0.4: 累积 N 条 episodic 后自动触发 reflect（threshold=5）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeReflectMockLLMConfig({ fixedContent: "用户倾向早晨高产" }),
     features: {
@@ -33,7 +33,7 @@ test("v0.4: 累积 N 条 episodic 后自动触发 reflect（threshold=5）", asy
 });
 
 test("v0.4: reflect.enabled=false 时不触发 auto-reflect", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeReflectMockLLMConfig(),
     features: {
@@ -55,7 +55,7 @@ test("v0.4: reflect.enabled=false 时不触发 auto-reflect", async () => {
 });
 
 test("v0.4: enabled 时手动 runReflect 仍可调用", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeReflectMockLLMConfig(),
     features: {
@@ -77,13 +77,13 @@ test("v0.4: enabled 时手动 runReflect 仍可调用", async () => {
 
 test("v0.4: auto-reflect 触发后 baseline 推进，再次触发需累积新一批", async () => {
   let reflectCallCount = 0;
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: {
       provider: "custom",
       name: "reflect-counter",
       chat: async (system, user) => {
-        if (system.includes("mnemos 反思整合器")) {
+        if (system.includes("nemos 反思整合器")) {
           reflectCallCount++;
           const ids: string[] = [];
           const re = /"id":\s*"(ep_[a-zA-Z0-9]+)"/g;

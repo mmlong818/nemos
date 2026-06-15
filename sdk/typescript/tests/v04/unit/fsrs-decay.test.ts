@@ -9,7 +9,7 @@ import {
   decideDecay,
   DECAY_DEFAULTS,
   InMemoryStorage,
-  Mnemos,
+  Nemos,
   reinforceStability,
   resolveDecayConfig,
   runDecayScan,
@@ -126,8 +126,8 @@ test("v0.4 runDecayScan: disabled → 立即返回零结果", () => {
 });
 
 test("v0.4 runDecayScan: archival 永远不会出现在 candidates", async () => {
-  // 用真 Mnemos ingest 一条；archival_protected=true
-  const mem = new Mnemos({
+  // 用真 Nemos ingest 一条；archival_protected=true
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false, decay: { enabled: true, coldDormancyDays: 0, coldThreshold: 0.99 } },
@@ -145,7 +145,7 @@ test("v0.4 runDecayScan: archival 永远不会出现在 candidates", async () =>
 });
 
 test("v0.4 runDecayScan: 端到端 → cold 标记落库 + archival 永久豁免", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: {

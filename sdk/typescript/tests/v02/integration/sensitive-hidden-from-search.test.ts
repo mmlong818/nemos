@@ -2,11 +2,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeMockLLMConfig } from "../../helpers.js";
 
 test("sensitive=true 的 derived 不出现在默认 search 结果", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -21,7 +21,7 @@ test("sensitive=true 的 derived 不出现在默认 search 结果", async () => 
 });
 
 test("listByLayer 仍能列出 sensitive 记录（用户主权）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },
@@ -44,7 +44,7 @@ test("listByLayer 仍能列出 sensitive 记录（用户主权）", async () => 
 });
 
 test("archival 不受 sensitive search filter 影响（用户主权原文）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },

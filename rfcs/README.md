@@ -1,6 +1,6 @@
-# mnemos RFCs
+# nemos RFCs
 
-> RFC（Request for Comments）是 mnemos 重大变更的公开讨论与归档流程。
+> RFC（Request for Comments）是 nemos 重大变更的公开讨论与归档流程。
 > 灵感来自 Rust RFC、Python PEP、Kubernetes KEP。
 
 ---
@@ -85,7 +85,7 @@
 
 | 编号 | 标题 | 状态 |
 |---|---|---|
-| 0001 | mnemos Design Principles | accepted（founding document） |
+| 0001 | nemos Design Principles | accepted（founding document） |
 | 0002 | Scenario Profiles & Content Awareness | accepted |
 | 0003 | Production Pipeline | accepted |
 | 0004 | Forgetting & Consolidation | accepted |

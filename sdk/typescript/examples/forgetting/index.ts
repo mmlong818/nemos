@@ -5,11 +5,11 @@
 // 这个 demo 不连真 LLM —— 用 InMemoryStorage 直接 write() 写入 memory，
 // 然后注入「未来 100 天」的时间跑 decay scan，观察 cold 标记落库。
 
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const mem = new Mnemos({
+const mem = new Nemos({
   storage: { type: "memory" },
   // 这个示例不调真 LLM；提供一个 stub 避免初始化失败
   llm: {

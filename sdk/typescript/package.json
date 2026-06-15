@@ -1,13 +1,13 @@
 {
-  "name": "@mnemos/sdk",
+  "name": "@nemos/sdk",
   "version": "0.4.0",
   "description": "Open-source memory infrastructure for AI agents — embed in any AI product",
   "license": "Apache-2.0",
-  "author": "mnemos founding team",
-  "homepage": "https://github.com/mnemos-org/mnemos",
+  "author": "nemos founding team",
+  "homepage": "https://github.com/nemos-org/nemos",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mnemos-org/mnemos.git",
+    "url": "https://github.com/nemos-org/nemos.git",
     "directory": "sdk/typescript"
   },
   "keywords": [
@@ -18,7 +18,7 @@
     "embedding",
     "rag",
     "personal-memory",
-    "mnemos"
+    "nemos"
   ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -77,7 +77,7 @@ export function buildDerived(
 ): Memory {
   const layer = normalizeDerivedLayer(raw.layer);
   const content = (raw.content || "").trim();
-  if (!content) throw new Error("[mnemos] derived 缺少 content");
+  if (!content) throw new Error("[nemos] derived 缺少 content");
 
   const now = nowIso();
   const source: MemorySource = {

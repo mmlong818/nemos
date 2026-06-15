@@ -2,7 +2,7 @@
 rfc_number: 0002
 title: Scenario Profiles + Content Awareness
 authors:
-  - mnemos founding team
+  - nemos founding team
 status: accepted
 created_at: 2026-06-04
 updated_at: 2026-06-04
@@ -13,7 +13,7 @@ supersedes: []
 
 # Summary
 
-给 mnemos SDK 加入「场景感知」能力：分析同一份内容时，根据用户/AI 应用声明的 scenario，调整层级偏好、抽取重点、时间感知、敏感度处理。同时增加内容时间字段（`event_at`）和长内容自动 chunking。
+给 nemos SDK 加入「场景感知」能力：分析同一份内容时，根据用户/AI 应用声明的 scenario，调整层级偏好、抽取重点、时间感知、敏感度处理。同时增加内容时间字段（`event_at`）和长内容自动 chunking。
 
 # Motivation
 
@@ -250,7 +250,7 @@ LLM 解析"昨天"等相对时间 → 用 ingest 时刻作为 anchor（"昨天" 
    - scenario emphasis/exclude 应用
    - event_at / sensitive 字段强制
 4. **storage.ts**：schema migration v0.1 → v0.2，加 3 字段 + 索引
-5. **index.ts** Mnemos / UserMemory 转发 scenario 参数
+5. **index.ts** Nemos / UserMemory 转发 scenario 参数
 6. **tests/**：
    - 6 个 profile 各自单测（用 fixture 内容）
    - 长内容 chunking 测

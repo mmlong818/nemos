@@ -1,18 +1,18 @@
 // examples/reflect-job/index.ts
 //
 // v0.4：演示 reflect consolidation job。
-// 用 stub LLM（不调真 API）：当 prompt 含「mnemos 反思整合器」时
+// 用 stub LLM（不调真 API）：当 prompt 含「nemos 反思整合器」时
 // 返回一条带 consolidated_from 的 personal_semantic。
 
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 
-const mem = new Mnemos({
+const mem = new Nemos({
   storage: { type: "memory" },
   llm: {
     provider: "custom",
     name: "reflect-demo-stub",
     chat: async (system: string, user: string): Promise<string> => {
-      if (system.includes("mnemos 反思整合器")) {
+      if (system.includes("nemos 反思整合器")) {
         // 抽 ep_xxx id
         const ids: string[] = [];
         const re = /"id":\s*"(ep_[a-zA-Z0-9]+)"/g;

@@ -1,6 +1,6 @@
-# 贡献指南 / Contributing to mnemos
+# 贡献指南 / Contributing to nemos
 
-欢迎为 mnemos 贡献。mnemos 是一个 AI agent 的开源个人记忆基础设施，我们对所有形式的贡献开放——代码、文档、设计、bug 报告、用例分享。
+欢迎为 nemos 贡献。nemos 是一个 AI agent 的开源个人记忆基础设施，我们对所有形式的贡献开放——代码、文档、设计、bug 报告、用例分享。
 
 本项目仍处于 Phase 0（Pre-Alpha）。在引用实现落地之前，最有价值的贡献是 **spec 评审、RFC 讨论、设计反馈**。
 
@@ -26,7 +26,7 @@
 
 ## DCO（Developer Certificate of Origin）
 
-mnemos 使用 **DCO sign-off** 而非 CLA。每个 commit 必须包含：
+nemos 使用 **DCO sign-off** 而非 CLA。每个 commit 必须包含：
 
 ```
 Signed-off-by: Your Name <your.email@example.com>
@@ -142,7 +142,7 @@ Signed-off-by: Jane Doe <jane@example.com>
 - 引入新依赖但未在 issue 讨论
 - 同时改动 spec + 实现 + 文档的大杂烩 PR（拆成多个）
 - 重写大段现有代码且无明确收益
-- 加入"AI 替用户决策"特性（违反 mnemos 设计原则，见 [`rfcs/0001-mnemos-design-principles.md`](rfcs/0001-mnemos-design-principles.md)）
+- 加入"AI 替用户决策"特性（违反 nemos 设计原则，见 [`rfcs/0001-nemos-design-principles.md`](rfcs/0001-nemos-design-principles.md)）
 
 ---
 

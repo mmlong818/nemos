@@ -2,11 +2,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makePerspectiveMockLLMConfig } from "../../helpers.js";
 
 test("background ingest 立即返回 handle，archival 同步落地，derived 异步产出", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makePerspectiveMockLLMConfig(),
     features: { perspectives: ["fact"], autoLinking: false },
@@ -43,7 +43,7 @@ test("background ingest 立即返回 handle，archival 同步落地，derived �
 });
 
 test("listPendingIngests 跨用户隔离", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makePerspectiveMockLLMConfig(),
     features: { perspectives: ["fact"], autoLinking: false },
@@ -63,7 +63,7 @@ test("listPendingIngests 跨用户隔离", async () => {
 });
 
 test("background + waitForIngest", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makePerspectiveMockLLMConfig(),
     features: { perspectives: ["fact"], autoLinking: false },
@@ -79,7 +79,7 @@ test("background + waitForIngest", async () => {
 });
 
 test("archival 仍 sync 写入即便 background 模式", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makePerspectiveMockLLMConfig(),
     features: { perspectives: ["fact"], autoLinking: false },

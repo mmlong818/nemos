@@ -206,7 +206,7 @@ export function getEmbedding(
 ): Float32Array | null {
   const r = db
     .prepare(
-      `SELECT vector_blob FROM mnemos_embeddings
+      `SELECT vector_blob FROM nemos_embeddings
        WHERE tenant_id=? AND user_id=? AND record_id=? LIMIT 1`,
     )
     .get(tenantId, userId, recordId) as { vector_blob: Buffer } | undefined;

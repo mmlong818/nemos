@@ -19,7 +19,7 @@ export class AnthropicProvider implements LLMProvider {
   private readonly model: string;
 
   constructor(apiKey: string, model?: string) {
-    if (!apiKey) throw new Error("[mnemos] Anthropic provider 缺少 apiKey");
+    if (!apiKey) throw new Error("[nemos] Anthropic provider 缺少 apiKey");
     this.apiKey = apiKey;
     this.model = model || DEFAULT_ANTHROPIC_MODEL;
   }
@@ -58,7 +58,7 @@ export class OpenAIProvider implements LLMProvider {
   private readonly model: string;
 
   constructor(apiKey: string, model?: string) {
-    if (!apiKey) throw new Error("[mnemos] OpenAI provider 缺少 apiKey");
+    if (!apiKey) throw new Error("[nemos] OpenAI provider 缺少 apiKey");
     this.apiKey = apiKey;
     this.model = model || DEFAULT_OPENAI_MODEL;
   }
@@ -98,7 +98,7 @@ export class ZhipuProvider implements LLMProvider {
   private readonly model: string;
 
   constructor(apiKey: string, model?: string) {
-    if (!apiKey) throw new Error("[mnemos] Zhipu provider 缺少 apiKey");
+    if (!apiKey) throw new Error("[nemos] Zhipu provider 缺少 apiKey");
     this.apiKey = apiKey;
     this.model = model || DEFAULT_ZHIPU_MODEL;
   }
@@ -162,7 +162,7 @@ export function makeProvider(config: LLMConfig): LLMProvider {
     default: {
       const _exhaustive: never = config;
       void _exhaustive;
-      throw new Error("[mnemos] 未知 LLM provider");
+      throw new Error("[nemos] 未知 LLM provider");
     }
   }
 }
@@ -172,7 +172,7 @@ export function makeProvider(config: LLMConfig): LLMProvider {
 // ============================================================================
 
 function makeHttpError(provider: string, status: number, body: string): Error {
-  const err = new Error(`[mnemos] ${provider} HTTP ${status}: ${body.slice(0, 240)}`);
+  const err = new Error(`[nemos] ${provider} HTTP ${status}: ${body.slice(0, 240)}`);
   // 标记可重试：5xx / 429 网络抖动可重试；4xx 业务错误不重试
   (err as { retryable?: boolean }).retryable = status >= 500 || status === 429;
   return err;
@@ -194,5 +194,5 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   }
   throw lastErr instanceof Error
     ? lastErr
-    : new Error("[mnemos] LLM call failed after retries");
+    : new Error("[nemos] LLM call failed after retries");
 }

@@ -1,4 +1,4 @@
-# mnemos Roadmap
+# nemos Roadmap
 
 > 从 v0.1（朋友试用包）走到 v1.0（生产级 OSS infra）的版本节奏。
 > 每条 backlog 项已在 [`rfcs/`](rfcs/) 立项；按版本聚合发布。
@@ -169,7 +169,7 @@ v1.0 ──── 全部 SKU + MCP + REST ─────┘
 ---
 
 **RFC 进度**：
-- ✅ 0001 mnemos Design Principles
+- ✅ 0001 nemos Design Principles
 - 🔄 0002 Scenario Profiles + Content Awareness（v0.2，写于本 commit）
 - 📋 0003 Background Pipeline + Multi-Perspective Extract（v0.3，待写）
 - 📋 0004 FSRS Decay + Reflect Consolidation（v0.4，待写）

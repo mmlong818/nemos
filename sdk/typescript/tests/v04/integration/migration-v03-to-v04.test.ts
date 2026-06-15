@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { SCHEMA_VERSION, SCHEMA_VERSION_V03 } from "../../../src/types.js";
 import { makeMockLLMConfig } from "../../helpers.js";
 
@@ -105,12 +105,12 @@ function makeV03Db(path: string): void {
 }
 
 test("v0.4: v0.3 SQLite 加载 v0.4 SDK → ALTER + archival_protected backfill 幂等", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mnemos-mig04-"));
+  const dir = mkdtempSync(join(tmpdir(), "nemos-mig04-"));
   const dbPath = join(dir, "v03.db");
   try {
     makeV03Db(dbPath);
 
-    const mem = new Mnemos({
+    const mem = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makeMockLLMConfig(),
       features: { doubleCheck: false },
@@ -140,7 +140,7 @@ test("v0.4: v0.3 SQLite 加载 v0.4 SDK → ALTER + archival_protected backfill 
     mem.close();
 
     // 二次打开：migration 幂等
-    const mem2 = new Mnemos({
+    const mem2 = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makeMockLLMConfig(),
       features: { doubleCheck: false },
@@ -162,11 +162,11 @@ test("v0.4: v0.3 SQLite 加载 v0.4 SDK → ALTER + archival_protected backfill 
 });
 
 test("v0.4: v0.3 db 中老 archival 永远不会被 decay scan 列出", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mnemos-mig04-2-"));
+  const dir = mkdtempSync(join(tmpdir(), "nemos-mig04-2-"));
   const dbPath = join(dir, "v03.db");
   try {
     makeV03Db(dbPath);
-    const mem = new Mnemos({
+    const mem = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makeMockLLMConfig(),
       features: { doubleCheck: false, decay: { enabled: true, coldDormancyDays: 0, coldThreshold: 0.99 } },

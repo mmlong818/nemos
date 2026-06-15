@@ -427,7 +427,7 @@ export function makeSensitivityAwareMockLLMConfig(): LLMConfig {
 
 /**
  * v0.4：narrative LLM mock。
- * 当 system 含「mnemos 记忆叙事器」时返回一段固定的自然语言摘要（包含 layer 信号词）。
+ * 当 system 含「nemos 记忆叙事器」时返回一段固定的自然语言摘要（包含 layer 信号词）。
  * 其它路径走 sensitivity-aware 默认行为。
  */
 export function makeNarrativeMockLLMConfig(narrative?: string): LLMConfig {
@@ -439,7 +439,7 @@ export function makeNarrativeMockLLMConfig(narrative?: string): LLMConfig {
     name: "narrative-mock",
     chat: async (system: string, user: string): Promise<string> => {
       mockCallCount++;
-      if (system.includes("mnemos 记忆叙事器")) {
+      if (system.includes("nemos 记忆叙事器")) {
         return fixed;
       }
       if (system.includes("记忆审查官")) {
@@ -453,7 +453,7 @@ export function makeNarrativeMockLLMConfig(narrative?: string): LLMConfig {
 /**
  * v0.4：reflect mock。
  *
- * 当 system 含「mnemos 反思整合器」时：
+ * 当 system 含「nemos 反思整合器」时：
  * - 解析 user message 中 recent_episodic 的 id 列表
  * - 输出一条 personal_semantic derived，consolidated_from = 前 N 个 id
  * - 内容是 fixedContent，默认「用户在工作上倾向早晨高产」
@@ -473,7 +473,7 @@ export function makeReflectMockLLMConfig(opts?: {
     name: "reflect-mock",
     chat: async (system: string, user: string): Promise<string> => {
       mockCallCount++;
-      if (system.includes("mnemos 反思整合器")) {
+      if (system.includes("nemos 反思整合器")) {
         // 提取 ep_xxx id
         const ids: string[] = [];
         const re = /"id":\s*"(ep_[a-zA-Z0-9]+)"/g;

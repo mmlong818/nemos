@@ -3,7 +3,7 @@
 // v0.3：演示 background ingest 的"立即返回 + 后台抽取"流程。
 // archival 同步写入，handle 立刻可用；derived 由 worker 异步产出。
 
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 if (!apiKey) {
@@ -11,7 +11,7 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const mem = new Mnemos({
+const mem = new Nemos({
   storage: { type: "sqlite", path: "./examples-bg.db" },
   llm: { provider: "anthropic", apiKey },
   features: {
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   console.log("\n💡 关键点：");
   console.log("  - archival 在 ingest() 返回前已落地（< 50ms）");
   console.log("  - derived 抽取走后台，朋友 hot-path 不阻塞");
-  console.log("  - 进程崩溃后再开 Mnemos 时 'analyzing' 自动重置为 'queued'");
+  console.log("  - 进程崩溃后再开 Nemos 时 'analyzing' 自动重置为 'queued'");
 
   mem.close();
 }

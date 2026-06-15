@@ -2,7 +2,7 @@
 rfc_number: 0004
 title: Forgetting & Consolidation — FSRS Decay + Reflect Job + Sensitivity Defaults + Output Tiers
 authors:
-  - mnemos founding team
+  - nemos founding team
 status: accepted
 created_at: 2026-06-05
 updated_at: 2026-06-05
@@ -13,7 +13,7 @@ supersedes: []
 
 # Summary
 
-让 mnemos 从「全部记住」走向「有质量地记忆」：
+让 nemos 从「全部记住」走向「有质量地记忆」：
 - **B6 Sensitivity defaults**：sensitive 内容默认从 search 隐藏（v0.2 已加字段，v0.4 默认生效）
 - **B7 Output tiers**：`getRelevantContext` 支持 `flat | tiered | narrative` 三种 markdown 形态
 - **B9 FSRS decay**：每条 memory 维护 D/S/R 三参数，访问强化、不访问衰减、低于阈值降级
@@ -106,7 +106,7 @@ type Memory = {
 
 ### FSRS 简化版
 
-完整 FSRS 算法太复杂；mnemos 用简化版：
+完整 FSRS 算法太复杂；nemos 用简化版：
 
 - **stability (S)**：访问被记住的强度
 - **difficulty (D)**：访问失败次数 / 总访问 = 难记度（v0.4 不实施，留 v0.5）
@@ -124,13 +124,13 @@ R = exp(-Δt / S)
 | 事件 | 操作 |
 |---|---|
 | `storage.findById()` / `search()` 命中 | `last_accessed = now`, `access_count++`, `S = S * 1.3`（强化，上限 365 天） |
-| `MnemosWorker` 周期任务（每天 1 次） | 所有 memory 算 R；若 R < threshold（default 0.1）且 access_count == 0 → 标 `cold` |
+| `NemosWorker` 周期任务（每天 1 次） | 所有 memory 算 R；若 R < threshold（default 0.1）且 access_count == 0 → 标 `cold` |
 | 标 `cold` 后 7 天仍未访问 | 默认从 search 索引隐藏（archival 永远在） |
 
 ### 朋友配置
 
 ```typescript
-new Mnemos({
+new Nemos({
   features: {
     decay: {
       enabled: true,                    // 默认 false（v0.4 opt-in，v0.5 改默认 true）
@@ -149,7 +149,7 @@ archival 永久 stability=1.0，永远在。这是 RFC 0001 原则 4 守护。
 
 ### 设计
 
-`MnemosWorker` 加新任务类型 `reflect`：周期性扫描某 user 的最近 N 条 episodic，让 LLM 抽取出可升 semantic 的 pattern。
+`NemosWorker` 加新任务类型 `reflect`：周期性扫描某 user 的最近 N 条 episodic，让 LLM 抽取出可升 semantic 的 pattern。
 
 ### 触发
 
@@ -181,7 +181,7 @@ type Memory = {
 ### 朋友配置
 
 ```typescript
-new Mnemos({
+new Nemos({
   features: {
     reflect: {
       enabled: true,                    // 默认 false（v0.4 opt-in）
@@ -235,8 +235,8 @@ new Mnemos({
 4. **Sensitivity 检测的"亲密关系" 是否包括职场关系**？
    - 决议：不包括。亲密关系 = 配偶/伴侣/家人。职场关系不标 sensitive。
 
-5. **Narrative format 让朋友的 LLM 写还是 mnemos 自己写**？
-   - 决议：朋友的 LLM（用 Mnemos 配置的 llm provider）。mnemos 不持有 LLM 凭证。
+5. **Narrative format 让朋友的 LLM 写还是 nemos 自己写**？
+   - 决议：朋友的 LLM（用 Nemos 配置的 llm provider）。nemos 不持有 LLM 凭证。
 
 # Prior Art
 
@@ -266,7 +266,7 @@ new Mnemos({
    - schema migration v0.3 → v0.4
    - `src/decay.ts` 新建 — FSRS 简化算法 + decay tick 函数
    - `storage` 加 `markCold` / `unmarkCold` / `listCold` 方法
-   - `MnemosWorker` 周期任务（每 24h 跑一次）
+   - `NemosWorker` 周期任务（每 24h 跑一次）
    - search 时 `last_accessed = now` + `S *= 1.3`（capped）
    - 测试：FSRS 公式正确性 / cold 标注 / archival 永不 cold
 

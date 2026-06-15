@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos, resolveReflectConfig, REFLECT_DEFAULTS } from "../../../src/index.js";
+import { Nemos, resolveReflectConfig, REFLECT_DEFAULTS } from "../../../src/index.js";
 import { makeMockLLMConfig, makeReflectMockLLMConfig } from "../../helpers.js";
 
 test("v0.4 resolveReflectConfig: 默认 disabled + 用户覆盖", () => {
@@ -23,7 +23,7 @@ test("v0.4 resolveReflectConfig: 默认 disabled + 用户覆盖", () => {
 });
 
 test("v0.4 runReflect: 输入 20 条 episodic → 输出新 personal_semantic + consolidated_from", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeReflectMockLLMConfig(),
     features: { doubleCheck: false, reflect: { enabled: true, autoTriggerThreshold: 9999 } },
@@ -60,7 +60,7 @@ test("v0.4 runReflect: 输入 20 条 episodic → 输出新 personal_semantic + 
 });
 
 test("v0.4 runReflect: 空 episodic → derived=[]，不报错", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeReflectMockLLMConfig(),
     features: { doubleCheck: false },
@@ -74,7 +74,7 @@ test("v0.4 runReflect: 空 episodic → derived=[]，不报错", async () => {
 });
 
 test("v0.4 runReflect: 跨 user 隔离 (alice reflect 不读 bob 的 episodic)", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeReflectMockLLMConfig(),
     features: { doubleCheck: false },
@@ -93,7 +93,7 @@ test("v0.4 runReflect: 跨 user 隔离 (alice reflect 不读 bob 的 episodic)",
 });
 
 test("v0.4 runReflect: archival 不被读 / 不被修改 (archival_protected)", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeReflectMockLLMConfig(),
     features: { doubleCheck: false },
@@ -123,14 +123,14 @@ test("v0.4 runReflect: archival 不被读 / 不被修改 (archival_protected)", 
 test("v0.4 runReflect: 编造的 consolidated_from（不在 ep 集合内）被过滤", async () => {
   // 自定义 LLM 返回 consolidated_from=['ep_does_not_exist']
   let callCount = 0;
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: {
       provider: "custom",
       name: "fake-reflect",
       chat: async (system) => {
         callCount++;
-        if (system.includes("mnemos 反思整合器")) {
+        if (system.includes("nemos 反思整合器")) {
           return JSON.stringify({
             derived: [
               {
@@ -177,7 +177,7 @@ test("v0.4 runReflect: 编造的 consolidated_from（不在 ep 集合内）被�
 
 // 兜底：旧 mockLLM 单独跑 reflect 默认走 buildExtractResponse 路径（不应崩）
 test("v0.4 runReflect 默认 mock 不抛错", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     features: { doubleCheck: false },

@@ -4,13 +4,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos, SENSITIVITY_GUIDANCE } from "../../../src/index.js";
+import { Nemos, SENSITIVITY_GUIDANCE } from "../../../src/index.js";
 import { makeSensitivityAwareMockLLMConfig, resetMockCount } from "../../helpers.js";
 
 test("v0.4: 非 diary profile 的 system prompt 含 sensitivity 检测引导", async () => {
   resetMockCount();
   let capturedSystem = "";
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: {
       provider: "custom",
@@ -36,7 +36,7 @@ test("v0.4: 非 diary profile 的 system prompt 含 sensitivity 检测引导", a
 
 test("v0.4: diary profile 不重复拼 sensitivity guidance（避免冗余）", async () => {
   let capturedSystem = "";
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: {
       provider: "custom",
@@ -60,7 +60,7 @@ test("v0.4: diary profile 不重复拼 sensitivity guidance（避免冗余）", 
 
 test("v0.4: 含敏感关键词的内容 → memory.sensitive=true 写库", async () => {
   resetMockCount();
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeSensitivityAwareMockLLMConfig(),
     features: { doubleCheck: false },
@@ -79,7 +79,7 @@ test("v0.4: 含敏感关键词的内容 → memory.sensitive=true 写库", async
 });
 
 test("v0.4: search 默认不返 sensitive；includeSensitive:true 可见", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeSensitivityAwareMockLLMConfig(),
     features: { doubleCheck: false },
@@ -102,7 +102,7 @@ test("v0.4: search 默认不返 sensitive；includeSensitive:true 可见", async
 });
 
 test("v0.4: sensitiveOnly:true 只返 sensitive 集合", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeSensitivityAwareMockLLMConfig(),
     features: { doubleCheck: false },

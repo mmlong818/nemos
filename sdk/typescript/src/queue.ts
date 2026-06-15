@@ -7,7 +7,7 @@
 // - 失败重试 backoff 1s / 4s / 16s（attempts 1/2/3）；超出 → 'failed'
 // - 无第三方依赖：只用 setTimeout/Promise/SQLite
 //
-// 单线程串行处理（v0.3 不做并行）；若朋友需要 throughput，可起多个 Mnemos
+// 单线程串行处理（v0.3 不做并行）；若朋友需要 throughput，可起多个 Nemos
 // 实例指向同一 DB（SQLite 的写锁保证安全；后续 v0.4 可加 row-level claim）。
 
 import { analyze } from "./analyzer.js";
@@ -27,7 +27,7 @@ import {
   type LLMProvider,
   type LogLevel,
   type Memory,
-  type MnemosConfig,
+  type NemosConfig,
   type Perspective,
   type ScenarioProfile,
 } from "./types.js";
@@ -66,9 +66,9 @@ const DEFAULT_POLL_MS = 1000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const BACKOFF_MS = [1000, 4000, 16000];
 
-export class MnemosWorker {
+export class NemosWorker {
   private readonly deps: WorkerDeps;
-  private readonly features: Required<Pick<MnemosConfig, "defaultScope" | "tenantId">> & MnemosConfig;
+  private readonly features: Required<Pick<NemosConfig, "defaultScope" | "tenantId">> & NemosConfig;
   private readonly pollIntervalMs: number;
   private readonly maxAttempts: number;
   private readonly manual: boolean;
@@ -86,7 +86,7 @@ export class MnemosWorker {
   /** 每个 user 上次 reflect 完成时累积 episodic 数（自动触发判定）。 */
   private readonly reflectBaseline = new Map<string, number>();
 
-  constructor(deps: WorkerDeps, config: MnemosConfig) {
+  constructor(deps: WorkerDeps, config: NemosConfig) {
     this.deps = deps;
     this.features = {
       ...config,
@@ -104,7 +104,7 @@ export class MnemosWorker {
     // 崩溃恢复
     const reset = deps.storage.resetStaleAnalyzing();
     if (reset > 0) {
-      deps.log("info", `[mnemos worker] 启动恢复：${reset} 个 'analyzing' → 'queued'`);
+      deps.log("info", `[nemos worker] 启动恢复：${reset} 个 'analyzing' → 'queued'`);
     }
   }
 
@@ -159,7 +159,7 @@ export class MnemosWorker {
     if (this.timer) return;
     this.timer = setInterval(() => {
       this.runTick().catch((e) => {
-        this.deps.log("warn", "[mnemos worker] tick 异常", {
+        this.deps.log("warn", "[nemos worker] tick 异常", {
           err: e instanceof Error ? e.message : String(e),
         });
       });
@@ -251,7 +251,7 @@ export class MnemosWorker {
       const check = (): boolean => {
         const info = this.getStatus(id);
         if (!info) {
-          reject(new Error(`[mnemos] queue id 不存在: ${id}`));
+          reject(new Error(`[nemos] queue id 不存在: ${id}`));
           return true;
         }
         if (info.status === "completed" || info.status === "failed") {
@@ -275,7 +275,7 @@ export class MnemosWorker {
           const idx = list.indexOf(onDone);
           if (idx >= 0) list.splice(idx, 1);
         }
-        reject(new Error(`[mnemos] waitFor 超时: ${id}`));
+        reject(new Error(`[nemos] waitFor 超时: ${id}`));
       }, timeoutMs);
       if (typeof timer.unref === "function") timer.unref();
     });
@@ -297,7 +297,7 @@ export class MnemosWorker {
           try {
             runDecayScan(this.deps.storage, this.decayConfig, this.deps.log);
           } catch (e) {
-            this.deps.log("warn", "[mnemos worker] decay-scan 失败", {
+            this.deps.log("warn", "[nemos worker] decay-scan 失败", {
               err: e instanceof Error ? e.message : String(e),
             });
           }
@@ -332,7 +332,7 @@ export class MnemosWorker {
       this.notifyDone(row.id);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.deps.log("warn", "[mnemos worker] 任务失败", { id: row.id, attempts, err: msg });
+      this.deps.log("warn", "[nemos worker] 任务失败", { id: row.id, attempts, err: msg });
 
       if (attempts >= this.maxAttempts) {
         this.deps.storage.updateQueueStatus(row.id, {
@@ -351,7 +351,7 @@ export class MnemosWorker {
       const wait = BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)] ?? 16000;
       const t = setTimeout(() => {
         // backoff 到了：worker 下个 tick 会自然拉起这条；这里仅做一个 "标记" 用日志
-        this.deps.log("debug", "[mnemos worker] 重试可用", { id: row.id });
+        this.deps.log("debug", "[nemos worker] 重试可用", { id: row.id });
       }, wait);
       if (typeof t.unref === "function") t.unref();
     }
@@ -424,7 +424,7 @@ export class MnemosWorker {
           m.entities = ents;
         }
       } catch (e) {
-        this.deps.log("warn", "[mnemos worker] entity 抽取失败（不阻塞）", {
+        this.deps.log("warn", "[nemos worker] entity 抽取失败（不阻塞）", {
           id: m.id,
           err: e instanceof Error ? e.message : String(e),
         });

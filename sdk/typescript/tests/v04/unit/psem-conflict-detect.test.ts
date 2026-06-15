@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../../src/index.js";
+import { Nemos } from "../../../src/index.js";
 import { makeMockLLMConfig, makeReflectMockLLMConfig, resetMockCount } from "../../helpers.js";
 
 // Mock：强制让 LLM 输出 personal_semantic
@@ -32,13 +32,13 @@ function makePsemMockLLMConfig(content: string) {
 
 test("v0.4 psem conflict: 相似内容自动建立 related 链", async () => {
   resetMockCount();
-  const mnemos = new Mnemos({
+  const nemos = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
     defaultScope: "global",
     features: { doubleCheck: false, autoLinking: false },
   });
-  const mem = mnemos.forUser("u1");
+  const mem = nemos.forUser("u1");
 
   // 写入第一条 personal_semantic（直接用 write 避免 LLM mock 复杂性）
   const first = await mem.write({
@@ -76,14 +76,14 @@ test("v0.4 psem conflict: 冲突时 Reflect 被提前触发", async () => {
     provider: "custom" as const,
     name: "conflict-reflect-mock",
     chat: async (system: string, user: string): Promise<string> => {
-      if (system.includes("mnemos 反思整合器")) {
+      if (system.includes("nemos 反思整合器")) {
         reflectCalled = true;
       }
       return reflectMock.chat(system, user);
     },
   };
 
-  const mnemos = new Mnemos({
+  const nemos = new Nemos({
     storage: { type: "memory" },
     llm: wrappedLlm,
     defaultScope: "global",
@@ -93,7 +93,7 @@ test("v0.4 psem conflict: 冲突时 Reflect 被提前触发", async () => {
       reflect: { enabled: true, autoTriggerThreshold: 999 }, // 阈值设很高，正常不触发
     },
   });
-  const mem = mnemos.forUser("u1");
+  const mem = nemos.forUser("u1");
 
   // 先写几条 episodic（Reflect 需要 episodic 才会调 LLM）
   for (let i = 0; i < 3; i++) {

@@ -3,7 +3,7 @@
 // 演示 v0.3 跨 memory 自动连接 + spreading activation 检索。
 // 写 5 条 memory（含交叉 entity），观察 related 双向填入 + search 拓展。
 
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 if (!apiKey) {
@@ -20,7 +20,7 @@ const ENTRIES = [
 ];
 
 async function main(): Promise<void> {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: { provider: "anthropic", apiKey: apiKey! },
     features: {

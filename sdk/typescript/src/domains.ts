@@ -2,12 +2,12 @@
 //
 // 这些是确定性纯函数，便于单测；副作用（storage 读写）留在 user-memory.ts。
 
-import type { Memory, MnemosConfig, Prospective, RouteResult } from "./types.js";
+import type { Memory, NemosConfig, Prospective, RouteResult } from "./types.js";
 import { GLOBAL_DOMAIN_ID } from "./types.js";
 
 export interface DomainsRuntimeConfig {
   enabled: boolean;
-  router: NonNullable<NonNullable<MnemosConfig["features"]>["domains"]>["router"];
+  router: NonNullable<NonNullable<NemosConfig["features"]>["domains"]>["router"];
   routeConfidenceThreshold: number;
   l2Max: number;
   l3SpreadLimit: number;
@@ -33,7 +33,7 @@ export const PROSPECTIVE_DEFAULTS: ProspectiveRuntimeConfig = {
   onDemand: false,
 };
 
-export function resolveDomainsConfig(config: MnemosConfig): DomainsRuntimeConfig {
+export function resolveDomainsConfig(config: NemosConfig): DomainsRuntimeConfig {
   const raw = config.features?.domains;
   if (!raw) return { ...DOMAINS_DEFAULTS };
   return {
@@ -49,7 +49,7 @@ export function resolveDomainsConfig(config: MnemosConfig): DomainsRuntimeConfig
   };
 }
 
-export function resolveProspectiveConfig(config: MnemosConfig): ProspectiveRuntimeConfig {
+export function resolveProspectiveConfig(config: NemosConfig): ProspectiveRuntimeConfig {
   const raw = config.features?.prospective;
   if (!raw) return { ...PROSPECTIVE_DEFAULTS };
   return {

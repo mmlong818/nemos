@@ -5,8 +5,8 @@
 // - archival 表 schema 层强制 INSERT-only（trigger 拒绝 UPDATE/DELETE）
 // - 每条记录都带 tenant_id + user_id 作 namespace 隔离
 // - source / arousal / surprise / ownership 序列化为 JSON 子列
-// - embedding 单独表 mnemos_embeddings (record_id, layer, vector blob, model_id)
-// - FTS5 虚表 mnemos_fts 加速 BM25 search
+// - embedding 单独表 nemos_embeddings (record_id, layer, vector blob, model_id)
+// - FTS5 虚表 nemos_fts 加速 BM25 search
 
 import Database from "better-sqlite3";
 import {
@@ -142,13 +142,13 @@ export class SqliteStorage implements Storage {
   ): void {
     // 先删旧 row
     this.db
-      .prepare(`DELETE FROM mnemos_entities_fts WHERE record_id = ? AND layer = ?`)
+      .prepare(`DELETE FROM nemos_entities_fts WHERE record_id = ? AND layer = ?`)
       .run(recordId, layer);
     if (entities.length === 0) return;
     const joined = entities.join(" ");
     this.db
       .prepare(
-        `INSERT INTO mnemos_entities_fts (record_id, layer, tenant_id, user_id, scope, entities)
+        `INSERT INTO nemos_entities_fts (record_id, layer, tenant_id, user_id, scope, entities)
          VALUES (?, ?, ?, ?, ?, ?)`,
       )
       .run(recordId, layer, tenantId, userId, scope, joined);
@@ -175,7 +175,7 @@ export class SqliteStorage implements Storage {
     );
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO mnemos_embeddings
+        `INSERT OR REPLACE INTO nemos_embeddings
          (record_id, layer, tenant_id, user_id, scope, model_id, dim, vector_blob)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
@@ -286,7 +286,7 @@ export class SqliteStorage implements Storage {
     // 对个人量级（<10k）够用。v0.2+ 若安装 sqlite-vec → 切 SQL 内置 cosine。
     let sql = `
       SELECT record_id, layer, vector_blob, dim
-      FROM mnemos_embeddings
+      FROM nemos_embeddings
       WHERE tenant_id = ? AND user_id = ? AND layer IN (${layers.map(() => "?").join(",")})
     `;
     const params: unknown[] = [tenantId, userId, ...layers];
@@ -327,7 +327,7 @@ export class SqliteStorage implements Storage {
   delete(tenantId: string, userId: string, layer: Layer, id: string): void {
     if (layer === "archival") {
       throw new Error(
-        "[mnemos] archival 不允许直接 delete（spec I3）。如需 GDPR burn，请用 forget() + 后续 v0.2 burn 接口",
+        "[nemos] archival 不允许直接 delete（spec I3）。如需 GDPR burn，请用 forget() + 后续 v0.2 burn 接口",
       );
     }
     this.db
@@ -337,10 +337,10 @@ export class SqliteStorage implements Storage {
       .prepare(`DELETE FROM ${layer}_fts WHERE id = ?`)
       .run(id);
     this.db
-      .prepare(`DELETE FROM mnemos_embeddings WHERE record_id = ? AND layer = ?`)
+      .prepare(`DELETE FROM nemos_embeddings WHERE record_id = ? AND layer = ?`)
       .run(id, layer);
     this.db
-      .prepare(`DELETE FROM mnemos_entities_fts WHERE record_id = ? AND layer = ?`)
+      .prepare(`DELETE FROM nemos_entities_fts WHERE record_id = ? AND layer = ?`)
       .run(id, layer);
   }
 
@@ -402,8 +402,8 @@ export class SqliteStorage implements Storage {
     if (!safe) return [];
     let sql = `
       SELECT record_id, layer
-      FROM mnemos_entities_fts
-      WHERE mnemos_entities_fts MATCH ?
+      FROM nemos_entities_fts
+      WHERE nemos_entities_fts MATCH ?
         AND tenant_id = ?
         AND user_id = ?
     `;

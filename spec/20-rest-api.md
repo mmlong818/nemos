@@ -1,4 +1,4 @@
-# mnemos v0.1 — REST API (20-rest-api)
+# nemos v0.1 — REST API (20-rest-api)
 
 > **状态**：Draft，Round 1 输出
 > **版本**：v0.1
@@ -29,14 +29,14 @@
 ### 1.1 Base URL
 
 ```
-SKU a 公共云:     https://api.mnemos.org/v1
-SKU b E2EE:       https://api.mnemos.org/v1     (同 URL，密文走 body)
+SKU a 公共云:     https://api.nemos.org/v1
+SKU b E2EE:       https://api.nemos.org/v1     (同 URL，密文走 body)
 SKU c 自托管:     http://localhost:8080/v1       (默认)
 ```
 
 ### 1.2 版本化
 
-URL 内嵌主版本：`/v1`。次版本通过 `MnemosSchema-Version: 0.1` 响应 header 暴露。
+URL 内嵌主版本：`/v1`。次版本通过 `NemosSchema-Version: 0.1` 响应 header 暴露。
 
 v0.x 期间 `/v1` 是 alias（v0.x = pre-1.0 不稳定期）。v1.0 GA 时 `/v1` 冻结。
 
@@ -85,7 +85,7 @@ Authorization: Bearer <access_token>
 
 ### 2.3 Per-agent Capability JWT（AI app）
 
-每个 AI app 在 mnemos 中注册 → 获得：
+每个 AI app 在 nemos 中注册 → 获得：
 - `agent_id`
 - `agent_private_key`（Ed25519，仅初始化时返回）
 - `capability_jwt`（无过期，可 revoke）
@@ -100,7 +100,7 @@ X-Timestamp: 2026-06-04T10:00:00Z
 JWT claim：
 ```json
 {
-  "iss": "mnemos.org",
+  "iss": "nemos.org",
   "sub": "agent_<id>",
   "tenant_id": "...",
   "capability_id": "cap_<id>",
@@ -161,12 +161,12 @@ HTTP/1.1 422 Unprocessable Entity
 Content-Type: application/problem+json
 
 {
-  "type": "https://mnemos.org/errors/source-routing-violation",
+  "type": "https://nemos.org/errors/source-routing-violation",
   "title": "Source routing violation",
   "status": 422,
   "detail": "source.kind=derived cannot write to personal_semantic store (I4 invariant)",
   "instance": "/v1/records/personal_semantic",
-  "mnemos_error_code": "I4_VIOLATION",
+  "nemos_error_code": "I4_VIOLATION",
   "invariant_violated": "I4",
   "fix_hint": "Use POST /v1/reflect-proposals instead, or change source.kind to authoritative"
 }
@@ -199,7 +199,7 @@ Content-Type: application/problem+json
 
 ### 3.3 错误 body 字段
 
-- `mnemos_error_code` 是机器可读的常量（不变）
+- `nemos_error_code` 是机器可读的常量（不变）
 - `invariant_violated` 列出违反的不变量编号（I1-I10）
 - `fix_hint` 是给开发者的人类可读建议
 - 422 错误必须给 `fix_hint`
@@ -347,7 +347,7 @@ Content-Type: application/json
 
 ```http
 HTTP/1.1 201 Created
-MnemosSchema-Version: 0.1
+NemosSchema-Version: 0.1
 Location: /v1/records/ep_ab12...
 
 {
@@ -423,7 +423,7 @@ Content-Type: application/json
 
 ```http
 HTTP/1.1 200 OK
-MnemosSchema-Version: 0.1
+NemosSchema-Version: 0.1
 X-Query-Latency-Ms: 47
 
 {
@@ -663,9 +663,9 @@ GET /v1/export/jobs/{id}
 POST /v1/import
 Content-Type: multipart/form-data
 
-file=@mnemos-export.tar.gz
+file=@nemos-export.tar.gz
 mode=replace|merge|dry_run
-adapter=mnemos-v0|ecc-v2|mem0
+adapter=nemos-v0|ecc-v2|mem0
 → 202
 {
   "job_id": "import_<ulid>",
@@ -830,7 +830,7 @@ E2EE 服务端 burn 后还需要客户端清理本地 mirror：
 ```
 Deprecation: true
 Sunset: 2027-01-01
-Link: <https://docs.mnemos.org/migrate/v0.2-v0.3>; rel="successor-version"
+Link: <https://docs.nemos.org/migrate/v0.2-v0.3>; rel="successor-version"
 ```
 
 任何 deprecated 端点必须保留 ≥ 6 个月。
@@ -838,7 +838,7 @@ Link: <https://docs.mnemos.org/migrate/v0.2-v0.3>; rel="successor-version"
 ### 10.2 Feature flags（per-request）
 
 ```
-X-Mnemos-Features: muse-pull,relational-crdt-v2
+X-Nemos-Features: muse-pull,relational-crdt-v2
 ```
 
 服务端按 capability + feature flag 路由到不同实现。Round 2+ 用。

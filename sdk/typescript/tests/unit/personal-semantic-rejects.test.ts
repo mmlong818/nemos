@@ -3,11 +3,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Mnemos } from "../../src/index.js";
+import { Nemos } from "../../src/index.js";
 import { makeMaliciousMockLLMConfig, makeMockLLMConfig } from "../helpers.js";
 
 test("write({layer:'personal_semantic', source.authoritative:true}) → throw", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
   });
@@ -29,7 +29,7 @@ test("write({layer:'personal_semantic', source.authoritative:true}) → throw", 
 });
 
 test("通过 ingest 路径，即使 LLM 恶意伪造 personal_semantic+authoritative=true，也会被降级或改成 derived=false", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMaliciousMockLLMConfig(),
     features: { doubleCheck: false },
@@ -50,7 +50,7 @@ test("通过 ingest 路径，即使 LLM 恶意伪造 personal_semantic+authorita
 });
 
 test("可通过 write({layer:'personal_semantic', authoritative:false}) 合法写入（chain_depth>=1）", async () => {
-  const mem = new Mnemos({
+  const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
   });
