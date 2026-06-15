@@ -31,11 +31,12 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "tsx --test tests/unit/*.test.ts tests/integration/*.test.ts tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts",
-    "test:unit": "tsx --test tests/unit/*.test.ts tests/v02/unit/*.test.ts tests/v03/unit/*.test.ts tests/v04/unit/*.test.ts",
+    "test": "tsx --test tests/unit/*.test.ts tests/integration/*.test.ts tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts",
+    "test:unit": "tsx --test tests/unit/*.test.ts tests/v02/unit/*.test.ts tests/v03/unit/*.test.ts tests/v04/unit/*.test.ts tests/v05/unit/*.test.ts",
     "test:v02": "tsx --test tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts",
     "test:v03": "tsx --test tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts",
     "test:v04": "tsx --test tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts",
+    "test:v05": "tsx --test tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
