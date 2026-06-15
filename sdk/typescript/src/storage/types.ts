@@ -3,10 +3,25 @@
 // 这是公开类型来源。SqliteStorage / InMemoryStorage 都实现 Storage 接口。
 
 import type {
+  Domain,
+  DomainAffinity,
   IngestStatus,
   Layer,
   Memory,
+  MemoryDomain,
+  Prospective,
+  ProspectivePrediction,
 } from "../types.js";
+
+/** v0.5：前瞻条目可变字段（reflect 修正 / 命中更新）。 */
+export interface ProspectivePatch {
+  projection?: string;
+  confidence?: number;
+  prediction_log?: ProspectivePrediction[];
+  retrievability?: number;
+  last_verified_at?: string;
+  last_accessed?: string;
+}
 
 /**
  * v0.3 队列行（仅 storage 内部 + queue.ts 使用）。
@@ -196,6 +211,81 @@ export interface Storage {
   listRecentEpisodic(tenantId: string, userId: string, limit: number): Memory[];
   /** 取 user 当前所有 personal_semantic（作为 reflect anchor）。 */
   listPersonalSemantic(tenantId: string, userId: string): Memory[];
+
+  // v0.5 领域轴（RFC 0005）-----------------------------------------------------
+  /** lazy 注入并返回 (tenant,user) 的 GLOBAL 共享层（幂等）。 */
+  ensureGlobalDomain(tenantId: string, userId: string): Domain;
+  /** 新建/覆盖一个领域（birth/split/merge/质心更新均走这里）。 */
+  upsertDomain(tenantId: string, userId: string, domain: Domain): void;
+  getDomain(tenantId: string, userId: string, id: string): Domain | null;
+  /** 列领域；默认排除 cold（路由用），includeCold 取全集。 */
+  listDomains(
+    tenantId: string,
+    userId: string,
+    opts?: { includeCold?: boolean },
+  ): Domain[];
+  /** 覆盖式写一条记忆的领域归属（先删后插，幂等）。 */
+  setMemoryDomains(
+    tenantId: string,
+    userId: string,
+    memoryId: string,
+    links: MemoryDomain[],
+  ): void;
+  /** 批量取一组记忆的领域归属（rerank 用，扁平返回）。 */
+  getMemoryDomainsFor(
+    tenantId: string,
+    userId: string,
+    memoryIds: string[],
+  ): MemoryDomain[];
+  /** 列某领域的成员 memory id（split/merge/质心重算用）。 */
+  getDomainMemberIds(tenantId: string, userId: string, domainId: string): string[];
+  /** 取某条记忆的 embedding（质心计算用）；无则 null。 */
+  getEmbedding(tenantId: string, userId: string, recordId: string): Float32Array | null;
+  /** 路由命中后更新 load_count / last_routed_at。 */
+  touchDomainRouted(
+    tenantId: string,
+    userId: string,
+    domainId: string,
+    at: string,
+  ): void;
+  /** 列某领域的所有亲和边（L2 邻接 / merge 用）。 */
+  listAffinities(
+    tenantId: string,
+    userId: string,
+    domainId: string,
+  ): DomainAffinity[];
+  /** 累加/更新一条领域亲和边（无向，内部归一存 a<b）。 */
+  upsertAffinity(
+    tenantId: string,
+    userId: string,
+    domainA: string,
+    domainB: string,
+    affinityDelta: number,
+    at: string,
+  ): void;
+
+  // v0.5 前瞻记忆（RFC 0006）---------------------------------------------------
+  insertProspective(tenantId: string, userId: string, p: Prospective): Prospective;
+  getProspective(tenantId: string, userId: string, id: string): Prospective | null;
+  listProspective(
+    tenantId: string,
+    userId: string,
+    opts?: { limit?: number; scope?: string },
+  ): Prospective[];
+  /** 全局 cue 匹配（不受领域路由约束）。有 queryVec → 向量，否则降级 FTS。 */
+  searchProspectiveByCue(
+    tenantId: string,
+    userId: string,
+    query: string,
+    queryVec: Float32Array | null,
+    topK: number,
+  ): Array<{ prospective: Prospective; score: number }>;
+  updateProspective(
+    tenantId: string,
+    userId: string,
+    id: string,
+    patch: ProspectivePatch,
+  ): void;
 
   close(): void;
 }

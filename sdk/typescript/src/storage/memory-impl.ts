@@ -1,13 +1,25 @@
 // storage/memory-impl.ts — Storage 的纯内存实现（仅测试用）
 
 import {
+  GLOBAL_DOMAIN_ID,
   LAYERS,
+  type Domain,
+  type DomainAffinity,
   type IngestStatus,
   type Layer,
   type Memory,
+  type MemoryDomain,
+  type Prospective,
 } from "../types.js";
-import type { DecayCandidate, IngestQueueRow, SearchFilter, Storage } from "./types.js";
+import type {
+  DecayCandidate,
+  IngestQueueRow,
+  ProspectivePatch,
+  SearchFilter,
+  Storage,
+} from "./types.js";
 import { cosineSimLocal } from "./row-mapper.js";
+import { nowIso } from "../utils/id.js";
 
 export class InMemoryStorage implements Storage {
   private readonly data = new Map<string, Memory>(); // key: tenant|user|layer|id
@@ -17,6 +29,11 @@ export class InMemoryStorage implements Storage {
   >();
   // v0.3：队列内存表
   private readonly queue = new Map<string, IngestQueueRow>();
+  // v0.5：领域轴 + 前瞻
+  private readonly domains = new Map<string, Domain>(); // key: t|u|id
+  private readonly memDomains = new Map<string, MemoryDomain[]>(); // key: t|u|memoryId
+  private readonly affinity = new Map<string, DomainAffinity>(); // key: t|u|a|b
+  private readonly prospectives = new Map<string, Prospective>(); // key: t|u|id
 
   private key(t: string, u: string, layer: Layer, id: string): string {
     return `${t}|${u}|${layer}|${id}`;
@@ -444,9 +461,199 @@ export class InMemoryStorage implements Storage {
     return this.list(tenantId, userId, "personal_semantic", { limit: 200 });
   }
 
+  // v0.5 领域轴 ---------------------------------------------------------------
+  ensureGlobalDomain(tenantId: string, userId: string): Domain {
+    const existing = this.getDomain(tenantId, userId, GLOBAL_DOMAIN_ID);
+    if (existing) return existing;
+    const now = nowIso();
+    const g: Domain = {
+      id: GLOBAL_DOMAIN_ID,
+      tenant_id: tenantId,
+      user_id: userId,
+      label: "GLOBAL",
+      prototype_vec: null,
+      parent_id: undefined,
+      level: 0,
+      status: "hot",
+      origin: "seed",
+      always_on: true,
+      load_count: 0,
+      retrievability: 1.0,
+      last_routed_at: undefined,
+      created_at: now,
+      updated_at: now,
+    };
+    this.upsertDomain(tenantId, userId, g);
+    return g;
+  }
+  upsertDomain(tenantId: string, userId: string, domain: Domain): void {
+    this.domains.set(`${tenantId}|${userId}|${domain.id}`, { ...domain });
+  }
+  getDomain(tenantId: string, userId: string, id: string): Domain | null {
+    return this.domains.get(`${tenantId}|${userId}|${id}`) ?? null;
+  }
+  listDomains(tenantId: string, userId: string, opts?: { includeCold?: boolean }): Domain[] {
+    const prefix = `${tenantId}|${userId}|`;
+    const out: Domain[] = [];
+    for (const [k, v] of this.domains) {
+      if (!k.startsWith(prefix)) continue;
+      if (!opts?.includeCold && v.status === "cold") continue;
+      out.push(v);
+    }
+    return out;
+  }
+  setMemoryDomains(
+    tenantId: string,
+    userId: string,
+    memoryId: string,
+    links: MemoryDomain[],
+  ): void {
+    this.memDomains.set(`${tenantId}|${userId}|${memoryId}`, links.map((l) => ({ ...l })));
+  }
+  getMemoryDomainsFor(tenantId: string, userId: string, memoryIds: string[]): MemoryDomain[] {
+    const out: MemoryDomain[] = [];
+    for (const id of memoryIds) {
+      const links = this.memDomains.get(`${tenantId}|${userId}|${id}`);
+      if (links) out.push(...links);
+    }
+    return out;
+  }
+  getDomainMemberIds(tenantId: string, userId: string, domainId: string): string[] {
+    const prefix = `${tenantId}|${userId}|`;
+    const out: string[] = [];
+    for (const [k, links] of this.memDomains) {
+      if (!k.startsWith(prefix)) continue;
+      if (links.some((l) => l.domain_id === domainId)) {
+        out.push(k.slice(prefix.length));
+      }
+    }
+    return out;
+  }
+  getEmbedding(tenantId: string, userId: string, recordId: string): Float32Array | null {
+    const suffix = `|${recordId}`;
+    const prefix = `${tenantId}|${userId}|`;
+    for (const [k, v] of this.embeddings) {
+      if (k.startsWith(prefix) && k.endsWith(suffix)) return v.vec;
+    }
+    return null;
+  }
+  touchDomainRouted(tenantId: string, userId: string, domainId: string, at: string): void {
+    const d = this.getDomain(tenantId, userId, domainId);
+    if (!d) return;
+    this.upsertDomain(tenantId, userId, {
+      ...d,
+      load_count: d.load_count + 1,
+      last_routed_at: at,
+      updated_at: at,
+    });
+  }
+  listAffinities(tenantId: string, userId: string, domainId: string): DomainAffinity[] {
+    const prefix = `${tenantId}|${userId}|`;
+    const out: DomainAffinity[] = [];
+    for (const [k, v] of this.affinity) {
+      if (!k.startsWith(prefix)) continue;
+      if (v.domain_a === domainId || v.domain_b === domainId) out.push(v);
+    }
+    return out;
+  }
+  upsertAffinity(
+    tenantId: string,
+    userId: string,
+    domainA: string,
+    domainB: string,
+    affinityDelta: number,
+    at: string,
+  ): void {
+    const a = domainA < domainB ? domainA : domainB;
+    const b = domainA < domainB ? domainB : domainA;
+    const key = `${tenantId}|${userId}|${a}|${b}`;
+    const cur = this.affinity.get(key);
+    this.affinity.set(key, {
+      domain_a: a,
+      domain_b: b,
+      affinity: (cur?.affinity ?? 0) + affinityDelta,
+      updated_at: at,
+    });
+  }
+
+  // v0.5 前瞻记忆 -------------------------------------------------------------
+  insertProspective(tenantId: string, userId: string, p: Prospective): Prospective {
+    this.prospectives.set(`${tenantId}|${userId}|${p.id}`, { ...p });
+    return p;
+  }
+  getProspective(tenantId: string, userId: string, id: string): Prospective | null {
+    return this.prospectives.get(`${tenantId}|${userId}|${id}`) ?? null;
+  }
+  listProspective(
+    tenantId: string,
+    userId: string,
+    opts?: { limit?: number; scope?: string },
+  ): Prospective[] {
+    const prefix = `${tenantId}|${userId}|`;
+    let out: Prospective[] = [];
+    for (const [k, v] of this.prospectives) {
+      if (!k.startsWith(prefix)) continue;
+      if (opts?.scope && v.scope !== opts.scope) continue;
+      out.push(v);
+    }
+    out.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+    if (opts?.limit) out = out.slice(0, opts.limit);
+    return out;
+  }
+  searchProspectiveByCue(
+    tenantId: string,
+    userId: string,
+    query: string,
+    queryVec: Float32Array | null,
+    topK: number,
+  ): Array<{ prospective: Prospective; score: number }> {
+    const all = this.listProspective(tenantId, userId);
+    let scored: Array<{ prospective: Prospective; score: number }>;
+    if (queryVec) {
+      scored = all
+        .map((p) => ({
+          prospective: p,
+          score: p.cue_vec ? cosineSimLocal(queryVec, p.cue_vec) : 0,
+        }))
+        .filter((x) => x.score > 0);
+    } else {
+      const q = query.toLowerCase();
+      scored = all
+        .map((p) => ({
+          prospective: p,
+          score: p.cue.toLowerCase().includes(q) ? 1 : 0,
+        }))
+        .filter((x) => x.score > 0);
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, topK);
+  }
+  updateProspective(
+    tenantId: string,
+    userId: string,
+    id: string,
+    patch: ProspectivePatch,
+  ): void {
+    const cur = this.getProspective(tenantId, userId, id);
+    if (!cur) return;
+    this.prospectives.set(`${tenantId}|${userId}|${id}`, {
+      ...cur,
+      ...(patch.projection !== undefined ? { projection: patch.projection } : {}),
+      ...(patch.confidence !== undefined ? { confidence: patch.confidence } : {}),
+      ...(patch.prediction_log !== undefined ? { prediction_log: patch.prediction_log } : {}),
+      ...(patch.retrievability !== undefined ? { retrievability: patch.retrievability } : {}),
+      ...(patch.last_verified_at !== undefined ? { last_verified_at: patch.last_verified_at } : {}),
+      ...(patch.last_accessed !== undefined ? { last_accessed: patch.last_accessed } : {}),
+    });
+  }
+
   close(): void {
     this.data.clear();
     this.embeddings.clear();
     this.queue.clear();
+    this.domains.clear();
+    this.memDomains.clear();
+    this.affinity.clear();
+    this.prospectives.clear();
   }
 }
