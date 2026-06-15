@@ -572,6 +572,7 @@ export type StorageConfig =
 export type LLMConfig =
   | { provider: "anthropic"; apiKey: string; model?: string }
   | { provider: "openai"; apiKey: string; model?: string }
+  | { provider: "zhipu"; apiKey: string; model?: string }
   | {
       provider: "custom";
       chat: (system: string, user: string) => Promise<string>;
@@ -580,6 +581,7 @@ export type LLMConfig =
 
 export type EmbeddingConfig =
   | { provider: "openai"; apiKey: string; model?: string }
+  | { provider: "zhipu"; apiKey: string; model?: string }
   | { provider: "none" } // 关闭 embedding，search 退化为 FTS
   | {
       provider: "custom";

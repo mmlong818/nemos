@@ -615,6 +615,9 @@ llm: { provider: 'anthropic', apiKey: '...', model: 'claude-sonnet-4-6' }
 // OpenAI（默认 gpt-4o；自动开启 JSON mode）
 llm: { provider: 'openai', apiKey: '...', model: 'gpt-4o' }
 
+// 智谱 GLM（默认 glm-5.1；OpenAI 兼容端点 + JSON mode）
+llm: { provider: 'zhipu', apiKey: process.env.ZHIPU_API_KEY!, model: 'glm-5.1' }
+
 // 完全自定义（接 Ollama / 本地模型 / 自家网关）
 llm: {
   provider: 'custom',
@@ -631,6 +634,9 @@ llm: {
 ```typescript
 // OpenAI（默认 text-embedding-3-small，1536 dim）
 embedding: { provider: 'openai', apiKey: '...' }
+
+// 智谱 GLM（默认 embedding-3，2048 dim）
+embedding: { provider: 'zhipu', apiKey: process.env.ZHIPU_API_KEY! }
 
 // 自定义（任何能返回 Float32Array 的函数）
 embedding: {

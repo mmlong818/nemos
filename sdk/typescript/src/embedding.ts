@@ -6,6 +6,9 @@ import type { EmbeddingConfig, EmbeddingProvider } from "./types.js";
 
 const OPENAI_DEFAULT_MODEL = "text-embedding-3-small";
 const OPENAI_DEFAULT_DIM = 1536;
+const ZHIPU_DEFAULT_MODEL = "embedding-3";
+const ZHIPU_DEFAULT_DIM = 2048;
+const ZHIPU_EMBEDDING_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/embeddings";
 
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   readonly modelId: string;
@@ -45,6 +48,44 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   }
 }
 
+export class ZhipuEmbeddingProvider implements EmbeddingProvider {
+  readonly modelId: string;
+  readonly dim: number;
+  private readonly apiKey: string;
+  private readonly model: string;
+
+  constructor(apiKey: string, model?: string) {
+    if (!apiKey) throw new Error("[mnemos] Zhipu embedding 缺少 apiKey");
+    this.apiKey = apiKey;
+    this.model = model || ZHIPU_DEFAULT_MODEL;
+    this.modelId = `zhipu-${this.model}-v1`;
+    this.dim = ZHIPU_DEFAULT_DIM;
+  }
+
+  async embed(text: string): Promise<Float32Array> {
+    const resp = await fetch(ZHIPU_EMBEDDING_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({ model: this.model, input: text }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(
+        `[mnemos] Zhipu embedding HTTP ${resp.status}: ${body.slice(0, 240)}`,
+      );
+    }
+    const data = (await resp.json()) as {
+      data?: Array<{ embedding: number[] }>;
+    };
+    const vec = data.data?.[0]?.embedding;
+    if (!vec) throw new Error("[mnemos] Zhipu embedding 响应无 data[0].embedding");
+    return Float32Array.from(vec);
+  }
+}
+
 export class CustomEmbeddingProvider implements EmbeddingProvider {
   readonly modelId: string;
   readonly dim: number;
@@ -72,6 +113,8 @@ export function makeEmbeddingProvider(
   switch (config.provider) {
     case "openai":
       return new OpenAIEmbeddingProvider(config.apiKey, config.model);
+    case "zhipu":
+      return new ZhipuEmbeddingProvider(config.apiKey, config.model);
     case "custom":
       return new CustomEmbeddingProvider(config.embed, config.modelId, config.dim);
     default: {
