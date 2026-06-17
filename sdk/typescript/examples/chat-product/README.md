@@ -1,6 +1,6 @@
 # Example: Chat Product
 
-模拟一个聊天产品的 nemos 集成。每条用户消息会被 `ingest`，AI 回复前用 `getRelevantContext` 取相关记忆拼进 prompt。
+模拟一个聊天产品的 Nemos 集成。每条用户消息会被 `ingest`，AI 回复前用 `getRelevantContext` 取相关记忆拼进 prompt。
 
 ## 运行
 
@@ -36,4 +36,4 @@ ANTHROPIC_API_KEY=sk-... npx tsx examples/chat-product/index.ts
 [stats] {"archival":3,"episodic":1,"semantic":0,"personal_semantic":4,"procedural":0}
 ```
 
-第 3 轮 prompt 自动带上了"前端工程师"+"早上 6 点写代码"两条之前沉淀的偏好——这就是 nemos 在做的事。
+第 3 轮 prompt 自动带上了"前端工程师"+"早上 6 点写代码"两条之前沉淀的偏好——这就是 Nemos 在做的事。

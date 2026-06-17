@@ -13,7 +13,7 @@ supersedes: []
 
 # Summary
 
-把 nemos SDK 从「sync 单线」升级到「生产级 pipeline」：三件事一起做——
+把 Nemos SDK 从「sync 单线」升级到「生产级 pipeline」：三件事一起做——
 - **B2 后台分析队列**：ingest 立刻返回 archival，derived 抽取走后台
 - **B4 多视角抽取**：取代单一 prompt 双 pass，改为多个专注角度（事实/情绪/方法论/决策）并行抽 + 合并
 - **B5 跨 memory 自动连接**：写入时识别 entity，自动填 `related` 字段，检索时支持 spreading activation

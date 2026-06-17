@@ -13,7 +13,7 @@ supersedes: []
 
 # Summary
 
-让 nemos 从「全部记住」走向「有质量地记忆」：
+让 Nemos 从「全部记住」走向「有质量地记忆」：
 - **B6 Sensitivity defaults**：sensitive 内容默认从 search 隐藏（v0.2 已加字段，v0.4 默认生效）
 - **B7 Output tiers**：`getRelevantContext` 支持 `flat | tiered | narrative` 三种 markdown 形态
 - **B9 FSRS decay**：每条 memory 维护 D/S/R 三参数，访问强化、不访问衰减、低于阈值降级
@@ -106,7 +106,7 @@ type Memory = {
 
 ### FSRS 简化版
 
-完整 FSRS 算法太复杂；nemos 用简化版：
+完整 FSRS 算法太复杂；Nemos 用简化版：
 
 - **stability (S)**：访问被记住的强度
 - **difficulty (D)**：访问失败次数 / 总访问 = 难记度（v0.4 不实施，留 v0.5）
@@ -235,8 +235,8 @@ new Nemos({
 4. **Sensitivity 检测的"亲密关系" 是否包括职场关系**？
    - 决议：不包括。亲密关系 = 配偶/伴侣/家人。职场关系不标 sensitive。
 
-5. **Narrative format 让朋友的 LLM 写还是 nemos 自己写**？
-   - 决议：朋友的 LLM（用 Nemos 配置的 llm provider）。nemos 不持有 LLM 凭证。
+5. **Narrative format 让朋友的 LLM 写还是 Nemos 自己写**？
+   - 决议：朋友的 LLM（用 Nemos 配置的 llm provider）。Nemos 不持有 LLM 凭证。
 
 # Prior Art
 

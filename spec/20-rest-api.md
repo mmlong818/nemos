@@ -1,4 +1,4 @@
-# nemos v0.1 — REST API (20-rest-api)
+# Nemos v0.1 — REST API (20-rest-api)
 
 > **状态**：Draft，Round 1 输出
 > **版本**：v0.1
@@ -85,7 +85,7 @@ Authorization: Bearer <access_token>
 
 ### 2.3 Per-agent Capability JWT（AI app）
 
-每个 AI app 在 nemos 中注册 → 获得：
+每个 AI app 在 Nemos 中注册 → 获得：
 - `agent_id`
 - `agent_private_key`（Ed25519，仅初始化时返回）
 - `capability_jwt`（无过期，可 revoke）

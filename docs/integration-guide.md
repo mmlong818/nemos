@@ -1,6 +1,6 @@
 # AI 应用集成指南
 
-给打算把 nemos 集成进自己 AI 应用的开发者。
+给打算把 Nemos 集成进自己 AI 应用的开发者。
 
 ---
 
@@ -62,7 +62,7 @@
 
 ### 集成步骤
 
-1. 在 nemos 控制台开启 "shared identity" 模式
+1. 在 Nemos 控制台开启 "shared identity" 模式
 2. 让每个 AI app 用同一用户的不同 API key
 3. AI app 在 hot-path 调用：
    ```
@@ -79,12 +79,12 @@
      source={authoritative: false, origin_agent: "cursor"}
    )
    ```
-5. nemos 自动处理跨 agent 共享语义（Manifest + Capability Registry）
+5. Nemos 自动处理跨 agent 共享语义（Manifest + Capability Registry）
 
 ### 关键注意
 
 - 不要假设其他 AI app 写的 memory 是 authoritative——它们和你一样是 derived
-- 跨 agent contradiction 由 nemos 检测，AI app 收到时已带 contradiction 标
+- 跨 agent contradiction 由 Nemos 检测，AI app 收到时已带 contradiction 标
 - scope `agent:<self>` 用于只读不共享的私有 memory（罕见）
 
 ## Persona-2：创作者集成
@@ -112,7 +112,7 @@
      source={authoritative: false}
    )
    ```
-4. 用户可在 nemos 控制台手动 `close period` + `start new period`
+4. 用户可在 Nemos 控制台手动 `close period` + `start new period`
 
 ### 关键注意
 
@@ -167,14 +167,14 @@ return m.content
 nemos.export(format="json-ld" | "markdown")
 ```
 
-导出全集 + 派生层 + 关系链。用户可拿到完整数据迁到其他 nemos 实例或其他兼容产品。
+导出全集 + 派生层 + 关系链。用户可拿到完整数据迁到其他 Nemos 实例或其他兼容产品。
 
 这是 [RFC 0001 原则 7] 的硬要求。
 
 ## 计费（如适用）
 
 - 自托管 SKU c：免费（自付基础设施）
-- 公共云 SKU a：免费层（1k 条 active memory）+ 容量阶梯（详 nemos 控制台）
-- E2EE SKU b：付费（详 nemos 控制台）
+- 公共云 SKU a：免费层（1k 条 active memory）+ 容量阶梯（详 Nemos 控制台）
+- E2EE SKU b：付费（详 Nemos 控制台）
 
-AI app 不直接付费——用户付费。AI app 可在 onboarding 显示 nemos 计费说明，但不参与计费流程。
+AI app 不直接付费——用户付费。AI app 可在 onboarding 显示 Nemos 计费说明，但不参与计费流程。

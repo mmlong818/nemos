@@ -1,4 +1,4 @@
-# nemos v0.1 — MCP Server (30-mcp-server)
+# Nemos v0.1 — MCP Server (30-mcp-server)
 
 > **状态**：Draft，Round 1 输出
 > **版本**：v0.1
@@ -12,7 +12,7 @@
 
 | 节 | 内容 |
 |---|---|
-| §1 | nemos 作为 MCP server 的姿态 |
+| §1 | Nemos 作为 MCP server 的姿态 |
 | §2 | Tools 列表（mapping 到 REST） |
 | §3 | Resources 列表 |
 | §4 | Prompts 列表 |
@@ -23,11 +23,11 @@
 
 ---
 
-## 1. nemos 作为 MCP server 的姿态
+## 1. Nemos 作为 MCP server 的姿态
 
 ### 1.1 为什么有独立的 MCP server
 
-REST API 是 nemos 的标准化网络面，MCP 是 nemos 与 AI app 集成的优先入口。两者**字段一致、语义等价**，差异只在：
+REST API 是 Nemos 的标准化网络面，MCP 是 Nemos 与 AI app 集成的优先入口。两者**字段一致、语义等价**，差异只在：
 
 | 维度 | REST API | MCP Server |
 |---|---|---|
@@ -42,20 +42,20 @@ REST API 是 nemos 的标准化网络面，MCP 是 nemos 与 AI app 集成的优
 
 - 任何 MCP tool 调用都能用一组 REST 调用等价实现
 - MCP 额外提供 resources（订阅）+ prompts（预制模板），REST 不直接做这两件事
-- nemos 的服务端逻辑只实现一次，MCP server 和 REST API 共享同一组 service handler
+- Nemos 的服务端逻辑只实现一次，MCP server 和 REST API 共享同一组 service handler
 
 ### 1.3 与 capability registry 的关系
 
-MCP 协议本身有 capability handshake（client / server 互声明能力）。nemos 在此之上叠加：
-- nemos 的 `capability_jwt`（Companion §3）传到 MCP server
+MCP 协议本身有 capability handshake（client / server 互声明能力）。Nemos 在此之上叠加：
+- Nemos 的 `capability_jwt`（Companion §3）传到 MCP server
 - MCP server 用 JWT 决定哪些 tools / resources / prompts 对该 client 可见
-- 同一 nemos 部署对不同 capability 的 client 暴露不同的 tools list
+- 同一 Nemos 部署对不同 capability 的 client 暴露不同的 tools list
 
 ---
 
 ## 2. Tools 列表
 
-MCP tools 是 AI app 可调用的函数。下表列出 nemos MCP server v0.1 暴露的 tools。
+MCP tools 是 AI app 可调用的函数。下表列出 Nemos MCP server v0.1 暴露的 tools。
 
 > 命名约定：`<verb>_<noun>` 全小写下划线，与 MCP 生态主流命名一致。
 
@@ -102,7 +102,7 @@ MCP tools 是 AI app 可调用的函数。下表列出 nemos MCP server v0.1 暴
 
 ### 2.5 不暴露 / 仅 user dashboard
 
-下列操作 **nemos MCP server 不暴露**（无论 agent capability 多高），只能通过 REST API + user OAuth token 走：
+下列操作 **Nemos MCP server 不暴露**（无论 agent capability 多高），只能通过 REST API + user OAuth token 走：
 
 - `burn`（GDPR 反编译）
 - `update_manifest`（修改 sharing manifest）
@@ -287,7 +287,7 @@ MCP tools 是 AI app 可调用的函数。下表列出 nemos MCP server v0.1 暴
 
 ## 3. Resources 列表
 
-MCP resources 是 server 暴露给 client 可订阅的资源。nemos 暴露的 resources 都是**按 capability 过滤后的 view**——不暴露用户全量记忆（见 overview Q7）。
+MCP resources 是 server 暴露给 client 可订阅的资源。Nemos 暴露的 resources 都是**按 capability 过滤后的 view**——不暴露用户全量记忆（见 overview Q7）。
 
 ### 3.1 Resource URI 格式
 
@@ -360,7 +360,7 @@ nemos://memory/<scope>/<view-name>
 
 ## 4. Prompts 列表
 
-MCP prompts 是 server 提供的预制 prompt template，让 AI app 在与 nemos 交互时有"推荐用法"。
+MCP prompts 是 server 提供的预制 prompt template，让 AI app 在与 Nemos 交互时有"推荐用法"。
 
 ### 4.1 v0.1 暴露的 prompts
 
@@ -437,9 +437,9 @@ MCP prompts 是 server 提供的预制 prompt template，让 AI app 在与 nemos
       "command": "nemos-mcp",
       "args": ["--mode", "local-stdio"],
       "env": {
-        "MNEMOS_ENDPOINT": "https://api.nemos.org/v1",
-        "MNEMOS_CAPABILITY_JWT_FILE": "~/.nemos/agent-claude-code.jwt",
-        "MNEMOS_AGENT_KEY_FILE": "~/.nemos/agent-claude-code.key"
+        "NEMOS_ENDPOINT": "https://api.nemos.org/v1",
+        "NEMOS_CAPABILITY_JWT_FILE": "~/.nemos/agent-claude-code.jwt",
+        "NEMOS_AGENT_KEY_FILE": "~/.nemos/agent-claude-code.key"
       }
     }
   }
@@ -472,7 +472,7 @@ from mcp.client.stdio import stdio_client
 server_params = StdioServerParameters(
     command="nemos-mcp",
     args=["--mode", "local-stdio"],
-    env={"MNEMOS_ENDPOINT": "https://api.nemos.org/v1", "MNEMOS_CAPABILITY_JWT": "..."}
+    env={"NEMOS_ENDPOINT": "https://api.nemos.org/v1", "NEMOS_CAPABILITY_JWT": "..."}
 )
 
 async with stdio_client(server_params) as (read, write):
@@ -506,7 +506,7 @@ async with stdio_client(server_params) as (read, write):
 
 ## 6. REST ↔ MCP 字段一致性保证
 
-nemos 的硬约束：MCP tool 的请求 / 响应字段必须能 1:1 映射到 REST API 的同名端点。
+Nemos 的硬约束：MCP tool 的请求 / 响应字段必须能 1:1 映射到 REST API 的同名端点。
 
 ### 6.1 自动测试
 
@@ -586,15 +586,15 @@ AI app ↔ local nemos-mcp (stdio) ↔ local key store + 客户端 SQLite + HNSW
 - capability handshake / resource subscription / prompt templates 是 v0 已稳定字段
 - 部分高级特性（流式 tool 输出 / federated capability）还在演进
 
-### 8.2 nemos v0.1 的 MCP 兼容承诺
+### 8.2 Nemos v0.1 的 MCP 兼容承诺
 
 - 与 MCP 0.x spec 兼容（具体 minor 版本号待 Round 2 锁定）
-- 任何 MCP spec breaking change → nemos 在 6 个月内适配
-- 任何 nemos 内部协议变更不影响 MCP 兼容
+- 任何 MCP spec breaking change → Nemos 在 6 个月内适配
+- 任何 Nemos 内部协议变更不影响 MCP 兼容
 
-### 8.3 nemos 想推动的 MCP 扩展
+### 8.3 Nemos 想推动的 MCP 扩展
 
-下列 nemos 用例可能推动 MCP working group 加新字段（Round 3+ RFC）：
+下列 Nemos 用例可能推动 MCP working group 加新字段（Round 3+ RFC）：
 
 | 用例 | MCP 缺的字段 |
 |---|---|
@@ -603,11 +603,11 @@ AI app ↔ local nemos-mcp (stdio) ↔ local key store + 客户端 SQLite + HNSW
 | Resource subscription 的 ACL 过滤说明 | resource metadata `filteredBy` |
 | 跨 MCP server 的 capability federation | `crossServerCapability` |
 
-nemos v0.1 在自己的 envelope 里加这些字段（如 §2.7 的 `audit_id`），同时跟进 MCP working group 推动标准化。
+Nemos v0.1 在自己的 envelope 里加这些字段（如 §2.7 的 `audit_id`），同时跟进 MCP working group 推动标准化。
 
 ### 8.4 不依赖 MCP spec 变更的兜底
 
-如果 MCP spec 演进不接受 nemos 的扩展请求，nemos 仍能通过：
+如果 MCP spec 演进不接受 Nemos 的扩展请求，Nemos 仍能通过：
 - Tool args 自带 metadata 字段（不依赖 MCP envelope）
 - Resource URI 子路径表达 ACL 过滤
 - 自定义 prompts 文档化使用约定

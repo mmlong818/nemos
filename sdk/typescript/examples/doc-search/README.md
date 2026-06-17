@@ -10,5 +10,5 @@ ANTHROPIC_API_KEY=sk-... npx tsx examples/doc-search/index.ts
 
 ## 重点
 
-- `scope` 是 nemos 的"分区"概念。`project:xxx` 让搜索可以聚焦到某个项目。
+- `scope` 是 Nemos 的"分区"概念。`project:xxx` 让搜索可以聚焦到某个项目。
 - 即使 LLM 没有 embedding 也能搜（自动降级为 FTS5）；若想要语义搜索，请配 `embedding: { provider: 'openai', apiKey }`。

@@ -19,7 +19,7 @@ supersedes: []
 
 ## 现状
 
-nemos 现有 5 层（episodic / semantic / personal_semantic / procedural / archival，见 RFC 0001 原则 2）按**记忆的功能形态**切分——"这是一段经历" vs "这是一条事实" vs "这是一个习惯"。但**同一功能层内部，所有领域的内容是混在一起的**：医疗事实与艺术事实同处 semantic 层、共享同一个 embedding 空间与检索通道。
+Nemos 现有 5 层（episodic / semantic / personal_semantic / procedural / archival，见 RFC 0001 原则 2）按**记忆的功能形态**切分——"这是一段经历" vs "这是一条事实" vs "这是一个习惯"。但**同一功能层内部，所有领域的内容是混在一起的**：医疗事实与艺术事实同处 semantic 层、共享同一个 embedding 空间与检索通道。
 
 ## 痛点
 
@@ -31,7 +31,7 @@ nemos 现有 5 层（episodic / semantic / personal_semantic / procedural / arch
 
 引入领域轴 + 稀疏激活，使**激活规模与总库规模解耦**：总库可以无限增长，单次激活始终是"共享层 + 3~4 个领域子集"。这同时改善**准确性**（隔离污染）与**延迟**（缩小搜索空间）。
 
-## 与 nemos 设计原则（RFC 0001）的关系
+## 与 Nemos 设计原则（RFC 0001）的关系
 
 | 原则 | 本 RFC 的兼容方式 |
 |---|---|
@@ -85,7 +85,7 @@ nemos 现有 5 层（episodic / semantic / personal_semantic / procedural / arch
 | **L2 邻接领域** | 由 domain_affinity 连出的 2~3 个次相关领域 | top-k routed | 中 |
 | **L3 跨域扩散** | 从 L1/L2 命中记忆沿 cross-memory 边扩散 1 跳（限额 N） | spreading activation | 低 |
 
-**L3 是隔离↔关联矛盾（TRIZ 物理矛盾）的系统层级分离解**：隔离发生在「领域」粒度（路由层），关联发生在「记忆」粒度（cross-memory 边，RFC 0003），两者不在同一层级，矛盾化解。L3 保住了 nemos 引以为傲的跨领域意外联想能力。**明确约束：cross-memory 边的建立与遍历在记忆粒度自由进行，不受领域墙约束**——这是 L3 成立的前提，领域隔离只作用于路由层，绝不限制记忆间的连接。
+**L3 是隔离↔关联矛盾（TRIZ 物理矛盾）的系统层级分离解**：隔离发生在「领域」粒度（路由层），关联发生在「记忆」粒度（cross-memory 边，RFC 0003），两者不在同一层级，矛盾化解。L3 保住了 Nemos 引以为傲的跨领域意外联想能力。**明确约束：cross-memory 边的建立与遍历在记忆粒度自由进行，不受领域墙约束**——这是 L3 成立的前提，领域隔离只作用于路由层，绝不限制记忆间的连接。
 
 ## 5. RouterProvider：作为独立可替换能力
 
@@ -227,7 +227,7 @@ domain_affinity {
 - **路由器选型细节**：质心 vs 轻量分类器 vs LLM 的精确切换阈值与混合权重。
 - **领域命名与用户主权**：涌现领域由 LLM 命名，用户能否改名 / 手动 split/merge？（关乎可解释性与信任）
 - **多归属写入阈值**：固化时算 top-k 还是固定阈值？默认值待评估确定。
-- **评估指标**：路由准确率怎么量化？需要 eval harness（nemos 已有 eval 文化）。
+- **评估指标**：路由准确率怎么量化？需要 eval harness（Nemos 已有 eval 文化）。
 - **质心表示**：单质心 vs 多质心（一个领域多模态）？
 - **反固化（de-crystallization）**：渐进固化的对称面。已结晶的结构（路由表规则、领域、前瞻预案）一旦过时如何退场？倾向方向——**不物理删除，而是"敲低表现"（降权 / 衰减 retrievability）**，与 immutable archive（原则 4）和领域 sleep 一致：让过时结构自然失去影响力而非移除。固化的路由表规则与前瞻预案是否都纳入 retrievability 体系，留待实施期确定。
 
@@ -237,7 +237,7 @@ domain_affinity {
 - **Sparsely-Gated MoE（Shazeer et al. 2017）**：top-k gating、expert collapse 与负载均衡问题。
 - **Fuzzy c-means**：soft membership 的经典原型。
 - **mem0 / Letta**：单层/统一存储方案在规模增长下的概念污染，作为反例。
-- nemos RFC 0003（cross-memory linking / spreading activation）：L3 的现有基础。
+- Nemos RFC 0003（cross-memory linking / spreading activation）：L3 的现有基础。
 
 # Implementation Plan（accepted 后填）
 

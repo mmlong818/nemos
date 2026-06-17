@@ -81,7 +81,7 @@ nemos-server  + Postgres (with pgvector)
 
 ### Schema 迁移
 
-nemos schema 版本号每条 memory 携带（`schema_version` 字段）。升级路径：
+Nemos schema 版本号每条 memory 携带（`schema_version` 字段）。升级路径：
 1. 先备份
 2. 阅读 release notes 含 BREAKING-CHANGES 章节
 3. 跑 `nemos migrate --dry-run` 验证

@@ -2,7 +2,7 @@
 
 ## 范围
 
-本文档覆盖 nemos 项目的：
+本文档覆盖 Nemos 项目的：
 - 协议规范（`spec/`）的设计层缺陷
 - 引用实现（`server/`、`sdk/`）的代码层缺陷
 - 文档（`docs/`、`rfcs/`）误导导致的安全风险
@@ -45,7 +45,7 @@ PGP key fingerprint（待真上线后填）：`<pgp-fingerprint-placeholder>`
 
 ## 安全设计原则（贯穿 spec / 实现 / 运维）
 
-nemos 在 spec 层就明确以下硬约束：
+Nemos 在 spec 层就明确以下硬约束：
 1. **derived 内容不能进入 authoritative 通道**（防 AI 自污染）
 2. **archival 是 immutable**（防 reflect 改写历史）
 3. **跨 scope 读取必须经过 Manifest 授权**（多 agent 防串供）
@@ -57,7 +57,7 @@ nemos 在 spec 层就明确以下硬约束：
 
 ## 自托管运维者
 
-如果你运营 nemos 自托管实例：
+如果你运营 Nemos 自托管实例：
 - 订阅本仓库 release notifications 获取安全补丁
 - 关注 `SECURITY-ADVISORIES.md`（首次披露后添加）
 - 推荐配置：见 `docs/operator-guide.md` § "安全 hardening 清单"

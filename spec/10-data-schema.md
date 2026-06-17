@@ -1,4 +1,4 @@
-# nemos v0.1 — 数据 Schema (10-data-schema)
+# Nemos v0.1 — 数据 Schema (10-data-schema)
 
 > **状态**：Draft，Round 1 输出
 > **版本**：v0.1
@@ -28,7 +28,7 @@
 
 ## 1. 多租户基础
 
-nemos 是 day-1 多租户系统。所有数据都用三级隔离键：
+Nemos 是 day-1 多租户系统。所有数据都用三级隔离键：
 
 | 键 | 类型 | 必填 | E2EE 可见 | 说明 |
 |---|---|---|---|---|
@@ -697,9 +697,9 @@ correction_context:
   notes: 在什么情境下错（架构版本、任务类型、特定 agent 等）
 ```
 
-### 6.2 ECC v2 → nemos 字段映射
+### 6.2 ECC v2 → Nemos 字段映射
 
-| ECC v2 字段 | nemos 字段 |
+| ECC v2 字段 | Nemos 字段 |
 |---|---|
 | `scope` (global / project:X / task:X) | `scope_id` (见 §7) |
 | `source.authoritative: bool` | `source.kind` + `source.authoritative` 双写（兼容） |
@@ -713,7 +713,7 @@ correction_context:
 | `stability` | `fsrs.stability` |
 | `private_zone` | `flags.private_zone` |
 
-ECC v2 用户从单租户 markdown 迁到 nemos 时，import adapter 走此映射表自动转换（见 §10.6）。
+ECC v2 用户从单租户 markdown 迁到 Nemos 时，import adapter 走此映射表自动转换（见 §10.6）。
 
 ---
 
@@ -799,7 +799,7 @@ v0.1 用弱 identity：principal_id 是用户 email 的 sha256 hash。
 
 ```
 1. User A 写一条 relational record (principals: [self, alice])
-2. 服务端检查 alice 是否有 nemos account（按 email hash 查 user table）
+2. 服务端检查 alice 是否有 Nemos account（按 email hash 查 user table）
 3. 若有：向 alice 发 share invitation
 4. alice 接受 → share_decisions[..].effective = true，alice 可读
 5. alice veto → effective = false，AgentMemoryCache invalidate
@@ -1107,7 +1107,7 @@ flags.surface_cooldown_reason:
 
 ### 10.4 Markdown 双轨
 
-每条 record 同时输出 markdown（用户在无 nemos 时也能读，与 ECC v2 兼容）：
+每条 record 同时输出 markdown（用户在无 Nemos 时也能读，与 ECC v2 兼容）：
 
 ```markdown
 ---
@@ -1181,7 +1181,7 @@ nemos-export-20260601/
 
 ### 10.6 Import adapter（从 ECC v2 / mem0 / Letta）
 
-每个 import adapter 是独立小程序（`nemos import --from=ecc-v2 --path=...`），由 nemos CLI 提供：
+每个 import adapter 是独立小程序（`nemos import --from=ecc-v2 --path=...`），由 Nemos CLI 提供：
 
 | 源 | 路径 |
 |---|---|

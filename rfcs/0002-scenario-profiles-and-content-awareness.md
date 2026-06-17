@@ -13,7 +13,7 @@ supersedes: []
 
 # Summary
 
-给 nemos SDK 加入「场景感知」能力：分析同一份内容时，根据用户/AI 应用声明的 scenario，调整层级偏好、抽取重点、时间感知、敏感度处理。同时增加内容时间字段（`event_at`）和长内容自动 chunking。
+给 Nemos SDK 加入「场景感知」能力：分析同一份内容时，根据用户/AI 应用声明的 scenario，调整层级偏好、抽取重点、时间感知、敏感度处理。同时增加内容时间字段（`event_at`）和长内容自动 chunking。
 
 # Motivation
 
