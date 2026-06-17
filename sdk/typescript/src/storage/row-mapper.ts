@@ -45,6 +45,10 @@ export interface RowMemory {
   cold_at: string | null;
   consolidated_from_json: string | null;
   consolidated_at: string | null;
+  valid_at: string | null;
+  invalid_at: string | null;
+  expired_at: string | null;
+  belief_state: string | null;
 }
 
 export function rowToMemory(row: RowMemory): Memory {
@@ -103,6 +107,13 @@ export function rowToMemory(row: RowMemory): Memory {
     }
   }
   if (row.consolidated_at) m.consolidated_at = row.consolidated_at;
+  // v0.6（RFC 0007）双时间字段；belief_state 默认 'active' 视为缺省，不回填到对象。
+  if (row.valid_at) m.valid_at = row.valid_at;
+  if (row.invalid_at) m.invalid_at = row.invalid_at;
+  if (row.expired_at) m.expired_at = row.expired_at;
+  if (row.belief_state && row.belief_state !== "active") {
+    m.belief_state = row.belief_state as Memory["belief_state"];
+  }
   return m;
 }
 

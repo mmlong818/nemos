@@ -42,7 +42,11 @@ export const COMMON_COLS = `
   cold            INTEGER NOT NULL DEFAULT 0,
   cold_at         TEXT,
   consolidated_from_json TEXT,
-  consolidated_at TEXT
+  consolidated_at TEXT,
+  valid_at        TEXT,
+  invalid_at      TEXT,
+  expired_at      TEXT,
+  belief_state    TEXT NOT NULL DEFAULT 'active'
 `;
 
 // v0.2 新增列（用于 migration v0.1 → v0.2）
@@ -78,6 +82,17 @@ const V04_NEW_COLUMNS: Array<{ name: string; ddl: string }> = [
   {
     name: "consolidated_at",
     ddl: "ALTER TABLE %TABLE% ADD COLUMN consolidated_at TEXT",
+  },
+];
+
+// v0.6 新增列（migration v0.5 → v0.6；RFC 0007 双时间有效性字段）
+const V06_NEW_COLUMNS: Array<{ name: string; ddl: string }> = [
+  { name: "valid_at", ddl: "ALTER TABLE %TABLE% ADD COLUMN valid_at TEXT" },
+  { name: "invalid_at", ddl: "ALTER TABLE %TABLE% ADD COLUMN invalid_at TEXT" },
+  { name: "expired_at", ddl: "ALTER TABLE %TABLE% ADD COLUMN expired_at TEXT" },
+  {
+    name: "belief_state",
+    ddl: "ALTER TABLE %TABLE% ADD COLUMN belief_state TEXT NOT NULL DEFAULT 'active'",
   },
 ];
 
@@ -143,9 +158,33 @@ export function applyMigrations(db: Database.Database): void {
         db.exec(col.ddl.replace("%TABLE%", layer));
       }
     }
+    // v0.5 → v0.6：补双时间字段（ALTER 不触发 archival immutable trigger）
+    for (const col of V06_NEW_COLUMNS) {
+      if (!existing.has(col.name)) {
+        db.exec(col.ddl.replace("%TABLE%", layer));
+      }
+    }
     // archival 表中已存在的旧 row 需补 archival_protected=1（一次性 backfill，幂等）
     if (layer === "archival") {
       db.exec(`UPDATE archival SET archival_protected = 1 WHERE archival_protected = 0;`);
+    }
+    // v0.6 backfill：双时间仅泛化到 derived 层（RFC 0007 §2.1）；archival 永不失效，
+    // 且 archival immutable trigger 会 ABORT 任何 UPDATE，故必须跳过。
+    if (layer !== "archival") {
+      // 存量记录默认 valid_at = created_at（RFC 0007 §11 向后兼容；幂等：仅补 NULL）
+      db.exec(`UPDATE ${layer} SET valid_at = created_at WHERE valid_at IS NULL;`);
+      // 被既有 supersedes 指向的旧记录 → belief_state=superseded + expired_at=后继.created_at
+      db.exec(`
+        UPDATE ${layer} SET
+          belief_state = 'superseded',
+          expired_at = (
+            SELECT s.created_at FROM ${layer} s
+            WHERE s.supersedes = ${layer}.id
+            ORDER BY s.created_at LIMIT 1
+          )
+        WHERE belief_state = 'active'
+          AND id IN (SELECT supersedes FROM ${layer} WHERE supersedes IS NOT NULL);
+      `);
     }
     // v0.4：cold 索引（加速默认 WHERE cold=0 过滤）
     db.exec(
@@ -166,6 +205,20 @@ export function applyMigrations(db: Database.Database): void {
     // v0.3：entities 文本索引（条件：仅非空）
     db.exec(
       `CREATE INDEX IF NOT EXISTS idx_entities_${layer} ON ${layer}(entities_json) WHERE entities_json IS NOT NULL;`,
+    );
+    // v0.6：belief_state 索引（加速默认 WHERE belief_state='active'）
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_belief_${layer} ON ${layer}(tenant_id, user_id, belief_state);`,
+    );
+    // v0.6：双时间 as-of 条件索引（仅非空，省空间）
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_valid_at_${layer} ON ${layer}(valid_at) WHERE valid_at IS NOT NULL;`,
+    );
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_invalid_at_${layer} ON ${layer}(invalid_at) WHERE invalid_at IS NOT NULL;`,
+    );
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_expired_at_${layer} ON ${layer}(expired_at) WHERE expired_at IS NOT NULL;`,
     );
   }
 

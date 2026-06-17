@@ -53,6 +53,8 @@ export class SqliteStorage implements Storage {
     // archival 自动 protected=true（hard rule：archival 永不衰减）
     const archivalProtected = m.layer === "archival" || m.archival_protected === true ? 1 : 0;
     if (archivalProtected) m.archival_protected = true;
+    // v0.6（RFC 0007）：derived 默认 valid_at=created_at；archival 不参与双时间。
+    if (m.layer !== "archival" && m.valid_at === undefined) m.valid_at = m.created_at;
 
     const stmt = this.db.prepare(`
       INSERT INTO ${table} (
@@ -63,7 +65,8 @@ export class SqliteStorage implements Storage {
         supersedes, wrong_scope, wrong_behavior, embedding_model_id,
         event_at, sensitive, scenario, entities_json,
         difficulty, retrievability, last_decay_at, archival_protected,
-        cold, cold_at, consolidated_from_json, consolidated_at
+        cold, cold_at, consolidated_from_json, consolidated_at,
+        valid_at, invalid_at, expired_at, belief_state
       ) VALUES (
         @id, @tenant_id, @user_id, @layer, @type, @scope, @content,
         @source_json, @arousal_json, @surprise_json, @ownership_json,
@@ -72,7 +75,8 @@ export class SqliteStorage implements Storage {
         @supersedes, @wrong_scope, @wrong_behavior, @embedding_model_id,
         @event_at, @sensitive, @scenario, @entities_json,
         @difficulty, @retrievability, @last_decay_at, @archival_protected,
-        @cold, @cold_at, @consolidated_from_json, @consolidated_at
+        @cold, @cold_at, @consolidated_from_json, @consolidated_at,
+        @valid_at, @invalid_at, @expired_at, @belief_state
       )
     `);
     stmt.run({
@@ -115,6 +119,10 @@ export class SqliteStorage implements Storage {
           ? JSON.stringify(m.consolidated_from)
           : null,
       consolidated_at: m.consolidated_at ?? null,
+      valid_at: m.valid_at ?? null,
+      invalid_at: m.invalid_at ?? null,
+      expired_at: m.expired_at ?? null,
+      belief_state: m.belief_state ?? "active",
     });
 
     // 同步写 FTS
