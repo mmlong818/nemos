@@ -44,6 +44,8 @@ export class InMemoryStorage implements Storage {
     if (m.layer === "archival") {
       m.archival_protected = true;
     }
+    // v0.6（RFC 0007）：derived 默认 valid_at=created_at；archival 不参与双时间。
+    if (m.layer !== "archival" && m.valid_at === undefined) m.valid_at = m.created_at;
     this.data.set(this.key(tenantId, userId, m.layer, m.id), m);
     return m;
   }

@@ -100,6 +100,12 @@ export interface MemoryOwnership {
 }
 
 /**
+ * v0.6（RFC 0007）：一条记忆「不再活跃」的成因。undefined 等价 'active'。
+ * 物化字段，单一真相源是事件流（RFC 0007 §3，后续接入）；此处仅为热路径索引缓存。
+ */
+export type BeliefState = "active" | "invalidated" | "superseded" | "corrected";
+
+/**
  * 单条 memory 记录。同时覆盖 5 层；type-specific 字段标 optional。
  * 字段命名采用 snake_case 以与 ECC v2 / nemos 文件级 markdown 兼容。
  */
@@ -193,6 +199,29 @@ export interface Memory {
   consolidated_from?: string[];
   /** Reflect job 写入的时间（ISO 8601）。 */
   consolidated_at?: string;
+
+  // v0.6 新增（RFC 0007：双时间有效性与失效语义） ---------------------------
+  /**
+   * 世界轴·起：事实在世界中**开始为真**的时刻（ISO 8601）。
+   * 泛化自 personal_semantic.valid_from，统一替代（event_at → valid_at 别名见 Step 2）。
+   * 仅 derived 层持有；archival（原始字节）不参与双时间。存量/新记录默认回填 created_at。
+   */
+  valid_at?: string;
+  /**
+   * 世界轴·止：事实在世界中**停止为真**的时刻（ISO 8601）；undefined = 仍为真。
+   * 由矛盾失效或用户设置；**不改 valid_at**。
+   */
+  invalid_at?: string;
+  /**
+   * 系统轴·止：此记录**被系统取代**的时刻（ISO 8601）；undefined = 当前信念。
+   * 系统轴起点复用已有 created_at。
+   */
+  expired_at?: string;
+  /**
+   * 派生态（物化）：当前信念状态。undefined 视为 'active'。
+   * 存在仅为让热路径 `WHERE belief_state='active'` 走索引。
+   */
+  belief_state?: BeliefState;
 }
 
 // ============================================================================
@@ -697,7 +726,9 @@ export interface NemosConfig {
   logger?: (level: LogLevel, msg: string, meta?: Record<string, unknown>) => void;
 }
 
-export const SCHEMA_VERSION = "0.5";
+export const SCHEMA_VERSION = "0.6";
+/** v0.5 schema 字符串常量。 */
+export const SCHEMA_VERSION_V05 = "0.5";
 /** v0.4 schema 字符串常量。 */
 export const SCHEMA_VERSION_V04 = "0.4";
 /** v0.3 schema 字符串常量。 */
