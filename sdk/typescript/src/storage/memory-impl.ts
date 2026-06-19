@@ -129,6 +129,8 @@ export class InMemoryStorage implements Storage {
           continue;
         }
         if (!filter.includeCold && m.cold) continue;
+        // v0.6（RFC 0007/0008）：默认隐藏已失效记录
+        if (!filter.includeInvalidated && m.belief_state && m.belief_state !== "active") continue;
         const lc = m.content.toLowerCase();
         let hits = 0;
         for (const t of tokens) {
@@ -173,6 +175,8 @@ export class InMemoryStorage implements Storage {
       if (filter.sensitiveOnly && !mem.sensitive) continue;
       if (!filter.sensitiveOnly && !filter.includeSensitive && mem.sensitive) continue;
       if (!filter.includeCold && mem.cold) continue;
+      // v0.6：默认隐藏已失效记录
+      if (!filter.includeInvalidated && mem.belief_state && mem.belief_state !== "active") continue;
       out.push({ memory: mem, score: s.score });
     }
     return out;
@@ -461,6 +465,27 @@ export class InMemoryStorage implements Storage {
 
   listPersonalSemantic(tenantId: string, userId: string): Memory[] {
     return this.list(tenantId, userId, "personal_semantic", { limit: 200 });
+  }
+
+  // v0.6（RFC 0007 §2.2）------------------------------------------------------
+  markInvalidated(
+    tenantId: string,
+    userId: string,
+    layer: Layer,
+    id: string,
+    opts: { invalidAt: string; expiredAt?: string; correctedBy?: string },
+  ): void {
+    if (layer === "archival") return;
+    const m = this.data.get(this.key(tenantId, userId, layer, id));
+    if (!m) return;
+    m.belief_state = "invalidated";
+    m.invalid_at = opts.invalidAt;
+    if (opts.expiredAt) m.expired_at = opts.expiredAt;
+    if (opts.correctedBy) {
+      const cb = new Set(m.corrected_by ?? []);
+      cb.add(opts.correctedBy);
+      m.corrected_by = Array.from(cb);
+    }
   }
 
   // v0.5 领域轴 ---------------------------------------------------------------

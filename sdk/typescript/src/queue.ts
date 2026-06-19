@@ -131,6 +131,7 @@ export class NemosWorker {
         defaultScope,
         domainsEnabled: this.features.features?.domains?.enabled === true,
         prospectiveEnabled: this.features.features?.prospective?.enabled === true,
+        invalidationEnabled: this.features.features?.invalidation?.enabled === true,
       },
     );
   }

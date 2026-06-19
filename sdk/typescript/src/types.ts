@@ -422,6 +422,12 @@ export interface SearchOptions {
    * v0.4：是否包含 cold 记录（默认 false）。archival 永不 cold，不受此影响。
    */
   includeCold?: boolean;
+  /**
+   * v0.6（RFC 0007/0008）：是否包含已失效记录（belief_state != 'active'，即
+   * invalidated / superseded / corrected）。默认 false —— 检索默认只返回当前为真、
+   * 当前采信的事实（「从不踩雷」）。设 true 取全集（审计 / 时间旅行）。
+   */
+  includeInvalidated?: boolean;
 }
 
 /** v0.4：getRelevantContext 输出格式。 */
@@ -719,6 +725,16 @@ export interface NemosConfig {
       minConfidence?: number;
       /** 是否允许 query 时按需 LLM 合成（异步固化供下次）。默认 false。 */
       onDemand?: boolean;
+    };
+    /**
+     * v0.6（RFC 0007 §2.3 / RFC 0008 §5）：矛盾驱动自动失效。默认 enabled=false。
+     * 开启后 reflect 离线检测到新事实与现有 personal_semantic 矛盾时，把被推翻的
+     * 旧 personal_semantic 标 belief_state='invalidated'（守 I4：仅 personal_semantic
+     * anchor，且只在 reflect 这条用户自述流上）。关闭时 reflect 仅标记冲突、不失效（v0.5 行为）。
+     */
+    invalidation?: {
+      /** 总开关。默认 false。 */
+      enabled?: boolean;
     };
   };
   /** v0.3：worker 配置；不传 = 默认 long-running 模式。 */

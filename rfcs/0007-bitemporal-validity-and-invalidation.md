@@ -237,6 +237,7 @@ kind: "asserted" | "invalidated" | "revalidated" | "corrected" | "superseded" | 
 - Step 3: 双轴 as-of 查询接入 `SearchOptions`（`asOfValid` / `asOfSystem` / `includeInvalidated`）。
 - Step 4: 失效状态机写路径（取代 / 纠错与既有 supersedes / corrects 接线）+ 物化刷新。
 - Step 5: 矛盾驱动自动失效 worker（复用 queue.ts + MinHash 粗筛 + LLM 判矛盾），默认关闭。
+  - 🟡 最小闭环已落地（2026-06-20，由 RFC 0008 陪伴 App「从不踩雷」需求驱动）：reflect **内联**识别 `invalidates`（守门仅 personal_semantic anchor）→ `storage.markInvalidated`（belief_state=invalidated + invalid_at/expired_at + corrected_by 回链）；检索默认 `belief_state='active'` 过滤（`SearchOptions.includeInvalidated` 逃生阀）；gate = `features.invalidation.enabled`（默认关）。**未做**：独立 worker 化 + MinHash/Jaccard 粗筛（当前每个候选直接靠 reflect LLM 判，无粗筛降本）。
 - Step 6: `nemos verify --rematerialize` 一致性兜底 + 时间旅行 eval fixture + E2EE 客户端路径。
 
 预计里程碑：对齐 ROADMAP v0.6，可在 RFC 0005/0006 之后独立推进。

@@ -326,6 +326,7 @@ export class UserMemory {
       includeSensitive: options.includeSensitive === true,
       sensitiveOnly: options.sensitiveOnly === true,
       includeCold: options.includeCold === true,
+      includeInvalidated: options.includeInvalidated === true,
     };
     // v0.4：sensitiveOnly 与 includeSensitive 矛盾时，sensitiveOnly 取优先（用户明确只要 sensitive）
     let results: Memory[];

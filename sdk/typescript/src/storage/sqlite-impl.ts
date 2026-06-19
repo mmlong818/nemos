@@ -263,6 +263,11 @@ export class SqliteStorage implements Storage {
       if (!filter.includeCold) {
         sql += ` AND m.cold = 0`;
       }
+      // v0.6（RFC 0007/0008）：默认只返回当前采信的事实（「从不踩雷」），
+      // 隐藏 invalidated / superseded / corrected。走 idx_belief_* 索引。
+      if (!filter.includeInvalidated) {
+        sql += ` AND m.belief_state = 'active'`;
+      }
       sql += ` ORDER BY fts.rank LIMIT ?`;
       params.push(topK);
       let rows: Array<RowMemory & { fts_rank: number }>;
@@ -327,6 +332,8 @@ export class SqliteStorage implements Storage {
       if (filter.sensitiveOnly && !mem.sensitive) continue;
       if (!filter.sensitiveOnly && !filter.includeSensitive && mem.sensitive) continue;
       if (!filter.includeCold && mem.cold) continue;
+      // v0.6：默认隐藏已失效（rowToMemory 把 active 归一为 undefined）
+      if (!filter.includeInvalidated && mem.belief_state && mem.belief_state !== "active") continue;
       out.push({ memory: mem, score: s.score });
     }
     return out;
@@ -509,6 +516,52 @@ export class SqliteStorage implements Storage {
   }
   listPersonalSemantic(tenantId: string, userId: string): Memory[] {
     return decayOps.listPersonalSemantic(this.db, tenantId, userId);
+  }
+
+  // v0.6（RFC 0007 §2.2）------------------------------------------------------
+  markInvalidated(
+    tenantId: string,
+    userId: string,
+    layer: Layer,
+    id: string,
+    opts: { invalidAt: string; expiredAt?: string; correctedBy?: string },
+  ): void {
+    if (layer === "archival") return; // archival 永不失效（trigger 亦会 ABORT）
+    const row = this.db
+      .prepare(
+        `SELECT corrected_by_json FROM ${layer} WHERE id = ? AND tenant_id = ? AND user_id = ?`,
+      )
+      .get(id, tenantId, userId) as { corrected_by_json: string | null } | undefined;
+    if (!row) return;
+    let correctedBy: string[] = [];
+    if (row.corrected_by_json) {
+      try {
+        const arr = JSON.parse(row.corrected_by_json) as string[];
+        if (Array.isArray(arr)) correctedBy = arr;
+      } catch {
+        // ignore malformed
+      }
+    }
+    if (opts.correctedBy && !correctedBy.includes(opts.correctedBy)) {
+      correctedBy.push(opts.correctedBy);
+    }
+    this.db
+      .prepare(
+        `UPDATE ${layer}
+         SET belief_state = 'invalidated',
+             invalid_at = ?,
+             expired_at = COALESCE(?, expired_at),
+             corrected_by_json = ?
+         WHERE id = ? AND tenant_id = ? AND user_id = ?`,
+      )
+      .run(
+        opts.invalidAt,
+        opts.expiredAt ?? null,
+        correctedBy.length > 0 ? JSON.stringify(correctedBy) : null,
+        id,
+        tenantId,
+        userId,
+      );
   }
 
   stats(tenantId: string, userId: string): {

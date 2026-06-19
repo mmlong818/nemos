@@ -464,10 +464,13 @@ export function makeReflectMockLLMConfig(opts?: {
   fixedContent?: string;
   layer?: "semantic" | "personal_semantic";
   conflict?: boolean;
+  /** v0.6：冲突时把解析到的 anchor（psem_xxx）id 填进 invalidates，驱动矛盾失效。 */
+  invalidatesAnchors?: boolean;
 }): LLMConfig {
   const content = opts?.fixedContent ?? "用户在工作上倾向早晨时段进入高产状态";
   const layer = opts?.layer ?? "personal_semantic";
   const conflict = opts?.conflict === true;
+  const invalidatesAnchors = opts?.invalidatesAnchors === true;
   return {
     provider: "custom",
     name: "reflect-mock",
@@ -485,6 +488,15 @@ export function makeReflectMockLLMConfig(opts?: {
         if (ids.length === 0) {
           return JSON.stringify({ derived: [] });
         }
+        // v0.6：从 anchor 段解析现有 personal_semantic 的 id（psem_xxx）
+        const anchorIds: string[] = [];
+        if (invalidatesAnchors) {
+          const re2 = /"id":\s*"(psem_[a-zA-Z0-9]+)"/g;
+          let a: RegExpExecArray | null;
+          while ((a = re2.exec(user)) !== null) {
+            if (a[1]) anchorIds.push(a[1]);
+          }
+        }
         return JSON.stringify({
           derived: [
             {
@@ -499,6 +511,7 @@ export function makeReflectMockLLMConfig(opts?: {
                 perspectives_conflict: conflict,
               },
               consolidated_from: ids,
+              invalidates: anchorIds,
               arousal: { value: 0.3, signal_sources: ["mock"] },
               surprise: { value: 0.2, basis: `consolidated from ${ids.length} episodes` },
             },

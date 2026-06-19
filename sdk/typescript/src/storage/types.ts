@@ -53,6 +53,8 @@ export interface SearchFilter {
   sensitiveOnly?: boolean;
   /** v0.4：是否包含 cold 记录。默认 false。archival 永不 cold，不受此影响。 */
   includeCold?: boolean;
+  /** v0.6（RFC 0007/0008）：是否包含已失效记录（belief_state != 'active'）。默认 false。 */
+  includeInvalidated?: boolean;
 }
 
 /** v0.4：批量 decay scan 候选行（轻量字段，避免每行全量 rowToMemory）。 */
@@ -211,6 +213,21 @@ export interface Storage {
   listRecentEpisodic(tenantId: string, userId: string, limit: number): Memory[];
   /** 取 user 当前所有 personal_semantic（作为 reflect anchor）。 */
   listPersonalSemantic(tenantId: string, userId: string): Memory[];
+
+  // v0.6（RFC 0007 §2.2 失效语义）-------------------------------------------
+  /**
+   * 标记一条 derived 记忆「失效」（世界变了，不再为真）：
+   * belief_state='invalidated' + invalid_at；可选 expired_at（被新信念取代）
+   * 与 correctedBy（回链推翻它的新记录，追加进 corrected_by）。
+   * archival 永不失效（直接 no-op；schema trigger 亦会 ABORT 任何 UPDATE）。
+   */
+  markInvalidated(
+    tenantId: string,
+    userId: string,
+    layer: Layer,
+    id: string,
+    opts: { invalidAt: string; expiredAt?: string; correctedBy?: string },
+  ): void;
 
   // v0.5 领域轴（RFC 0005）-----------------------------------------------------
   /** lazy 注入并返回 (tenant,user) 的 GLOBAL 共享层（幂等）。 */

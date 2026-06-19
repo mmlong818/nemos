@@ -57,7 +57,7 @@ export const REFLECT_SYSTEM_PROMPT = `你是 nemos 反思整合器。
    - personal_semantic：关于用户自身（偏好 / 习惯 / 性格 / 长期目标）
    - semantic：跨用户适用的事实 / 概念 / 规律
 4. 不要重复已有 personal_semantic 已经表达过的事实
-5. 检测矛盾：新 episodic 与现有 personal_semantic 显著冲突 → 输出一条 layer='personal_semantic' 的新 derived，content 注明「过去 X，最近改为 Y（基于 ep_xxx, ep_yyy）」，source.perspectives_conflict=true
+5. 检测矛盾：新 episodic 与现有 personal_semantic 显著冲突（同一事物，旧说法已不再为真）→ 输出一条 layer='personal_semantic' 的新 derived，content 注明「过去 X，最近改为 Y（基于 ep_xxx, ep_yyy）」，source.perspectives_conflict=true，并在 invalidates 数组里列出被这条新事实推翻的现有 personal_semantic 的 id（**必须来自上面 anchor 列表里的 id**，不要编造）。仅在确实矛盾时填 invalidates；只是补充/细化而非推翻时，留空数组。
 6. 不要输出 archival / episodic / procedural
 7. 不要新增没有 episodic 支持的事实（不要发明）
 
@@ -76,11 +76,14 @@ export const REFLECT_SYSTEM_PROMPT = `你是 nemos 反思整合器。
         "perspectives_conflict": false
       },
       "consolidated_from": ["ep_xxx", "ep_yyy"],
+      "invalidates": [],
       "arousal": {"value": 0.0-1.0, "signal_sources": []},
       "surprise": {"value": 0.0-1.0, "basis": "consolidated from N episodes"}
     }
   ]
 }
+
+invalidates：可选，仅冲突时填；列出被本条推翻、应失效的现有 personal_semantic 的 id（来自 anchor）。无则省略或留空数组。
 
 不要输出 JSON 以外的任何内容。如果 episodic 数据不足以提炼任何 pattern，返回 {"derived": []}。`;
 
@@ -96,6 +99,7 @@ interface RawReflectDerived {
     perspectives_conflict?: boolean;
   };
   consolidated_from?: string[];
+  invalidates?: string[];
   arousal?: { value?: number; signal_sources?: string[] };
   surprise?: { value?: number; basis?: string };
 }
@@ -123,6 +127,8 @@ export interface ReflectInput {
   domainsEnabled?: boolean;
   /** v0.5：开启前瞻预测-验证闭环。默认 false。 */
   prospectiveEnabled?: boolean;
+  /** v0.6（RFC 0007/0008）：开启矛盾驱动自动失效（仅 personal_semantic anchor）。默认 false。 */
+  invalidationEnabled?: boolean;
 }
 
 export interface ReflectResult {
@@ -133,6 +139,8 @@ export interface ReflectResult {
   domainEvolution?: DomainEvolutionResult;
   /** v0.5：本轮验证的前瞻条数（prospectiveEnabled 时）。 */
   prospectiveVerified?: number;
+  /** v0.6：本轮被矛盾失效的旧 personal_semantic 条数（invalidationEnabled 时）。 */
+  invalidated?: number;
 }
 
 export async function runReflect(
@@ -166,9 +174,18 @@ export async function runReflect(
   const parsed = parseReflectJson(raw);
   const built: Memory[] = [];
   const epIdSet = new Set(episodic.map((e) => e.id));
+  // v0.6：矛盾失效——anchor（全是 personal_semantic）id 集合 + 新记录 id → 被推翻的旧 id。
+  const anchorById = new Map(anchor.map((a) => [a.id, a]));
+  const invalidatesMap = new Map<string, string[]>();
   for (const d of parsed.derived ?? []) {
     const memory = buildReflectDerived(d, input.defaultScope, epIdSet, log);
-    if (memory) built.push(memory);
+    if (!memory) continue;
+    built.push(memory);
+    if (input.invalidationEnabled && Array.isArray(d.invalidates) && d.invalidates.length > 0) {
+      // 守门：被失效 id 必须来自 anchor（即现有 personal_semantic），杜绝 LLM 编造
+      const valid = d.invalidates.filter((id) => anchorById.has(id));
+      if (valid.length > 0) invalidatesMap.set(memory.id, valid);
+    }
   }
 
   const persisted = await persistDerivedList(
@@ -179,11 +196,34 @@ export async function runReflect(
     input.userId,
     built,
   );
+
+  // v0.6（RFC 0007 §2.3 / RFC 0008 §5）：把被推翻的旧 personal_semantic 标失效。
+  // I4：anchor 恒为 personal_semantic，且只在 reflect 这条用户自述流上触发；flag 默认关。
+  let invalidated = 0;
+  if (input.invalidationEnabled && invalidatesMap.size > 0) {
+    const now = nowIso();
+    for (const p of persisted) {
+      const oldIds = invalidatesMap.get(p.id);
+      if (!oldIds) continue;
+      for (const oldId of oldIds) {
+        const old = anchorById.get(oldId);
+        if (!old) continue;
+        storage.markInvalidated(input.tenantId, input.userId, old.layer, oldId, {
+          invalidAt: p.valid_at ?? now,
+          expiredAt: now,
+          correctedBy: p.id,
+        });
+        invalidated++;
+      }
+    }
+  }
+
   log("info", "[nemos reflect] consolidated", {
     user: input.userId,
     episodic_in: episodic.length,
     anchor: anchor.length,
     derived_out: persisted.length,
+    invalidated,
   });
 
   // v0.5：领域演化（RFC 0005）+ 前瞻验证（RFC 0006），全部离线。默认关 → 等价 v0.4。
@@ -217,6 +257,7 @@ export async function runReflect(
     derived: persisted,
     domainEvolution,
     prospectiveVerified,
+    invalidated,
   };
 }
 
