@@ -92,3 +92,4 @@
 | 0005 | Domain Experts & Sparse Activation Routing | draft |
 | 0006 | Prospective Memory & Prediction-Verification Loop | draft |
 | 0007 | Bi-Temporal Validity & Invalidation Semantics | draft |
+| 0008 | Companion Memory Topology — Relational Visibility & Persona Self-State | draft |
