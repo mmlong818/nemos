@@ -257,7 +257,7 @@ const TOOL_POLICY =
 function makeZhipuChat(apiKey: string, defaultModel: string, tools: Tool[] = []): ChatFn {
   const toolDefs = tools.map((t) => t.def);
   const byName = new Map(tools.map((t) => [t.name, t]));
-  return async (system: string, user: string, model?: string): Promise<string> => {
+  return async (system: string, user: string, model?: string, maxTokens?: number): Promise<string> => {
     model = model || defaultModel;
     const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
     const sys =
@@ -274,7 +274,7 @@ function makeZhipuChat(apiKey: string, defaultModel: string, tools: Tool[] = [])
         model,
         messages,
         temperature: 0.85,
-        max_tokens: 800,
+        max_tokens: maxTokens || 800,
         thinking: { type: "disabled" }, // 陪聊关 CoT，回复更快
       };
       if (toolDefs.length > 0) body.tools = toolDefs;
@@ -324,7 +324,7 @@ function makeZhipuChat(apiKey: string, defaultModel: string, tools: Tool[] = [])
 function makeZhipuChatStream(apiKey: string, defaultModel: string, tools: Tool[] = []): ChatStreamFn {
   const toolDefs = tools.map((t) => t.def);
   const byName = new Map(tools.map((t) => [t.name, t]));
-  return async (system, user, cb, model) => {
+  return async (system, user, cb, model, maxTokens) => {
     model = model || defaultModel;
     const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
     const messages: Array<Record<string, unknown>> = [
@@ -342,7 +342,7 @@ function makeZhipuChatStream(apiKey: string, defaultModel: string, tools: Tool[]
           messages,
           tools: toolDefs.length > 0 ? toolDefs : undefined,
           temperature: 0.6,
-          max_tokens: 1200,
+          max_tokens: maxTokens || 1200,
           thinking: { type: "disabled" },
           stream: true,
         }),

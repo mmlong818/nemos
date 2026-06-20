@@ -25,20 +25,22 @@ export interface Persona {
   chatModel?: string;
   /** 话量基线：话少 / 适中 / 话多。默认适中。会再被熟悉度上下调节。 */
   verbosity?: Verbosity;
+  /** 回复 token 硬上限（用于"近乎失语"的特例如灵宠，prompt 压不住时机制兜底）。不给用默认。 */
+  maxReplyTokens?: number;
 }
 
 /** 话量档位（人际表达的基线性格）。 */
 export type Verbosity = "terse" | "normal" | "talkative";
 
-/** 人格"开口回复"用的 LLM。与 SDK 的抽取 LLM 分开。model 可按角色覆盖（分层模型）。 */
-export type ChatFn = (system: string, user: string, model?: string) => Promise<string>;
+/** 人格"开口回复"用的 LLM。与 SDK 的抽取 LLM 分开。model/maxTokens 可按角色覆盖。 */
+export type ChatFn = (system: string, user: string, model?: string, maxTokens?: number) => Promise<string>;
 
 /** 流式回调：onStatus 推进度（查询中/工作中），onToken 推文字增量。 */
 export interface StreamCb {
   onStatus: (s: string) => void;
   onToken: (t: string) => void;
 }
-export type ChatStreamFn = (system: string, user: string, cb: StreamCb, model?: string) => Promise<string>;
+export type ChatStreamFn = (system: string, user: string, cb: StreamCb, model?: string, maxTokens?: number) => Promise<string>;
 
 export interface VoiceMeta {
   durationSec: number;
@@ -178,6 +180,7 @@ export class CompanionEngine {
       this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count),
       this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice),
       persona.chatModel,
+      persona.maxReplyTokens,
     );
 
     await this.ingestPersonaReply(personaId, scope, reply);
@@ -203,9 +206,9 @@ export class CompanionEngine {
     const userMsg = this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice);
     let reply: string;
     if (this.opts.chatStream) {
-      reply = await this.opts.chatStream(system, userMsg, cb, persona.chatModel);
+      reply = await this.opts.chatStream(system, userMsg, cb, persona.chatModel, persona.maxReplyTokens);
     } else {
-      reply = await this.chat(system, userMsg, persona.chatModel);
+      reply = await this.chat(system, userMsg, persona.chatModel, persona.maxReplyTokens);
       cb.onToken(reply);
     }
     await this.ingestPersonaReply(personaId, scope, reply);
@@ -238,6 +241,7 @@ export class CompanionEngine {
         this.buildSystem(p, context, this.relSetting.get(this.rkey(userId, p.id)), this.turnsOf(userId, p.id)),
         this.buildGroupUser(groupId, p),
         p.chatModel,
+        p.maxReplyTokens,
       );
       // 群里模型有时会把自己名字写进开头（"团子：…"）；气泡已显示名字，去掉这层重复前缀。
       const reply = raw.replace(new RegExp(`^\\s*${p.name}\\s*[:：]\\s*`), "");
