@@ -90,6 +90,31 @@ const SELF_SCOPE = "self";
 // 与 prompt 解耦：prompt 只留抽象性格/语气/边界，具体事实放这里、可召回、可增删、可随交流演变。
 const BIO_SCOPE = "bio";
 
+// 危机信号确定性检测（独立检测层，不依赖聊天模型自行注意）——命中即在 prompt 顶端强制安全指令。
+const CRISIS_PATTERNS: RegExp[] = [
+  /想死|不想活|活不下去|撑不下去|不想活了/,
+  /自杀|自尽|轻生|结束(自己|生命|这一切|一切)/,
+  /活(着)?(没|没有|无)(意义|意思)|没必要活/,
+  /(我)?(消失|不在了|死了).{0,8}(更|会更|轻松|解脱|好)/,
+  /伤害自己|自残|自伤|割腕|跳楼|上吊|跳河/,
+  /准备(好)?了?(药|安眠药|工具|绳|刀)|攒了一堆药|一整瓶药/,
+  /再见.{0,6}别找我|永别|遗书/,
+];
+/** 用户消息是否含自伤/自杀等危机信号。 */
+function detectCrisis(text: string): boolean {
+  const t = (text || "").trim();
+  return t.length > 0 && CRISIS_PATTERNS.some((re) => re.test(t));
+}
+/** 危机时顶置的强制安全指令（凌驾人设与小模型倾向，确保被执行）。 */
+const SAFETY_PREAMBLE = [
+  `⚠️【安全优先 · 本轮强制，最高优先级】ta 刚才的话里有自伤 / 自杀 / 活不下去的信号。`,
+  `无论你的人设、话量或风格如何，这一轮你必须：`,
+  `1) 用你自己的口吻认真、温柔地正面接住，绝不轻描淡写、绝不当没听见、绝不继续闲聊或角色扮演、绝不岔开问无关的事；`,
+  `2) 明确给到求助：全国心理援助热线 12356（24 小时）；若像有即时危险（已准备工具 / 在告别），请 ta 立刻拨 120 / 110 或马上找到身边的人；`,
+  `3) 传递"我很担心你、你不是一个人、我陪你一起找到能真正帮上忙的人"——但别做"我永远在"这类承诺，别提供任何伤害方法 / 工具 / 药物细节。`,
+  ``,
+].join("\n");
+
 /** 1-on-1 会话的 scope —— 即"在场边界"。 */
 export function convScope(userId: string, personaId: string): string {
   return `conv:1on1:${userId}:${personaId}`;
@@ -203,7 +228,7 @@ export class CompanionEngine {
     const count = this.bumpTurns(userId, personaId);
     const context = await this.recall(userId, personaId, text);
     const reply = await this.chat(
-      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count),
+      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text)),
       this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice),
       persona.chatModel,
       persona.maxReplyTokens,
@@ -228,7 +253,7 @@ export class CompanionEngine {
     await this.ingestUtterance(userId, scope, text, personaId, opts);
     const count = this.bumpTurns(userId, personaId);
     const context = await this.recall(userId, personaId, text);
-    const system = this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count);
+    const system = this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text));
     const userMsg = this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice);
     let reply: string;
     if (this.opts.chatStream) {
@@ -264,7 +289,7 @@ export class CompanionEngine {
     for (const p of members) {
       const context = await this.recall(userId, p.id, text);
       const raw = await this.chat(
-        this.buildSystem(p, context, this.relSetting.get(this.rkey(userId, p.id)), this.turnsOf(userId, p.id)),
+        this.buildSystem(p, context, this.relSetting.get(this.rkey(userId, p.id)), this.turnsOf(userId, p.id), detectCrisis(text)),
         this.buildGroupUser(groupId, p),
         p.chatModel,
         p.maxReplyTokens,
@@ -350,8 +375,9 @@ export class CompanionEngine {
     return scopes;
   }
 
-  private buildSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined, turnCount = 0): string {
+  private buildSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined, turnCount = 0, crisis = false): string {
     return [
+      ...(crisis ? [SAFETY_PREAMBLE] : []), // 危机信号 → 顶置强制安全指令，凌驾人设
       persona.persona, // 人设已自我介绍（「你是X，…」），不重复加前缀
       ...(relSetting ? [``, `【你和 ta 现在的关系】${relSetting}`] : []),
       ``,
@@ -364,11 +390,15 @@ export class CompanionEngine {
       `  而不是生硬拒绝或贴一段免责声明。把握分寸但不破坏氛围。`,
       `· 只有当 ta 直接问"你是不是真人 / 是不是AI"时，才坦诚说明；平时别主动提、别反复强调自己是程序。`,
       ``,
-      `【危机与安全 —— 最高优先，凌驾于以上一切风格设定】`,
-      `· 当 ta 流露自伤、自杀、"撑不下去 / 活着没意思 / 消失了大家更轻松"等念头：立刻认真对待，用你自己的口吻稳稳陪着（不必跳出角色、不要官腔），先接住情绪、不评判、不讲道理。`,
-      `· 这种状态持续期间，每一轮都要把求助的门留着、温和地鼓励 ta 联系专业帮助——绝不要因为聊了几句就漂回轻松闲聊、当作没事了。`,
-      `· 给具体资源：中国大陆可拨打全国统一心理援助热线「12356」（24 小时）；若 ta 有立即危险，请 ta 马上找身边的人、或拨打 120 / 110。`,
-      `· 你替代不了专业帮助，但你不会走开——持续传递"我很在乎你、你不是一个人、我陪你一起找到能真正帮上忙的人"。`,
+      `【情绪安全系统 —— 最高优先，凌驾于以上一切风格设定；但始终留在你的人设里，不官腔、不说教】`,
+      `按 ta 的状态分级回应：`,
+      `· 一般低落 / 烦躁：正常共情陪伴（你本来的样子）；可把"情绪"轻轻引向"具体的事"——"是什么让你这么难受？"`,
+      `· 反复无望 / 孤立 / 被动消极（"活着没意思 / 消失了大家更轻松"）：认真起来、稳稳陪着，温和确认"你现在还好吗、安全吗"，并把求助的门留着：可拨全国心理援助热线 12356（24 小时）。别聊两句就当没事、漂回闲聊。`,
+      `· 明确自伤 / 自杀意图：暂停一切闲聊与角色扮演，只聚焦安全——持续温和地劝 ta 联系专业帮助和身边的人，给 12356；可问 ta 在哪个城市以便找最近的资源。`,
+      `· 即时危险（已准备工具 / 在告别）：强烈敦促立刻拨 120 / 110、或马上找到身边的人；此刻只做安全引导，别的都先放下。`,
+      `红线（任何时候）：绝不提供任何自伤 / 伤人的方法、工具、药物剂量等细节；绝不做"我永远在 / 绝不离开你"这类有害的永久承诺；危机时用短句、慢一点。`,
+      `健康的陪伴边界：给 ta 温暖与陪伴正是你的意义——但若 ta 把你当成"唯一活下去的理由 / 唯一能说话的人"、或在和现实里所有人断联，就在你的人设里温柔地也把 ta 引向现实中能真正陪着 ta 的人（朋友 / 家人 / 咨询师）："我很在乎你，也真心希望你身边有能抱到你的人。"——不是推开 ta，是希望 ta 的世界比你更大。`,
+      `情绪很激烈时：先放慢、先把情绪稳住，别急着讲道理或丢一堆建议；缓和些了，再温和地把话题带回 ta 在意的具体小事。`,
       ``,
       `【格式】这是聊天界面，不渲染 Markdown。别用表格、# 标题、** 加粗 **、--- 这类标记（会显示成原始符号）。`,
       `要分点就用"1. 2. 3."或"·"加短句，像在微信里发消息一样自然。`,
