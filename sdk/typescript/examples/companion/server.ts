@@ -24,7 +24,14 @@ const mem = new Nemos({
   storage: { type: "sqlite", path: DB },
   llm: llm.extraction,
   embedding: llm.embedding,
-  features: { doubleCheck: false },
+  features: {
+    doubleCheck: false,
+    // RFC-0007/0008「从不踩雷」：开 reflect 整合 + 矛盾自动失效。
+    // 阈值降到 8（默认 20 太迟）：累积 8 条 episodic 自动 reflect，新事实推翻旧 personal_semantic
+    // 时把旧的标 invalidated，检索默认隐藏 → 角色不会拿过时事实"踩雷"。
+    reflect: { enabled: true, autoTriggerThreshold: 8 },
+    invalidation: { enabled: true },
+  },
   // 在线服务：worker 轮询跑后台抽取（配合 engine asyncIngest），回复不等抽取。
   // maxAttempts 调高：抽取撞到瞬时 429（限流/模型过载）时多重试几次，避免记忆静默丢失。
   worker: { pollIntervalMs: 400, maxAttempts: 6 },
