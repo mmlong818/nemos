@@ -19,6 +19,7 @@ import {
 } from "./reflect-domain.js";
 import { detectArousalSignals, estimateArousal, estimateSurprise } from "./utils/arousal.js";
 import { newId, nowIso } from "./utils/id.js";
+import { capAnchors, applyInvalidations } from "./invalidation.js";
 
 export interface ReflectConfig {
   enabled: boolean;
@@ -157,9 +158,13 @@ export async function runReflect(
     return { episodicConsumed: 0, anchorCount: 0, derived: [] };
   }
 
-  const anchor = config.includePersonalSemantic
+  const allAnchor = config.includePersonalSemantic
     ? storage.listPersonalSemantic(input.tenantId, input.userId)
     : [];
+  // 候选封顶：anchor 很多时按与本轮 episodic 的相似度裁到上限，控制 prompt 成本；
+  // 不多时原样全送（小集合不过滤，避免漏掉用词不同的矛盾）。
+  const episodicText = episodic.map((e) => e.content).join("\n");
+  const anchor = capAnchors(allAnchor, episodicText);
 
   const userMessage = buildReflectUserMessage(episodic, anchor, input.defaultScope);
   let raw: string;
@@ -199,24 +204,10 @@ export async function runReflect(
 
   // v0.6（RFC 0007 §2.3 / RFC 0008 §5）：把被推翻的旧 personal_semantic 标失效。
   // I4：anchor 恒为 personal_semantic，且只在 reflect 这条用户自述流上触发；flag 默认关。
-  let invalidated = 0;
-  if (input.invalidationEnabled && invalidatesMap.size > 0) {
-    const now = nowIso();
-    for (const p of persisted) {
-      const oldIds = invalidatesMap.get(p.id);
-      if (!oldIds) continue;
-      for (const oldId of oldIds) {
-        const old = anchorById.get(oldId);
-        if (!old) continue;
-        storage.markInvalidated(input.tenantId, input.userId, old.layer, oldId, {
-          invalidAt: p.valid_at ?? now,
-          expiredAt: now,
-          correctedBy: p.id,
-        });
-        invalidated++;
-      }
-    }
-  }
+  const invalidated =
+    input.invalidationEnabled && invalidatesMap.size > 0
+      ? applyInvalidations(storage, input.tenantId, input.userId, persisted, invalidatesMap, anchorById, nowIso())
+      : 0;
 
   log("info", "[nemos reflect] consolidated", {
     user: input.userId,
@@ -253,7 +244,7 @@ export async function runReflect(
 
   return {
     episodicConsumed: episodic.length,
-    anchorCount: anchor.length,
+    anchorCount: allAnchor.length,
     derived: persisted,
     domainEvolution,
     prospectiveVerified,
