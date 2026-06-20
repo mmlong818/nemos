@@ -13,6 +13,10 @@ dist/
 
 # PoC runtime state (含用户实际分析数据，不入 git)
 examples/web-test/state.json
+sdk/typescript/companion-rel.json
+sdk/typescript/companion-personas.json
+sdk/typescript/companion-familiarity.json
+sdk/typescript/companion-groups.json
 examples/web-test/_tmp_*.bin
 
 # IDE / OS

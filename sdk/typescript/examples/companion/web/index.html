@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nemos · 陪伴</title>
+<style>
+  :root {
+    --accent:#7b5cff; --accent-2:#ff7e9d;
+    --grad:linear-gradient(135deg,#8a6bff,#b07bff);
+    --ink:#2a2540; --muted:#8b86a0; --radius:16px;
+    --shadow:0 6px 24px rgba(70,50,130,.10); --shadow-sm:0 2px 10px rgba(70,50,130,.07);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink); height:100vh; display:flex;
+    background:linear-gradient(135deg,#f3eefb 0%,#fdeef2 55%,#eef3fb 100%); }
+  ::selection { background:rgba(123,92,255,.2); }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:rgba(120,100,170,.22); border-radius:8px; }
+  ::-webkit-scrollbar-thumb:hover { background:rgba(120,100,170,.4); }
+
+  #sidebar { width:268px; flex-shrink:0; display:flex; flex-direction:column;
+    background:rgba(255,255,255,.66); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    border-right:1px solid rgba(255,255,255,.6); box-shadow:var(--shadow-sm); }
+  #brand { padding:20px 20px 16px; font-weight:800; font-size:17px; letter-spacing:.3px;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  #brand small { display:block; font-weight:500; color:var(--muted); -webkit-text-fill-color:var(--muted); font-size:11px; margin-top:3px; }
+  #contacts { flex:1; overflow-y:auto; padding:6px 10px; }
+  .contact { padding:10px 12px; margin:3px 0; border-radius:14px; cursor:pointer; display:flex; gap:11px; align-items:center; transition:background .18s; }
+  .contact:hover { background:rgba(123,92,255,.07); }
+  .contact.active { background:#fff; box-shadow:var(--shadow-sm); }
+  .avatar { width:44px; height:44px; border-radius:14px; color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;
+    background:linear-gradient(135deg,#b9aef0,#d7a8e8); box-shadow:0 3px 10px rgba(70,50,130,.18); }
+  .contact .meta { min-width:0; }
+  .contact .meta b { font-size:14.5px; font-weight:600; }
+  .contact .meta span { display:block; font-size:11.5px; color:var(--muted); max-width:165px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:1px; }
+  #settingsbtn { padding:14px 20px; cursor:pointer; font-size:13px; color:var(--muted); border-top:1px solid rgba(120,100,170,.12); flex-shrink:0; transition:color .18s; }
+  #settingsbtn:hover { color:var(--accent); }
+
+  #main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #topbar { padding:13px 22px; display:flex; align-items:center;
+    background:rgba(255,255,255,.55); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); border-bottom:1px solid rgba(255,255,255,.6); }
+  #header { font-weight:600; font-size:16px; display:flex; align-items:center; gap:11px; }
+  #header .havatar { width:38px; height:38px; border-radius:12px; color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 3px 10px rgba(70,50,130,.18); }
+  #header .htag { font-size:11px; color:var(--muted); font-weight:500; margin-top:1px; }
+  #relbar { display:none; }
+
+  #msgs { flex:1; overflow-y:auto; padding:24px 22px; display:flex; flex-direction:column; gap:14px; }
+  .row { display:flex; max-width:74%; animation:rise .22s ease; }
+  @keyframes rise { from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+  .row.me { align-self:flex-end; }
+  .row.other { align-self:flex-start; }
+  .bub { padding:11px 15px; border-radius:18px; line-height:1.6; white-space:pre-wrap; word-break:break-word; font-size:14.5px; box-shadow:var(--shadow-sm); }
+  .row.other .bub { background:#fff; border-bottom-left-radius:6px; }
+  .row.me .bub { background:var(--grad); color:#fff; border-bottom-right-radius:6px; box-shadow:0 4px 14px rgba(123,92,255,.3); }
+  .who { font-size:11px; color:var(--muted); margin:0 0 4px 4px; }
+  .mem { font-size:11.5px; color:#9a6b00; background:#fff8ec; border:1px solid #ffe6b8; border-radius:10px; padding:6px 10px; margin-top:6px; }
+  .voice { font-style:italic; }
+  .playbtn { font-size:12px; color:var(--muted); cursor:pointer; margin-top:5px; width:fit-content; user-select:none; transition:color .15s; }
+  .playbtn:hover { color:var(--accent); }
+  #vbtn.rec { background:linear-gradient(135deg,#ff5b7f,#ff8a5b); color:#fff; animation:pulse 1s ease-in-out infinite; }
+  #callbtn { margin-left:auto; border:none; cursor:pointer; font-size:13px; font-weight:600; color:var(--accent);
+    background:rgba(123,92,255,.1); border-radius:18px; padding:7px 14px; transition:all .15s; }
+  #callbtn:hover { background:rgba(123,92,255,.18); }
+  #callbtn.on { background:linear-gradient(135deg,#ff5b7f,#ff8a5b); color:#fff; }
+  #callbar { display:none; align-items:center; gap:12px; padding:9px 22px; background:linear-gradient(135deg,#7b5cff,#9b7bff); color:#fff; font-size:13px; }
+  #callbar.on { display:flex; }
+  #callstatus { font-weight:600; }
+  #callbar #callend { margin-left:auto; border:none; cursor:pointer; background:rgba(255,255,255,.25); color:#fff; border-radius:14px; padding:5px 14px; font-weight:600; }
+  #callbar #callend:hover { background:rgba(255,255,255,.4); }
+  .bub.typing, .bub.status { color:var(--muted); font-style:italic; animation:pulse 1.3s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ opacity:.5; } 50%{ opacity:1; } }
+  .hint { color:var(--muted); text-align:center; margin:auto; font-size:14px; line-height:2; }
+
+  #composer { padding:14px 18px; display:flex; gap:10px; align-items:center;
+    background:rgba(255,255,255,.55); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); border-top:1px solid rgba(255,255,255,.6); }
+  #vbtn, #imgbtn { width:42px; height:42px; border:none; border-radius:13px; background:#fff; cursor:pointer; font-size:17px; box-shadow:var(--shadow-sm); transition:transform .15s; }
+  #vbtn:hover, #imgbtn:hover { transform:translateY(-1px); }
+  #vbtn.on, #imgbtn.on { background:var(--grad); }
+  #txt { flex:1; padding:12px 16px; border:none; border-radius:13px; font-size:14.5px; background:#fff; box-shadow:var(--shadow-sm); outline:none; }
+  #txt:focus { box-shadow:0 0 0 2px rgba(123,92,255,.35); }
+  #send { padding:0 22px; height:42px; background:var(--grad); color:#fff; border:none; border-radius:13px; cursor:pointer; font-size:14.5px; font-weight:600; box-shadow:0 4px 14px rgba(123,92,255,.3); transition:transform .15s; }
+  #send:hover { transform:translateY(-1px); }
+  #send:disabled { opacity:.5; transform:none; }
+
+  #memmodal, #groupmodal, #personamodal, #settingsmenu { display:none; position:fixed; inset:0; background:rgba(40,30,70,.4); backdrop-filter:blur(3px); z-index:50; align-items:center; justify-content:center; }
+  #memmodal.show, #groupmodal.show, #personamodal.show, #settingsmenu.show { display:flex; animation:fade .15s ease; }
+  @keyframes fade { from{ opacity:0; } to{ opacity:1; } }
+  .modal-box { background:#fff; width:560px; max-width:92vw; max-height:82vh; border-radius:20px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 60px rgba(40,30,70,.3); }
+  .modal-head { padding:16px 20px; font-weight:700; font-size:15px; border-bottom:1px solid #f0eef6; display:flex; align-items:center; gap:8px; }
+  .modal-head button { margin-left:auto; border:none; background:none; font-size:22px; cursor:pointer; color:#b3aec6; line-height:1; }
+  .btn-primary { padding:9px 22px; background:var(--grad); color:#fff; border:none; border-radius:12px; cursor:pointer; font-size:14px; font-weight:600; box-shadow:0 4px 14px rgba(123,92,255,.3); }
+  .smlist { padding:6px 0; }
+  .smitem { padding:14px 20px; cursor:pointer; font-size:14.5px; transition:background .15s; }
+  .smitem:hover { background:rgba(123,92,255,.07); }
+  .smitem.danger { color:#e8537a; }
+  .grow { display:flex; align-items:center; gap:11px; padding:10px 4px; cursor:pointer; border-bottom:1px solid #f3f1f8; }
+  .grow input { width:18px; height:18px; accent-color:var(--accent); }
+  #memlist { overflow-y:auto; padding:10px 20px 18px; }
+  .memitem { padding:9px 0; border-bottom:1px solid #f3f1f8; font-size:13.5px; line-height:1.5; }
+  .memitem .tag { display:inline-block; font-size:10.5px; color:#fff; border-radius:6px; padding:2px 7px; margin-right:7px; vertical-align:middle; }
+  .memitem .tag.ps { background:var(--accent); } .memitem .tag.se { background:#5aa6e0; } .memitem .tag.ep { background:#f0a84b; }
+  .memitem .tag.pr { background:#3fb6a8; } .memitem .tag.ar { background:#b0a8c0; }
+  .memitem .who { color:#aaa; font-size:11px; margin-left:6px; }
+  .memcat { margin:14px 0 4px; font-size:12px; font-weight:600; color:#7b5cff; display:flex; align-items:center; gap:6px; }
+  .memcat::after { content:""; flex:1; height:1px; background:#eee; }
+</style>
+</head>
+<body>
+  <div id="sidebar">
+    <div id="brand">Nemos · 陪伴<small id="llm">…</small></div>
+    <div id="contacts"></div>
+    <div id="settingsbtn">⚙️ 设置</div>
+  </div>
+  <div id="memmodal">
+    <div class="modal-box">
+      <div class="modal-head">🧠 记忆库
+        <select id="memwho" style="margin-left:8px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:12px"></select>
+        <span id="memcount" style="color:#999;font-weight:400;font-size:12px;margin-left:8px"></span>
+        <button id="memclearone" title="清空当前所选记忆库" style="margin-left:auto;margin-right:8px;border:1px solid #f0c0c0;background:#fff5f5;color:#d9534f;border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer">🗑️ 清空此库</button>
+        <button id="memclose">×</button>
+      </div>
+      <div id="memlist"></div>
+    </div>
+  </div>
+  <div id="groupmodal">
+    <div class="modal-box">
+      <div class="modal-head">发起群聊 <button id="groupclose">×</button></div>
+      <div id="groupmembers" style="overflow-y:auto;padding:8px 16px"></div>
+      <div style="padding:10px 16px;border-top:1px solid #eee;text-align:right">
+        <button id="groupok" class="btn-primary">确定</button>
+      </div>
+    </div>
+  </div>
+  <div id="settingsmenu">
+    <div class="modal-box" style="width:300px">
+      <div class="modal-head">设置 <button id="smclose">×</button></div>
+      <div class="smlist">
+        <div class="smitem" id="sm-group">＋ 发起群聊</div>
+        <div class="smitem" id="sm-persona">⚙️ 角色设置</div>
+        <div class="smitem" id="sm-memview">🧠 查看记忆</div>
+        <div class="smitem danger" id="sm-memclear">🗑️ 清空记忆（TA 忘掉你）</div>
+        <div class="smitem danger" id="sm-chatclear">🧹 清空聊天（只清气泡）</div>
+      </div>
+    </div>
+  </div>
+  <div id="personamodal">
+    <div class="modal-box" style="width:700px">
+      <div class="modal-head">⚙️ 角色设置（调试 · 改完即时生效）<button id="personaclose">×</button></div>
+      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px;overflow-y:auto">
+        <select id="personasel" style="padding:6px;border:1px solid #ccc;border-radius:6px"></select>
+        <input id="personaname" placeholder="名字" style="padding:7px;border:1px solid #ccc;border-radius:6px" />
+        <label style="font-size:13px;color:#555;display:flex;align-items:center;gap:8px">话量
+          <select id="personaverb" style="padding:6px;border:1px solid #ccc;border-radius:6px">
+            <option value="terse">话少（惜字如金）</option>
+            <option value="normal">适中</option>
+            <option value="talkative">话多（爱展开）</option>
+          </select>
+          <span style="color:#999">· 还会随熟悉度自动上下浮动</span>
+        </label>
+        <textarea id="personatext" rows="15" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-family:inherit;font-size:13px;line-height:1.6;resize:vertical"></textarea>
+        <div style="text-align:right"><button id="personasave" class="btn-primary">保存并生效</button></div>
+      </div>
+    </div>
+  </div>
+  <div id="main">
+    <div id="topbar">
+      <div id="header">选择一个好友开始聊天</div>
+      <div id="relbar"></div>
+      <button id="callbtn" title="连续语音对讲（免提）">📞 通话</button>
+    </div>
+    <div id="callbar"><span id="callstatus">🎙️ 在听…</span><button id="callend">挂断</button></div>
+    <div id="msgs"><div class="hint">左边选一个 AI 好友，开始聊吧。它会真正记得你。</div></div>
+    <div id="composer">
+      <button id="vbtn" title="切换语音条">🎤</button>
+      <button id="imgbtn" title="发图片（识图）">🖼️</button>
+      <input type="file" id="imgfile" accept="image/*" style="display:none" />
+      <input id="txt" placeholder="说点什么…（Enter 发送）" autocomplete="off" />
+      <button id="send">发送</button>
+    </div>
+  </div>
+<script>
+const BUILD = "v7 persona-memory-clear";
+console.log("%c[companion] 语音构建：" + BUILD, "color:#7b5cff;font-weight:bold");
+const $ = (s) => document.querySelector(s);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const AV = {
+  feifei:   { e: "🎨", g: "linear-gradient(135deg,#ffb88c,#ff7eb3)" },
+  azhe:     { e: "☕", g: "linear-gradient(135deg,#6b7aa8,#9db0d6)" },
+  yuebai:   { e: "📋", g: "linear-gradient(135deg,#5ec9b5,#3aa6c8)" },
+  tuanzi:   { e: "🍡", g: "linear-gradient(135deg,#ffd56b,#ffab6b)" },
+  lingling: { e: "🐾", g: "linear-gradient(135deg,#c4a7ff,#ff9ecb)" },
+};
+const GROUP_AV = { e: "👥", g: "linear-gradient(135deg,#9d7bff,#ff9ecb)" };
+function avatarOf(kind, id) { return kind === "group" ? GROUP_AV : (AV[id] || { e: "", g: "linear-gradient(135deg,#b9aef0,#d7a8e8)" }); }
+let state = { personas: [], groups: [], relationships: [], relationOf: {}, target: null, voice: false, pendingImage: null };
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  return r.json();
+}
+
+// —— 每个会话的聊天记录（客户端持久化，切换/刷新都保留）——
+let chatLogs = {};
+try { chatLogs = JSON.parse(localStorage.getItem("companion_logs") || "{}"); } catch { chatLogs = {}; }
+function saveLogs() { try { localStorage.setItem("companion_logs", JSON.stringify(chatLogs)); } catch {} }
+function logKey(t) { t = t || state.target; return t ? t.kind + ":" + t.id : ""; }
+function record(key, entry) { (chatLogs[key] = chatLogs[key] || []).push(entry); saveLogs(); }
+function renderLog() {
+  const m = $("#msgs"); m.innerHTML = "";
+  const log = chatLogs[logKey()] || [];
+  for (const e of log) addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem });
+  if (!log.length) m.innerHTML = '<div class="hint">开始聊吧～它会记得你。</div>';
+  m.scrollTop = m.scrollHeight;
+}
+
+async function loadState() {
+  const s = await api("/api/state");
+  state.personas = s.personas; state.groups = s.groups;
+  state.relationships = s.relationships || []; state.relationOf = s.relationOf || {};
+  $("#llm").textContent = (s.live ? "● " : "○ ") + s.label;
+  renderContacts();
+}
+
+function renderRelbar() {
+  const bar = $("#relbar"); bar.innerHTML = "";
+  if (!state.target || state.target.kind !== "persona") return;
+  const per = state.personas.find((x) => x.id === state.target.id);
+  if (!per || !per.relational) return; // 固定角色（助理/生物/灵宠）无需确认关系
+  if (state.relationOf[state.target.id]) return; // 已确认 → 不再显示关系切换
+  // 首次：先确认关系
+  const hint = document.createElement("span");
+  hint.textContent = "你们是什么关系？选一个开始：";
+  hint.style.cssText = "font-size:12px;color:#888;align-self:center;margin-right:2px";
+  bar.appendChild(hint);
+  for (const r of state.relationships) {
+    const b = document.createElement("div");
+    b.className = "relbtn";
+    b.textContent = r.label;
+    b.onclick = () => setRelationship(r.id);
+    bar.appendChild(b);
+  }
+}
+
+async function setRelationship(relId) {
+  const pid = state.target.id;
+  state.relationOf[pid] = relId;
+  renderRelbar(); // 确认后隐藏关系条
+  await api("/api/relationship", { personaId: pid, relationship: relId });
+  const label = (state.relationships.find((r) => r.id === relId) || {}).label;
+  addRow("other", "系统", "（已确认你们是「" + label + "」，开始聊吧～）");
+}
+
+function renderContacts() {
+  const c = $("#contacts"); c.innerHTML = "";
+  for (const p of state.personas) c.appendChild(contactEl("persona", p.id, p.name, p.tag || ""));
+  for (const g of state.groups) {
+    const names = g.members.map((id) => (state.personas.find((p) => p.id === id) || {}).name || id).join("、");
+    c.appendChild(contactEl("group", g.id, "👥 " + names, "群聊 · " + g.members.length + " 人"));
+  }
+}
+
+function contactEl(kind, id, name, sub) {
+  const el = document.createElement("div");
+  el.className = "contact" + (state.target && state.target.kind === kind && state.target.id === id ? " active" : "");
+  el.innerHTML = '<div class="avatar"></div><div class="meta"><b></b><span></span></div>';
+  const av = avatarOf(kind, id);
+  const a = el.querySelector(".avatar"); a.style.background = av.g; a.textContent = av.e || (name[0] || "");
+  el.querySelector("b").textContent = name;
+  el.querySelector("span").textContent = sub || "";
+  el.onclick = () => selectTarget(kind, id, name);
+  return el;
+}
+
+function selectTarget(kind, id, name) {
+  if (callMode) stopCall();
+  state.target = { kind, id, name };
+  const av = avatarOf(kind, id);
+  const per = kind === "persona" ? state.personas.find((x) => x.id === id) : null;
+  let tag = per && per.tag ? per.tag : (kind === "group" ? "群聊" : "");
+  if (per && per.familiarity) tag += " · " + per.familiarity; // 熟悉度（随互动量增长）
+  $("#header").innerHTML = '<div class="havatar" style="background:' + av.g + '">' + (av.e || esc(name[0] || "")) + "</div><div><div>" + esc(name) + "</div>" + (tag ? '<div class="htag">' + esc(tag) + "</div>" : "") + "</div>";
+  renderContacts();
+  renderRelbar();
+  renderLog(); // 恢复该会话已有聊天记录
+}
+
+function esc(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+
+function addRow(side, who, text, opts = {}) {
+  const hint = $("#msgs").querySelector(".hint"); if (hint) hint.remove();
+  const row = document.createElement("div");
+  row.className = "row " + side;
+  let html = "";
+  if (who) html += '<div class="who">' + esc(who) + "</div>";
+  html += '<div class="bub' + (opts.voice ? " voice" : "") + '">' + (opts.voice ? "🎤 " : "") + esc(text) + "</div>";
+  if (opts.mem && opts.mem.length) html += '<div class="mem">🧠 TA 记得：' + esc(opts.mem.join("；")) + "</div>";
+  const inner = document.createElement("div");
+  inner.style.cssText = "display:flex;flex-direction:column";
+  inner.innerHTML = html;
+  if (side === "other" && opts.pid) {
+    const p = document.createElement("span");
+    p.className = "playbtn"; p.textContent = "🔊 朗读"; p.title = "用 TA 的声音朗读";
+    p.onclick = () => playTTS(opts.pid, text, p);
+    inner.appendChild(p);
+  }
+  row.appendChild(inner);
+  $("#msgs").appendChild(row);
+  $("#msgs").scrollTop = $("#msgs").scrollHeight;
+}
+
+let curSource = null, speakGen = 0;
+// 常驻播放上下文 + 静音保活：避免每次播放时音频设备从休眠唤醒发出"咔/嘟"声
+let playCtx = null;
+function ensurePlayCtx() {
+  if (!playCtx) {
+    playCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // 保活：极低电平噪声（~-75dB，听不到）持续输出，防止 Windows 音频设备数字静音断电 → 起播爆音
+    const buf = playCtx.createBuffer(1, playCtx.sampleRate, playCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.00018;
+    const warm = playCtx.createBufferSource(); warm.buffer = buf; warm.loop = true;
+    warm.connect(playCtx.destination); warm.start();
+  }
+  if (playCtx.state === "suspended") playCtx.resume();
+  return playCtx;
+}
+["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, () => ensurePlayCtx(), { capture: true }));
+function stopAudio() { speakGen++; if (curSource) { try { curSource.stop(); } catch {} curSource = null; } }
+// 按句切分，便于"边播边合成下一句"降低首字延迟；贪心合并到 ~35 字一块
+function splitForTTS(text) {
+  const parts = text.split(/(?<=[。！？!?\n；;])/).map((s) => s.trim()).filter(Boolean);
+  const chunks = []; let cur = "";
+  for (const p of parts) { if (cur && (cur + p).length > 35) { chunks.push(cur); cur = p; } else cur += p; }
+  if (cur) chunks.push(cur);
+  return chunks.length ? chunks : [text];
+}
+async function fetchTTS(pid, text) {
+  try {
+    const resp = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ personaId: pid, text }) });
+    return resp.ok ? await resp.blob() : null;
+  } catch { return null; }
+}
+// 流式播放器：可陆续 push(句子)，每句立即并行合成，按推入顺序在同一时间线上无缝排播成连续音流。
+// 这样文本边生成边出声（助理流式回复尤其受益），且整段只有一次起播、句间无缝（不再"嘟嘟"）。
+function createSpeaker(pid) {
+  stopAudio();                       // 取消上一段播放并 bump speakGen
+  const myGen = speakGen;
+  const ctx = ensurePlayCtx();
+  const live = [];                   // 已排播的 source，供取消
+  let playhead = 0, lastSrc = null, chain = Promise.resolve();
+  curSource = { stop() { for (const s of live) { try { s.stop(); } catch {} } } };
+  function push(sentence) {
+    sentence = (sentence || "").trim();
+    if (!sentence || myGen !== speakGen) return;
+    const fetchP = fetchTTS(pid, sentence);      // 立即开始合成（并行预取）
+    chain = chain.then(async () => {             // 按顺序排播
+      if (myGen !== speakGen) return;
+      const blob = await fetchP; if (!blob || myGen !== speakGen) return;
+      let abuf; try { abuf = await ctx.decodeAudioData(await blob.arrayBuffer()); } catch { return; }
+      if (myGen !== speakGen) return;
+      const startAt = Math.max(ctx.currentTime + 0.04, playhead);
+      const src = ctx.createBufferSource(); src.buffer = abuf;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, startAt); g.gain.linearRampToValueAtTime(1, startAt + 0.004); // 4ms 淡入
+      src.connect(g).connect(ctx.destination); src.start(startAt);
+      playhead = startAt + abuf.duration; live.push(src); lastSrc = src;
+    });
+  }
+  async function end() {
+    await chain;
+    if (myGen !== speakGen || !lastSrc) return;
+    await new Promise((resolve) => { lastSrc.onended = resolve; });
+  }
+  return { push, end, get gen() { return myGen; } };
+}
+// 合成并播放整段（朗读按钮 / 非流式回复用）。
+async function speak(pid, text) {
+  if (!pid || !text) return;
+  const sp = createSpeaker(pid);
+  for (const c of splitForTTS(text)) sp.push(c);
+  await sp.end();
+}
+async function playTTS(pid, text, btn) {
+  if (!pid || !text) return;
+  const old = btn.textContent; btn.textContent = "⏳ 合成中…";
+  await speak(pid, text);
+  btn.textContent = "🔊 朗读";
+}
+
+function addTyping() {
+  const row = document.createElement("div");
+  row.className = "row other";
+  const inner = document.createElement("div");
+  inner.style.cssText = "display:flex;flex-direction:column";
+  inner.innerHTML = '<div class="bub typing">输入中…</div>';
+  row.appendChild(inner);
+  $("#msgs").appendChild(row);
+  $("#msgs").scrollTop = $("#msgs").scrollHeight;
+  return { row, inner, bub: inner.querySelector(".bub") };
+}
+
+// 助理：流式 + 状态（查询中/工作中/整理中）
+async function streamAssistant(key, text, voice, image) {
+  const { inner, bub } = addTyping();
+  const pid = state.target.id;
+  let acc = "", started = false, facts = null;
+  // 通话模式：文本边流式生成边按句喂给播放器，首声更快
+  const speaker = callMode ? createSpeaker(pid) : null;
+  let spokenIdx = 0;
+  function pumpSpeech(final) {
+    if (!speaker) return;
+    const seg = acc.slice(spokenIdx);
+    if (final) { if (seg.trim()) { speaker.push(seg); spokenIdx = acc.length; } return; }
+    let lastEnd = -1, m; const re = /[。！？!?\n；;]/g;
+    while ((m = re.exec(seg))) lastEnd = m.index;
+    if (lastEnd >= 0 && seg.slice(0, lastEnd + 1).trim().length >= 2) { speaker.push(seg.slice(0, lastEnd + 1)); spokenIdx += lastEnd + 1; }
+  }
+  try {
+    const resp = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: { kind: "persona", id: state.target.id }, text, voice, image }) });
+    const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let ev; try { ev = JSON.parse(line); } catch { continue; }
+        if (ev.type === "status" && !started) { bub.className = "bub status"; bub.textContent = "（" + ev.text + "…）"; }
+        else if (ev.type === "token") { if (!started) { started = true; bub.className = "bub"; bub.textContent = ""; if (callMode) callStatus("💬 回复中…"); } acc += ev.text; bub.textContent = acc; pumpSpeech(false); $("#msgs").scrollTop = $("#msgs").scrollHeight; }
+        else if (ev.type === "done") { facts = ev.facts; }
+        else if (ev.type === "error") { bub.className = "bub"; bub.textContent = "出错了：" + ev.text; }
+      }
+    }
+    const finalText = acc || "（……）";
+    if (!started) { bub.className = "bub"; bub.textContent = finalText; }
+    if (facts && facts.length) { const m = document.createElement("div"); m.className = "mem"; m.textContent = "🧠 TA 记得：" + facts.join("；"); inner.appendChild(m); }
+    const p = document.createElement("span"); p.className = "playbtn"; p.textContent = "🔊 朗读"; p.onclick = () => playTTS(pid, finalText, p); inner.appendChild(p);
+    record(key, { side: "other", who: null, text: finalText, mem: facts, pid });
+    lastReply = { pid, text: finalText, live: !!speaker };
+    if (speaker) { pumpSpeech(true); await speaker.end(); } // 等流式语音播完
+  } catch (e) { bub.className = "bub"; bub.textContent = "网络错误：" + e; }
+}
+
+// 其他角色 / 群：显示"输入中…"，回复到了换成多条气泡
+async function sendRegular(key, text, voice, image) {
+  const { row } = addTyping();
+  const isGroup = key.indexOf("group:") === 0;
+  try {
+    const data = await api("/api/chat", { target: { kind: state.target.kind, id: state.target.id }, text, voice, image });
+    row.remove();
+    for (const r of (data.replies || [])) {
+      const msgs = (r.messages && r.messages.length) ? r.messages : [r.reply];
+      for (let i = 0; i < msgs.length; i++) {
+        if (i > 0) await sleep(Math.min(1300, 450 + msgs[i].length * 28));
+        const last = i === msgs.length - 1;
+        const who = (isGroup && i === 0) ? r.name : null;
+        const mem = last ? r.facts : null;
+        addRow("other", who, msgs[i], { mem, pid: r.personaId });
+        record(key, { side: "other", who, text: msgs[i], mem, pid: r.personaId });
+      }
+      lastReply = { pid: r.personaId, text: msgs.join("。") };
+    }
+    if (data.error) addRow("other", "系统", "出错了：" + data.error);
+  } catch (e) { row.remove(); addRow("other", "系统", "网络错误：" + e); }
+}
+
+async function sendMsg(voiceFlag, overrideText) {
+  const text = (overrideText != null ? overrideText : $("#txt").value).trim();
+  const image = state.pendingImage;
+  if ((!text && !image) || !state.target) return;
+  if (overrideText == null) $("#txt").value = "";
+  $("#send").disabled = true;
+  const key = logKey();
+  const voice = !!voiceFlag;
+  const utext = (image ? "🖼️ " : "") + (text || "（图片）");
+  addRow("me", null, utext, { voice });
+  record(key, { side: "me", who: null, text: utext, voice });
+  state.pendingImage = null; $("#imgbtn").classList.remove("on"); $("#imgfile").value = "";
+  const per = state.target.kind === "persona" ? state.personas.find((x) => x.id === state.target.id) : null;
+  const isAssistant = !!(per && per.tag === "个人助理"); // 仅助理走流式 + 状态
+  lastReply = { pid: null, text: "", live: false };
+  try {
+    if (isAssistant) await streamAssistant(key, text, voice, image);
+    else await sendRegular(key, text, voice, image);
+  } finally {
+    $("#send").disabled = false;
+    // 通话模式：朗读回复 → 播完恢复倾听（助理已边流式边播则跳过）
+    if (callMode && lastReply.text && !lastReply.live) { callStatus("🔊 " + (per ? per.name : "对方") + " 正在说…"); await speak(lastReply.pid, lastReply.text); }
+    if (callMode) resumeListen(); else $("#txt").focus();
+  }
+}
+
+$("#send").onclick = () => sendMsg();
+$("#txt").addEventListener("keydown", (e) => { if (e.key === "Enter") sendMsg(); });
+
+// 把录音（webm/ogg/mp4）解码后重编码为 16k 单声道 16bit WAV，ASR 才认
+async function blobToWav(blob) {
+  const buf = await blob.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await ctx.decodeAudioData(buf);
+  ctx.close();
+  const srcRate = decoded.sampleRate, dstRate = 16000;
+  // 取首声道并线性重采样到 16k
+  const src = decoded.getChannelData(0);
+  const ratio = srcRate / dstRate;
+  const outLen = Math.floor(src.length / ratio);
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const pos = i * ratio, i0 = Math.floor(pos), frac = pos - i0;
+    out[i] = (src[i0] || 0) * (1 - frac) + (src[i0 + 1] || 0) * frac;
+  }
+  // 编码 WAV
+  const bytes = outLen * 2;
+  const ab = new ArrayBuffer(44 + bytes);
+  const dv = new DataView(ab);
+  const ws = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); dv.setUint32(4, 36 + bytes, true); ws(8, "WAVE");
+  ws(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, dstRate, true); dv.setUint32(28, dstRate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  ws(36, "data"); dv.setUint32(40, bytes, true);
+  let off = 44;
+  for (let i = 0; i < outLen; i++) { let s = Math.max(-1, Math.min(1, out[i])); dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true); off += 2; }
+  return new Blob([ab], { type: "audio/wav" });
+}
+
+// 语音输入：点麦克风开始录音，再点结束 → ASR 转文字 → 作为语音消息发送
+let mediaRec = null, recChunks = [];
+async function toggleRec() {
+  if (mediaRec && mediaRec.state === "recording") { mediaRec.stop(); return; }
+  if (!state.target) { alert("先打开一个对话"); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRec = new MediaRecorder(stream); recChunks = [];
+    mediaRec.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+    mediaRec.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      $("#vbtn").classList.remove("rec"); $("#vbtn").textContent = "🎤";
+      const blob = new Blob(recChunks, { type: (mediaRec && mediaRec.mimeType) || "audio/webm" });
+      if (blob.size < 1200) return;
+      $("#vbtn").textContent = "⏳";
+      try {
+        const wav = await blobToWav(blob);
+        const resp = await fetch("/api/asr", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav });
+        const data = await resp.json();
+        $("#vbtn").textContent = "🎤";
+        if (data.text) sendMsg(true, data.text);
+        else alert(data.error ? ("识别失败：" + data.error) : "没听清，再说一次？");
+      } catch (e) { $("#vbtn").textContent = "🎤"; alert("识别失败：" + e); }
+    };
+    mediaRec.start();
+    $("#vbtn").classList.add("rec"); $("#vbtn").textContent = "⏹";
+  } catch (e) { alert("麦克风打不开（需 localhost 或 https + 授权）：" + e); }
+}
+$("#vbtn").onclick = toggleRec;
+
+// —— 连续语音对讲（路线 A：VAD 自动断句，半双工免提）——
+let lastReply = { pid: null, text: "" };
+let callMode = false, callStream = null, callCtx = null, callAnalyser = null, callBuf = null, callRAF = null;
+let callRec = null, callChunks = [], callState = "idle"; // idle | listening | recording | busy
+let voiceFrames = 0, silenceStart = 0, recStartT = 0;
+const START_THRESH = 0.045, CONTINUE_THRESH = 0.03, SILENCE_MS = 1800, MIN_SPEECH = 350;
+function callStatus(t) { $("#callstatus").textContent = t; }
+
+async function startCall() {
+  if (callMode) return;
+  if (!state.target || state.target.kind !== "persona") { alert("通话仅支持单聊，先打开一个好友"); return; }
+  try {
+    callStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) { alert("麦克风打不开（需 localhost 或 https + 授权）：" + e); return; }
+  callMode = true;
+  $("#callbtn").classList.add("on"); $("#callbtn").textContent = "📞 挂断";
+  $("#callbar").classList.add("on");
+  callCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const srcNode = callCtx.createMediaStreamSource(callStream);
+  callAnalyser = callCtx.createAnalyser(); callAnalyser.fftSize = 512;
+  callBuf = new Uint8Array(callAnalyser.fftSize);
+  srcNode.connect(callAnalyser);
+  resumeListen();
+  callFrame();
+}
+function stopCall() {
+  callMode = false;
+  if (callRAF) cancelAnimationFrame(callRAF);
+  if (callRec && callRec.state === "recording") { try { callRec.stop(); } catch {} }
+  if (callStream) callStream.getTracks().forEach((t) => t.stop());
+  if (callCtx) { try { callCtx.close(); } catch {} }
+  stopAudio();
+  callStream = callCtx = callAnalyser = callBuf = callRec = null; callState = "idle";
+  $("#callbtn").classList.remove("on"); $("#callbtn").textContent = "📞 通话";
+  $("#callbar").classList.remove("on");
+}
+function resumeListen() {
+  if (!callMode) return;
+  callState = "listening"; voiceFrames = 0;
+  callStatus("🎙️ 在听…（说话即可，停顿后自动发送）");
+}
+function callFrame() {
+  if (!callMode) return;
+  callAnalyser.getByteTimeDomainData(callBuf);
+  let sum = 0; for (let i = 0; i < callBuf.length; i++) { const v = (callBuf[i] - 128) / 128; sum += v * v; }
+  const rms = Math.sqrt(sum / callBuf.length);
+  const now = performance.now();
+  if (callState === "listening") {
+    if (rms > START_THRESH) { voiceFrames++; if (voiceFrames >= 3) beginSegment(now); } else voiceFrames = 0;
+  } else if (callState === "recording") {
+    if (rms > CONTINUE_THRESH) silenceStart = now;
+    if (now - silenceStart > SILENCE_MS && now - recStartT > MIN_SPEECH) endSegment();
+  }
+  callRAF = requestAnimationFrame(callFrame);
+}
+function beginSegment(now) {
+  try {
+    callRec = new MediaRecorder(callStream); callChunks = [];
+    callRec.ondataavailable = (e) => { if (e.data && e.data.size) callChunks.push(e.data); };
+    callRec.onstop = () => processCallSegment(new Blob(callChunks, { type: (callRec && callRec.mimeType) || "audio/webm" }));
+    callRec.start();
+    callState = "recording"; recStartT = now; silenceStart = now;
+    callStatus("🔴 在说…");
+  } catch { resumeListen(); }
+}
+function endSegment() {
+  callState = "busy";
+  callStatus("⏳ 识别中…");
+  if (callRec && callRec.state === "recording") { try { callRec.stop(); } catch { resumeListen(); } }
+}
+async function processCallSegment(blob) {
+  if (!callMode) return;
+  if (blob.size < 1600) { resumeListen(); return; }
+  let text = "";
+  try {
+    const wav = await blobToWav(blob);
+    const resp = await fetch("/api/asr", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav });
+    const data = await resp.json();
+    text = (data.text || "").trim();
+  } catch {}
+  if (!callMode) return;
+  if (text) await sendMsg(true, text); // sendMsg 的 finally 会朗读回复并 resumeListen
+  else resumeListen();
+}
+$("#callbtn").onclick = () => (callMode ? stopCall() : startCall());
+$("#callend").onclick = stopCall;
+
+$("#imgbtn").onclick = () => $("#imgfile").click();
+$("#imgfile").onchange = (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { state.pendingImage = r.result; $("#imgbtn").classList.add("on"); };
+  r.readAsDataURL(f);
+};
+function openGroupModal() {
+  const box = $("#groupmembers");
+  box.innerHTML = "";
+  for (const p of state.personas) {
+    const row = document.createElement("label");
+    row.className = "grow";
+    row.innerHTML = '<input type="checkbox" value="' + p.id + '"><span class="avatar" style="width:30px;height:30px;font-size:13px">' + esc(p.name[0]) + "</span><span>" + esc(p.name) + "</span>";
+    box.appendChild(row);
+  }
+  $("#groupmodal").classList.add("show");
+}
+async function createGroup() {
+  const ids = [...$("#groupmembers").querySelectorAll("input:checked")].map((c) => c.value);
+  if (ids.length < 1) { alert("至少选一个成员"); return; }
+  const id = "grp_" + ids.slice().sort().join("_");
+  await api("/api/group", { id, members: ids });
+  await loadState();
+  $("#groupmodal").classList.remove("show");
+  const names = ids.map((i) => (state.personas.find((p) => p.id === i) || {}).name || i).join("、");
+  selectTarget("group", id, "👥 " + names);
+}
+$("#groupok").onclick = createGroup;
+$("#groupclose").onclick = () => $("#groupmodal").classList.remove("show");
+$("#groupmodal").onclick = (e) => { if (e.target.id === "groupmodal") $("#groupmodal").classList.remove("show"); };
+
+let personaFull = [];
+async function openPersonaModal() {
+  const d = await api("/api/personas/full");
+  personaFull = d.personas || [];
+  const sel = $("#personasel"); sel.innerHTML = "";
+  personaFull.forEach((p, i) => { const o = document.createElement("option"); o.value = i; o.textContent = p.name + " (" + p.id + ")"; sel.appendChild(o); });
+  sel.onchange = () => fillPersona(+sel.value);
+  if (personaFull.length) fillPersona(0);
+  $("#personamodal").classList.add("show");
+}
+function fillPersona(i) { const p = personaFull[i]; if (!p) return; $("#personasel").value = i; $("#personaname").value = p.name; $("#personatext").value = p.persona; $("#personaverb").value = p.verbosity || "normal"; }
+async function savePersona() {
+  const i = +$("#personasel").value; const p = personaFull[i]; if (!p) return;
+  const name = $("#personaname").value.trim(); const persona = $("#personatext").value; const verbosity = $("#personaverb").value;
+  const r = await api("/api/persona", { id: p.id, name, persona, verbosity });
+  if (r.error) { alert("保存失败：" + r.error); return; }
+  p.name = name; p.persona = persona; p.verbosity = verbosity;
+  const opt = $("#personasel").options[i]; if (opt) opt.textContent = name + " (" + p.id + ")"; // 设置里同步新名字
+  alert("已保存并生效（下一句回复就用新人设）。");
+  loadState();
+}
+$("#personasave").onclick = savePersona;
+$("#personaclose").onclick = () => $("#personamodal").classList.remove("show");
+$("#personamodal").onclick = (e) => { if (e.target.id === "personamodal") $("#personamodal").classList.remove("show"); };
+
+const TAG = { personal_semantic: ["ps", "个人事实"], semantic: ["se", "知识"], episodic: ["ep", "事件"], procedural: ["pr", "方法"] };
+const MEMCATS = ["personal_semantic", "semantic", "episodic", "procedural"]; // 4 类分类记忆（archival 原文是内部底料，永久不删，不展示）
+function memOwnerKey() { return $("#memwho").value || "me"; }
+function fillMemWho() {
+  const sel = $("#memwho");
+  const opts = ['<option value="me">我（你说的）</option>'];
+  for (const p of state.personas) opts.push('<option value="persona:' + p.id + '">' + esc(p.name) + " 的记忆</option>");
+  sel.innerHTML = opts.join("");
+}
+async function viewMemory() {
+  const who = memOwnerKey();
+  const data = await api("/api/memory?who=" + encodeURIComponent(who));
+  const facts = (data.facts || []).filter((f) => MEMCATS.includes(f.layer)); // 只看分类记忆
+  $("#memcount").textContent = "共 " + facts.length + " 条";
+  const list = $("#memlist");
+  if (!facts.length) { list.innerHTML = '<div class="memitem" style="color:#999">（这个库还没有分类记忆，多聊几句、说点具体的事就有了）</div>'; $("#memmodal").classList.add("show"); return; }
+  // 按分类分组展示
+  const byCat = {};
+  for (const f of facts) (byCat[f.layer] ||= []).push(f);
+  list.innerHTML = "";
+  for (const cat of MEMCATS) {
+    const items = byCat[cat]; if (!items || !items.length) continue;
+    const t = TAG[cat] || ["", cat];
+    const head = document.createElement("div"); head.className = "memcat"; head.textContent = t[1] + " · " + items.length + " 条";
+    list.appendChild(head);
+    for (const f of items) {
+      const el = document.createElement("div"); el.className = "memitem";
+      el.innerHTML = '<span class="tag ' + t[0] + '">' + t[1] + "</span>" + esc(f.content) + '<span class="who">· ' + esc(f.who) + "</span>";
+      list.appendChild(el);
+    }
+  }
+  $("#memmodal").classList.add("show");
+}
+async function clearMemory(who) {
+  const label = (!who || who === "all") ? "所有人（你的 + 全部角色）"
+    : who === "me" ? "你自己（你说过的）"
+    : ((state.personas.find((p) => "persona:" + p.id === who) || {}).name || who) + " 的";
+  if (!confirm("确定清空【" + label + "】记忆库？不可撤销。\n（只清分类记忆，不影响聊天气泡——清聊天用「清空聊天」）")) return;
+  const r = await api("/api/clear", { who: who || "all" });
+  alert("已清空 " + (r.cleared ?? 0) + " 条记忆。");
+  if ($("#memmodal").classList.contains("show")) viewMemory();
+}
+function clearChat() {
+  if (!state.target) { alert("先打开一个对话再清空它的聊天"); return; }
+  if (!confirm("清空与「" + state.target.name + "」的聊天记录？\n（只清这段聊天气泡，不影响 TA 的记忆）")) return;
+  delete chatLogs[logKey()]; saveLogs(); renderLog();
+}
+function openMemory() { fillMemWho(); viewMemory(); }
+$("#memwho").onchange = viewMemory;
+$("#memclearone").onclick = () => clearMemory(memOwnerKey());
+$("#memclose").onclick = () => $("#memmodal").classList.remove("show");
+$("#memmodal").onclick = (e) => { if (e.target.id === "memmodal") $("#memmodal").classList.remove("show"); };
+
+// 底部「设置」弹窗：聚合所有功能入口
+$("#settingsbtn").onclick = () => $("#settingsmenu").classList.add("show");
+$("#smclose").onclick = () => $("#settingsmenu").classList.remove("show");
+$("#settingsmenu").onclick = (e) => { if (e.target.id === "settingsmenu") $("#settingsmenu").classList.remove("show"); };
+function smRun(fn) { $("#settingsmenu").classList.remove("show"); fn(); }
+$("#sm-group").onclick = () => smRun(openGroupModal);
+$("#sm-persona").onclick = () => smRun(openPersonaModal);
+$("#sm-memview").onclick = () => smRun(openMemory);
+$("#sm-memclear").onclick = () => smRun(() => clearMemory("all"));
+$("#sm-chatclear").onclick = () => smRun(clearChat);
+
+loadState();
+</script>
+</body>
+</html>
