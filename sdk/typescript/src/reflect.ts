@@ -52,13 +52,14 @@ export const REFLECT_SYSTEM_PROMPT = `你是 nemos 反思整合器。
 任务：读用户最近的 episodic 经验（事件流）与现有 personal_semantic（关于用户自身的稳定事实，作为 anchor），抽出可升入 semantic / personal_semantic 的 pattern。这模拟人脑睡眠期的记忆整合（consolidation）。
 
 规则：
-1. 仅当你看到**多条 episodic 反复指向同一模式**时，才输出新 derived（≥2 条支持）。一条 episodic 不要单独升层。
+1. 仅当你看到**多条 episodic 反复指向同一模式**时，才输出新 derived（≥2 条支持）。一条 episodic 不要单独升层。（例外见规则 5 的明确矛盾。）
 2. 每条新 derived 必须填 consolidated_from = [对应 episodic id 数组]
 3. 新 derived 的 layer 只能是 semantic / personal_semantic：
    - personal_semantic：关于用户自身（偏好 / 习惯 / 性格 / 长期目标）
    - semantic：跨用户适用的事实 / 概念 / 规律
 4. 不要重复已有 personal_semantic 已经表达过的事实
-5. 检测矛盾：新 episodic 与现有 personal_semantic 显著冲突（同一事物，旧说法已不再为真）→ 输出一条 layer='personal_semantic' 的新 derived，content 注明「过去 X，最近改为 Y（基于 ep_xxx, ep_yyy）」，source.perspectives_conflict=true，并在 invalidates 数组里列出被这条新事实推翻的现有 personal_semantic 的 id（**必须来自上面 anchor 列表里的 id**，不要编造）。仅在确实矛盾时填 invalidates；只是补充/细化而非推翻时，留空数组。
+5. 检测矛盾：新 episodic 与现有 personal_semantic 显著冲突（同一事物，旧说法已不再为真）→ 输出一条 layer='personal_semantic' 的新 derived，content 注明「过去 X，最近改为 Y（基于 ep_xxx）」，source.perspectives_conflict=true，并在 invalidates 数组里列出被这条新事实推翻的现有 personal_semantic 的 id（**必须来自上面 anchor 列表里的 id**，不要编造）。仅在确实矛盾时填 invalidates；只是补充/细化而非推翻时，留空数组。
+   **此条不受规则 1「≥2 条」限制**：哪怕只有一条 episodic，只要它明确、肯定地否定了某条现有 personal_semantic（如「X 去世 / 分手 / 离职 / 搬走 / 卖了」否定「养着 X / 在一起 / 任某职 / 住某地 / 拥有」），就要输出这条失效 derived。但必须是确定的事实变化，含糊、假设、一时情绪不算。
 6. 不要输出 archival / episodic / procedural
 7. 不要新增没有 episodic 支持的事实（不要发明）
 
