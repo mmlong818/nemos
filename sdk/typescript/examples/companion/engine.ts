@@ -27,6 +27,9 @@ export interface Persona {
   verbosity?: Verbosity;
   /** 回复 token 硬上限（用于"近乎失语"的特例如灵宠，prompt 压不住时机制兜底）。不给用默认。 */
   maxReplyTokens?: number;
+  /** 基础记忆：角色的具体背景事实（外貌/职业/宠物/住处/经历…），boot 时 seed 进角色记忆库。
+   *  与 persona prompt 解耦——prompt 只留抽象性格，这些事实可召回、可增删、可随交流演变。 */
+  seedBio?: string[];
 }
 
 /** 话量档位（人际表达的基线性格）。 */
@@ -83,6 +86,9 @@ interface Turn {
 const RECENT_MAX = 8;
 const SELF_LAYER = "episodic" as const;
 const SELF_SCOPE = "self";
+// 角色「基础记忆」（背景事实：外貌/职业/宠物/住处/经历…）独立 scope，
+// 与 prompt 解耦：prompt 只留抽象性格/语气/边界，具体事实放这里、可召回、可增删、可随交流演变。
+const BIO_SCOPE = "bio";
 
 /** 1-on-1 会话的 scope —— 即"在场边界"。 */
 export function convScope(userId: string, personaId: string): string {
@@ -158,6 +164,26 @@ export class CompanionEngine {
         content: line,
         scope: SELF_SCOPE,
         source: { authoritative: false, origin: "persona-self" },
+      });
+    }
+  }
+
+  /**
+   * 给角色种入「基础记忆」（背景事实）。写进角色独立 namespace 的 bio scope，
+   * 作为可召回、可增删、可演变的事实库——取代把这些事实硬写进 prompt。
+   * authoritative=false（对用户是虚构）。idempotent：已种过则跳过。
+   */
+  async seedBio(personaId: string, facts: string[]): Promise<void> {
+    if (!facts || facts.length === 0) return;
+    const self = this.nemos.forUser(personaNamespace(personaId));
+    const existing = await self.listByLayer("personal_semantic", { scope: BIO_SCOPE, limit: 1 });
+    if (existing.length > 0) return; // 已种过，不重复
+    for (const f of facts) {
+      await self.write({
+        layer: "personal_semantic",
+        content: f,
+        scope: BIO_SCOPE,
+        source: { authoritative: false, origin: "persona-bio" },
       });
     }
   }
@@ -261,13 +287,16 @@ export class CompanionEngine {
     const userFacts = await this.nemos.forUser(userId).getRelevantContext(query, {
       scopes: this.visibleScopes(userId, personaId),
     });
-    // 块2 = 角色自己的记忆库（都用第一人称原话，避免抽取把人称弄混）：
+    // 块2 = 角色自己的记忆库：
+    //  - 基础记忆（scope=bio）：背景事实（取代 prompt 里的具体设定），全量带上（每角色小集合）
     //  - 种入的近况（scope=self）
-    //  - 它在本关系里说过的原话（archival 原文，按时间取最近几条）→ 保持前后一致
+    //  - 它在本关系里说过的原话（archival 原文，最近几条）→ 保持前后一致
     const self = this.nemos.forUser(personaNamespace(personaId));
+    const bio = await self.listByLayer("personal_semantic", { scope: BIO_SCOPE, limit: 50 });
     const seeded = await self.listByLayer(SELF_LAYER, { scope: SELF_SCOPE, limit: 3 });
     const said = await self.listByLayer("archival", { scope: convScope(userId, personaId), limit: 5 });
     const selfState = [
+      ...bio.map((m) => m.content.trim()),
       ...seeded.map((m) => m.content.trim()),
       ...said.map((m) => `（我曾说过）${m.content.trim().slice(0, 140)}`),
     ].filter(Boolean).join("\n");

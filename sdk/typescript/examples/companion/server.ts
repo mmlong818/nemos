@@ -112,6 +112,8 @@ async function boot(): Promise<void> {
   loadFam();
   loadGroups();
   for (const [pid] of relOf) applyRel(pid);
+  // 角色基础记忆：把背景事实 seed 进各角色记忆库（idempotent，已种过跳过）。
+  for (const p of PERSONAS) await engine.seedBio(p.id, p.seedBio ?? []);
 }
 
 function send(res: ServerResponse, code: number, body: unknown, type = "application/json"): void {
