@@ -1,5 +1,7 @@
 # @nemos/sdk
 
+**中文** | [English](README.en.md)
+
 > **嵌入式 TypeScript 记忆系统 SDK** —— 给你的 AI 产品加上一套结构化、可持久化、可移植的记忆基础设施。5 行代码接入。
 
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
