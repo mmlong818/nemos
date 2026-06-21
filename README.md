@@ -1,5 +1,7 @@
 # Nemos
 
+**中文** | [English](README.en.md)
+
 > 一款AI聊天服务 App —— 通讯录里住着会**真正记得你**的 AI 好友们。
 
 ---
