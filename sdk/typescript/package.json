@@ -1,0 +1,66 @@
+{
+  "name": "@nemos/sdk",
+  "version": "0.4.0",
+  "description": "Embeddable memory system for AI — structured, persistent, portable; domain routing, contradiction invalidation, anti-self-pollution. Noncommercial (PolyForm).",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "nemos founding team",
+  "homepage": "https://github.com/nemos-org/nemos",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nemos-org/nemos.git",
+    "directory": "sdk/typescript"
+  },
+  "keywords": [
+    "memory",
+    "ai",
+    "agent",
+    "llm",
+    "embedding",
+    "rag",
+    "personal-memory",
+    "nemos"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "commonjs",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "tsx --test tests/unit/*.test.ts tests/integration/*.test.ts tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts tests/v06/integration/*.test.ts",
+    "test:unit": "tsx --test tests/unit/*.test.ts tests/v02/unit/*.test.ts tests/v03/unit/*.test.ts tests/v04/unit/*.test.ts tests/v05/unit/*.test.ts",
+    "test:v02": "tsx --test tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts",
+    "test:v03": "tsx --test tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts",
+    "test:v04": "tsx --test tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts",
+    "test:v05": "tsx --test tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts",
+    "test:v06": "tsx --test tests/v06/integration/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0"
+  },
+  "optionalDependencies": {
+    "sqlite-vec": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": "*",
+    "openai": "*"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": { "optional": true },
+    "openai": { "optional": true }
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0",
+    "@types/node": "^20.10.0",
+    "@types/better-sqlite3": "^7.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
