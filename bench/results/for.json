@@ -1,0 +1,1263 @@
+{
+  "task": "FOR",
+  "timestamp": "2026-06-26T23:17:47.526Z",
+  "per_item": [
+    {
+      "id": "for-0001",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant career step did you take recently?",
+              "retrieved": [
+                "User signed a contract for a new job.",
+                "User moved into a new house.",
+                "The user went for a walk in the park."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about signing a contract for a new job and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What special occasion did you celebrate in December?",
+              "retrieved": [
+                "User moved into a new house.",
+                "The user went for a walk in the park.",
+                "User signed a contract for a new job."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention a walk in the park, which is a forbidden fact."
+              }
+            },
+            {
+              "probe": "What major change happened in your living situation?",
+              "retrieved": [
+                "User moved into a new house.",
+                "User signed a contract for a new job.",
+                "The user went for a walk in the park."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user moved into a new house, which is an expected fact, and do not present any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant career step did you take recently?",
+              "retrieved": [
+                "User signed the contract for a new job.",
+                "User moved into a new house.",
+                "The user went for a walk in the park.",
+                "User attended a local community meeting.",
+                "User had a sandwich for lunch.",
+                "User bought a new pair of socks.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about signing a contract for a new job and also mention forbidden facts about having a sandwich for lunch and watching a random movie."
+              }
+            },
+            {
+              "probe": "What special occasion did you celebrate in December?",
+              "retrieved": [
+                "User moved into a new house.",
+                "User bought a new pair of socks.",
+                "The user went for a walk in the park.",
+                "User attended a local community meeting.",
+                "User had a sandwich for lunch.",
+                "User signed the contract for a new job.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention a 'pair of socks' and 'walk in the park', which are forbidden facts."
+              }
+            },
+            {
+              "probe": "What major change happened in your living situation?",
+              "retrieved": [
+                "User moved into a new house.",
+                "User signed the contract for a new job.",
+                "User attended a local community meeting.",
+                "User bought a new pair of socks.",
+                "User had a sandwich for lunch.",
+                "The user went for a walk in the park.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about moving into a new house and the forbidden facts about attending a local community meeting and buying a pair of socks."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0002",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant career change did you make in December 2025?",
+              "retrieved": [
+                "The user signed a contract for a new job.",
+                "User bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about signing a contract for a new job and the forbidden fact about buying a new pair of socks."
+              }
+            },
+            {
+              "probe": "What special occasion did you celebrate in December 2025?",
+              "retrieved": [
+                "The user signed a contract for a new job.",
+                "User bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention buying a new pair of socks, which is a forbidden fact."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant career change did you make in December 2025?",
+              "retrieved": [
+                "The user signed the contract for a new job.",
+                "The user went for a short walk in the park.",
+                "User had a sandwich for lunch.",
+                "User bought a new pair of socks.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about signing a contract for a new job and forbidden facts about a sandwich, a random movie, a new pair of socks, and a short walk."
+              }
+            },
+            {
+              "probe": "What special occasion did you celebrate in December 2025?",
+              "retrieved": [
+                "The user signed the contract for a new job.",
+                "User bought a new pair of socks.",
+                "The user went for a short walk in the park.",
+                "The user watched a random movie on TV.",
+                "User had a sandwich for lunch."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include forbidden facts such as 'new pair of socks', 'short walk', 'random movie', and 'sandwich' as current facts."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0003",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant event happened with your job recently?",
+              "retrieved": [
+                "User signed a contract for a new job.",
+                "User moved into a new apartment.",
+                "The user adopted a cat named Whiskers."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly mention the user signed a contract for a new job, which is an expected fact, and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "Have you moved recently?",
+              "retrieved": [
+                "User moved into a new apartment.",
+                "User signed a contract for a new job.",
+                "The user adopted a cat named Whiskers."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved into a new apartment, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "Did you get a pet recently?",
+              "retrieved": [
+                "The user adopted a cat named Whiskers.",
+                "User moved into a new apartment.",
+                "User signed a contract for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user adopted a cat named Whiskers, and no forbidden facts are presented as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant event happened with your job recently?",
+              "retrieved": [
+                "User signed the contract for their new job.",
+                "The user has moved into a new apartment.",
+                "The user had a sandwich for lunch.",
+                "The user went for a walk in the park.",
+                "User watched a movie on Netflix.",
+                "User adopted a cat named Whiskers."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about signing the contract for a new job and also mention forbidden facts about having a sandwich for lunch and watching a movie on Netflix."
+              }
+            },
+            {
+              "probe": "Have you moved recently?",
+              "retrieved": [
+                "The user has moved into a new apartment.",
+                "User signed the contract for their new job.",
+                "The user had a sandwich for lunch.",
+                "The user went for a walk in the park.",
+                "User watched a movie on Netflix.",
+                "User adopted a cat named Whiskers."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about moving into a new apartment and the forbidden fact about having a sandwich for lunch."
+              }
+            },
+            {
+              "probe": "Did you get a pet recently?",
+              "retrieved": [
+                "User adopted a cat named Whiskers.",
+                "The user has moved into a new apartment.",
+                "The user went for a walk in the park.",
+                "The user had a sandwich for lunch.",
+                "User signed the contract for their new job.",
+                "User watched a movie on Netflix."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about adopting a cat named Whiskers and the forbidden facts about a walk in the park and watching a movie on Netflix."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0004",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant career step did you take in December 2025?",
+              "retrieved": [
+                "User signed the contract for a new job.",
+                "User moved into a new house.",
+                "The user bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about signing a contract for a new job, but also mention buying a new pair of socks, which is forbidden."
+              }
+            },
+            {
+              "probe": "What major personal milestone did you celebrate in late December 2025?",
+              "retrieved": [
+                "User signed the contract for a new job.",
+                "User moved into a new house.",
+                "The user bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include a forbidden fact about buying a new pair of socks."
+              }
+            },
+            {
+              "probe": "What was a significant change in your living situation in December 2025?",
+              "retrieved": [
+                "User moved into a new house.",
+                "User signed the contract for a new job.",
+                "The user bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention moving into a new house, which is expected, and buying a new pair of socks, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant career step did you take in December 2025?",
+              "retrieved": [
+                "User signed a contract for a new job.",
+                "User moved into a new house.",
+                "The user went for a walk in the park.",
+                "The user watched a random movie on TV.",
+                "User had a sandwich for lunch.",
+                "User bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about signing a contract for a new job and forbidden facts about a walk in the park, a random movie, a sandwich, and new socks."
+              }
+            },
+            {
+              "probe": "What major personal milestone did you celebrate in late December 2025?",
+              "retrieved": [
+                "User signed a contract for a new job.",
+                "User moved into a new house.",
+                "The user went for a walk in the park.",
+                "User had a sandwich for lunch.",
+                "User bought a new pair of socks.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include forbidden facts such as having a sandwich for lunch and going for a walk in the park, but do not mention the expected milestone of a 10th wedding anniversary celebration."
+              }
+            },
+            {
+              "probe": "What was a significant change in your living situation in December 2025?",
+              "retrieved": [
+                "User moved into a new house.",
+                "User signed a contract for a new job.",
+                "User had a sandwich for lunch.",
+                "The user went for a walk in the park.",
+                "User bought a new pair of socks.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact of moving into a new house and forbidden facts like having a sandwich for lunch and going for a walk in the park."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0005",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant career step did you take in December 2025?",
+              "retrieved": [
+                "User signed the contract for their new job.",
+                "The user moved into a new apartment."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about signing the contract for a new job and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What memorable personal event happened on December 25, 2025?",
+              "retrieved": [
+                "The user moved into a new apartment.",
+                "User signed the contract for their new job."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any expected or forbidden facts."
+              }
+            },
+            {
+              "probe": "What major change in living arrangements occurred at the end of 2025?",
+              "retrieved": [
+                "The user moved into a new apartment.",
+                "User signed the contract for their new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved into a new apartment, which is an expected fact, and do not mention any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant career step did you take in December 2025?",
+              "retrieved": [
+                "User signed the contract for their new job.",
+                "The user moved into a new apartment.",
+                "The user bought a new pair of socks.",
+                "The user watched a random movie on TV.",
+                "User had a sandwich for lunch.",
+                "User attended a friend's casual barbecue."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about signing a contract for a new job and forbidden facts about a sandwich, a random movie, new socks, and a barbecue."
+              }
+            },
+            {
+              "probe": "What memorable personal event happened on December 25, 2025?",
+              "retrieved": [
+                "The user moved into a new apartment.",
+                "The user watched a random movie on TV.",
+                "User signed the contract for their new job.",
+                "User had a sandwich for lunch.",
+                "User attended a friend's casual barbecue.",
+                "The user bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include forbidden facts such as 'sandwich', 'random movie', 'new socks', and 'barbecue' as current events."
+              }
+            },
+            {
+              "probe": "What major change in living arrangements occurred at the end of 2025?",
+              "retrieved": [
+                "The user moved into a new apartment.",
+                "User signed the contract for their new job.",
+                "User attended a friend's casual barbecue.",
+                "User had a sandwich for lunch.",
+                "The user bought a new pair of socks.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about moving into a new apartment and forbidden facts about a sandwich, barbecue, new socks, and a random movie."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0006",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant career event happened recently?",
+              "retrieved": [
+                "User signed a contract for a new job.",
+                "The user completed their first marathon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about signing a contract for a new job and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What special personal milestone did you celebrate?",
+              "retrieved": [
+                "The user completed their first marathon.",
+                "User signed a contract for a new job."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any expected or forbidden facts."
+              }
+            },
+            {
+              "probe": "What major fitness achievement did you complete?",
+              "retrieved": [
+                "The user completed their first marathon.",
+                "User signed a contract for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user completed their first marathon, which is an expected fact, and do not mention any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant career event happened recently?",
+              "retrieved": [
+                "The user signed a contract for a new job.",
+                "The user completed their first marathon.",
+                "User had a sandwich for lunch.",
+                "The user went for a walk in the park.",
+                "User tried a new recipe for dinner.",
+                "User bought a new pair of socks.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about signing a contract for a new job and forbidden facts about a sandwich, a random movie, and a new pair of socks."
+              }
+            },
+            {
+              "probe": "What special personal milestone did you celebrate?",
+              "retrieved": [
+                "The user completed their first marathon.",
+                "User tried a new recipe for dinner.",
+                "The user went for a walk in the park.",
+                "User bought a new pair of socks.",
+                "User had a sandwich for lunch.",
+                "The user signed a contract for a new job.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include forbidden facts about a sandwich, a random movie, and a new pair of socks, but do not mention the expected milestone of a 10th wedding anniversary."
+              }
+            },
+            {
+              "probe": "What major fitness achievement did you complete?",
+              "retrieved": [
+                "The user completed their first marathon.",
+                "The user went for a walk in the park.",
+                "The user signed a contract for a new job.",
+                "User tried a new recipe for dinner.",
+                "User had a sandwich for lunch.",
+                "User bought a new pair of socks.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about completing a marathon and forbidden facts about a sandwich, a random movie, and new socks."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0007",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant step did you take in your career recently?",
+              "retrieved": [
+                "User signed the contract for a new job.",
+                "User moved into a new apartment.",
+                "The user adopted a cat named Whiskers.",
+                "User read a book on a quiet afternoon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about signing the contract for a new job and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "Where did you move recently?",
+              "retrieved": [
+                "User moved into a new apartment.",
+                "User signed the contract for a new job.",
+                "The user adopted a cat named Whiskers.",
+                "User read a book on a quiet afternoon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved into a new apartment, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "Did you get a new pet recently?",
+              "retrieved": [
+                "The user adopted a cat named Whiskers.",
+                "User moved into a new apartment.",
+                "User signed the contract for a new job.",
+                "User read a book on a quiet afternoon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the adoption of a cat named Whiskers, which is expected, but also mention reading a book, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant step did you take in your career recently?",
+              "retrieved": [
+                "User is starting a new job.",
+                "User signed the contract for a new job.",
+                "User moved into a new apartment.",
+                "The user went for a walk in the park.",
+                "User bought a new pair of shoes.",
+                "The user tried a new recipe for dinner.",
+                "User adopted a cat named Whiskers.",
+                "The user read a book on a quiet afternoon.",
+                "The user had a sandwich for lunch.",
+                "The user attended a friend's barbecue."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected facts about signing a contract and starting a new job, and the forbidden facts about shoes and a sandwich."
+              }
+            },
+            {
+              "probe": "Where did you move recently?",
+              "retrieved": [
+                "User moved into a new apartment.",
+                "User is starting a new job.",
+                "User signed the contract for a new job.",
+                "The user went for a walk in the park.",
+                "User bought a new pair of shoes.",
+                "The user attended a friend's barbecue.",
+                "User adopted a cat named Whiskers.",
+                "The user tried a new recipe for dinner.",
+                "The user had a sandwich for lunch.",
+                "The user read a book on a quiet afternoon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user moved into a new apartment (expected) and also mention a walk in the park, a barbecue, and a recipe (forbidden)."
+              }
+            },
+            {
+              "probe": "Did you get a new pet recently?",
+              "retrieved": [
+                "User adopted a cat named Whiskers.",
+                "User has a pet cat named Whiskers.",
+                "User moved into a new apartment.",
+                "User bought a new pair of shoes.",
+                "User is starting a new job.",
+                "The user tried a new recipe for dinner.",
+                "User signed the contract for a new job.",
+                "The user went for a walk in the park.",
+                "The user attended a friend's barbecue.",
+                "The user had a sandwich for lunch."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about adopting a cat named Whiskers and a forbidden fact about buying new shoes."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0008",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant career event happened to you in December 2025?",
+              "retrieved": [
+                "User signed the contract for their new job.",
+                "User attended a local community event.",
+                "The user moved into a new house.",
+                "User cleaned out the garage.",
+                "The user bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about signing the contract for a new job and the forbidden fact about buying a new pair of socks."
+              }
+            },
+            {
+              "probe": "What personal milestone did you celebrate in late December 2025?",
+              "retrieved": [
+                "The user moved into a new house.",
+                "User signed the contract for their new job.",
+                "User attended a local community event.",
+                "The user bought a new pair of socks.",
+                "User cleaned out the garage."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention a 'community event', which is a forbidden fact."
+              }
+            },
+            {
+              "probe": "What major life change did you experience at the end of December 2025?",
+              "retrieved": [
+                "The user moved into a new house.",
+                "User signed the contract for their new job.",
+                "User cleaned out the garage.",
+                "User attended a local community event.",
+                "The user bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user moved into a new house (expected) and also mention cleaning out the garage (forbidden)."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant career event happened to you in December 2025?",
+              "retrieved": [
+                "User signed the contract for their new job.",
+                "The user attended a local community event.",
+                "The user cleaned out the garage.",
+                "User moved into a new house.",
+                "The user went for a walk in the park.",
+                "The user had a sandwich for lunch.",
+                "The user watched a random movie on TV.",
+                "The user bought a new pair of socks.",
+                "The user tried a new recipe for dinner."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about signing the contract for a new job and forbidden facts about a sandwich, a random movie, and a pair of socks."
+              }
+            },
+            {
+              "probe": "What personal milestone did you celebrate in late December 2025?",
+              "retrieved": [
+                "The user attended a local community event.",
+                "User moved into a new house.",
+                "User signed the contract for their new job.",
+                "The user cleaned out the garage.",
+                "The user bought a new pair of socks.",
+                "The user went for a walk in the park.",
+                "The user tried a new recipe for dinner.",
+                "The user had a sandwich for lunch.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'walk in the park' and 'new recipe', which are forbidden facts."
+              }
+            },
+            {
+              "probe": "What major life change did you experience at the end of December 2025?",
+              "retrieved": [
+                "User signed the contract for their new job.",
+                "User moved into a new house.",
+                "The user cleaned out the garage.",
+                "The user attended a local community event.",
+                "The user bought a new pair of socks.",
+                "The user tried a new recipe for dinner.",
+                "The user had a sandwich for lunch.",
+                "The user watched a random movie on TV.",
+                "The user went for a walk in the park."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'moved into a new house' (expected) and 'cleaned out the garage' (forbidden) as current facts."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0009",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant career event happened in December 2025?",
+              "retrieved": [
+                "The user signed the contract for their new job.",
+                "User completed their first marathon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact of signing a contract for a new job and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What personal milestone did you celebrate in December 2025?",
+              "retrieved": [
+                "User completed their first marathon.",
+                "The user signed the contract for their new job."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any expected or forbidden facts."
+              }
+            },
+            {
+              "probe": "What athletic achievement did you accomplish in December 2025?",
+              "retrieved": [
+                "User completed their first marathon.",
+                "The user signed the contract for their new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user completed their first marathon, which is an expected fact, and do not mention any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant career event happened in December 2025?",
+              "retrieved": [
+                "User signed the contract for their new job.",
+                "User completed their first marathon.",
+                "User attended a local art exhibit.",
+                "The user watched a random movie on TV.",
+                "The user had a sandwich for lunch.",
+                "The user tried a new recipe for dinner.",
+                "User went for a walk in the park.",
+                "User bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact of signing a contract for a new job and the forbidden facts of watching a random movie on TV and having a sandwich for lunch."
+              }
+            },
+            {
+              "probe": "What personal milestone did you celebrate in December 2025?",
+              "retrieved": [
+                "User completed their first marathon.",
+                "User signed the contract for their new job.",
+                "The user tried a new recipe for dinner.",
+                "User went for a walk in the park.",
+                "The user had a sandwich for lunch.",
+                "User bought a new pair of socks.",
+                "User attended a local art exhibit.",
+                "The user watched a random movie on TV."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'walk in the park' and 'new pair of socks', which are forbidden facts."
+              }
+            },
+            {
+              "probe": "What athletic achievement did you accomplish in December 2025?",
+              "retrieved": [
+                "User completed their first marathon.",
+                "User signed the contract for their new job.",
+                "User bought a new pair of socks.",
+                "The user tried a new recipe for dinner.",
+                "User attended a local art exhibit.",
+                "User went for a walk in the park.",
+                "The user watched a random movie on TV.",
+                "The user had a sandwich for lunch."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about completing a marathon and forbidden facts about trying a new recipe and attending a local art exhibit."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0010",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant career event happened on December 20, 2025?",
+              "retrieved": [
+                "User signed the contract for a new job.",
+                "User attended a local community event.",
+                "The user moved into a new house."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact of signing a contract for a new job, and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What special personal event did you celebrate on December 25, 2025?",
+              "retrieved": [
+                "User attended a local community event.",
+                "The user moved into a new house.",
+                "User signed the contract for a new job."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any expected or forbidden facts about the user's special event on December 25, 2025."
+              }
+            },
+            {
+              "probe": "What major life change occurred on December 30, 2025?",
+              "retrieved": [
+                "The user moved into a new house.",
+                "User signed the contract for a new job.",
+                "User attended a local community event."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries include the expected fact about moving into a new house and do not mention any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant career event happened on December 20, 2025?",
+              "retrieved": [
+                "User signed the contract for a new job.",
+                "User attended a local community event.",
+                "User moved into a new house.",
+                "The user watched a random movie on TV.",
+                "The user had a sandwich for lunch.",
+                "The user bought a new pair of socks.",
+                "User tried a new recipe for dinner.",
+                "The user went for a walk in the park."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact of signing a contract for a new job and forbidden facts like watching a random movie on TV and having a sandwich for lunch."
+              }
+            },
+            {
+              "probe": "What special personal event did you celebrate on December 25, 2025?",
+              "retrieved": [
+                "User attended a local community event.",
+                "User moved into a new house.",
+                "User tried a new recipe for dinner.",
+                "The user bought a new pair of socks.",
+                "User signed the contract for a new job.",
+                "The user had a sandwich for lunch.",
+                "The user watched a random movie on TV.",
+                "The user went for a walk in the park."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include forbidden facts about a sandwich for lunch, a random movie on TV, and a new pair of socks, but do not mention any expected facts about a wedding anniversary or special day."
+              }
+            },
+            {
+              "probe": "What major life change occurred on December 30, 2025?",
+              "retrieved": [
+                "User moved into a new house.",
+                "User signed the contract for a new job.",
+                "User tried a new recipe for dinner.",
+                "The user had a sandwich for lunch.",
+                "The user bought a new pair of socks.",
+                "The user watched a random movie on TV.",
+                "User attended a local community event.",
+                "The user went for a walk in the park."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact of moving into a new house and forbidden facts such as having a sandwich for lunch, buying new socks, and watching a random movie on TV."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0011",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant event happened in December 2025 regarding your living situation?",
+              "retrieved": [
+                "User received a job offer from their dream company.",
+                "User bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any expected or forbidden facts about the user's living situation."
+              }
+            },
+            {
+              "probe": "Did you receive any important job news around Christmas 2025?",
+              "retrieved": [
+                "User received a job offer from their dream company.",
+                "User bought a new pair of socks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about receiving a job offer from the dream company and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "Was there a family event involving a new family member in late 2025?",
+              "retrieved": [
+                "User bought a new pair of socks.",
+                "User received a job offer from their dream company."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any family event or new family member, nor do they mention any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant event happened in December 2025 regarding your living situation?",
+              "retrieved": [
+                "User cleaned out their garage.",
+                "User attended a local community event.",
+                "The user received a job offer from their dream company.",
+                "The user bought a new pair of socks.",
+                "The user watched a random movie on TV.",
+                "The user tried a new recipe for dinner.",
+                "The user took a short walk in the park.",
+                "The user had a sandwich for lunch.",
+                "The user read a magazine article about gardening."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include forbidden facts about having a sandwich for lunch and watching a random movie on TV, but do not mention the expected house purchase."
+              }
+            },
+            {
+              "probe": "Did you receive any important job news around Christmas 2025?",
+              "retrieved": [
+                "The user received a job offer from their dream company.",
+                "User attended a local community event.",
+                "The user read a magazine article about gardening.",
+                "User cleaned out their garage.",
+                "The user had a sandwich for lunch.",
+                "The user watched a random movie on TV.",
+                "The user bought a new pair of socks.",
+                "The user tried a new recipe for dinner.",
+                "The user took a short walk in the park."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected job offer from the dream company and the forbidden facts about having a sandwich for lunch and watching a random movie on TV."
+              }
+            },
+            {
+              "probe": "Was there a family event involving a new family member in late 2025?",
+              "retrieved": [
+                "User attended a local community event.",
+                "The user tried a new recipe for dinner.",
+                "User cleaned out their garage.",
+                "The user bought a new pair of socks.",
+                "The user received a job offer from their dream company.",
+                "The user watched a random movie on TV.",
+                "The user took a short walk in the park.",
+                "The user had a sandwich for lunch.",
+                "The user read a magazine article about gardening."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include forbidden facts about having a sandwich for lunch and watching a random movie on TV, but do not mention any expected facts about a family event or a new family member."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "for-0012",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What significant event happened on December 20, 2025?",
+              "retrieved": [
+                "The user has signed a contract for a new job.",
+                "User moved into a new house.",
+                "The user attended a friend's barbecue."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about signing a contract for a new job and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What was celebrated on December 25, 2025?",
+              "retrieved": [
+                "The user attended a friend's barbecue.",
+                "The user has signed a contract for a new job.",
+                "User moved into a new house."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "None of the retrieved entries mention any expected or forbidden facts."
+              }
+            },
+            {
+              "probe": "What major change occurred on December 30, 2025?",
+              "retrieved": [
+                "The user has signed a contract for a new job.",
+                "User moved into a new house.",
+                "The user attended a friend's barbecue."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about moving into a new house and the forbidden fact about attending a friend's barbecue."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-decay",
+          "judged": [
+            {
+              "probe": "What significant event happened on December 20, 2025?",
+              "retrieved": [
+                "User signed a contract for a new job.",
+                "The user watched a random movie on TV.",
+                "User moved into a new house.",
+                "The user cleaned out the garage.",
+                "The user had a sandwich for lunch.",
+                "User tried a new recipe for dinner.",
+                "The user bought a new pair of shoes.",
+                "The user went for a walk in the park.",
+                "User attended a friend's barbecue."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact of signing a contract for a new job and the forbidden facts of watching a random movie and having a sandwich."
+              }
+            },
+            {
+              "probe": "What was celebrated on December 25, 2025?",
+              "retrieved": [
+                "User moved into a new house.",
+                "User signed a contract for a new job.",
+                "The user cleaned out the garage.",
+                "The user had a sandwich for lunch.",
+                "The user watched a random movie on TV.",
+                "User tried a new recipe for dinner.",
+                "User attended a friend's barbecue.",
+                "The user bought a new pair of shoes.",
+                "The user went for a walk in the park."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'walk in the park' and 'new shoes', which are forbidden facts."
+              }
+            },
+            {
+              "probe": "What major change occurred on December 30, 2025?",
+              "retrieved": [
+                "User signed a contract for a new job.",
+                "User moved into a new house.",
+                "The user cleaned out the garage.",
+                "User tried a new recipe for dinner.",
+                "The user had a sandwich for lunch.",
+                "The user bought a new pair of shoes.",
+                "The user watched a random movie on TV.",
+                "The user went for a walk in the park.",
+                "User attended a friend's barbecue."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'User moved into a new house' (expected) and 'User attended a friend's barbecue' (forbidden)."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "nemos-v2-semantic": {
+      "IFR": 0.6857142857142857,
+      "triviaLeak": 0.3142857142857143,
+      "n": 35
+    },
+    "nemos-no-decay": {
+      "IFR": 0.6857142857142857,
+      "triviaLeak": 1,
+      "n": 35
+    }
+  }
+}
