@@ -132,6 +132,9 @@ export class NemosWorker {
         domainsEnabled: this.features.features?.domains?.enabled === true,
         prospectiveEnabled: this.features.features?.prospective?.enabled === true,
         invalidationEnabled: this.features.features?.invalidation?.enabled === true,
+        invalidationDetector: this.features.features?.invalidation?.detector,
+        invalidationTopN: this.features.features?.invalidation?.candidateTopN,
+        invalidationMinCosine: this.features.features?.invalidation?.minCosine,
       },
     );
   }

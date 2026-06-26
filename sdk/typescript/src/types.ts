@@ -735,6 +735,17 @@ export interface NemosConfig {
     invalidation?: {
       /** 总开关。默认 false。 */
       enabled?: boolean;
+      /**
+       * 矛盾候选检索方式。默认 'semantic'。
+       * - 'lexical'：v1 字符 bigram Jaccard 粗筛（漏掉用词不同的属性替换矛盾）。
+       * - 'semantic'：v2 embedding cosine 候选检索（捕捉语义相近但用词不同的矛盾，如 素食↔鱼素）。
+       * 无 embedding provider 时 'semantic' 自动回退 'lexical'。
+       */
+      detector?: "lexical" | "semantic";
+      /** 'semantic' 模式下送入 LLM 判矛盾的候选 anchor 上限。默认 50。 */
+      candidateTopN?: number;
+      /** 'semantic' 模式下候选最低 cosine 相似度（与任一近期 episodic）。默认 0.30。 */
+      minCosine?: number;
     };
   };
   /** v0.3：worker 配置；不传 = 默认 long-running 模式。 */
