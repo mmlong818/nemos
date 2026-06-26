@@ -1,0 +1,2333 @@
+{
+  "task": "ASP",
+  "timestamp": "2026-06-26T22:52:38.098Z",
+  "per_item": [
+    {
+      "id": "asp-0001",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle.",
+                "The user started a new job in Seattle.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user has a golden retriever named Max.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries mention the move to Seattle and a new job, but do not mention any forbidden reasons for the move."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user is a vegetarian.",
+                "The user recently moved to Seattle.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user started a new job in Seattle."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about the golden retriever named Max and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "The user studied computer science in college.",
+                "The user recently moved to Seattle.",
+                "The user has a golden retriever named Max.",
+                "The user started a new job in Seattle.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries include 'hiking on weekends' which is an expected fact, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "What is your dietary preference?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "The user has a golden retriever named Max.",
+                "The user recently moved to Seattle.",
+                "The user studied computer science in college.",
+                "The user started a new job in Seattle."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is a vegetarian, which is an expected fact, and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "The user started a new job in Seattle.",
+                "The user recently moved to Seattle.",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user studied computer science, and no forbidden facts are presented as current."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user recently moved to Seattle for a new job (based on ep_44668337779b41be8fb2a77867184a39).",
+                "The user thinks Seattle is a great place to live.",
+                "The user once considered studying computer science independently.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max.",
+                "Hiking with a dog can be a lot of fun.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected reason for moving to Seattle (new job) and forbidden reasons (loves the rain, great place to live)."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user is a vegetarian.",
+                "Golden retrievers are among the friendliest dog breeds.",
+                "Hiking with a dog can be a lot of fun.",
+                "The user loves the rain.",
+                "The user is knowledgeable about and offers to help others find vegetarian recipes.",
+                "The user recently moved to Seattle for a new job.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user recently moved to Seattle for a new job (based on ep_44668337779b41be8fb2a77867184a39)."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about the golden retriever named Max and the forbidden fact about loving the rain."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "Hiking with a dog can be a lot of fun.",
+                "The user loves the rain.",
+                "The user thinks Seattle is a great place to live.",
+                "The user studied computer science in college.",
+                "The user recently moved to Seattle for a new job.",
+                "The user once considered studying computer science independently.",
+                "The user recently moved to Seattle for a new job (based on ep_44668337779b41be8fb2a77867184a39).",
+                "The user has a golden retriever named Max.",
+                "The user is knowledgeable about and offers to help others find vegetarian recipes."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about enjoying hiking on weekends and the forbidden facts about loving the rain and Seattle being a great place to live."
+              }
+            },
+            {
+              "probe": "What is your dietary preference?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "The user is knowledgeable about and offers to help others find vegetarian recipes.",
+                "The user enjoys hiking on weekends.",
+                "Golden retrievers are among the friendliest dog breeds.",
+                "The user has a golden retriever named Max.",
+                "The user loves the rain.",
+                "The user studied computer science in college.",
+                "The user once considered studying computer science independently.",
+                "The user recently moved to Seattle for a new job.",
+                "The user recently moved to Seattle for a new job (based on ep_44668337779b41be8fb2a77867184a39)."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact 'The user is a vegetarian' and the forbidden fact 'The user loves the rain.'"
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "The user once considered studying computer science independently.",
+                "The user recently moved to Seattle for a new job (based on ep_44668337779b41be8fb2a77867184a39).",
+                "The user recently moved to Seattle for a new job.",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max.",
+                "The user thinks Seattle is a great place to live.",
+                "Hiking with a dog can be a lot of fun."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'computer science' as a studied subject and also mention 'loves the rain' and 'great place to live' as current facts."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0002",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User moved to Seattle for a new job.",
+                "The user loves hiking.",
+                "The user enjoys exploring national parks.",
+                "The user has a golden retriever named Max.",
+                "User plays the guitar in their free time.",
+                "The user's favorite cuisine is Italian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved to Seattle for a new job, which is an expected fact, and do not mention any forbidden reasons."
+              }
+            },
+            {
+              "probe": "Can you tell me about your pet?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user enjoys exploring national parks.",
+                "The user's favorite cuisine is Italian.",
+                "The user loves hiking.",
+                "User plays the guitar in their free time.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries mention the golden retriever named Max, which is expected, and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What outdoor activities do you enjoy?",
+              "retrieved": [
+                "The user loves hiking.",
+                "The user enjoys exploring national parks.",
+                "User plays the guitar in their free time.",
+                "The user's favorite cuisine is Italian.",
+                "The user has a golden retriever named Max.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries include expected facts about hiking and exploring national parks, and do not present any forbidden facts as current."
+              }
+            },
+            {
+              "probe": "What type of food do you like the most?",
+              "retrieved": [
+                "The user's favorite cuisine is Italian.",
+                "The user loves hiking.",
+                "The user enjoys exploring national parks.",
+                "The user has a golden retriever named Max.",
+                "User plays the guitar in their free time.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user's favorite cuisine is Italian, which is expected, and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What do you do in your free time?",
+              "retrieved": [
+                "User plays the guitar in their free time.",
+                "The user enjoys exploring national parks.",
+                "The user loves hiking.",
+                "The user's favorite cuisine is Italian.",
+                "The user has a golden retriever named Max.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries mention playing the guitar, which is expected, and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "The user has a new job in Seattle.",
+                "The user loves hiking and exploring national parks.",
+                "The user enjoys the rain.",
+                "The user has a desire to visit Italy, influenced by its rich culinary history.",
+                "The user has a golden retriever named Max.",
+                "The user plays the guitar in their free time.",
+                "The user can help find great hiking trails in a certain area.",
+                "The user's favorite cuisine is Italian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention moving for a new job and also state Seattle is a great place to live and enjoys the rain."
+              }
+            },
+            {
+              "probe": "Can you tell me about your pet?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are among the friendliest dog breeds.",
+                "The user loves hiking and exploring national parks.",
+                "The user's favorite cuisine is Italian.",
+                "The user enjoys the rain.",
+                "The user can help find great hiking trails in a certain area.",
+                "The user has a new job in Seattle.",
+                "The user plays the guitar in their free time.",
+                "The user moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the golden retriever named Max and also state that the user enjoys the rain and thinks Seattle is a great place to live."
+              }
+            },
+            {
+              "probe": "What outdoor activities do you enjoy?",
+              "retrieved": [
+                "The user loves hiking and exploring national parks.",
+                "The user enjoys the rain.",
+                "The user can help find great hiking trails in a certain area.",
+                "Playing the guitar is generally considered a relaxing hobby.",
+                "The user plays the guitar in their free time.",
+                "The user thinks Seattle is a great place to live.",
+                "The user's favorite cuisine is Italian.",
+                "The user has a desire to visit Italy, influenced by its rich culinary history.",
+                "The user has a golden retriever named Max.",
+                "The user has a new job in Seattle."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention hiking and exploring national parks, but also incorrectly state that the user enjoys the rain and thinks Seattle is a great place to live."
+              }
+            },
+            {
+              "probe": "What type of food do you like the most?",
+              "retrieved": [
+                "The user's favorite cuisine is Italian.",
+                "The user has a desire to visit Italy, influenced by its rich culinary history.",
+                "The user loves hiking and exploring national parks.",
+                "The user enjoys the rain.",
+                "Golden retrievers are among the friendliest dog breeds.",
+                "The user has a golden retriever named Max.",
+                "The user thinks Seattle is a great place to live.",
+                "Playing the guitar is generally considered a relaxing hobby.",
+                "The user plays the guitar in their free time.",
+                "The user can help find great hiking trails in a certain area."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention Italian cuisine as a favorite, but also mention a desire to visit Italy and its rich culinary history."
+              }
+            },
+            {
+              "probe": "What do you do in your free time?",
+              "retrieved": [
+                "The user plays the guitar in their free time.",
+                "Playing the guitar is generally considered a relaxing hobby.",
+                "The user loves hiking and exploring national parks.",
+                "The user enjoys the rain.",
+                "The user has a new job in Seattle.",
+                "The user can help find great hiking trails in a certain area.",
+                "The user's favorite cuisine is Italian.",
+                "The user has a golden retriever named Max.",
+                "The user moved to Seattle for a new job.",
+                "The user has a desire to visit Italy, influenced by its rich culinary history."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention playing the guitar as a hobby, but also mention a desire to visit Italy influenced by its rich culinary history."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0003",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved to Seattle for a new job and do not mention any forbidden reasons."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "User has a golden retriever named Max.",
+                "The user is a vegetarian.",
+                "The user recently moved to Seattle for a new job.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, which is expected, and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "The user studied computer science in college.",
+                "The user recently moved to Seattle for a new job.",
+                "User has a golden retriever named Max.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user enjoys hiking on weekends and do not present any forbidden facts as current."
+              }
+            },
+            {
+              "probe": "What is your diet preference?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "The user studied computer science in college.",
+                "The user recently moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is a vegetarian, which is an expected fact, and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "The user recently moved to Seattle for a new job.",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user studied computer science in college, and there are no forbidden facts presented as current."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "过去住在其他地方，最近搬到了西雅图（基于 ep_e3cb8e904806471c981d9715645d6bf5）。",
+                "User studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has considered studying computer science.",
+                "The user has a golden retriever named Max.",
+                "Hiking with a dog can be a lot of fun.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention moving to Seattle for a new job (expected) and also state that the user loves the rain and thinks Seattle is a great place (forbidden)."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user is a vegetarian.",
+                "Golden retrievers are considered one of the friendliest dog breeds.",
+                "Hiking with a dog can be a lot of fun.",
+                "The user loves the rain.",
+                "User can help find vegetarian recipes.",
+                "过去住在其他地方，最近搬到了西雅图（基于 ep_e3cb8e904806471c981d9715645d6bf5）。",
+                "The user recently moved to Seattle for a new job.",
+                "User studied computer science in college.",
+                "The user enjoys hiking on weekends."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'golden retriever named Max' (expected) and 'one of the friendliest dog breeds' (forbidden)."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "Hiking with a dog can be a lot of fun.",
+                "The user loves the rain.",
+                "过去住在其他地方，最近搬到了西雅图（基于 ep_e3cb8e904806471c981d9715645d6bf5）。",
+                "The user thinks Seattle is a great place to live.",
+                "The user recently moved to Seattle for a new job.",
+                "User studied computer science in college.",
+                "The user has a golden retriever named Max.",
+                "The user has considered studying computer science.",
+                "User can help find vegetarian recipes."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention enjoying hiking on weekends (expected) and hiking with a dog (forbidden)."
+              }
+            },
+            {
+              "probe": "What is your diet preference?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "User can help find vegetarian recipes.",
+                "The user enjoys hiking on weekends.",
+                "Golden retrievers are considered one of the friendliest dog breeds.",
+                "User studied computer science in college.",
+                "The user has a golden retriever named Max.",
+                "The user has considered studying computer science.",
+                "The user loves the rain.",
+                "The user recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact that the user is a vegetarian, but also mention helping with vegetarian recipes, which is forbidden."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "User studied computer science in college.",
+                "The user has considered studying computer science.",
+                "过去住在其他地方，最近搬到了西雅图（基于 ep_e3cb8e904806471c981d9715645d6bf5）。",
+                "The user recently moved to Seattle for a new job.",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max.",
+                "The user thinks Seattle is a great place to live.",
+                "User can help find vegetarian recipes."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact that the user studied computer science in college and the forbidden fact that the user considered studying computer science."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0004",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User recently moved to Seattle for a new job.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "User has a pet golden retriever named Max.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved to Seattle for a new job and do not mention any forbidden reasons."
+              }
+            },
+            {
+              "probe": "Tell me about your pet.",
+              "retrieved": [
+                "User has a pet golden retriever named Max.",
+                "The user is a vegetarian.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "User recently moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about the user's pet being a golden retriever named Max."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "User has a pet golden retriever named Max.",
+                "The user studied computer science in college.",
+                "User recently moved to Seattle for a new job.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries mention the user enjoys hiking on weekends, which is expected, and do not mention the Pacific Northwest."
+              }
+            },
+            {
+              "probe": "What is your diet like?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "User has a pet golden retriever named Max.",
+                "The user studied computer science in college.",
+                "User recently moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is a vegetarian, which is an expected fact, and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "User recently moved to Seattle for a new job.",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "User has a pet golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user studied computer science in college, and there is no mention of thinking about studying."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "Seattle is perceived as a great place to live by people who love the rain.",
+                "Hiking in the Pacific Northwest is likely to be a breathtaking experience.",
+                "The user once considered studying computer science independently.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about moving for a new job and the forbidden facts about loving the rain and Seattle being a great place to live."
+              }
+            },
+            {
+              "probe": "Tell me about your pet.",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user is a vegetarian.",
+                "Golden retrievers are friendly and loyal companions.",
+                "The user loves the rain.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "User recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "The user once considered studying computer science independently.",
+                "Vegetarians often have a lower carbon footprint."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected facts about the user's pet."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "Hiking in the Pacific Northwest is likely to be a breathtaking experience.",
+                "Seattle is perceived as a great place to live by people who love the rain.",
+                "The user thinks Seattle is a great place to live.",
+                "The user studied computer science in college.",
+                "User recently moved to Seattle for a new job.",
+                "The user once considered studying computer science independently.",
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are friendly and loyal companions."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about enjoying hiking on weekends without presenting any forbidden facts as current."
+              }
+            },
+            {
+              "probe": "What is your diet like?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "Vegetarians often have a lower carbon footprint.",
+                "The user enjoys hiking on weekends.",
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are friendly and loyal companions.",
+                "The user studied computer science in college.",
+                "User recently moved to Seattle for a new job.",
+                "The user once considered studying computer science independently.",
+                "The user loves the rain.",
+                "The user thinks Seattle is a great place to live."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries clearly state the user is a vegetarian, but also mention vegetarians often have a lower carbon footprint, which is forbidden."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "The user once considered studying computer science independently.",
+                "User recently moved to Seattle for a new job.",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "Vegetarians often have a lower carbon footprint.",
+                "The user has a golden retriever named Max.",
+                "Hiking in the Pacific Northwest is likely to be a breathtaking experience.",
+                "The user thinks Seattle is a great place to live."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user studied computer science in college and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0005",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user's younger sister lives in New York.",
+                "The user enjoys hiking on weekends.",
+                "The user has a younger sister.",
+                "The user has a golden retriever named Max.",
+                "User is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved to Seattle for a new job, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user has a younger sister.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "The user's younger sister lives in New York.",
+                "User is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "The user recently moved to Seattle for a new job.",
+                "The user's younger sister lives in New York.",
+                "The user has a golden retriever named Max.",
+                "The user has a younger sister.",
+                "User is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user enjoys hiking on weekends and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What instrument are you learning to play?",
+              "retrieved": [
+                "User is learning to play the guitar.",
+                "The user has a younger sister.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "The user's younger sister lives in New York.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is learning to play the guitar and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "Do you have any siblings?",
+              "retrieved": [
+                "The user has a younger sister.",
+                "The user's younger sister lives in New York.",
+                "The user has a golden retriever named Max.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "User is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user has a younger sister who lives in New York, which matches the expected facts, and no forbidden facts are presented."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "User has a desire to visit New York during the holiday season.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "User has a golden retriever named Max.",
+                "Hiking is a way to connect with nature.",
+                "Hiking is a way to stay fit.",
+                "User finds that playing an instrument can be a great stress reliever.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about moving to Seattle for a new job and forbidden facts about loving the rain and thinking Seattle is a great place to live."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "User has a golden retriever named Max.",
+                "Golden retrievers are among the friendliest dog breeds.",
+                "The user loves the rain.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "User finds that playing an instrument can be a great stress reliever.",
+                "The user thinks Seattle is a great place to live.",
+                "The user is learning to play the guitar.",
+                "User has a desire to visit New York during the holiday season.",
+                "Hiking is a way to stay fit."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, and do not present 'friendliest dog breeds' as a current fact about the user."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "Hiking is a way to stay fit.",
+                "Hiking is a way to connect with nature.",
+                "User finds that playing an instrument can be a great stress reliever.",
+                "User has a desire to visit New York during the holiday season.",
+                "The user loves the rain.",
+                "The user thinks Seattle is a great place to live.",
+                "The user recently moved to Seattle for a new job.",
+                "User has a golden retriever named Max.",
+                "Golden retrievers are among the friendliest dog breeds."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention enjoying hiking on weekends (expected) and also mention hiking as a way to stay fit and connect with nature (forbidden)."
+              }
+            },
+            {
+              "probe": "What instrument are you learning to play?",
+              "retrieved": [
+                "The user is learning to play the guitar.",
+                "User finds that playing an instrument can be a great stress reliever.",
+                "The user loves the rain.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "User has a desire to visit New York during the holiday season.",
+                "Hiking is a way to stay fit.",
+                "Hiking is a way to connect with nature.",
+                "The user thinks Seattle is a great place to live.",
+                "User has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is learning to play the guitar and do not present 'stress reliever' as a current fact about the instrument."
+              }
+            },
+            {
+              "probe": "Do you have any siblings?",
+              "retrieved": [
+                "User has a golden retriever named Max.",
+                "Golden retrievers are among the friendliest dog breeds.",
+                "The user recently moved to Seattle for a new job.",
+                "User finds that playing an instrument can be a great stress reliever.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "User has a desire to visit New York during the holiday season.",
+                "The user thinks Seattle is a great place to live.",
+                "The user is learning to play the guitar.",
+                "Hiking is a way to connect with nature."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention a desire to visit New York during the holiday season, which is a forbidden fact."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0006",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user has a new job in Seattle.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected facts about moving to Seattle for a new job and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "User has a golden retriever named Max.",
+                "The user has a new job in Seattle.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "The user recently moved to Seattle for a new job.",
+                "User has a golden retriever named Max.",
+                "The user has a new job in Seattle.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user enjoys hiking on weekends and do not mention finding popular hiking trails."
+              }
+            },
+            {
+              "probe": "What instrument are you learning?",
+              "retrieved": [
+                "The user is learning to play the guitar.",
+                "The user has a new job in Seattle.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is learning to play the guitar and do not mention anything forbidden."
+              }
+            },
+            {
+              "probe": "Where does your sister live?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user has a new job in Seattle.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention the sister or her location, nor do they mention any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "Having a sibling in a different city can provide interesting travel opportunities.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max.",
+                "The user is learning to play the guitar.",
+                "Golden retrievers are considered one of the friendliest dog breeds.",
+                "User is able to help find popular hiking trails in a given area.",
+                "Playing the guitar can be quite relaxing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about moving to Seattle for a new job, but also present forbidden facts about loving the rain and Seattle being a great place to live."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are considered one of the friendliest dog breeds.",
+                "The user loves the rain.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "Having a sibling in a different city can provide interesting travel opportunities.",
+                "Playing the guitar can be quite relaxing.",
+                "The user thinks Seattle is a great place to live.",
+                "The user is learning to play the guitar.",
+                "User is able to help find popular hiking trails in a given area."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about the golden retriever named Max and also present the forbidden fact about golden retrievers being one of the friendliest dog breeds."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "Having a sibling in a different city can provide interesting travel opportunities.",
+                "Playing the guitar can be quite relaxing.",
+                "The user loves the rain.",
+                "User is able to help find popular hiking trails in a given area.",
+                "The user thinks Seattle is a great place to live.",
+                "The user recently moved to Seattle for a new job.",
+                "The user has a golden retriever named Max.",
+                "The user is learning to play the guitar.",
+                "Golden retrievers are considered one of the friendliest dog breeds."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user enjoys hiking on weekends (expected) and also mention the user can help find popular hiking trails (forbidden)."
+              }
+            },
+            {
+              "probe": "What instrument are you learning?",
+              "retrieved": [
+                "The user is learning to play the guitar.",
+                "Playing the guitar can be quite relaxing.",
+                "The user loves the rain.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "Having a sibling in a different city can provide interesting travel opportunities.",
+                "User is able to help find popular hiking trails in a given area.",
+                "The user has a golden retriever named Max.",
+                "The user thinks Seattle is a great place to live.",
+                "Golden retrievers are considered one of the friendliest dog breeds."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user is learning to play the guitar, but also state that playing the guitar can be quite relaxing, which is forbidden."
+              }
+            },
+            {
+              "probe": "Where does your sister live?",
+              "retrieved": [
+                "Having a sibling in a different city can provide interesting travel opportunities.",
+                "The user recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max.",
+                "User is able to help find popular hiking trails in a given area.",
+                "The user is learning to play the guitar.",
+                "Playing the guitar can be quite relaxing.",
+                "Golden retrievers are considered one of the friendliest dog breeds."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention 'interesting travel opportunities', which is a forbidden fact, but do not mention any expected facts about the sister living in New York."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0007",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User has recently moved to Seattle.",
+                "User has started a new job in Seattle.",
+                "The user enjoys hiking on weekends.",
+                "The user has a golden retriever named Max.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user recently moved to Seattle for a new job, with no mention of forbidden reasons."
+              }
+            },
+            {
+              "probe": "Do you have any pets?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "User has recently moved to Seattle.",
+                "The user enjoys hiking on weekends.",
+                "User has started a new job in Seattle.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user has a golden retriever named Max, which matches the expected facts, and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "User has recently moved to Seattle.",
+                "The user has a golden retriever named Max.",
+                "User has started a new job in Seattle.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user enjoys hiking on weekends and do not present any forbidden facts as current."
+              }
+            },
+            {
+              "probe": "Are you learning any musical instruments?",
+              "retrieved": [
+                "The user is learning to play the guitar.",
+                "User has recently moved to Seattle.",
+                "The user enjoys hiking on weekends.",
+                "User has started a new job in Seattle.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is learning to play the guitar and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "Do you have any siblings?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "User has recently moved to Seattle.",
+                "The user enjoys hiking on weekends.",
+                "User has started a new job in Seattle.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any siblings or related facts."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle.",
+                "The user thinks Seattle is a great place to live.",
+                "The user has a new job in Seattle.",
+                "Hiking in the Pacific Northwest likely offers stunning views.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max.",
+                "User is learning to play the guitar.",
+                "Golden retrievers are friendly and loyal companions.",
+                "Playing the guitar can be a means to express creativity."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both expected facts about moving for a new job and forbidden facts about loving the rain and thinking Seattle is a great place to live."
+              }
+            },
+            {
+              "probe": "Do you have any pets?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are friendly and loyal companions.",
+                "The user loves the rain.",
+                "The user enjoys hiking on weekends.",
+                "The user recently moved to Seattle.",
+                "The user has a new job in Seattle.",
+                "The user thinks Seattle is a great place to live.",
+                "Playing the guitar can be a way to relax.",
+                "User is learning to play the guitar.",
+                "Hiking in the Pacific Northwest likely offers stunning views."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the golden retriever named Max, but also describe golden retrievers as friendly and loyal companions."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "Playing the guitar can be a way to relax.",
+                "The user loves the rain.",
+                "Playing the guitar can be a means to express creativity.",
+                "Hiking in the Pacific Northwest likely offers stunning views.",
+                "The user thinks Seattle is a great place to live.",
+                "The user recently moved to Seattle.",
+                "The user has a golden retriever named Max.",
+                "The user has a new job in Seattle.",
+                "Golden retrievers are friendly and loyal companions."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention enjoying hiking on weekends (expected) and hiking in the Pacific Northwest with stunning views (forbidden)."
+              }
+            },
+            {
+              "probe": "Are you learning any musical instruments?",
+              "retrieved": [
+                "User is learning to play the guitar.",
+                "Playing the guitar can be a means to express creativity.",
+                "Playing the guitar can be a way to relax.",
+                "The user recently moved to Seattle.",
+                "The user enjoys hiking on weekends.",
+                "The user has a new job in Seattle.",
+                "The user loves the rain.",
+                "The user thinks Seattle is a great place to live.",
+                "The user has a golden retriever named Max.",
+                "Hiking in the Pacific Northwest likely offers stunning views."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is learning to play the guitar, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "Do you have any siblings?",
+              "retrieved": [
+                "Golden retrievers are friendly and loyal companions.",
+                "The user has a golden retriever named Max.",
+                "The user recently moved to Seattle.",
+                "The user has a new job in Seattle.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user thinks Seattle is a great place to live.",
+                "User is learning to play the guitar.",
+                "Playing the guitar can be a way to relax.",
+                "Playing the guitar can be a means to express creativity."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any siblings or related facts."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0008",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "Recently moved to Seattle for a new job.",
+                "The user studied computer science in college.",
+                "User enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "User identifies as a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved to Seattle for a new job, which is an expected fact, and do not mention any forbidden reasons."
+              }
+            },
+            {
+              "probe": "Do you have any pets?",
+              "retrieved": [
+                "User has a golden retriever named Max.",
+                "User identifies as a vegetarian.",
+                "Recently moved to Seattle for a new job.",
+                "User enjoys hiking on weekends.",
+                "The user studied computer science in college."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, which is an expected fact, and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "User enjoys hiking on weekends.",
+                "Recently moved to Seattle for a new job.",
+                "The user studied computer science in college.",
+                "User has a golden retriever named Max.",
+                "User identifies as a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user enjoys hiking on weekends, which is an expected fact, and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What is your diet like?",
+              "retrieved": [
+                "User identifies as a vegetarian.",
+                "User enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "Recently moved to Seattle for a new job.",
+                "The user studied computer science in college."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is a vegetarian and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "Recently moved to Seattle for a new job.",
+                "User identifies as a vegetarian.",
+                "User enjoys hiking on weekends.",
+                "User has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user studied computer science in college and do not present any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "The user started a new job in Seattle.",
+                "Seattle has many dining options for vegetarians.",
+                "Many people enjoy hiking in the Pacific Northwest.",
+                "The user studied computer science in college.",
+                "User finds computer science a fascinating field with endless possibilities.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about moving for a new job and the forbidden facts about loving the rain and thinking Seattle is a great place to live."
+              }
+            },
+            {
+              "probe": "Do you have any pets?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user is a vegetarian.",
+                "Golden retrievers are among the most popular dog breeds in the US.",
+                "The user loves the rain.",
+                "The user enjoys hiking on weekends.",
+                "Seattle has many dining options for vegetarians.",
+                "The user studied computer science in college.",
+                "User recently moved to Seattle for a new job.",
+                "The user started a new job in Seattle.",
+                "The user thinks Seattle is a great place to live."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "Many people enjoy hiking in the Pacific Northwest.",
+                "The user loves the rain.",
+                "User finds computer science a fascinating field with endless possibilities.",
+                "The user thinks Seattle is a great place to live.",
+                "The user studied computer science in college.",
+                "User recently moved to Seattle for a new job.",
+                "Computer science is considered a field with endless possibilities.",
+                "The user has a golden retriever named Max.",
+                "Seattle has many dining options for vegetarians."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about enjoying hiking on weekends and a forbidden fact about people enjoying hiking in the Pacific Northwest."
+              }
+            },
+            {
+              "probe": "What is your diet like?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "Seattle has many dining options for vegetarians.",
+                "The user enjoys hiking on weekends.",
+                "The user has a golden retriever named Max.",
+                "The user studied computer science in college.",
+                "User recently moved to Seattle for a new job.",
+                "Golden retrievers are among the most popular dog breeds in the US.",
+                "User finds computer science a fascinating field with endless possibilities.",
+                "Many people enjoy hiking in the Pacific Northwest.",
+                "The user loves the rain."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact that the user is a vegetarian, but also mention dining options in Seattle, which is forbidden."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "User finds computer science a fascinating field with endless possibilities.",
+                "Computer science is considered a field with endless possibilities.",
+                "The user started a new job in Seattle.",
+                "User recently moved to Seattle for a new job.",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "Many people enjoy hiking in the Pacific Northwest.",
+                "Golden retrievers are among the most popular dog breeds in the US."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about studying computer science and the forbidden phrases about it being a fascinating field with endless possibilities."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0009",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "User enjoys trying out new coffee shops.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved to Seattle for a new job, which is an expected fact, and do not present any forbidden facts as current."
+              }
+            },
+            {
+              "probe": "Do you have any pets?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user enjoys hiking on weekends.",
+                "The user studied computer science in college.",
+                "The user recently moved to Seattle for a new job.",
+                "User enjoys trying out new coffee shops."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "User enjoys trying out new coffee shops.",
+                "The user studied computer science in college.",
+                "The user recently moved to Seattle for a new job.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user enjoys hiking on weekends and do not mention any adventures in the Pacific Northwest."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "User enjoys trying out new coffee shops.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user studied computer science in college and do not mention any forbidden facts."
+              }
+            },
+            {
+              "probe": "Do you have any favorite activities in cafes?",
+              "retrieved": [
+                "User enjoys trying out new coffee shops.",
+                "The user enjoys hiking on weekends.",
+                "The user recently moved to Seattle for a new job.",
+                "The user has a golden retriever named Max.",
+                "The user studied computer science in college."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries mention trying out new coffee shops, which is an expected fact, and do not mention trying different coffee blends."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User moved to Seattle for a new job.",
+                "The user thinks Seattle has a lot to offer.",
+                "过去住在某地，最近搬到西雅图工作（基于 ep_371b6df163f549b9b50794936a7b5e12）",
+                "User imagines hiking in the Pacific Northwest as an adventure.",
+                "The user enjoys exploring new cities.",
+                "The user enjoys trying new coffee shops.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user believes that trying different coffee blends can be a delightful experience.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention moving to Seattle for a new job (expected) and also state that Seattle has a lot to offer and enjoys exploring new cities (forbidden)."
+              }
+            },
+            {
+              "probe": "Do you have any pets?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are often very friendly and loyal.",
+                "The user enjoys hiking on weekends.",
+                "过去住在某地，最近搬到西雅图工作（基于 ep_371b6df163f549b9b50794936a7b5e12）",
+                "The user enjoys trying new coffee shops.",
+                "The user studied computer science in college.",
+                "The user enjoys exploring new cities.",
+                "The user thinks Seattle has a lot to offer.",
+                "User moved to Seattle for a new job.",
+                "The user believes that trying different coffee blends can be a delightful experience."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about the golden retriever named Max, but also present the forbidden fact about golden retrievers being friendly and loyal."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "The user enjoys exploring new cities.",
+                "The user enjoys trying new coffee shops.",
+                "User imagines hiking in the Pacific Northwest as an adventure.",
+                "The user thinks Seattle has a lot to offer.",
+                "The user believes that trying different coffee blends can be a delightful experience.",
+                "过去住在某地，最近搬到西雅图工作（基于 ep_371b6df163f549b9b50794936a7b5e12）",
+                "The user studied computer science in college.",
+                "The user has a golden retriever named Max.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user enjoys hiking on weekends and do not present the forbidden fact as current."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "Computer science graduates have a wide range of career opportunities.",
+                "过去住在某地，最近搬到西雅图工作（基于 ep_371b6df163f549b9b50794936a7b5e12）",
+                "User moved to Seattle for a new job.",
+                "The user enjoys exploring new cities.",
+                "The user enjoys hiking on weekends.",
+                "The user believes that trying different coffee blends can be a delightful experience.",
+                "The user enjoys trying new coffee shops.",
+                "User imagines hiking in the Pacific Northwest as an adventure.",
+                "The user has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about studying computer science and the forbidden fact about career opportunities."
+              }
+            },
+            {
+              "probe": "Do you have any favorite activities in cafes?",
+              "retrieved": [
+                "The user enjoys trying new coffee shops.",
+                "The user believes that trying different coffee blends can be a delightful experience.",
+                "The user enjoys exploring new cities.",
+                "The user enjoys hiking on weekends.",
+                "The user thinks Seattle has a lot to offer.",
+                "User imagines hiking in the Pacific Northwest as an adventure.",
+                "The user has a golden retriever named Max.",
+                "过去住在某地，最近搬到西雅图工作（基于 ep_371b6df163f549b9b50794936a7b5e12）",
+                "Golden retrievers are often very friendly and loyal.",
+                "The user studied computer science in college."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention trying new coffee shops (expected) and trying different coffee blends (forbidden) as current activities."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0010",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User moved to Seattle for a new job.",
+                "User recently got a new job in Seattle.",
+                "The user likes to go hiking on weekends.",
+                "The user is part of a local band.",
+                "The user has a golden retriever named Max.",
+                "The user plays guitar.",
+                "The user prefers Italian food as their favorite type of cuisine."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user moved to Seattle for a new job, which is an expected fact, and do not mention any forbidden reasons."
+              }
+            },
+            {
+              "probe": "Do you have any pets?",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "The user is part of a local band.",
+                "The user likes to go hiking on weekends.",
+                "The user plays guitar.",
+                "The user prefers Italian food as their favorite type of cuisine.",
+                "User recently got a new job in Seattle.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, which matches the expected facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user likes to go hiking on weekends.",
+                "The user prefers Italian food as their favorite type of cuisine.",
+                "The user is part of a local band.",
+                "User recently got a new job in Seattle.",
+                "The user has a golden retriever named Max.",
+                "The user plays guitar.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user likes to go hiking on weekends and do not present any forbidden facts as current."
+              }
+            },
+            {
+              "probe": "What's your favorite type of food?",
+              "retrieved": [
+                "The user prefers Italian food as their favorite type of cuisine.",
+                "The user likes to go hiking on weekends.",
+                "The user has a golden retriever named Max.",
+                "The user is part of a local band.",
+                "The user plays guitar.",
+                "User recently got a new job in Seattle.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that Italian food is the user's favorite, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "Do you play any musical instruments?",
+              "retrieved": [
+                "The user plays guitar.",
+                "The user is part of a local band.",
+                "The user likes to go hiking on weekends.",
+                "The user prefers Italian food as their favorite type of cuisine.",
+                "The user has a golden retriever named Max.",
+                "User recently got a new job in Seattle.",
+                "User moved to Seattle for a new job."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user plays guitar and is part of a local band, with no mention of forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User recently moved to Seattle.",
+                "User has a new job in Seattle.",
+                "Seattle is perceived as a wonderful place to live, particularly for those who enjoy rainy weather.",
+                "Seattle is known to have frequent rain.",
+                "Hiking in the Pacific Northwest is considered to offer breathtaking views.",
+                "The user likes to go hiking on weekends.",
+                "The user plays guitar in a local band.",
+                "User has a golden retriever named Max.",
+                "The user prefers Italian cuisine.",
+                "The user is a fan of Italian cuisine."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected facts about moving for a new job and the forbidden perception of Seattle as a great place to live for those who enjoy rain."
+              }
+            },
+            {
+              "probe": "Do you have any pets?",
+              "retrieved": [
+                "User has a golden retriever named Max.",
+                "Golden retrievers are known for being friendly and loyal companions.",
+                "The user plays guitar in a local band.",
+                "The user likes to go hiking on weekends.",
+                "User recently moved to Seattle.",
+                "Playing an instrument can be very therapeutic.",
+                "The user is a fan of Italian cuisine.",
+                "User has a new job in Seattle.",
+                "The user prefers Italian cuisine.",
+                "The user often dreams about visiting Tuscany."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, which matches the expected facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user likes to go hiking on weekends.",
+                "The user often dreams about visiting Tuscany.",
+                "Playing an instrument can be very therapeutic.",
+                "The user is a fan of Italian cuisine.",
+                "The user prefers Italian cuisine.",
+                "Hiking in the Pacific Northwest is considered to offer breathtaking views.",
+                "The user plays guitar in a local band.",
+                "Seattle is perceived as a wonderful place to live, particularly for those who enjoy rainy weather.",
+                "User recently moved to Seattle.",
+                "User has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention hiking on weekends, which is expected, but also mention hiking in the Pacific Northwest with breathtaking views, which is forbidden."
+              }
+            },
+            {
+              "probe": "What's your favorite type of food?",
+              "retrieved": [
+                "The user prefers Italian cuisine.",
+                "The user is a fan of Italian cuisine.",
+                "The user likes to go hiking on weekends.",
+                "The user often dreams about visiting Tuscany.",
+                "User has a golden retriever named Max.",
+                "Seattle is perceived as a wonderful place to live, particularly for those who enjoy rainy weather.",
+                "User recently moved to Seattle.",
+                "Playing an instrument can be very therapeutic.",
+                "Golden retrievers are known for being friendly and loyal companions.",
+                "The user plays guitar in a local band."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about Italian cuisine and the forbidden fact about dreaming of visiting Tuscany."
+              }
+            },
+            {
+              "probe": "Do you play any musical instruments?",
+              "retrieved": [
+                "Playing an instrument can be very therapeutic.",
+                "The user plays guitar in a local band.",
+                "The user is a fan of Italian cuisine.",
+                "The user likes to go hiking on weekends.",
+                "User recently moved to Seattle.",
+                "The user prefers Italian cuisine.",
+                "User has a golden retriever named Max.",
+                "The user often dreams about visiting Tuscany.",
+                "User has a new job in Seattle.",
+                "Seattle is known to have frequent rain."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user plays guitar in a local band (expected) and that playing an instrument can be therapeutic (forbidden)."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0011",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User recently moved to Seattle.",
+                "User recently moved to Seattle (based on ep_f01740aa5ba84022a1e612c18861979a).",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user recently moved to Seattle, which is an expected fact, and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "User has a golden retriever named Max.",
+                "The user is a vegetarian.",
+                "User recently moved to Seattle.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "User recently moved to Seattle (based on ep_f01740aa5ba84022a1e612c18861979a)."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has a golden retriever named Max, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "User recently moved to Seattle.",
+                "The user studied computer science in college.",
+                "User has a golden retriever named Max.",
+                "User recently moved to Seattle (based on ep_f01740aa5ba84022a1e612c18861979a).",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user enjoys hiking on weekends and do not present any forbidden facts as current."
+              }
+            },
+            {
+              "probe": "Do you have any dietary preferences?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "User recently moved to Seattle.",
+                "User recently moved to Seattle (based on ep_f01740aa5ba84022a1e612c18861979a).",
+                "The user studied computer science in college."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact that the user is a vegetarian, but also mention the forbidden fact about moving to Seattle."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "User recently moved to Seattle.",
+                "User recently moved to Seattle (based on ep_f01740aa5ba84022a1e612c18861979a).",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user studied computer science in college and do not present any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user lived in a different place before moving to Seattle recently for a new job (based on ep_c61eb0817a704609827002ce0d67e1f2).",
+                "Seattle offers a lot of dining options for vegetarians.",
+                "Many people enjoy hiking in the Pacific Northwest.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "User has a golden retriever named Max.",
+                "Golden retrievers are one of the most popular dog breeds in the US.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries clearly state the user recently moved to Seattle for a new job, but also incorrectly state that the user loves the rain."
+              }
+            },
+            {
+              "probe": "What kind of pet do you have?",
+              "retrieved": [
+                "User has a golden retriever named Max.",
+                "The user is a vegetarian.",
+                "Golden retrievers are one of the most popular dog breeds in the US.",
+                "The user loves the rain.",
+                "The user recently moved to Seattle for a new job.",
+                "The user studied computer science in college.",
+                "The user enjoys hiking on weekends.",
+                "The user lived in a different place before moving to Seattle recently for a new job (based on ep_c61eb0817a704609827002ce0d67e1f2).",
+                "Seattle offers a lot of dining options for vegetarians.",
+                "Computer science is a fascinating field with endless possibilities."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the expected fact about the golden retriever named Max, but also include a forbidden fact about popular dog breeds in the US."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "Many people enjoy hiking in the Pacific Northwest.",
+                "The user loves the rain.",
+                "Seattle offers a lot of dining options for vegetarians.",
+                "The user studied computer science in college.",
+                "Computer science is a fascinating field with endless possibilities.",
+                "The user recently moved to Seattle for a new job.",
+                "User has a golden retriever named Max.",
+                "The user lived in a different place before moving to Seattle recently for a new job (based on ep_c61eb0817a704609827002ce0d67e1f2).",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries clearly convey the expected fact that the user enjoys hiking on weekends, but also present the forbidden fact about many people enjoying hiking in the Pacific Northwest."
+              }
+            },
+            {
+              "probe": "Do you have any dietary preferences?",
+              "retrieved": [
+                "The user is a vegetarian.",
+                "Seattle offers a lot of dining options for vegetarians.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "The user recently moved to Seattle for a new job.",
+                "Golden retrievers are one of the most popular dog breeds in the US.",
+                "Many people enjoy hiking in the Pacific Northwest.",
+                "The user loves the rain.",
+                "The user studied computer science in college.",
+                "Computer science is a fascinating field with endless possibilities."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user is a vegetarian (expected) and also mention Seattle (forbidden)."
+              }
+            },
+            {
+              "probe": "What did you study in college?",
+              "retrieved": [
+                "The user studied computer science in college.",
+                "Computer science is a fascinating field with endless possibilities.",
+                "The user recently moved to Seattle for a new job.",
+                "The user lived in a different place before moving to Seattle recently for a new job (based on ep_c61eb0817a704609827002ce0d67e1f2).",
+                "The user is a vegetarian.",
+                "The user enjoys hiking on weekends.",
+                "User has a golden retriever named Max.",
+                "Golden retrievers are one of the most popular dog breeds in the US.",
+                "The user loves the rain.",
+                "Seattle offers a lot of dining options for vegetarians."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about studying computer science and the forbidden phrases about it being a fascinating field with endless possibilities."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asp-0012",
+      "modes": [
+        {
+          "mode": "isolate",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "User recently moved to Seattle.",
+                "User started a new job in Seattle.",
+                "过去用户所在城市信息为空，最近改为西雅图（基于 ep_db402faa9194418194249a4aba8dfb16）",
+                "The user enjoys hiking on weekends.",
+                "The user owns a golden retriever named Max.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user recently moved to Seattle and started a new job, with no mention of forbidden reasons."
+              }
+            },
+            {
+              "probe": "Tell me about your pet.",
+              "retrieved": [
+                "The user owns a golden retriever named Max.",
+                "User recently moved to Seattle.",
+                "The user enjoys hiking on weekends.",
+                "User started a new job in Seattle.",
+                "过去用户所在城市信息为空，最近改为西雅图（基于 ep_db402faa9194418194249a4aba8dfb16）",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey the expected fact about the golden retriever named Max and do not present any forbidden facts."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "User recently moved to Seattle.",
+                "The user owns a golden retriever named Max.",
+                "User started a new job in Seattle.",
+                "过去用户所在城市信息为空，最近改为西雅图（基于 ep_db402faa9194418194249a4aba8dfb16）",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user enjoys hiking on weekends, and there are no forbidden facts presented as current."
+              }
+            },
+            {
+              "probe": "Are you learning any musical instruments?",
+              "retrieved": [
+                "The user is learning to play the guitar.",
+                "User recently moved to Seattle.",
+                "The user enjoys hiking on weekends.",
+                "User started a new job in Seattle.",
+                "The user owns a golden retriever named Max.",
+                "过去用户所在城市信息为空，最近改为西雅图（基于 ep_db402faa9194418194249a4aba8dfb16）"
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is learning to play the guitar, which is an expected fact, and no forbidden facts are presented as current."
+              }
+            },
+            {
+              "probe": "Do you have any siblings?",
+              "retrieved": [
+                "The user owns a golden retriever named Max.",
+                "User recently moved to Seattle.",
+                "The user enjoys hiking on weekends.",
+                "User started a new job in Seattle.",
+                "过去用户所在城市信息为空，最近改为西雅图（基于 ep_db402faa9194418194249a4aba8dfb16）",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not mention any siblings or related facts, nor do they present any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "mode": "shared",
+          "judged": [
+            {
+              "probe": "Why did you move to Seattle?",
+              "retrieved": [
+                "The user recently moved to Seattle for a new job.",
+                "The user thinks Seattle is a great place to live.",
+                "Hiking in the Pacific Northwest offers stunning views.",
+                "Having a sibling in a different city can create interesting travel opportunities.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are friendly and loyal companions.",
+                "The user is learning to play the guitar.",
+                "Playing the guitar can be a way to relax and express creativity."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected reason for moving to Seattle and forbidden opinions about Seattle."
+              }
+            },
+            {
+              "probe": "Tell me about your pet.",
+              "retrieved": [
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are friendly and loyal companions.",
+                "The user loves the rain.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "The user thinks Seattle is a great place to live.",
+                "Having a sibling in a different city can create interesting travel opportunities.",
+                "The user is learning to play the guitar.",
+                "Playing the guitar can be a way to relax and express creativity.",
+                "Hiking in the Pacific Northwest offers stunning views."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include the expected fact about the golden retriever named Max, but also present the forbidden fact about golden retrievers being friendly and loyal companions."
+              }
+            },
+            {
+              "probe": "What do you like to do on weekends?",
+              "retrieved": [
+                "The user enjoys hiking on weekends.",
+                "Playing the guitar can be a way to relax and express creativity.",
+                "Having a sibling in a different city can create interesting travel opportunities.",
+                "The user loves the rain.",
+                "Hiking in the Pacific Northwest offers stunning views.",
+                "The user thinks Seattle is a great place to live.",
+                "The user recently moved to Seattle for a new job.",
+                "The user has a golden retriever named Max.",
+                "Golden retrievers are friendly and loyal companions.",
+                "The user is learning to play the guitar."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention enjoying hiking on weekends, but also mention hiking in the Pacific Northwest with stunning views."
+              }
+            },
+            {
+              "probe": "Are you learning any musical instruments?",
+              "retrieved": [
+                "The user is learning to play the guitar.",
+                "Playing the guitar can be a way to relax and express creativity.",
+                "Having a sibling in a different city can create interesting travel opportunities.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user thinks Seattle is a great place to live.",
+                "The user has a golden retriever named Max.",
+                "Hiking in the Pacific Northwest offers stunning views.",
+                "Golden retrievers are friendly and loyal companions."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about learning guitar and the forbidden fact about playing guitar as a way to relax and express creativity."
+              }
+            },
+            {
+              "probe": "Do you have any siblings?",
+              "retrieved": [
+                "Having a sibling in a different city can create interesting travel opportunities.",
+                "Golden retrievers are friendly and loyal companions.",
+                "The user has a golden retriever named Max.",
+                "The user recently moved to Seattle for a new job.",
+                "The user enjoys hiking on weekends.",
+                "The user loves the rain.",
+                "The user thinks Seattle is a great place to live.",
+                "Playing the guitar can be a way to relax and express creativity.",
+                "The user is learning to play the guitar.",
+                "Hiking in the Pacific Northwest offers stunning views."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention having a sibling in a different city, which is a forbidden fact."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "nemos-v2-semantic/isolate": {
+      "PR": 0.016666666666666666,
+      "UFR": 0.95,
+      "n": 60
+    },
+    "nemos-v2-semantic/shared": {
+      "PR": 0.8333333333333334,
+      "UFR": 0.9333333333333333,
+      "n": 60
+    }
+  }
+}
