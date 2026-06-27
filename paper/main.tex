@@ -72,13 +72,13 @@ We release MnemoBench and all harness code.
 \label{sec:intro}
 % The gap: memory benchmarks measure recall; real long-term failure is maintenance.
 Memory systems for LLM agents (e.g.\ MemGPT/Letta~\cite{memgpt}, mem0~\cite{mem0},
-Zep/Graphiti~\cite{zep}) are commonly assessed on multi-session question answering such as
-LOCOMO~\cite{locomo} and LongMemEval~\cite{longmemeval}, which primarily stress
+Zep/Graphiti~\cite{zep,graphiti}) are commonly assessed on multi-session question answering
+such as LoCoMo~\cite{locomo} and LongMemEval~\cite{longmemeval}, which primarily stress
 \emph{retrieval}. Yet the failures that erode trust in a long-lived assistant are different:
 \begin{itemize}
   \item \textbf{Belief staleness.} A fact changes (job, city, diet, relationship) and the
   system keeps surfacing the old value as if current --- a failure mode recent work on
-  knowledge updating in memory systems highlights as both common and hard.
+  knowledge updating in memory systems highlights as both common and hard~\cite{fama}.
   \item \textbf{Self-pollution.} In companion/agent settings the model emits first-person
   or speculative content; if mis-attributed it enters the user profile and is later returned
   as the user's own authoritative fact.
@@ -94,14 +94,19 @@ defect we found and fixed in the contradiction detector.
 \section{Related Work}
 \label{sec:related}
 \paragraph{Memory architectures.} MemGPT/Letta~\cite{memgpt}, mem0~\cite{mem0},
-Zep/Graphiti's temporal knowledge graph~\cite{zep}. Contrast: layered separation, explicit
-invalidation semantics, source-authority gating.
-\paragraph{Temporal/ bitemporal modelling.} Graphiti edge validity intervals vs.\ Nemos
-event-sourced invalidation with materialised flat fields.
-\paragraph{Forgetting.} FSRS / spaced-repetition retrievability~\cite{fsrs} applied to
+Zep/Graphiti's temporal knowledge graph~\cite{zep,graphiti}. Contrast: layered separation,
+explicit invalidation semantics, source-authority gating.
+\paragraph{Temporal/ bitemporal modelling.} Graphiti edge validity intervals~\cite{graphiti}
+vs.\ Nemos event-sourced invalidation with materialised flat fields.
+\paragraph{Forgetting.} FSRS / spaced-repetition retrievability~\cite{ssp,fsrs} applied to
 machine memory rather than human review scheduling.
-\paragraph{Benchmarks.} LOCOMO~\cite{locomo}, LongMemEval~\cite{longmemeval}; both
-recall-centric. MnemoBench is maintenance-centric and complementary.
+\paragraph{Benchmarks.} LoCoMo~\cite{locomo} and LongMemEval~\cite{longmemeval} are
+recall-centric. Closest to our thesis is the concurrent work of Uddin et al.~\cite{fama},
+whose \emph{Memora} benchmark and Forgetting-Aware Memory Accuracy (FAMA) metric explicitly
+penalise reliance on obsolete or invalidated memory --- corroborating the
+recall-to-maintenance shift. MnemoBench is complementary: rather than a single aggregate
+score, it isolates each maintenance mechanism (invalidation, isolation, decay) through
+single-mechanism ablations, and additionally surfaces a before/after on a real detector fix.
 
 \section{The Nemos Memory Kernel}
 \label{sec:system}

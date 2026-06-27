@@ -43,9 +43,9 @@
 
 \section{引言}
 \label{sec:intro}
-面向 LLM 智能体的记忆系统（如 MemGPT/Letta~\cite{memgpt}、mem0~\cite{mem0}、Zep/Graphiti~\cite{zep}）通常以多会话问答来评测，例如 LOCOMO~\cite{locomo} 与 LongMemEval~\cite{longmemeval}，它们主要考察\emph{检索}。然而真正侵蚀长期助手可信度的失败却另有其因：
+面向 LLM 智能体的记忆系统（如 MemGPT/Letta~\cite{memgpt}、mem0~\cite{mem0}、Zep/Graphiti~\cite{zep,graphiti}）通常以多会话问答来评测，例如 LoCoMo~\cite{locomo} 与 LongMemEval~\cite{longmemeval}，它们主要考察\emph{检索}。然而真正侵蚀长期助手可信度的失败却另有其因：
 \begin{itemize}
-  \item \textbf{信念陈旧。}某事实变化了（工作、城市、饮食、感情状态），系统却仍把旧值当作现状反复给出——近期关于记忆系统中知识更新的研究指出，这既常见又棘手。
+  \item \textbf{信念陈旧。}某事实变化了（工作、城市、饮食、感情状态），系统却仍把旧值当作现状反复给出——近期关于记忆系统中知识更新的研究指出，这既常见又棘手~\cite{fama}。
   \item \textbf{自污染。}在陪伴/智能体场景中，模型会产出第一人称或推测性内容；一旦被错误归因，便进入用户档案，日后被当作用户自身的权威事实返回。
   \item \textbf{从不遗忘。}仅追加（append-only）的存储会不断累积一次性琐碎，挤占重要事实、拉低检索精度。
 \end{itemize}
@@ -53,10 +53,10 @@
 
 \section{相关工作}
 \label{sec:related}
-\paragraph{记忆架构。}MemGPT/Letta~\cite{memgpt}、mem0~\cite{mem0}、Zep/Graphiti 的时序知识图谱~\cite{zep}。区别在于：分层分离、显式的失效语义、来源权威性把关。
-\paragraph{时序/双时间建模。}Graphiti 用边的有效区间；Nemos 采用事件溯源式失效，并物化为扁平字段供热路径查询。
-\paragraph{遗忘。}FSRS / 间隔重复的可提取性模型~\cite{fsrs}，被用于机器记忆而非人类复习排程。
-\paragraph{评测基准。}LOCOMO~\cite{locomo}、LongMemEval~\cite{longmemeval} 均以召回为中心；MnemoBench 以\emph{维护}为中心，二者互补。
+\paragraph{记忆架构。}MemGPT/Letta~\cite{memgpt}、mem0~\cite{mem0}、Zep/Graphiti 的时序知识图谱~\cite{zep,graphiti}。区别在于：分层分离、显式的失效语义、来源权威性把关。
+\paragraph{时序/双时间建模。}Graphiti 用边的有效区间~\cite{graphiti}；Nemos 采用事件溯源式失效，并物化为扁平字段供热路径查询。
+\paragraph{遗忘。}FSRS / 间隔重复的可提取性模型~\cite{ssp,fsrs}，被用于机器记忆而非人类复习排程。
+\paragraph{评测基准。}LoCoMo~\cite{locomo} 与 LongMemEval~\cite{longmemeval} 均以召回为中心。与本文主张最接近的是 Uddin 等人的同期工作~\cite{fama}：其 \emph{Memora} 基准与 Forgetting-Aware Memory Accuracy（FAMA）指标显式惩罚对过时/失效记忆的依赖，印证了“从召回转向维护”的转变。MnemoBench 与之互补：不汇总成单一总分，而是通过单机制消融分别隔离每个维护机制（失效、隔离、衰减），并额外给出一处真实检测器修复的 before/after。
 
 \section{Nemos 记忆内核}
 \label{sec:system}
