@@ -1,6 +1,6 @@
 {
   "task": "BUC",
-  "timestamp": "2026-06-26T22:41:27.959Z",
+  "timestamp": "2026-06-27T10:49:05.586Z",
   "per_item": [
     {
       "id": "buc-0001",
@@ -9,14 +9,15 @@
           "variant": "nemos-v2-semantic",
           "judged": [
             {
-              "probe": "Where are you currently working?",
+              "probe": "Where are you currently employed?",
               "retrieved": [
-                "User loves the creative environment at Creative Minds Agency."
+                "The user finds GreenTech Industries a fantastic place to work.",
+                "The user is trying to pick up new skills in their free time."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entry clearly conveys the user is associated with Creative Minds Agency, which is expected."
+                "why": "The retrieved entries confirm employment at GreenTech Industries and do not mention any forbidden employers."
               }
             }
           ]
@@ -25,16 +26,18 @@
           "variant": "nemos-v1-lexical",
           "judged": [
             {
-              "probe": "Where are you currently working?",
+              "probe": "Where are you currently employed?",
               "retrieved": [
-                "过去在 Global Solutions Ltd. 工作，但最近改为在 Creative Minds Agency 工作（基于 ep_544b60c3d76c433fa84ce7b8c6c9c84c）",
-                "过去在 Tech Innovations Inc. 工作了几年，但最近改为在 Creative Minds Agency 工作（基于 ep_544b60c3d76c433fa84ce7b8c6c9c84c）",
-                "User loves the creative environment at Creative Minds Agency."
+                "The user was employed at Innovate Solutions LLC, but recently switched jobs a few months ago (based on ep_1415a5a0c1f44d96b3e90f2c8e39ea38).",
+                "The user was employed at Innovate Solutions LLC, but recently switched jobs to join GreenTech Industries (based on ep_b9dd6dba2e79461e94b66d67ee704938).",
+                "The user was employed at Innovate Solutions LLC, but recently switched jobs to join GreenTech Industries (based on ep_b9dd6dba2e79461e94b66d67ee704938).",
+                "The user perceives GreenTech Industries as a fantastic place to work.",
+                "用户在空闲时间尝试学习新技能。"
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user is currently working at Creative Minds Agency and mark the forbidden facts as past."
+                "why": "The retrieved entries clearly state the user is currently employed at GreenTech Industries and mark Innovate Solutions LLC as a past employer."
               }
             }
           ]
@@ -43,18 +46,18 @@
           "variant": "nemos-no-invalidation",
           "judged": [
             {
-              "probe": "Where are you currently working?",
+              "probe": "Where are you currently employed?",
               "retrieved": [
-                "The user used to work at Global Solutions Ltd., recently moved to Creative Minds Agency (based on ep_f6c50cfc3de64a18a1159ffc060fc30d)",
-                "The user used to work at Tech Innovations Inc., recently started working at Global Solutions Ltd. (based on ep_28edbd8b12364259806aa37c61c1fa1c)",
-                "The user has been working at Tech Innovations Inc. for a few years.",
-                "The user recently moved to Creative Minds Agency (based on ep_f6c50cfc3de64a18a1159ffc060fc30d).",
-                "User loves the creative environment at Creative Minds Agency."
+                "User switched jobs a few months ago and is now working at Innovate Solutions LLC.",
+                "User used to work at GreenTech Industries, recently switched to working at Innovate Solutions LLC (based on ep_383b4ebc58494439a075f1ba1c5ab8cc).",
+                "User finds GreenTech Industries to be a fantastic place to work.",
+                "User recently joined GreenTech Industries.",
+                "User is attempting to learn new skills in their free time."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": true,
-                "why": "The entries mention the user currently working at Creative Minds Agency, but also incorrectly suggest they recently started at Global Solutions Ltd. and are still at Tech Innovations Inc."
+                "why": "The entries mention both GreenTech Industries and Innovate Solutions LLC as current employers."
               }
             }
           ]
@@ -70,15 +73,14 @@
             {
               "probe": "Where do you currently live?",
               "retrieved": [
-                "The user is planning to move to Denver next month.",
-                "The user enjoys exploring different neighborhoods.",
-                "The user has an interest in mountains and hiking trails.",
-                "The user enjoys trying out new restaurants."
+                "The user recently relocated to San Francisco (based on ep_1d3861279dd044558190cf6fb192a133).",
+                "The user recently relocated to San Francisco, no longer residing in New York (based on ep_1d3861279dd044558190cf6fb192a133).",
+                "The user finds the weather in San Francisco amazing."
               ],
               "judge": {
-                "contains_expected": false,
+                "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries do not mention any current location, expected or forbidden."
+                "why": "The retrieved entries confirm the user currently lives in San Francisco and explicitly state they no longer reside in New York."
               }
             }
           ]
@@ -89,15 +91,16 @@
             {
               "probe": "Where do you currently live?",
               "retrieved": [
-                "The user enjoys exploring different neighborhoods and trying new restaurants.",
-                "The user is still getting used to the weather in Chicago.",
-                "过去用户期待着去山里徒步旅行，最近改为前往西雅图（基于 ep_04eba16cd3fb4acd87c7b9353259e4b0）",
-                "过去用户期待去山区徒步，最近改为前往西雅图（基于 ep_04eba16cd3fb4acd87c7b9353259e4b0）"
+                "过去在芝加哥居住，最近改为搬到旧金山（基于 ep_a887ed8bad1647eb810da7d20e7ae19a）",
+                "The user used to live in Chicago, but recently relocated to San Francisco (based on ep_a887ed8bad1647eb810da7d20e7ae19a).",
+                "The user perceives moving to New York as a big change.",
+                "User finds the weather in San Francisco amazing.",
+                "The weather in San Francisco is generally considered amazing."
               ],
               "judge": {
                 "contains_expected": true,
-                "contains_forbidden": true,
-                "why": "The entries mention moving to Seattle, but also incorrectly suggest the user is still getting used to the weather in Chicago."
+                "contains_forbidden": false,
+                "why": "The retrieved entries confirm the user currently lives in San Francisco and mark Chicago as a past residence."
               }
             }
           ]
@@ -108,16 +111,16 @@
             {
               "probe": "Where do you currently live?",
               "retrieved": [
-                "The user enjoys exploring different neighborhoods.",
-                "过去用户期待去山里和远足小径，最近改为前往西雅图（基于 ep_323a2622dbce486fa7f831a9cc501677）",
-                "The user looks forward to visiting mountains and hiking trails.",
-                "User is still getting used to the weather in Chicago.",
-                "The user enjoys trying out new restaurants."
+                "User is currently living in Chicago.",
+                "The user used to live in Chicago, but recently relocated to San Francisco (based on ep_ba49bf1a7aad43fa9873919327d03b11).",
+                "User was living in Chicago, recently moved to San Francisco (based on ep_ba49bf1a7aad43fa9873919327d03b11).",
+                "User has had a great experience living in Chicago so far.",
+                "The user enjoys the weather in San Francisco."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": true,
-                "why": "The retrieved entries mention the user recently moved to Seattle, but also incorrectly state the user is still getting used to the weather in Chicago."
+                "why": "The entries mention the user currently lives in San Francisco, but also incorrectly state they are currently living in Chicago."
               }
             }
           ]
@@ -133,13 +136,15 @@
             {
               "probe": "What is your current diet preference?",
               "retrieved": [
-                "The user has decided to go fully vegan.",
-                "The user enjoys experimenting with new dishes."
+                "User is enjoying the change to a vegan lifestyle.",
+                "User has decided to go fully vegan.",
+                "The user loves trying out new vegetarian recipes.",
+                "Trying out new recipes keeps things interesting for the user."
               ],
               "judge": {
                 "contains_expected": true,
-                "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user is fully vegan, which matches the expected facts, and do not mention any forbidden facts."
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user is vegan but also mention trying out vegetarian recipes, which is forbidden."
               }
             }
           ]
@@ -150,15 +155,17 @@
             {
               "probe": "What is your current diet preference?",
               "retrieved": [
-                "过去用户认为自己更像一个吃鱼的素食主义者，最近改为完全素食（基于 ep_5cb7f1051f874e4c8611094fa8ad9266）",
-                "The user has been a vegetarian for a while.",
+                "过去用户最近开始在餐食中加入鱼类并自认为更偏向于吃鱼素者，最近改为享受向纯素食过渡（基于 ep_297bc4f4f47d4c4ea4b765428f416bfd）",
+                "The user has been following a vegetarian diet for some time.",
+                "过去用户将鱼类纳入饮食并且更倾向于自认为是一个吃鱼肉的人 (pescatarian)，最近改为享受过渡到纯素饮食（基于 ep_297bc4f4f47d4c4ea4b765428f416bfd）",
                 "The user has decided to go fully vegan.",
-                "The user enjoys experimenting with new dishes."
+                "The user loves trying out new vegetarian recipes.",
+                "The user finds trying new vegetarian recipes keeps things interesting."
               ],
               "judge": {
                 "contains_expected": true,
-                "contains_forbidden": true,
-                "why": "The retrieved entries mention the user is now fully vegan but also state they have been a vegetarian, which is forbidden."
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has decided to go fully vegan and mention past transitions from pescatarian and vegetarian diets."
               }
             }
           ]
@@ -169,15 +176,16 @@
             {
               "probe": "What is your current diet preference?",
               "retrieved": [
-                "The user has started including fish in their meals and identifies more with a pescatarian diet.",
-                "The user has adopted a vegetarian lifestyle.",
-                "The user has decided to adopt a fully vegan lifestyle.",
-                "User enjoys experimenting with new dishes."
+                "The user follows a vegetarian diet.",
+                "User is enjoying the transition to a vegan lifestyle.",
+                "User has decided to adopt a fully vegan lifestyle.",
+                "The user has started including fish in their meals and now considers themselves more of a pescatarian.",
+                "The user loves trying out new vegetarian recipes."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": true,
-                "why": "The retrieved entries mention both a fully vegan lifestyle and a pescatarian diet, which includes fish."
+                "why": "The retrieved entries mention both the expected fact of adopting a vegan lifestyle and forbidden facts of being vegetarian and pescatarian."
               }
             }
           ]
@@ -191,10 +199,638 @@
           "variant": "nemos-v2-semantic",
           "judged": [
             {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "过去单身很久，最近结婚了（基于 ep_ab51be0a3e9d48a6b3da457f361dfdd7）",
+                "User has recently gotten married (based on ep_ab51be0a3e9d48a6b3da457f361dfdd7).",
+                "用户已经结婚。",
+                "User has recently started painting as a new hobby.",
+                "User finds painting to be relaxing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user is married and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "The user was single and has now gotten married (based on ep_0e3be4235af74798abf9b871108301f1).",
+                "The user got married recently (based on ep_0e3be4235af74798abf9b871108301f1).",
+                "The user has started a new hobby of painting, which they find relaxing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is married and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "The user was single for a significant period, but recently got married (based on ep_76246b266df14547b15c027c085a2c18).",
+                "The user has been single for a significant period, but recently got married based on ep_76246b266df14547b15c027c085a2c18.",
+                "The user has started painting as a new hobby.",
+                "Painting is relaxing for the user."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user recently got married and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0005",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "用户过去是高级软件工程师，最近改为软件工程师（基于 ep_1fcac5c433c64dcca9342b7862072b0e）",
+                "The user is enjoying working with the team.",
+                "The user is having a great learning experience."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly state the user is currently a 'Software Engineer', which is a forbidden fact."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "过去用户是 Senior Software Engineer，最近改为 Software Engineer（基于 ep_1fd6efd50f1946889e47cffabfc59510）",
+                "过去用户是 Senior Software Engineer，最近改为 Software Engineer（基于 ep_1fd6efd50f1946889e47cffabfc59510）",
+                "过去用户是 Junior Developer，最近改为 Software Engineer（基于 ep_1fd6efd50f1946889e47cffabfc59510）",
+                "The user enjoys working with their current team."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly present 'Software Engineer' as the current job title, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "The user is currently a Junior Developer.",
+                "User was promoted to Software Engineer, but has recently started a new job as a Junior Developer (based on ep_ab0e1149abfa48daa832246000e0626c).",
+                "User has recently been promoted to Software Engineer.",
+                "User has been promoted to Senior Software Engineer.",
+                "The user enjoys working with the team.",
+                "The user is having a great learning experience."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'Senior Software Engineer' as the current job title and also incorrectly present 'Junior Developer' as the current job title."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0006",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Which gym are you currently going to?",
+              "retrieved": [
+                "过去用户经常去 Gold's Gym，最近改为 Equinox（基于 ep_05a24cd183a4475d931970f94de7ac5d）",
+                "过去用户经常去 Gold's Gym，最近改为 Equinox（基于 ep_05a24cd183a4475d931970f94de7ac5d）",
+                "Equinox has amazing facilities and classes.",
+                "The user tries to engage in an activity at least three times a week.",
+                "User moved to a new apartment."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user recently switched to Equinox and do not present any forbidden gym as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Which gym are you currently going to?",
+              "retrieved": [
+                "User used to be a member of Planet Fitness and visited regularly, but recently switched to Gold's Gym because it's closer to their new apartment (based on ep_344f9d913d894263ae1042375feb36be).",
+                "Equinox has amazing facilities and classes.",
+                "The user tries to go somewhere at least three times a week.",
+                "User lives in a new apartment."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention Equinox positively, but also present Gold's Gym as a current gym."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Which gym are you currently going to?",
+              "retrieved": [
+                "User switched to Gold's Gym recently.",
+                "User has been going to Planet Fitness regularly.",
+                "User's new apartment is closer to Gold's Gym.",
+                "Equinox has amazing facilities and classes.",
+                "The user has a routine of trying to go somewhere or do something at least three times a week.",
+                "User has joined Equinox."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user has joined Equinox, but also incorrectly state the user switched to Gold's Gym and goes to Planet Fitness."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0007",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "The user has recently started using an Apple phone and likes the ecosystem.",
+                "User thinks the camera is amazing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is currently using an Apple phone and do not mention any forbidden brands."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "过去用户使用的是 OnePlus 手机，最近改为尝试 Apple 手机并喜欢 Apple 生态系统（基于 ep_8835fe2a9fba4d3ab2522afd3bf9a270）",
+                "过去用户换了一加手机，因为想要一些不同的体验，最近改为尝试苹果手机，并且喜欢苹果生态系统（基于 ep_8835fe2a9fba4d3ab2522afd3bf9a270）",
+                "(User finds the camera to be amazing / The camera is amazing for taking great photos)"
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user recently switched to using an Apple phone, and past use of OnePlus is marked as former."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "User recently switched from Samsung to trying out an Apple phone (based on ep_b868c954c6c64c77b06003e170231411).",
+                "The user recently decided to try out an Apple phone, indicating a potential shift in brand preference.",
+                "The user enjoys using their new Samsung phone.",
+                "The user switched to a OnePlus phone because they wanted something different.",
+                "The camera the user mentions is amazing.",
+                "User likes the Apple ecosystem."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user trying out an Apple phone, but also incorrectly present Samsung and OnePlus as current brands."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0008",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "User's past residence was in Riverside and has recently moved to Downtown (based on ep_72b269ac39f94f0db8d370b636c1a301).",
+                "User's past residence was in Riverside, recently moved to Downtown (based on ep_72b269ac39f94f0db8d370b636c1a301).",
+                "User finds Downtown vibrant and appreciates that everything is within walking distance.",
+                "Greenwood is a quiet neighborhood."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The entries confirm the user currently lives in Downtown and mark Riverside as a past residence, with no current claim about Greenwood."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "The user recently moved to Riverside (based on ep_6b45a57ed66041ffb66f40eb2697499e).",
+                "User prefers living closer to work.",
+                "The user moved from Downtown to Riverside last year (based on ep_6b45a57ed66041ffb66f40eb2697499e).",
+                "The user enjoys a great view of the river from their location in Riverside.",
+                "The user finds Downtown vibrant and accessible with everything within walking distance.",
+                "Greenwood is characterized as a quiet neighborhood."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries present Riverside as the current location, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "The user used to live in Riverside, recently moved to Downtown (based on ep_b04b282a197d455eb815d71971fd517d).",
+                "The user used to live in Greenwood.",
+                "User's past residence, Riverside, was closer to work. Recently moved to Downtown (based on ep_b04b282a197d455eb815d71971fd517d).",
+                "User's current residence, Riverside, is closer to work.",
+                "User used to enjoy the view of the river from their residence in Riverside. Recently moved to Downtown (based on ep_b04b282a197d455eb815d71971fd517d).",
+                "User enjoys the view of the river from their residence in Riverside.",
+                "The user finds living Downtown vibrant and appreciates that everything is within walking distance.",
+                "Greenwood is a quiet neighborhood."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user currently lives in Downtown but also incorrectly present Riverside as a current residence."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0009",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "The user finds driving to work much more convenient.",
+                "User believes biking to work was a great way to stay fit.",
+                "User finds taking the bus more relaxing than other modes of transportation."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention driving as current and also present biking and taking the bus as if they are current preferences."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "Past preference for taking the bus to work has changed; user recently decided to start driving their car to work (based on ep_164a2c8fbe4f49c8844accecb4c2e724).",
+                "过去用户习惯搭公交车上班，最近改为开车（基于 ep_164a2c8fbe4f49c8844accecb4c2e724）",
+                "User finds driving to work more convenient.",
+                "Biking was a great way for the user to stay fit."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently commutes by car and mark past bus and bicycle use as former preferences."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "The user used to bike to work every day as a way to stay fit.",
+                "The user finds driving their car to work much more convenient.",
+                "The user finds taking the bus more relaxing than previous modes of transportation they used."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user currently finds driving their car convenient, but also present taking the bus as a current mode of transportation."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0010",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "User owns a Tesla Model 3.",
+                "User decided to switch to an electric vehicle."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries confirm the user currently drives a Tesla Model 3 and do not mention any forbidden cars."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "The user used to drive a Toyota Corolla for a long period of time, recently switched to a Honda Civic (based on ep_97b1082c13e44392aebcbc31dd81d1c9).",
+                "User owns a Tesla Model 3.",
+                "User has decided to switch to electric vehicles."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries confirm the user currently owns a Tesla Model 3 and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "The user used to drive a Toyota Corolla, but recently switched to a Honda Civic (based on ep_8d063bb618944f2ea93b4f4c08d504ef).",
+                "The user used to drive a Toyota Corolla for a long period, recently switched to a Honda Civic (based on ep_8d063bb618944f2ea93b4f4c08d504ef).",
+                "The user recently switched to driving a Tesla Model 3 (based on ep_8cf658b8c77847879d17f92fd398d8ec).",
+                "The user used to drive a Toyota Corolla for a long period.",
+                "The user switched to driving a Tesla Model 3 (based on ep_8cf658b8c77847879d17f92fd398d8ec)."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently drives a Tesla Model 3 and mark the Toyota Corolla and Honda Civic as past vehicles."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0011",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where are you currently employed?",
+              "retrieved": [
+                "User recently changed their job from GreenTech Industries to Innovate Solutions LLC (based on ep_449cc89257c446c3b62c1498fb2b5324).",
+                "User's new role at Innovate Solutions LLC is different from their previous job.",
+                "User is focusing on sustainability projects at work.",
+                "The user considers their commute to not be too bad."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly state that the user is currently employed at Innovate Solutions LLC, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where are you currently employed?",
+              "retrieved": [
+                "User was previously working with GreenTech Industries, recently moved to a new role at Innovate Solutions LLC (based on ep_8d72dd60e8d04081b238509a7d3b9dc7)",
+                "过去用户在 GreenTech Industries 工作，最近改为 Innovate Solutions LLC（基于 ep_8d72dd60e8d04081b238509a7d3b9dc7）",
+                "The user's current work focuses on sustainability projects.",
+                "User's new role at Innovate Solutions LLC is different from their previous work.",
+                "The user perceives their commute as manageable and considers it a positive aspect."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly present Innovate Solutions LLC as the current employer."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where are you currently employed?",
+              "retrieved": [
+                "The user is currently working at GreenTech Industries.",
+                "过去在 GreenTech Industries 工作，最近改为在 Innovate Solutions LLC 工作（基于 ep_c5adb8b7a381432c8650b8291be87788）",
+                "过去用户在 GreenTech Industries 工作，最近改为 Innovate Solutions LLC（基于 ep_c5adb8b7a381432c8650b8291be87788）",
+                "Innovate Solutions LLC is a company where the user works.",
+                "The user is focusing on sustainability projects at GreenTech Industries.",
+                "The user considers their commute to be manageable or satisfactory.",
+                "User's new role is a bit different from what they were doing before."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention both GreenTech Industries as the current employer and Innovate Solutions LLC as a current employer."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0012",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "User experienced a big change by relocating to San Francisco last month (based on ep_6434f2a61fae4908947f6e87de241d6b).",
+                "The user experienced a big change by relocating to San Francisco (based on ep_6434f2a61fae4908947f6e87de241d6b).",
+                "User perceives New York as having incredible energy.",
+                "The user sometimes misses the food scene in a certain location."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user relocated to San Francisco, and there is no indication that New York or Chicago is a current residence."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "过去用户居住在芝加哥，最近改为居住在旧金山（基于 ep_51df45a5a66645ecaeb40509771ac4b4）",
+                "过去用户住在芝加哥，最近改为搬到了旧金山（基于 ep_51df45a5a66645ecaeb40509771ac4b4）",
+                "The user considers moving to San Francisco an adventure.",
+                "New York is known for its incredible energy.",
+                "User sometimes misses the food scene in a certain location."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The entries clearly state the user now lives in San Francisco and mark Chicago as a past residence."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "User finds moving to new places adventurous.",
+                "New York has a very energetic atmosphere.",
+                "The user sometimes misses the food scene from a place they have been before."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention New York, which is a forbidden fact, without clarifying it is no longer current."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0013",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "The user feels that a recent change has been positive for them."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entry does not mention any specific diet."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "The user follows a vegetarian diet.",
+                "过去用户最近决定采用完整的素食主义生活方式，最近改为过渡到素食主义非常有趣（基于 ep_51939ef6f3094a7cb64807dcc64af6dc）",
+                "过去用户认同为吃鱼的杂食主义者，最近改为转型为素食主义者（基于 ep_51939ef6f3094a7cb64807dcc64af6dc）"
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention a transition to veganism but also present vegetarianism as a current diet."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "User follows a vegetarian diet.",
+                "User has transitioned from a pescatarian to a vegan lifestyle (based on ep_aa8c070cc99a4758af4056e0b5963450).",
+                "User now identifies as fully vegan, moving away from a vegetarian or pescatarian lifestyle (based on ep_aa8c070cc99a4758af4056e0b5963450).",
+                "The user has recently started incorporating fish into their meals and identifies more as a pescatarian.",
+                "The user has decided to adopt a fully vegan lifestyle.",
+                "The user perceives a recent change in their life as positive."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user is vegan but also incorrectly state they are pescatarian."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0014",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
               "probe": "What is your current relationship status?",
               "retrieved": [
-                "The user used to be single and focusing on themselves, but recently got married (based on ep_d5a0f28307f04818b34507d98c4dee9c).",
-                "The user has been in a period of learning new things and enjoying hobbies."
+                "The user was single but recently got married (based on ep_e260fdf73122416c9a12539ab1eb11d3).",
+                "The user is currently focusing on themselves.",
+                "User is picking up new hobbies, including painting."
               ],
               "judge": {
                 "contains_expected": true,
@@ -210,13 +846,14 @@
             {
               "probe": "What is your current relationship status?",
               "retrieved": [
-                "过去 The user is currently single and focusing on themselves，最近改为 The user is married（基于 ep_0be2d243964b4dd38137b8a2903f6b49）",
-                "The user has a positive outlook towards learning new things and engaging in hobbies."
+                "过去用户一直单身，最近改为已婚（基于 ep_2aa30ebc840142fda6a419da83b7b433）",
+                "The user was single for a while, but recently got married (based on ep_2aa30ebc840142fda6a419da83b7b433).",
+                "User has recently started picking up painting as a new hobby."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries indicate the user is currently married and do not present any forbidden facts as current."
+                "why": "The retrieved entries clearly state the user recently got married, and do not present any forbidden facts as current."
               }
             }
           ]
@@ -227,15 +864,14 @@
             {
               "probe": "What is your current relationship status?",
               "retrieved": [
-                "The user recently started a new romantic relationship, moving away from the single life and focusing only on themselves (based on ep_f002ef8eb1434706881874a82b617501).",
-                "The user was single and focused on themselves, but recently got married (based on ep_ee5f7e8ea4c14e6e81029ced62d9500a).",
-                "The user got married recently (based on ep_ee5f7e8ea4c14e6e81029ced62d9500a).",
-                "The user enjoys learning new things and engaging in hobbies."
+                "The user was single and focusing on themselves, but recently got married (based on ep_ccaba7d74d9045d99aa3e6faf08e6f26).",
+                "过去用户是单身并专注于自己，最近改为已婚（基于 ep_ccaba7d74d9045d99aa3e6faf08e6f26）",
+                "The user has a new hobby: painting."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries clearly state that the user got married recently, which matches the expected facts, and do not present any forbidden facts as current."
+                "why": "The retrieved entries clearly state the user recently got married, and no forbidden facts are presented as current."
               }
             }
           ]
@@ -243,41 +879,101 @@
       ]
     },
     {
-      "id": "buc-0005",
+      "id": "buc-0015",
       "variants": [
         {
           "variant": "nemos-v2-semantic",
           "judged": [
             {
-              "probe": "What pet do you currently have?",
+              "probe": "What is your current job title?",
               "retrieved": [
-                "The user has a friendly golden retriever that loves playing fetch.",
-                "The user decided to get a parrot because it is more interactive.",
-                "The user enjoyed watching their goldfish swim.",
-                "User perceives parrots as more interactive."
+                "The user was previously promoted to a Senior Software Engineer, but recently was promoted to a Software Engineer (based on ep_26ecad000d37469e8fc05322fae67c2b).",
+                "The user enjoys working with their current team.",
+                "User considers being promoted to a Software Engineer as a big step up."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly present 'Software Engineer' as the current job title."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "过去 The user is currently employed as a Junior Developer，最近改为 Senior Software Engineer（基于 ep_f35e727b287f4bb0b4ff7b652ccff135）",
+                "过去 User was currently employed as a Junior Developer，最近改为 Senior Software Engineer（基于 ep_f35e727b287f4bb0b4ff7b652ccff135）",
+                "User considers a promotion to Software Engineer as a big step in their career.",
+                "The user enjoys the team they are working with."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is currently a Senior Software Engineer and mark the forbidden facts as past."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "The user is enjoying working with their current team.",
+                "User sees promotion to Software Engineer as a big step up."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries suggest the user is currently a Software Engineer, which is a forbidden fact."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0016",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Which gym are you currently going to?",
+              "retrieved": [
+                "The user used to go to Gold's Gym but recently switched to Equinox (based on ep_dca01ae532094903bd2cf62f412b3e37).",
+                "The user used to go to Gold's Gym but recently switched to Equinox (based on ep_dca01ae532094903bd2cf62f412b3e37).",
+                "The user prefers a gym close to their work location.",
+                "The user finds Equinox classes amazing.",
+                "The user tries to visit a certain place a few times a week."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user recently switched to Equinox and mark Gold's Gym as a past gym."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Which gym are you currently going to?",
+              "retrieved": [
+                "User switched from regularly going to Planet Fitness to Gold's Gym (based on ep_4025748eed1c4683be7b216dfb17b5c0).",
+                "The user tries to go to a certain place a few times a week.",
+                "User finds Equinox classes amazing."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": true,
-                "why": "The retrieved entries mention a golden retriever, which is expected, but also present a parrot as a current pet, which is forbidden."
-              }
-            }
-          ]
-        },
-        {
-          "variant": "nemos-v1-lexical",
-          "judged": [
-            {
-              "probe": "What pet do you currently have?",
-              "retrieved": [
-                "The user used to have a pet goldfish named Bubbles.",
-                "User has a golden retriever that is friendly and loves playing fetch.",
-                "The user enjoyed watching their goldfish swim."
-              ],
-              "judge": {
-                "contains_expected": true,
-                "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user currently has a golden retriever and mark the goldfish as a past pet."
+                "why": "The retrieved entries mention Equinox positively, but also present a transition from Planet Fitness to Gold's Gym, suggesting Gold's Gym as a current gym."
               }
             }
           ]
@@ -286,20 +982,20 @@
           "variant": "nemos-no-invalidation",
           "judged": [
             {
-              "probe": "What pet do you currently have?",
+              "probe": "Which gym are you currently going to?",
               "retrieved": [
-                "The user used to have a pet goldfish named Bubbles, recently acquired a golden retriever (based on ep_7429a9849ba44e42bbe613a472bf62cf).",
-                "The user used to have a pet goldfish named Bubbles.",
-                "Parrots are interactive pets.",
-                "The user's goldfish named Bubbles is no longer with them, recently acquired a golden retriever (based on ep_7429a9849ba44e42bbe613a472bf62cf).",
-                "User's golden retriever is friendly and enjoys playing fetch.",
-                "User finds parrots to be interactive.",
-                "The user enjoyed watching their goldfish swim around."
+                "过去用户是 Planet Fitness 的会员并定期访问，最近改为 Gold's Gym 的会员（基于 ep_e33194485ca54922a1568beae1b406e1）",
+                "Gold's Gym is closer to user's work.",
+                "过去用户是 Planet Fitness 的会员并定期访问，最近改为 Equinox 的会员（基于 ep_c574249a10ab4e35900d3f82b29ade39）",
+                "The user is a member of and regularly visits Planet Fitness.",
+                "User appreciates the classes offered by Equinox.",
+                "Equinox offers amazing classes.",
+                "User tries to visit an unspecified location a few times a week."
               ],
               "judge": {
                 "contains_expected": true,
-                "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user currently has a golden retriever and do not present any forbidden facts as current."
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention Equinox as a current gym but also present Planet Fitness as a current gym."
               }
             }
           ]
@@ -307,21 +1003,23 @@
       ]
     },
     {
-      "id": "buc-0006",
+      "id": "buc-0017",
       "variants": [
         {
           "variant": "nemos-v2-semantic",
           "judged": [
             {
-              "probe": "What is your current job title?",
+              "probe": "What brand of phone do you currently use?",
               "retrieved": [
-                "过去 User 是 Junior Developer，最近改为 Senior Software Engineer（基于 ep_5d8537ab27794ab78647e0397c0f1b98）",
-                "The user finds learning experiences generally positive but occasionally challenging."
+                "用户过去决定切换到一加手机，现在改为升级了一部苹果手机（基于 ep_431241a6fe344751a8198acb62046f54）",
+                "The user enjoys the Apple ecosystem.",
+                "User frequently uses a nice screen for watching videos.",
+                "The user enjoys watching videos."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user is now a Senior Software Engineer and mark Junior Developer as a past role."
+                "why": "The retrieved entries indicate the user currently uses an Apple phone and do not present any forbidden brands as current."
               }
             }
           ]
@@ -330,84 +1028,509 @@
           "variant": "nemos-v1-lexical",
           "judged": [
             {
-              "probe": "What is your current job title?",
+              "probe": "What brand of phone do you currently use?",
               "retrieved": [
-                "User is currently or has been a Software Engineer.",
-                "过去用户是 Junior Developer，最近改为 Senior Software Engineer（基于 ep_22ef9def1d844914ae19e5e8576740b2）",
-                "过去用户是 Junior Developer，最近改为 Senior Software Engineer（基于 ep_22ef9def1d844914ae19e5e8576740b2）",
-                "User is a Senior Software Engineer.",
-                "User had a learning experience that was great but challenging at times."
+                "过去用户拥有一部三星手机，最近改为使用一部 OnePlus 手机（基于 ep_dc064d5c226440d29e93c5456fbe6b8b）",
+                "The user has switched from a Samsung phone to an Apple phone (based on ep_d3c27be66688422481c9d1fafef3d2c2).",
+                "The user upgraded from a Samsung phone to an Apple phone last month.",
+                "(A deal on a OnePlus can be considered great. / Switching to a new phone can often involve finding a good deal.)",
+                "The user is enjoying the Apple ecosystem.",
+                "The user finds the screen really nice and uses it a lot for watching videos."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user is a Senior Software Engineer and mark previous roles as past."
+                "why": "The retrieved entries clearly state the user switched to an Apple phone and do not present Samsung or OnePlus as currently used."
               }
             }
           ]
         },
         {
           "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What brand of phone do you currently use?",
+              "retrieved": [
+                "The user used to find their Samsung phone to be pretty good, recently switched to an Apple phone (based on ep_a6b8e1a857d847a4b2d25d448732b9d1).",
+                "The user used to find their Samsung phone to be pretty good, recently decided to switch to an Apple phone (based on ep_a6b8e1a857d847a4b2d25d448732b9d1).",
+                "The user used to find their Samsung phone to be pretty good, recently decided to switch to a OnePlus phone (based on ep_f0d257040c4c4eeb956840cb0aeb33ab).",
+                "The user finds their Samsung phone to be pretty good.",
+                "User found a OnePlus phone deal to be great.",
+                "User enjoys the Apple ecosystem.",
+                "The user frequently uses the screen for watching videos."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The entries mention a recent switch to Apple, but also present Samsung and OnePlus as current options."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0018",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "User recently relocated to Riverside (based on ep_7cbf5c5b63da40fb8545a73a0a9242ab).",
+                "User finds the view by the river in Riverside amazing and enjoys it."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user currently lives in Riverside and do not mention any forbidden locations."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "The user used to live in Downtown and found it convenient for work.",
+                "过去搬到 Greenwood，最近改为 Riverside（基于 ep_392cb35bd608402dbd6fd2b86a5483c4）",
+                "The view by the river in Riverside is amazing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries confirm the user currently lives in Riverside and do not present any forbidden locations as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "The user used to live in Greenwood, but recently relocated to Riverside (based on ep_2761981b67c0473bac5c83deccfe99c0).",
+                "The user used to find living in Downtown convenient for work, but recently moved to Greenwood (based on ep_0e0e09dcaf8e40d9b85b769a882cf417).",
+                "The user found living in Downtown convenient for work.",
+                "The user prefers quieter places with more parks.",
+                "User finds the view by the river in Riverside amazing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries confirm the user currently lives in Riverside and mark Greenwood and Downtown as past residences."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0019",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "How do you commute to work now?",
+              "retrieved": [
+                "The user recently started driving their car to work instead of riding a bicycle (based on ep_eec3a87c06024b9fbb68270614fba163).",
+                "Driving to work saves the user a lot of time.",
+                "The user finds taking the bus more convenient during the rainy season.",
+                "The user finds riding a bicycle a great way to stay fit."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user commutes by car but also mention taking the bus as convenient, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "How do you commute to work now?",
+              "retrieved": [
+                "The user used to ride a bicycle to work daily as a way to stay fit, but recently switched to driving their car (based on ep_aa328fa9fe2a4bef9b4fde1e8f079b22).",
+                "The user used to take the bus to work because it was more convenient during the rainy season, but recently switched to driving their car (based on ep_aa328fa9fe2a4bef9b4fde1e8f079b22).",
+                "Driving to work saves the user a lot of time."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user now drives a car and explicitly mark bicycle and bus as past commuting methods."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "How do you commute to work now?",
+              "retrieved": [
+                "User used to ride their bicycle to work every day.",
+                "User used to ride their bicycle to work every day, but has recently started driving their car to work (based on ep_d10f04246e04455ebba83043b2f1d0d5).",
+                "User used to ride their bicycle to work every day, but recently started taking the bus because it was more convenient during the rainy season (based on ep_b8c49e0ca8544b579e197375e1ee0ce7).",
+                "User recently switched from taking the bus to driving their car to work (based on ep_d10f04246e04455ebba83043b2f1d0d5).",
+                "Driving a car to work saves the user a lot of time.",
+                "User found bicycling to work to be a great way to stay fit."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The entries mention the user now drives a car, but also mention the user recently started taking the bus, which is forbidden."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0020",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What car do you currently drive?",
+              "retrieved": [
+                "User used to own a Toyota Corolla, recently changed to Tesla Model 3 (based on ep_6be446ece4d04d448ff2ba0a14ae29be).",
+                "User finds commuting to work has been great."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently drives a Tesla Model 3 and mark the Toyota Corolla as a past ownership."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What car do you currently drive?",
+              "retrieved": [
+                "The user owns a Honda Civic.",
+                "过去 User owns a Toyota Corolla，最近改为 The user decided to purchase a Honda Civic.（基于 ep_f912e0c2ef354ec5a6ee885bfdf43f71）",
+                "The user owns a Tesla Model 3.",
+                "The user finds commuting to work with their current means of transportation to be great."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact about the Tesla Model 3 and the forbidden fact about the Honda Civic as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What car do you currently drive?",
+              "retrieved": [
+                "The user owns a Toyota Corolla.",
+                "过去用户拥有一辆 Honda Civic，最近改为拥有一辆 Tesla Model 3（基于 ep_2217e97d2e364c08949cdd5d1a3c9a95）",
+                "过去用户拥有一辆 Honda Civic，最近改为拥有一辆 Tesla Model 3（基于 ep_2217e97d2e364c08949cdd5d1a3c9a95）",
+                "过去用户拥有一辆 Toyota Corolla，最近改为拥有一辆 Honda Civic（基于 ep_102f595b19c5470890ddfe38453af6da）",
+                "User owns a Honda Civic.",
+                "User is considering taking a road trip soon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user currently owns a Tesla Model 3, but also incorrectly state the user owns a Toyota Corolla and a Honda Civic."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0021",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where are you currently working?",
+              "retrieved": [
+                "The user recently switched to working at GreenTech Industries. (based on ep_fc9991f0617a47e29b470951c8026bbf)",
+                "The user is trying to balance work and personal life."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is currently working at GreenTech Industries and do not mention any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where are you currently working?",
+              "retrieved": [
+                "The user has moved again and is currently employed at GreenTech Industries (based on ep_d614ec55847c4c9ba20eaae69aaa9200)",
+                "The user has moved again and is currently at GreenTech Industries (based on ep_d614ec55847c4c9ba20eaae69aaa9200)",
+                "The user is trying to balance work and personal life."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is currently working at GreenTech Industries and do not mention any forbidden facts."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where are you currently working?",
+              "retrieved": [
+                "The user switched jobs a few months ago and is now working at Innovate Solutions LLC.",
+                "The user is currently employed at GreenTech Industries.",
+                "The user recently switched jobs and is now working at GreenTech Industries. (based on ep_4c35e48607a14738988406dc6eb0eb3a)",
+                "The user recently switched jobs and is now working at TechCorp Inc. (based on ep_ec2b955982344a4ca3d190ca97903f04)",
+                "The user is trying to balance work and personal life."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact that the user is working at GreenTech Industries and forbidden facts that the user is working at Innovate Solutions LLC and TechCorp Inc."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0022",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where are you currently living?",
+              "retrieved": [
+                "The user will be moving to Chicago soon.",
+                "过去计划搬去旧金山，最近改为搬去芝加哥（基于 ep_2efcd5bde3bf4e33b566df4e4986cc49）"
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": false,
+                "why": "The retrieved entries do not clearly state the current location as San Francisco, nor do they present New York or Chicago as the current location."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where are you currently living?",
+              "retrieved": [
+                "User was adjusting to New York, but recently plans to move to San Francisco for a new project (based on ep_7b34877b619f487c837212bedd15f22c).",
+                "过去用户在适应纽约，最近改为计划搬到旧金山进行一个新项目（基于 ep_7b34877b619f487c837212bedd15f22c）",
+                "User enjoys trying new foods."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries suggest a plan to move to San Francisco but do not confirm current residence, and they mention New York as a recent location."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where are you currently living?",
+              "retrieved": [
+                "User is currently adjusting to living in New York.",
+                "过去用户正在适应在纽约的生活，最近改为收到了芝加哥的工作邀请（基于 ep_1c1ee09d0d3b49109363ef325b97c3e5）",
+                "User is planning to move to San Francisco for a new project.",
+                "The user is currently looking forward to an unspecified event or occurrence.",
+                "User enjoys trying new foods."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly state the user is currently living in New York, which is forbidden."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0023",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "The user has switched to a vegan diet.",
+                "The user sometimes misses having more variety in their experiences."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user has switched to a vegan diet, with no mention of forbidden diets."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "The user has switched to a vegan diet.",
+                "The user has recently decided to follow a pescatarian diet by adding fish to their diet.",
+                "The user has been a vegetarian for a while.",
+                "The user sometimes misses having more variety in their experiences."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user has switched to a vegan diet but also incorrectly state they have recently decided to follow a pescatarian diet."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "The user has switched to a vegan diet.",
+                "User has decided to add fish to their diet and is now more of a pescatarian.",
+                "The user is a vegetarian."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user has switched to a vegan diet (expected) but also incorrectly state they are pescatarian and vegetarian (forbidden)."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0024",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "过去用户一直单身，最近改为已婚（基于 ep_e0e57f2fcb77446982117b996cf3ac80）。",
+                "The user is exploring new hobbies."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries indicate the user recently changed to being married, which matches the expected fact."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "The user was recently single, but has now gotten married (based on ep_598e04a85c444fbea079905e3af8ba50).",
+                "过去用户单身专注于自己，最近改为已婚（基于 ep_598e04a85c444fbea079905e3af8ba50）",
+                "The user finds it a good time to explore new hobbies."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is now married and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "过去单身，最近改为已婚（基于 ep_788e3f023344497bba63c9301e58bedf）",
+                "The user got married recently (based on ep_788e3f023344497bba63c9301e58bedf).",
+                "The user is currently exploring new hobbies."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is married and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0025",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "User currently holds the position of Software Engineer (based on ep_bce375919d974ddc864857f082a474a5).",
+                "User views the role of Senior Software Engineer as quite a responsibility.",
+                "The user perceives their job as a Software Engineer as a great learning experience.",
+                "The user's team is supportive, aiding their transition."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly present 'Software Engineer' as the current job title, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
           "judged": [
             {
               "probe": "What is your current job title?",
               "retrieved": [
                 "User holds the position of Senior Software Engineer.",
-                "User held the position of Junior Developer, recently promoted to Senior Software Engineer (based on ep_b16bab9ee1014e77ba92d8440fc7bd3c).",
-                "User holds the position of Junior Developer.",
-                "用户过去是 Junior Developer，最近改为 Senior Software Engineer（基于 ep_b16bab9ee1014e77ba92d8440fc7bd3c）",
-                "The user was promoted to a Software Engineer position after a couple of years."
+                "User perceives the position of Senior Software Engineer to carry a significant responsibility.",
+                "过去用户最近开始了一份新工作作为初级开发者，最近改为被晋升为软件工程师（基于 ep_6551fe2b005c437f9e9bdbab682ada43）",
+                "过去用户刚开始作为初级开发人员新工作，最近改为晋升为高级软件工程师（基于 ep_cdfd13bddac7455f931fc2cc719e0a20）",
+                "过去用户刚开始作为初级开发者入职新工作并对此感到兴奋。最近，用户晋升为高级软件工程师（基于 ep_cdfd13bddac7455f931fc2cc719e0a20）。",
+                "The user finds their recent promotion to Software Engineer a great learning experience.",
+                "The user finds their team to be supportive, which helps in making transitions smoother."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": true,
-                "why": "The retrieved entries include both the current title 'Senior Software Engineer' and incorrectly present 'Junior Developer' as a current position."
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "buc-0007",
-      "variants": [
-        {
-          "variant": "nemos-v2-semantic",
-          "judged": [
-            {
-              "probe": "What is your current primary hobby?",
-              "retrieved": [
-                "The user has been really into painting lately and finds it relaxing.",
-                "The user has taken up photography as a new activity.",
-                "User has recently started hiking more often.",
-                "The user finds capturing moments through photography rewarding.",
-                "User finds connecting with nature through hiking amazing."
-              ],
-              "judge": {
-                "contains_expected": true,
-                "contains_forbidden": true,
-                "why": "The retrieved entries mention photography as a current hobby but also incorrectly present painting and hiking as current hobbies."
-              }
-            }
-          ]
-        },
-        {
-          "variant": "nemos-v1-lexical",
-          "judged": [
-            {
-              "probe": "What is your current primary hobby?",
-              "retrieved": [
-                "The user has taken up photography as a new hobby.",
-                "The user is currently really into painting and finds it relaxing.",
-                "The user feels that a certain activity helps them clear their mind after a busy week.",
-                "The user finds capturing moments through photography to be rewarding.",
-                "The user has recently started hiking more often.",
-                "User finds it amazing to connect with nature through hiking."
-              ],
-              "judge": {
-                "contains_expected": true,
-                "contains_forbidden": true,
-                "why": "The retrieved entries mention both photography and painting as current hobbies."
+                "why": "The retrieved entries confirm the user is a Senior Software Engineer but also incorrectly present 'Software Engineer' as a current title."
               }
             }
           ]
@@ -416,20 +1539,23 @@
           "variant": "nemos-no-invalidation",
           "judged": [
             {
-              "probe": "What is your current primary hobby?",
+              "probe": "What is your current job title?",
               "retrieved": [
-                "The user has taken up photography as a new hobby.",
-                "The user enjoys painting as it is a relaxing activity for them.",
-                "User has been into painting recently.",
-                "The user finds an activity helpful for clearing their mind after a busy week.",
-                "User has recently started hiking more often.",
-                "User finds connecting with nature through hiking to be amazing.",
-                "The user finds capturing moments rewarding."
+                "The user is currently a Software Engineer.",
+                "过去担任 Junior Developer，最近改为 Software Engineer（基于 ep_ad82a5ac610e489b8726cf015bb34cc0）",
+                "The user finds their new role as Senior Software Engineer to be quite a responsibility.",
+                "The user has started a new job as a Junior Developer.",
+                "The user recently got promoted to Software Engineer (based on ep_ad82a5ac610e489b8726cf015bb34cc0).",
+                "The user recently got promoted to Software Engineer (based on ep_ad82a5ac610e489b8726cf015bb34cc0).",
+                "The user has been promoted to Senior Software Engineer.",
+                "The user feels excited about starting their new job.",
+                "The user finds their role as a Software Engineer to be a great learning experience.",
+                "The user feels supported by their team, which makes transitions easier."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": true,
-                "why": "The retrieved entries mention photography and capturing moments as current hobbies, but also present painting and hiking as current activities."
+                "why": "The retrieved entries mention the user as a Senior Software Engineer, but also incorrectly state the user is currently a Software Engineer."
               }
             }
           ]
@@ -437,7 +1563,274 @@
       ]
     },
     {
-      "id": "buc-0008",
+      "id": "buc-0026",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Which gym do you currently go to?",
+              "retrieved": [
+                "过去用户决定改去 Planet Fitness，最近改为 Equinox 会员（基于 ep_ebb9d2237a9a4f4d84d0403057c479d0）。",
+                "过去用户决定改去 Planet Fitness，最近改为加入 Equinox（基于 ep_ebb9d2237a9a4f4d84d0403057c479d0）。",
+                "The user believes Equinox facilities are top-notch.",
+                "The user loves the atmosphere at Equinox.",
+                "User frequently attempts to visit a location very close to their home a few times a week."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user recently switched to Equinox and do not present any forbidden gym as currently attended."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Which gym do you currently go to?",
+              "retrieved": [
+                "User recently joined Planet Fitness, changing from having been with Gold's Gym.",
+                "User switched from Gold's Gym and signed up for a membership at Planet Fitness (based on ep_7436b12c07764913b5501d980017bb4a).",
+                "User switched from Gold's Gym to Planet Fitness and no longer attends Gold's Gym (based on ep_7436b12c07764913b5501d980017bb4a).",
+                "User finds Planet Fitness convenient and affordable.",
+                "Equinox has top-notch facilities.",
+                "The user loves the atmosphere at Equinox.",
+                "User tries to visit a certain location a few times a week.",
+                "The user lives close to a location they visit frequently."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention both Equinox and Planet Fitness as current gyms."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Which gym do you currently go to?",
+              "retrieved": [
+                "过去选择 Gold's Gym，最近改为 Planet Fitness（基于 ep_23b62f8002bb459c8d970dfd741c5379）",
+                "The user used to prefer Gold's Gym for their equipment and classes but has recently joined Equinox (based on ep_7cc7ca7002eb4299b2b57ebdea038cd8).",
+                "User switched to Gold's Gym due to their preference for more equipment and enjoyable classes.",
+                "过去用户因偏好更多设备和愉快的课程切换到了 Gold's Gym，最近改为加入了 Equinox（基于 ep_7cc7ca7002eb4299b2b57ebdea038cd8）",
+                "User finds Planet Fitness convenient and affordable.",
+                "Planet Fitness memberships are considered convenient and affordable.",
+                "The user appreciates top-notch facilities and a pleasant atmosphere at Equinox.",
+                "Equinox facilities are high quality.",
+                "The user's place is close to a location they visit a few times a week."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user has recently joined Equinox, but also present Planet Fitness as convenient and affordable, implying current use."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0027",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "User recently made a significant technology change by upgrading to an Apple phone.",
+                "The user is considering trying something different soon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user upgraded to an Apple phone, which is expected, and do not mention any forbidden brands as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "过去 the user recently switched to a OnePlus phone，最近改为 the user upgraded to an Apple phone（基于 ep_7737106f33374326a692fff62e7e82a7）",
+                "过去 the user recently switched to a OnePlus phone，最近改为 the user upgraded to an Apple phone（基于 ep_7737106f33374326a692fff62e7e82a7）",
+                "The user thinks they might try something different soon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user upgraded to an Apple phone and mark OnePlus as a past choice."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "The user recently switched to a Samsung phone (based on ep_a85ef405a5c54995a98a3d68914413bf).",
+                "The user recently switched to a OnePlus phone.",
+                "User recently switched to an Apple phone. This contradicts recent switches to OnePlus and Samsung phones.",
+                "The user recently upgraded to an Apple phone (based on ep_85f275c13c4e4b6ea25200a103114a63)",
+                "The user finds the OnePlus phone a refreshing change.",
+                "The user perceives upgrading to an Apple phone as quite a change.",
+                "The user is considering trying something different soon."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user recently switched to an Apple phone, but also present Samsung and OnePlus as recent switches, which are forbidden."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0028",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "User used to live in Greenwood and then Riverside, recently relocated to Maplewood (based on ep_6eea2dabf0894542bfaead32a6d820b8).",
+                "The user used to live in Riverside, recently relocated to Maplewood (based on ep_6eea2dabf0894542bfaead32a6d820b8).",
+                "User moved to be closer to work.",
+                "Maplewood is a charming neighborhood.",
+                "Greenwood is a nice place with lots of parks.",
+                "User is really into outdoor activities."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user recently relocated to Maplewood and mark Greenwood and Riverside as past residences."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "User recently relocated from Riverside to Maplewood (based on ep_89688df95d3346bc8de3102375ff7493).",
+                "User recently relocated from Riverside to Maplewood (based on ep_89688df95d3346bc8de3102375ff7493).",
+                "The user used to live in Greenwood and found it a nice place with lots of parks.",
+                "User finds Maplewood to be a charming neighborhood.",
+                "User is really into outdoor activities."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user now lives in Maplewood and mark Riverside and Greenwood as past residences."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "The user recently relocated to Maplewood (based on ep_c56d275dab1f46af99bdada6a9379639).",
+                "The user moved to Riverside last year to be closer to their work.",
+                "The user recently relocated to Maplewood.",
+                "Maplewood is a charming neighborhood.",
+                "The user finds Maplewood to be a charming neighborhood.",
+                "The user enjoys outdoor activities.",
+                "Greenwood is described as a nice place with lots of parks."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user lives in Maplewood but also mention a past move to Riverside without marking it as past."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0029",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "The user used to ride their bicycle to work every day, but recently switched to taking the bus for commuting (based on ep_7bb89beabb504b49976e77311ee88121).",
+                "User drives to work.",
+                "Driving to work is a real time-saver for the user."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user drives to work but also incorrectly present taking the bus as a current commuting method."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "User previously rode their bicycle to work as part of their morning routine, but recently started taking the bus instead (based on ep_3e303a4436194c138054224b35d059ef).",
+                "User used to drive to work before starting to take the bus (based on ep_3e303a4436194c138054224b35d059ef).",
+                "User now drives to work.",
+                "过去用户每天骑自行车上班作为晨间例行公事，最近改为乘坐公共汽车作为交通方式（基于 ep_3e303a4436194c138054224b35d059ef）",
+                "The user finds taking the bus relaxing and enjoys sitting back during the commute.",
+                "User recently bought a car."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user now drives to work, but also present taking the bus as a current commuting method."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "The user drives to work.",
+                "The user used to ride their bicycle to work every day.",
+                "The user used to ride a bicycle to work every day, but recently switched to taking the bus (based on ep_f47fe69985ea414f89995445b9a2b6d4).",
+                "Driving to work has been a real time-saver for the user.",
+                "Riding a bicycle to work was a refreshing way for the user to start the morning.",
+                "The user enjoys sitting back and relaxing during their commute on the bus."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user drives to work, but also incorrectly present taking the bus as a current commuting method."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0030",
       "variants": [
         {
           "variant": "nemos-v2-semantic",
@@ -445,17 +1838,16 @@
             {
               "probe": "What car do you currently drive?",
               "retrieved": [
-                "The user loves the electric drive of their Tesla Model 3.",
-                "User considers a 2015 Honda Civic a nice upgrade.",
-                "Toyota Corolla from 2010 is considered reliable.",
-                "The user is considering going on a road trip soon.",
-                "User enjoys adventures.",
-                "The user hasn't had a good adventure in a while."
+                "The user owns a Tesla Model 3.",
+                "The user has a positive experience with their Tesla Model 3.",
+                "Toyota Corolla is considered a reliable car.",
+                "The user's commute is now much shorter.",
+                "The user recently started a new job downtown."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries confirm the user drives a Tesla Model 3 and do not present any forbidden facts as current."
+                "why": "The retrieved entries clearly state the user owns a Tesla Model 3 and do not present any forbidden facts as current."
               }
             }
           ]
@@ -466,17 +1858,15 @@
             {
               "probe": "What car do you currently drive?",
               "retrieved": [
-                "User upgraded to a 2023 Tesla Model 3, recently sold or replaced their 2010 Toyota Corolla.",
-                "User enjoys the electric drive of their Tesla Model 3.",
-                "User recently upgraded to a 2023 Tesla Model 3 (based on ep_1c6403f9e30b4ae4aee1aac28d99052e).",
-                "Toyota Corolla models from 2010 are generally considered reliable.",
-                "User is considering going on a road trip soon.",
-                "User feels it's been a while since they've had a good adventure."
+                "The user used to own a Honda Civic, but recently upgraded to a Tesla Model 3 (based on ep_e3dc57c36304455381716511a3dc7825).",
+                "User finds the Tesla Model 3 experience amazing.",
+                "Toyota Corolla is considered a reliable car.",
+                "The user's commute is much shorter now."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user currently drives a 2023 Tesla Model 3 and do not present any forbidden facts as current."
+                "why": "The retrieved entries clearly state the user currently drives a Tesla Model 3 and mark the Honda Civic as a past ownership."
               }
             }
           ]
@@ -487,20 +1877,19 @@
             {
               "probe": "What car do you currently drive?",
               "retrieved": [
-                "The user used to drive a 2010 Toyota Corolla.",
-                "The user enjoys driving an electric vehicle.",
-                "The user owns a Tesla Model 3, 2023 model.",
-                "The user found the 2010 Toyota Corolla to be quite reliable.",
-                "用户对2015年的本田思域有积极评价，认为是一次不错的升级。",
-                "The 2010 Toyota Corolla was considered reliable back then.",
-                "User is considering going on a road trip soon.",
-                "User enjoys adventure.",
-                "User feels it has been a while since they had a good adventure."
+                "The user used to drive a Toyota Corolla.",
+                "The user purchased a Honda Civic last year, recently upgraded to a Tesla Model 3 (based on ep_af4766f018f44701a0313d04c4cd3e64).",
+                "The user purchased a Honda Civic last year, but recently upgraded to a Tesla Model 3 (based on ep_af4766f018f44701a0313d04c4cd3e64).",
+                "User owns a Tesla Model 3.",
+                "The user purchased a Honda Civic last year.",
+                "User finds their experience with the Tesla Model 3 amazing.",
+                "A Toyota Corolla is considered a reliable car.",
+                "User's commute is much shorter now after starting a new job downtown."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user owns a Tesla Model 3, 2023 model, and mention an electric vehicle, without presenting any forbidden facts as current."
+                "why": "The retrieved entries clearly state the user currently drives a Tesla Model 3 and do not present any forbidden facts as current."
               }
             }
           ]
@@ -508,25 +1897,22 @@
       ]
     },
     {
-      "id": "buc-0009",
+      "id": "buc-0031",
       "variants": [
         {
           "variant": "nemos-v2-semantic",
           "judged": [
             {
-              "probe": "Which gym are you currently a member of?",
+              "probe": "Where are you currently working?",
               "retrieved": [
-                "The user recently switched their gym membership from Gold's Gym to Equinox (based on ep_db0bd785bdc44642b684ccf7fbbe0e55).",
-                "The user believes Gold's Gym has great equipment.",
-                "Gold's Gym is known for having great equipment.",
-                "The user is trying to maintain a fitness routine.",
-                "Equinox is known for having top-notch facilities.",
-                "User perceives Equinox facilities as top-notch."
+                "Innovate Solutions LLC has a dynamic team.",
+                "The user is getting used to new systems.",
+                "User is passionate about GreenTech Industries' mission."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": false,
-                "why": "The retrieved entries clearly state the user switched to Equinox and do not present Gold's Gym as a current membership."
+                "why": "The retrieved entries mention GreenTech Industries, which is expected, and do not present any forbidden facts as current."
               }
             }
           ]
@@ -535,19 +1921,341 @@
           "variant": "nemos-v1-lexical",
           "judged": [
             {
-              "probe": "Which gym are you currently a member of?",
+              "probe": "Where are you currently working?",
               "retrieved": [
-                "User switched gym membership to Gold's Gym.",
-                "The user is no longer exclusively a member at Equinox and is also working out at Planet Fitness (based on ep_788cee2d2c4e49d7a6f617c58350cfde).",
-                "过去用户是 Equinox 的会员，最近改为 Planet Fitness（基于 ep_788cee2d2c4e49d7a6f617c58350cfde）",
-                "Gold's Gym has great equipment.",
-                "The user is trying to keep up with their fitness routine.",
-                "Equinox facilities are considered top-notch."
+                "User moved to work at Innovate Solutions LLC.",
+                "The user finds working at TechCorp Inc. quite a change from their previous job.",
+                "User is currently with GreenTech Industries.",
+                "Innovate Solutions LLC has a dynamic team.",
+                "User is passionate about GreenTech Industries' mission."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the current employment at GreenTech Industries and past or incorrect employment at Innovate Solutions LLC and TechCorp Inc."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where are you currently working?",
+              "retrieved": [
+                "The user used to work at TechCorp Inc., but recently changed to work at Innovate Solutions LLC (based on ep_dc2da0c3d7da4fe6b1afbcc59543ec24).",
+                "The user used to work at GreenTech Industries, but recently changed to work at Innovate Solutions LLC (based on ep_dc2da0c3d7da4fe6b1afbcc59543ec24).",
+                "The user used to work with GreenTech Industries, but recently moved to work at Innovate Solutions LLC (based on ep_dc2da0c3d7da4fe6b1afbcc59543ec24).",
+                "The user is currently working with GreenTech Industries.",
+                "The user has experienced a significant change by switching to a job at TechCorp Inc. from a previous position.",
+                "Innovate Solutions LLC has a dynamic team.",
+                "The user is passionate about GreenTech Industries' mission."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user is currently working at GreenTech Industries, but also incorrectly suggest current employment at Innovate Solutions LLC and TechCorp Inc."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0032",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Which city do you currently live in?",
+              "retrieved": [
+                "User has experienced living in New York.",
+                "Past settled in San Francisco, recently relocated to Chicago for a new job opportunity (based on ep_8fbf7611053141f2b733f1bef58e70ea).",
+                "The user loves the weather in San Francisco.",
+                "Winters can be harsh."
               ],
               "judge": {
                 "contains_expected": false,
                 "contains_forbidden": true,
-                "why": "The retrieved entries suggest current membership at Gold's Gym and Planet Fitness, which are forbidden."
+                "why": "The retrieved entries suggest the user recently relocated to Chicago, which is a forbidden fact."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Which city do you currently live in?",
+              "retrieved": [
+                "过去用户定居在旧金山，最近用户搬到芝加哥找新工作（基于 ep_5b57f24964774cf7aeeb9ec1a106b3eb）",
+                "The user relocated from New York to Chicago for a new job opportunity.",
+                "The user has a job in Chicago.",
+                "The user loves the weather in San Francisco.",
+                "Winters can be pretty harsh."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries suggest the user currently lives in Chicago, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Which city do you currently live in?",
+              "retrieved": [
+                "过去居住在纽约，最近改为居住在芝加哥（基于 ep_f4a4a4a9ffea482fbc78d3e407051969）",
+                "过去居住在某地，最近改为居住在纽约（基于 ep_cb0571689cf84106bbd75359eedfb817）",
+                "过去定居在旧金山，最近改为定居于芝加哥（基于 ep_f4a4a4a9ffea482fbc78d3e407051969）",
+                "过去在旧金山定居，最近改为定居在芝加哥（基于 ep_f4a4a4a9ffea482fbc78d3e407051969）",
+                "User has relocated to Chicago.",
+                "The user finds living in New York to be quite an experience.",
+                "The user is settling in San Francisco.",
+                "The user loves the weather in San Francisco.",
+                "User has started a new job.",
+                "Winters can be harsh in some locations."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user is settling in San Francisco (expected) but also state the user has relocated to Chicago (forbidden)."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0033",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "User used to include fish in their diet, aligning more with a pescatarian lifestyle. They have now transitioned to a fully vegan lifestyle (based on ep_218266730e0743c2837080bab86eae36)."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entry clearly states the user has transitioned to a fully vegan lifestyle and marks the pescatarian lifestyle as past."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "过去用户的饮食选择偏素食兼吃鱼（根据 psem_fa063d5e77034d298e9b8a6f8308d5be），最近改为纯素食主义（基于 ep_25d4a9edc30c4ee9bf391e28885b020a）。",
+                "过去用户在饮食上包含鱼类，最近改为完全的素食主义生活方式（基于 ep_25d4a9edc30c4ee9bf391e28885b020a）",
+                "The user has been a vegetarian for a few years.",
+                "The user has decided to follow a vegan lifestyle.",
+                "The user feels that they made a good choice recently."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is now vegan and mark past diets as former."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What is your current diet?",
+              "retrieved": [
+                "The user was previously pescatarian, but recently transitioned to a vegan lifestyle based on ep_ddce58102f8443baabbf7a1cd4ad2068.",
+                "The user was previously more of a pescatarian, but recently transitioned to a vegan lifestyle based on ep_ddce58102f8443baabbf7a1cd4ad2068.",
+                "The user has been a vegetarian for a few years.",
+                "The user has started including fish in their diet and identifies as more of a pescatarian now.",
+                "The user has decided to adopt a fully vegan lifestyle.",
+                "The user feels that a recent choice has been a good one for them."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The entries mention the user is vegan but also incorrectly state they are currently pescatarian."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0034",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "过去单身，最近结婚了（基于 ep_0a00d44f54c145f69f3362cd72f5db7d）",
+                "The user has recently developed an interest in painting and finds it relaxing.",
+                "Painting can be a relaxing activity."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries indicate the user was single but recently got married, which matches the expected fact and does not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "过去用户单身并专注于个人发展，最近改为已婚（基于 ep_c3f2e4e5e88b4891ab6e81a8b14c858b）",
+                "过去用户单身并专注于个人发展，最近结婚（基于 ep_c3f2e4e5e88b4891ab6e81a8b14c858b）。",
+                "User has recently taken an interest in painting as a relaxing activity."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state that the user is recently married and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What's your current relationship status?",
+              "retrieved": [
+                "过去单身，最近改为已婚（基于 ep_0f98b8f92cd84c2983dae9c1099c6154）",
+                "The user used to be single and focus on themselves, but recently got married (based on ep_0f98b8f92cd84c2983dae9c1099c6154).",
+                "The user has recently started painting as a hobby and finds it relaxing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user recently got married and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0035",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What's your current job title?",
+              "retrieved": [
+                "The user enjoys working with their team and on their current projects.",
+                "User is having a great learning experience in their new role.",
+                "User finds work as a Software Engineer challenging but rewarding."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries present 'Software Engineer' as the user's current job title, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What's your current job title?",
+              "retrieved": [
+                "User recently got promoted to Software Engineer, replacing their previous role as a Junior Developer (based on ep_8890c722f6b8401291921158162a0bf6).",
+                "User received another promotion and is now a Senior Software Engineer.",
+                "The user is enjoying their current team and projects.",
+                "User finds the role of Software Engineer challenging but rewarding."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user is now a Senior Software Engineer but also present 'Software Engineer' as a current role."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What's your current job title?",
+              "retrieved": [
+                "The user is currently a Senior Software Engineer.",
+                "User is currently a Junior Developer.",
+                "The user recently got promoted to Senior Software Engineer.",
+                "过去 User 是 Senior Software Engineer，最近改为 Software Engineer（基于 ep_6051ff37098041a5b4d7d2b0b05c0a76）",
+                "过去 User 是 Senior Software Engineer，最近改为 Software Engineer（基于 ep_6051ff37098041a5b4d7d2b0b05c0a76）",
+                "过去 User 是 Junior Developer，最近改为 Software Engineer（基于 ep_6051ff37098041a5b4d7d2b0b05c0a76）",
+                "User finds their new role as a Junior Developer a great learning experience.",
+                "The user finds being a Software Engineer both challenging and rewarding.",
+                "The user enjoys the team and the projects they are working on."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact 'Senior Software Engineer' and forbidden facts 'Junior Developer' and 'Software Engineer' as current roles."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0036",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Which gym are you currently a member of?",
+              "retrieved": [
+                "The user decided to join Equinox (based on ep_95e2814556ec4ca4bf6e052b6ee2b33d).",
+                "The user decided to join Equinox (based on ep_95e2814556ec4ca4bf6e052b6ee2b33d).",
+                "User believes Equinox facilities are top-notch.",
+                "User is trying to increase the frequency of a certain activity.",
+                "The user finds going out a nice way to unwind after work."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user is currently a member of Equinox and do not mention any forbidden gyms."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Which gym are you currently a member of?",
+              "retrieved": [
+                "User recently joined Equinox, indicating a potential change in gym preference.",
+                "The user finds Planet Fitness to be convenient.",
+                "Equinox facilities are top-notch.",
+                "User perceives Equinox facilities as top-notch.",
+                "The user is trying to go more often to a specific activity or place recently as a way to unwind after work."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm membership at Equinox but also suggest current convenience of Planet Fitness."
               }
             }
           ]
@@ -558,19 +2266,20 @@
             {
               "probe": "Which gym are you currently a member of?",
               "retrieved": [
-                "User used to be a member at Equinox, recently switched to Planet Fitness (based on ep_1fb003cb3b5a402c9baf95496c22111a).",
-                "User used to have a gym membership at Gold's Gym, recently switched to Planet Fitness (based on ep_1fb003cb3b5a402c9baf95496c22111a).",
-                "The user switched their gym membership to Gold's Gym.",
-                "The user is a member at Equinox.",
-                "Gold's Gym has great equipment.",
-                "User is trying to keep up with their fitness routine.",
-                "User had a good workout session.",
-                "Equinox facilities are regarded as top-notch."
+                "User decided to join Gold's Gym.",
+                "过去决定加入 Planet Fitness 或 Gold's Gym，最近改为 Equinox（基于 ep_f0952f363d384683a3b987197571150f）",
+                "User decided to join Planet Fitness instead of Gold's Gym（基于 ep_1bfa15482655459086f9dd352a8e46ff）",
+                "过去 User 加入了 Planet Fitness，最近改为 Equinox（基于 ep_f0952f363d384683a3b987197571150f）",
+                "User prefers gyms with more equipment options.",
+                "User finds Planet Fitness membership convenient.",
+                "Equinox facilities are considered top-notch.",
+                "User appreciates top-notch facilities.",
+                "The user has been trying to go more often lately as a way to unwind after work."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": true,
-                "why": "The retrieved entries mention the user is a member at Equinox and also present Planet Fitness and Gold's Gym as current memberships."
+                "why": "The retrieved entries mention Equinox as the current gym but also present Planet Fitness and Gold's Gym as current memberships."
               }
             }
           ]
@@ -578,7 +2287,7 @@
       ]
     },
     {
-      "id": "buc-0010",
+      "id": "buc-0037",
       "variants": [
         {
           "variant": "nemos-v2-semantic",
@@ -586,16 +2295,14 @@
             {
               "probe": "What brand of phone do you currently have?",
               "retrieved": [
-                "Samsung devices have good camera quality.",
-                "User experiences the camera quality on Samsung as a big upgrade.",
-                "The user finds the Apple ecosystem convenient.",
-                "The user is considering trying a new recipe this weekend.",
-                "The user is interested in trying an Italian recipe (variant A) / The user is possibly interested in Italian cuisine (variant B)."
+                "The user finds the camera quality of Samsung phones to be amazing.",
+                "Apple's ecosystem is considered convenient.",
+                "The user finds a certain thing reliable."
               ],
               "judge": {
                 "contains_expected": true,
-                "contains_forbidden": true,
-                "why": "The retrieved entries mention the Apple ecosystem, indicating an Apple phone, but also discuss Samsung devices as a current experience."
+                "contains_forbidden": false,
+                "why": "The retrieved entries mention Apple's ecosystem, suggesting the user currently uses Apple, and do not present any forbidden brand as current."
               }
             }
           ]
@@ -606,66 +2313,321 @@
             {
               "probe": "What brand of phone do you currently have?",
               "retrieved": [
-                "The user has switched to using a Samsung device (based on ep_a6b5243e8af34a2dbce3c8ea68c6edf4).",
-                "User finds the Nokia phone reliable for basic functions.",
-                "Samsung devices generally have high-quality cameras.",
-                "The user perceives the camera quality of their new Samsung device as a big upgrade.",
-                "The user finds the Apple ecosystem very convenient.",
-                "The user is contemplating trying a new recipe, possibly something Italian.",
-                "The user has an interest in Italian cuisine."
+                "The user recently switched to using an Apple phone (based on ep_ed2534b380944fd998637aab9d53364d).",
+                "The user recently upgraded to an Apple phone.",
+                "The user finds the camera quality on the Samsung phone amazing.",
+                "The Apple ecosystem is very convenient.",
+                "The user finds something to be reliable."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user currently has an Apple phone but also mention the Samsung phone in a way that suggests it might still be in use."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What brand of phone do you currently have?",
+              "retrieved": [
+                "The user recently switched to using a Samsung device.",
+                "The user recently upgraded to an Apple phone.",
+                "Samsung devices are known for having amazing camera quality.",
+                "The user finds the Apple ecosystem convenient."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention both a recent switch to Samsung and an upgrade to Apple, presenting conflicting current facts."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0038",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "User is currently living in Uptown.",
+                "The user has a positive impression of living in Uptown.",
+                "User enjoys the vibe in Downtown.",
+                "The user enjoys exploring cafes and spends a lot of time doing so."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries confirm the user currently lives in Uptown and do not present Downtown as a current residence."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "User currently resides in Uptown.",
+                "过去用户决定搬去 Midtown，最近改为定居在 Uptown（基于 ep_e3f0bc23a5294fe1aa28143b244e94cc）",
+                "过去用户决定搬到 Midtown，最近改为定居在 Uptown 并有积极的体验（基于 ep_e3f0bc23a5294fe1aa28143b244e94cc）",
+                "过去用户决定搬到 Midtown 换换环境，最近改为搬到 Downtown（基于 ep_36e0be743b3a4ac0b1233a01c62691ad）",
+                "The user enjoys the vibe in Downtown.",
+                "The user enjoys exploring cafes and spends a lot of time doing so."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user currently lives in Uptown but also incorrectly suggest the user recently moved to Downtown."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where do you live now?",
+              "retrieved": [
+                "The user recently moved to Downtown.",
+                "The user recently moved to Midtown (based on ep_1669bbeebf864c039a83fabfdd64e5d5).",
+                "The user recently settled into Uptown and finds the experience fantastic (based on ep_2e05cefa69be45199a2eccd144cf86d5).",
+                "The user enjoys the vibe in Downtown.",
+                "The user enjoys exploring cafes and spends a lot of time doing so.",
+                "Some cafes are amazing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user recently settled into Uptown, but also incorrectly state recent moves to Downtown and Midtown."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0039",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "User finds driving their own car to work much faster.",
+                "Cycling to work is considered a great exercise by the user.",
+                "The user finds taking the bus more convenient during rainy days.",
+                "Weather can sometimes create challenges."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention commuting by car, bicycle, and bus as current options."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "过去改为乘坐公交车上下班，最近改为开车（基于 ep_fe63a6dfbd6741a7b76debcebf5740de）",
+                "User had switched to taking the bus recently, but more recently has started driving their own car to work (based on ep_fe63a6dfbd6741a7b76debcebf5740de).",
+                "User finds driving their car to work much faster.",
+                "Cycling to work is great exercise for the user.",
+                "The user finds taking the bus more convenient during rainy days.",
+                "Weather can sometimes make activities challenging."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The entries confirm the user currently commutes by car, but also present cycling and bus as current options."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "How do you currently commute to work?",
+              "retrieved": [
+                "The user has started driving their own car to work.",
+                "The user has recently switched to taking the bus as a mode of transportation.",
+                "The user cycles to work every day.",
+                "Driving their own car is faster for the user to get to work.",
+                "The user finds taking the bus more convenient during rainy days.",
+                "Cycling is a form of exercise for the user.",
+                "Weather can make activities challenging."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention both driving a car and using a bicycle and bus as current commuting methods."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0040",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "User loves the electric drive of their Tesla Model 3.",
+                "The Toyota Corolla is considered a reliable car.",
+                "The user is currently engaged in something new and more exciting than before."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly convey that the user is currently driving a Tesla Model 3 and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "The user used to own or drive a Honda Civic, recently upgraded to a Tesla Model 3 (based on ep_a502d5a97c244e20aef6176328902a83).",
+                "The user recently upgraded from a Honda Civic to a Tesla Model 3 (based on ep_a502d5a97c244e20aef6176328902a83).",
+                "User loves the electric drive of their Tesla Model 3.",
+                "The Toyota Corolla is considered a reliable car."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently drives a Tesla Model 3 and mark the Honda Civic as a past vehicle."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "The user used to drive a Toyota Corolla, recently upgraded to a Honda Civic (based on ep_8d122fce36464a4ebf2d2d03a64d9eec).",
+                "The user used to drive a Tesla Model 3, recently upgraded to a Honda Civic (based on ep_8d122fce36464a4ebf2d2d03a64d9eec).",
+                "User used to have a Tesla Model 3, recently upgraded to a Honda Civic (based on ep_8d122fce36464a4ebf2d2d03a64d9eec).",
+                "The user used to drive a Toyota Corolla.",
+                "User recently bought a Tesla Model 3.",
+                "User loves the electric drive of their Tesla Model 3.",
+                "Toyota Corolla is known to be a reliable car.",
+                "The user has transitioned to a new, more exciting activity or interest."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user currently driving a Tesla Model 3, but also incorrectly suggest a recent upgrade to a Honda Civic."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0041",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where are you currently working?",
+              "retrieved": [
+                "The user used to work at TechCorp Inc., but recently moved to GreenTech Industries (based on ep_6d56b7ad6a2d4881a7459ae85292be13).",
+                "The user finds their current undertaking challenging but educational."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently works at GreenTech Industries and mark TechCorp Inc. as a past employer."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where are you currently working?",
+              "retrieved": [
+                "The user switched jobs recently and is now working at GreenTech Industries (based on ep_c8830d5d9f9c49528f3a36d0dcfa6497).",
+                "The user currently works at GreenTech Industries.",
+                "The user switched jobs and now works at GreenTech Industries after receiving a new opportunity (based on ep_c8830d5d9f9c49528f3a36d0dcfa6497).",
+                "过去用户在 Innovate Solutions LLC 工作，最近改为在 TechCorp Inc. 工作（基于 ep_d85d1f57a28d497ca1a3d4a987d373db）",
+                "The user finds a situation challenging but is learning a lot from it."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently works at GreenTech Industries and do not present any forbidden facts as current."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where are you currently working?",
+              "retrieved": [
+                "User switched jobs a few months ago and is now employed at Innovate Solutions LLC.",
+                "User is currently employed at TechCorp Inc.",
+                "The user currently works at GreenTech Industries.",
+                "User is currently employed at GreenTech Industries.",
+                "User was employed at Innovate Solutions LLC, but recently switched to working at TechCorp Inc. (based on ep_a56b4f9610dc4e65b16efe0a80880dc4)",
+                "User was employed at TechCorp Inc., but recently switched to working at GreenTech Industries (based on ep_cb6eb2d033d143a394c9516b16a2c23e)",
+                "The user finds their current situation challenging but educational."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include both the expected fact that the user works at GreenTech Industries and forbidden facts that the user is currently employed at TechCorp Inc. and Innovate Solutions LLC."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0042",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Which city are you currently living in?",
+              "retrieved": [
+                "过去用户正在体验纽约的生活，最近改为计划下个月搬到旧金山参与一个新项目（基于 ep_83f649eba1eb40de80b5fce7a584ec82）",
+                "过去用户正在体验纽约的生活，最近改为计划下个月搬到旧金山参与新项目（基于 ep_83f649eba1eb40de80b5fce7a584ec82）",
+                "The user misses having more space.",
+                "User finds the food to be incredible."
               ],
               "judge": {
                 "contains_expected": false,
                 "contains_forbidden": true,
-                "why": "The retrieved entries present Samsung as the current phone brand, which is forbidden."
-              }
-            }
-          ]
-        },
-        {
-          "variant": "nemos-no-invalidation",
-          "judged": [
-            {
-              "probe": "What brand of phone do you currently have?",
-              "retrieved": [
-                "The user recently switched from a Nokia phone to a Samsung phone (based on ep_8a667885e16f419c8d5b9efa6eca122a).",
-                "The user recently switched from an Apple phone to a Samsung phone (based on ep_8a667885e16f419c8d5b9efa6eca122a).",
-                "The user has recently switched to using an Apple phone.",
-                "The user finds a Nokia phone solid for basic tasks.",
-                "The user perceives the Samsung phone's camera quality as a big upgrade.",
-                "The user finds the Apple ecosystem very convenient.",
-                "The user is considering trying a new recipe this weekend.",
-                "The user is interested in trying Italian cuisine."
-              ],
-              "judge": {
-                "contains_expected": true,
-                "contains_forbidden": true,
-                "why": "The retrieved entries mention the user recently switched to an Apple phone, but also mention a recent switch to a Samsung phone, which is forbidden."
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "buc-0011",
-      "variants": [
-        {
-          "variant": "nemos-v2-semantic",
-          "judged": [
-            {
-              "probe": "Which neighborhood do you currently live in?",
-              "retrieved": [
-                "User thinks Riverside is a vibrant neighborhood.",
-                "Riverside is described as a vibrant neighborhood.",
-                "User recently moved to Riverside (based on ep_01841e7aad4e434485bc9ebfcc3ea823).",
-                "The user recently moved to Riverside (based on ep_01841e7aad4e434485bc9ebfcc3ea823).",
-                "The user is adjusting to a new commute."
-              ],
-              "judge": {
-                "contains_expected": true,
-                "contains_forbidden": false,
-                "why": "The retrieved entries clearly indicate the user recently moved to Riverside, which is expected, and do not mention any forbidden neighborhoods."
+                "why": "The entries mention a plan to move to San Francisco but do not confirm it as the current city, and they present New York as a past location without marking it as no longer current."
               }
             }
           ]
@@ -674,18 +2636,15 @@
           "variant": "nemos-v1-lexical",
           "judged": [
             {
-              "probe": "Which neighborhood do you currently live in?",
+              "probe": "Which city are you currently living in?",
               "retrieved": [
-                "过去用户的新居住地是 Lakeview，最近改为 Riverside（基于 ep_56428d6bbac14278a8c869564d2d61e2）",
-                "The user perceives Riverside as a vibrant neighborhood.",
-                "过去用户的新居在 Lakeview 离工作更近，最近改为 Riverside（基于 ep_56428d6bbac14278a8c869564d2d61e2）",
-                "过去，用户将搬到 Greenwood 视为改变，但最近用户已搬到 Lakeview（基于 ep_c0f80e2fdc994b0d8e516efd0d2ac608）",
-                "The user is still getting used to a new commute."
+                "The user prefers having more space than they currently have.",
+                "The food at the mentioned location is considered incredible."
               ],
               "judge": {
-                "contains_expected": true,
+                "contains_expected": false,
                 "contains_forbidden": false,
-                "why": "The retrieved entries confirm the user currently lives in Riverside and do not present Greenwood or Lakeview as current residences."
+                "why": "The retrieved entries do not mention any city, expected or forbidden."
               }
             }
           ]
@@ -694,21 +2653,19 @@
           "variant": "nemos-no-invalidation",
           "judged": [
             {
-              "probe": "Which neighborhood do you currently live in?",
+              "probe": "Which city are you currently living in?",
               "retrieved": [
-                "User used to live in Lakeview, but recently moved to Greenwood (based on ep_30699d6202bf456f989f40024c6306c9).",
-                "User used to live in Riverside, but recently moved to Greenwood (based on ep_30699d6202bf456f989f40024c6306c9).",
-                "Riverside is described as a vibrant neighborhood.",
-                "User perceives Riverside as a vibrant neighborhood.",
-                "User has relocated to Lakeview and their new location is closer to work.",
-                "The user has moved to Riverside.",
-                "The user has moved to Greenwood.",
-                "The user is still getting used to their new commute."
+                "The user is currently experiencing life in New York.",
+                "过去用户在芝加哥生活，最近改为即将在旧金山生活（基于 ep_e3e0c33a3a94450faa2fc3c51fb67476）",
+                "过去用户在纽约生活，最近改为即将在芝加哥生活（基于 ep_1f35ff71d48e4ea3ab35b65fd89755fa）",
+                "过去用户在芝加哥生活，最近改为即将搬去旧金山（基于 ep_e3e0c33a3a94450faa2fc3c51fb67476）",
+                "The food at the user's current location is incredible.",
+                "The user misses having more space."
               ],
               "judge": {
-                "contains_expected": true,
+                "contains_expected": false,
                 "contains_forbidden": true,
-                "why": "The retrieved entries mention the user has moved to Riverside and describe it as vibrant, but also incorrectly state the user has moved to Greenwood and Lakeview."
+                "why": "The retrieved entries incorrectly state the user is currently in New York, which is forbidden."
               }
             }
           ]
@@ -716,25 +2673,22 @@
       ]
     },
     {
-      "id": "buc-0012",
+      "id": "buc-0043",
       "variants": [
         {
           "variant": "nemos-v2-semantic",
           "judged": [
             {
-              "probe": "What is your current exercise routine?",
+              "probe": "What is your current diet preference?",
               "retrieved": [
-                "User has recently started attending crossfit sessions five times a week.",
-                "Crossfit is intense but rewarding.",
-                "User finds crossfit sessions intense but rewarding.",
-                "The user feels more energetic since starting to run 5k three times a week.",
-                "The user practices yoga twice a week.",
-                "The user finds doing yoga to be really relaxing."
+                "The user was vegan, recently changed to vegetarian (based on ep_9a8814bad54a44babbb3f3d0aa6ce864).",
+                "The user finds their vegetarian journey interesting, but they have recently decided to become a pescatarian and are now including fish in their diet (based on ep_9a8814bad54a44babbb3f3d0aa6ce864).",
+                "The user has recently discovered many new recipes and foods they had not tried before."
               ],
               "judge": {
-                "contains_expected": true,
+                "contains_expected": false,
                 "contains_forbidden": true,
-                "why": "The retrieved entries mention both the expected crossfit routine and the forbidden yoga and running routines as current activities."
+                "why": "The retrieved entries indicate the user is currently pescatarian, which is forbidden."
               }
             }
           ]
@@ -743,19 +2697,16 @@
           "variant": "nemos-v1-lexical",
           "judged": [
             {
-              "probe": "What is your current exercise routine?",
+              "probe": "What is your current diet preference?",
               "retrieved": [
-                "The user recently switched to attending crossfit sessions five times a week.",
-                "The user has started running 5k three times a week.",
-                "The user finds crossfit sessions intense but rewarding.",
-                "The user practices yoga twice a week.",
-                "The user feels more energetic after starting to run 5k three times a week.",
-                "The user finds practicing yoga to be relaxing."
+                "过去用户采用了完全的素食生活方式，最近改为只吃鱼肉类的饮食（基于 ep_9551d83571094e9a837339f055f8f61d）",
+                "The user has recently decided to include fish in their diet and is now pescatarian.",
+                "过去用户曾采用完全素食生活方式，最近改为弹性杂食，包括鱼（基于 ep_9551d83571094e9a837339f055f8f61d）"
               ],
               "judge": {
-                "contains_expected": true,
+                "contains_expected": false,
                 "contains_forbidden": true,
-                "why": "The retrieved entries include both current crossfit sessions and outdated running and yoga routines."
+                "why": "The retrieved entries indicate the user is currently pescatarian, which is a forbidden fact."
               }
             }
           ]
@@ -764,19 +2715,461 @@
           "variant": "nemos-no-invalidation",
           "judged": [
             {
-              "probe": "What is your current exercise routine?",
+              "probe": "What is your current diet preference?",
               "retrieved": [
-                "The user has recently started attending crossfit sessions five times a week.",
-                "The user started running 5k three times a week.",
-                "The user finds crossfit sessions to be intense but rewarding.",
-                "The user feels more energetic due to running 5k three times a week.",
-                "The user practices yoga twice a week.",
-                "The user finds yoga really relaxing."
+                "The user is enjoying the shift to a vegan lifestyle.",
+                "The user was a vegetarian and has experimented with veganism, but recently decided to become pescatarian (based on ep_a401fb47af3e4b4bac375826fc3abe08).",
+                "The user was vegan, but recently decided to become pescatarian (based on ep_a401fb47af3e4b4bac375826fc3abe08).",
+                "The user was a vegetarian, but recently decided to become pescatarian (based on ep_a401fb47af3e4b4bac375826fc3abe08).",
+                "The user is a vegetarian.",
+                "The user has decided to become pescatarian.",
+                "The user has gone fully vegan."
               ],
               "judge": {
                 "contains_expected": true,
                 "contains_forbidden": true,
-                "why": "The retrieved entries mention both the expected crossfit routine and the forbidden yoga and running routines as current activities."
+                "why": "The retrieved entries mention both the user enjoying a vegan lifestyle and deciding to become pescatarian, which is forbidden."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0044",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What is your current relationship status?",
+              "retrieved": [
+                "过去单身，最近改为已婚（基于 ep_dd6836be8b6d4a6b90c22206f71487f7）"
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entry indicates the user is currently married and explicitly marks being single as a past status."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What is your current relationship status?",
+              "retrieved": [
+                "过去 The user has been single for a significant period，最近改为 The user is married (基于 ep_5af5646bdfb84936bdfda8086fde5d99)",
+                "过去 user 一直单身，最近结婚了（基于 ep_5af5646bdfb84936bdfda8086fde5d99）"
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is currently married and mark being single as a past status."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What is your current relationship status?",
+              "retrieved": [
+                "过去用户是单身，最近改为已婚（基于 ep_85699697427a4474a60872c6a8ab1f00）",
+                "过去用户是单身，最近改为结婚（基于 ep_85699697427a4474a60872c6a8ab1f00）"
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user is now married and mark 'single' as a past status."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0045",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "The user was a Junior Developer, recently promoted to Software Engineer (based on ep_33069853476c4e96bfbb709e1220303c).",
+                "过去 User has been promoted to Senior Software Engineer，最近改为 User was recently promoted to Software Engineer（基于 ep_33069853476c4e96bfbb709e1220303c）",
+                "The user finds their current challenge enjoyable despite it being a learning curve."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly present 'Software Engineer' as the current job title, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "User's job title is Junior Developer.",
+                "The user was promoted to Senior Software Engineer, but was recently promoted to Software Engineer. (based on ep_70d946569c5f44eba708d835ea38e610)",
+                "The user finds learning curves challenging but enjoyable."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries incorrectly present 'Software Engineer' as the current job title, which is forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What is your current job title?",
+              "retrieved": [
+                "User is a Senior Software Engineer.",
+                "过去 User 担任 Junior Developer，最近改为 Software Engineer（基于 ep_eca05320a6804554b69e882ca9077f89）",
+                "User has started a new role as a Junior Developer.",
+                "过去 User 是 a Senior Software Engineer，最近改为 Senior Software Engineer（基于 ep_0a8ad740a2c14a869304fb32576d9299）",
+                "The user is experiencing a learning curve and enjoying the challenge."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries include 'Senior Software Engineer' as expected, but also incorrectly present 'Junior Developer' as a current role."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0046",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Which gym are you currently going to?",
+              "retrieved": [
+                "User has had a good experience at Planet Fitness so far.",
+                "The user is trying to maintain a routine of going somewhere or doing something at least three times a week.",
+                "The user thinks Equinox facilities are amazing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention Equinox positively and Planet Fitness as a current experience."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Which gym are you currently going to?",
+              "retrieved": [
+                "User previously switched to Gold's Gym, but recently joined Equinox (based on ep_0a273db0d8bb464eb22f4edbc31590c5).",
+                "User previously switched to Gold's Gym, but recently joined Equinox (based on ep_0a273db0d8bb464eb22f4edbc31590c5).",
+                "The user prefers more equipment available at Gold's Gym.",
+                "User has had a good experience at Planet Fitness since they started.",
+                "The user loves the classes offered by Equinox.",
+                "The user finds the facilities at Equinox amazing.",
+                "The user tries to go somewhere at least three times a week to an unspecified activity."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user recently joined Equinox but also mention Gold's Gym and Planet Fitness in a way that suggests they are still relevant."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Which gym are you currently going to?",
+              "retrieved": [
+                "User prefers the equipment at Gold's Gym.",
+                "用户过去在 Planet Fitness 有良好体验，但最近加入了 Equinox（基于 ep_5d09a245a47c4dae981213ac38a8a6bb）。",
+                "User used to have a good experience at Planet Fitness, recently joined Equinox (based on ep_5d09a245a47c4dae981213ac38a8a6bb).",
+                "User has had a good experience at Planet Fitness so far.",
+                "User loves the classes offered at Equinox.",
+                "User has a goal to exercise at least three times a week.",
+                "User finds the facilities at Equinox amazing."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The entries mention Equinox as the current gym, but also present Gold's Gym and Planet Fitness as if they are current preferences."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0047",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "The user used to have a Samsung phone, then switched to a OnePlus phone, but recently upgraded to an Apple phone and loves the Apple ecosystem (based on ep_a11acbba65cb4f63958e7c455013d043).",
+                "The user recently upgraded to an Apple phone and loves the Apple ecosystem.",
+                "The camera quality is quite impressive."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently uses an Apple phone and mark Samsung and OnePlus as past brands."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "User used to find their Samsung phone to be reliable but recently switched to a OnePlus phone and finds it a refreshing change (based on ep_5bfa71f8fc314841a33374659f772179).",
+                "User recently upgraded to an Apple phone.",
+                "The user recently switched to a OnePlus phone and finds it a refreshing change.",
+                "User is enjoying the Apple ecosystem.",
+                "The camera quality is impressive."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user recently upgraded to an Apple phone (expected) but also state the user recently switched to a OnePlus phone (forbidden)."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What brand of phone are you currently using?",
+              "retrieved": [
+                "User had a Samsung phone last year, but recently switched to a OnePlus phone based on ep_ceb30b181e754021b7305b5c3aa95bec.",
+                "User had a Samsung phone but recently switched to a OnePlus phone (based on ep_ceb30b181e754021b7305b5c3aa95bec).",
+                "User recently upgraded to a OnePlus phone, but the previous Samsung phone was acquired last year (based on ep_ceb30b181e754021b7305b5c3aa95bec).",
+                "The user recently switched to a OnePlus phone and finds it to be a refreshing change.",
+                "The user recently upgraded to an Apple phone and enjoys the Apple ecosystem.",
+                "User finds their Samsung phone to be reliable.",
+                "The camera quality is quite impressive."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention the user recently upgraded to an Apple phone (expected) and also present OnePlus as the current phone (forbidden)."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0048",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "The user currently lives in Riverside."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entry clearly states the user currently lives in Riverside, which is expected, and does not mention any forbidden locations."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "The user used to live in Downtown.",
+                "The user used to live in Greenwood for peace and quiet, recently moved to Riverside (based on ep_49594f7dd0414d4b92e4aea02d36b838).",
+                "User found a place in Riverside that they consider lovely.",
+                "The user found Downtown too noisy for them.",
+                "Finishing a book can be a source of satisfaction or fulfillment."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries confirm the user currently lives in Riverside and mark Downtown and Greenwood as past residences."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "Where do you currently live?",
+              "retrieved": [
+                "The user used to live in Greenwood, recently moved to Riverside for a lovely atmosphere (based on ep_04b840fbdcc4426d9f8c940d96feabbc).",
+                "The user used to live in Downtown but found it too noisy.",
+                "The user moved to Greenwood for peace and quiet."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently lives in Riverside and mark Greenwood and Downtown as past residences."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0049",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "How do you usually commute to work now?",
+              "retrieved": [
+                "User drives to work now.",
+                "The user finds driving to work comfortable.",
+                "User has started taking the bus when it's raining.",
+                "The user finds biking a great way to start the morning.",
+                "The user recently acquired a car.",
+                "The user finds the weather occasionally uncooperative."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries indicate the user drives to work, but also mention taking the bus and biking, which are forbidden."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "How do you usually commute to work now?",
+              "retrieved": [
+                "过去 User bikes to work every day，最近改为 User now drives to work after acquiring a car (基于 ep_f64d9c6e5d93425fa8bbe1dcfc87bf01)",
+                "过去 User bikes to work every day，最近改为 User drives to work (基于 ep_f64d9c6e5d93425fa8bbe1dcfc87bf01)",
+                "The user finds driving to work comfortable.",
+                "User finds biking to work a great way to start the morning.",
+                "User prefers to take the bus when it is raining, indicating a recent change in transportation behavior.",
+                "Weather can sometimes not cooperate with plans."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The entries confirm the user now drives to work, but also mention taking the bus when it rains as a recent change."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "How do you usually commute to work now?",
+              "retrieved": [
+                "User recently acquired a car and now drives to work.",
+                "User bikes to work every day.",
+                "User finds driving to work comfortable.",
+                "User finds biking to work a great way to start the morning.",
+                "The user has recently started taking the bus when it rains.",
+                "The user finds the weather sometimes not cooperative.",
+                "Weather can sometimes be unpredictable or not cooperative."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The entries mention the user now drives to work, but also incorrectly state that the user bikes and takes the bus to work."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buc-0050",
+      "variants": [
+        {
+          "variant": "nemos-v2-semantic",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "The user enjoys having a car with new features.",
+                "User enjoys the electric driving experience.",
+                "Toyota Corollas are generally considered reliable cars."
+              ],
+              "judge": {
+                "contains_expected": false,
+                "contains_forbidden": true,
+                "why": "The retrieved entries mention Toyota Corolla, which is a forbidden fact."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-v1-lexical",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "User recently upgraded from driving a Toyota Corolla to driving a Tesla Model 3.",
+                "User recently upgraded from a Toyota Corolla to a Tesla Model 3 (based on ep_047fd9c1d5f24642bfddf517aae497bd).",
+                "User loves the electric driving experience.",
+                "User considers Honda Civic to be a nice change with cool features.",
+                "User has decided to change something in their routine or activity."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": true,
+                "why": "The retrieved entries confirm the user is currently driving a Tesla Model 3 but also suggest a consideration of a Honda Civic as a current option."
+              }
+            }
+          ]
+        },
+        {
+          "variant": "nemos-no-invalidation",
+          "judged": [
+            {
+              "probe": "What car are you currently driving?",
+              "retrieved": [
+                "The user used to drive a Honda Civic, recently upgraded to driving a Tesla Model 3 (based on ep_7d51236abb464bf09efef24dc0424b9d).",
+                "The user used to drive a Toyota Corolla, recently changed to a Honda Civic (based on ep_15b55ed040d1436eb15a5196d245a900).",
+                "The user used to drive a Toyota Corolla.",
+                "过去用户开本田思域，最近改为驾驶特斯拉 Model 3（基于 ep_7d51236abb464bf09efef24dc0424b9d）",
+                "The user loves the electric driving experience.",
+                "The Honda Civic has some cool features and can be a nice change for its owner.",
+                "Toyota Corolla is generally considered a reliable car."
+              ],
+              "judge": {
+                "contains_expected": true,
+                "contains_forbidden": false,
+                "why": "The retrieved entries clearly state the user currently drives a Tesla Model 3 and mark the forbidden facts as past."
               }
             }
           ]
@@ -786,19 +3179,19 @@
   ],
   "summary": {
     "nemos-v2-semantic": {
-      "UA": 0.9166666666666666,
-      "SLR": 0.3333333333333333,
-      "n": 12
+      "UA": 0.76,
+      "SLR": 0.34,
+      "n": 50
     },
     "nemos-v1-lexical": {
-      "UA": 0.8333333333333334,
+      "UA": 0.84,
       "SLR": 0.5,
-      "n": 12
+      "n": 50
     },
     "nemos-no-invalidation": {
-      "UA": 1,
-      "SLR": 0.75,
-      "n": 12
+      "UA": 0.92,
+      "SLR": 0.8,
+      "n": 50
     }
   }
 }
