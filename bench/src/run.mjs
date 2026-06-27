@@ -9,6 +9,33 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '../data');
 const RESULTS_DIR = join(__dirname, '../results');
 
+// Intra-task variant concurrency. Lower when running multiple task-processes in
+// parallel so the shared proxy isn't overwhelmed (ECONNRESET). Override via env.
+const CONC = Number(process.env.MNEMO_CONC || 2);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Retry transient network failures (ECONNRESET / TLS disconnect / 429 / fetch failed).
+// Each retry of runNemosItem rebuilds a fresh temp DB, so retries are idempotent.
+async function withRetry(fn, label, tries = 6) {
+  let lastErr;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e?.message || e) + ' ' + String(e?.cause?.code || e?.code || '');
+      const transient = /ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket disconnected|fetch failed|terminated|429|timeout/i.test(msg);
+      if (!transient || attempt === tries) break;
+      const backoff = Math.min(30000, 800 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 400);
+      console.log(`  [retry ${attempt}/${tries}] ${label}: ${msg.slice(0, 80)} — wait ${backoff}ms`);
+      await sleep(backoff);
+    }
+  }
+  console.error(`  [give-up] ${label}: ${String(lastErr?.message || lastErr).slice(0, 120)}`);
+  return null; // signal failure without aborting the whole run
+}
+
 // ── Variant configs ───────────────────────────────────────────────────────────
 
 const BUC_VARIANTS = ['nemos-v2-semantic', 'nemos-v1-lexical', 'nemos-no-invalidation'];
@@ -50,14 +77,16 @@ async function runBUC(items) {
   for (const item of items) {
     const variantResults = await pLimit(
       BUC_VARIANTS.map((variant) => async () => {
-        const probeResults = await runNemosItem(variant, item, {
+        const probeResults = await withRetry(() => runNemosItem(variant, item, {
           topK: 10,
           isolatePersona: true,
           searchLayers: ['personal_semantic', 'semantic'],
-        });
+        }), `${variant} ${item.id}`);
+        if (!probeResults) return { variant, judged: [], failed: true };
         const judged = [];
         for (const { probe, retrieved } of probeResults) {
-          const j = await judgeProbe(probe, retrieved);
+          const j = await withRetry(() => judgeProbe(probe, retrieved), `judge ${item.id}`);
+          if (!j) continue;
           console.log(
             `[BUC][${variant}] item ${item.id} probe${judged.length}: exp=${j.contains_expected} forb=${j.contains_forbidden}`,
           );
@@ -65,7 +94,7 @@ async function runBUC(items) {
         }
         return { variant, judged };
       }),
-      4,
+      CONC,
     );
     perItem.push({ id: item.id, variants: variantResults });
   }
@@ -102,13 +131,15 @@ async function runASP(items) {
   for (const item of items) {
     const modeResults = await pLimit(
       modes.map((mode) => async () => {
-        const probeResults = await runNemosItem(variant, item, {
+        const probeResults = await withRetry(() => runNemosItem(variant, item, {
           topK: 10,
           ...mode.opts,
-        });
+        }), `${variant}/${mode.label} ${item.id}`);
+        if (!probeResults) return { mode: mode.label, judged: [], failed: true };
         const judged = [];
         for (const { probe, retrieved } of probeResults) {
-          const j = await judgeProbe(probe, retrieved);
+          const j = await withRetry(() => judgeProbe(probe, retrieved), `judge ${item.id}`);
+          if (!j) continue;
           console.log(
             `[ASP][${variant}/${mode.label}] item ${item.id} probe${judged.length}: exp=${j.contains_expected} forb=${j.contains_forbidden}`,
           );
@@ -116,7 +147,7 @@ async function runASP(items) {
         }
         return { mode: mode.label, judged };
       }),
-      4,
+      CONC,
     );
     perItem.push({ id: item.id, modes: modeResults });
   }
@@ -150,14 +181,16 @@ async function runFOR(items) {
   for (const item of items) {
     const variantResults = await pLimit(
       FOR_VARIANTS.map((variant) => async () => {
-        const probeResults = await runNemosItem(variant, item, {
+        const probeResults = await withRetry(() => runNemosItem(variant, item, {
           topK: 10,
           isolatePersona: true,
           forTask: true,
-        });
+        }), `${variant} ${item.id}`);
+        if (!probeResults) return { variant, judged: [], failed: true };
         const judged = [];
         for (const { probe, retrieved } of probeResults) {
-          const j = await judgeProbe(probe, retrieved);
+          const j = await withRetry(() => judgeProbe(probe, retrieved), `judge ${item.id}`);
+          if (!j) continue;
           console.log(
             `[FOR][${variant}] item ${item.id} probe${judged.length}: exp=${j.contains_expected} forb=${j.contains_forbidden}`,
           );
@@ -165,7 +198,7 @@ async function runFOR(items) {
         }
         return { variant, judged };
       }),
-      4,
+      CONC,
     );
     perItem.push({ id: item.id, variants: variantResults });
   }
