@@ -1,0 +1,436 @@
+{
+  "task": "LongMemEval-KU",
+  "n": 30,
+  "summary": {
+    "nemos-v2-semantic": {
+      "correct": 13,
+      "n": 30
+    },
+    "nemos-no-invalidation": {
+      "correct": 10,
+      "n": 30
+    }
+  },
+  "per_item": [
+    {
+      "id": "6a1eabeb",
+      "gold": "25 minutes and 50 seconds (or 25:50)",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "Your personal best time in the charity 5K run was 27:12.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "6aeb4375",
+      "gold": "four",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "830ce83f",
+      "gold": "the suburbs",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "Rachel moved back to the suburbs.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "Rachel recently moved back to the suburbs.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "852ce960",
+      "gold": "$400,000",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "945e3d21",
+      "gold": "Three times a week.",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You attend yoga classes three times a week.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "d7c942c3",
+      "gold": "Yes.",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "71315a70",
+      "gold": "10-12 hours",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You have spent 10-12 hours working on your abstract ocean sculpture.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "You have spent 10-12 hours on your abstract ocean sculpture.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "89941a93",
+      "gold": "4",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You own four bikes.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "You currently own four bikes.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "ce6d2d27",
+      "gold": "Friday",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "9ea5eabc",
+      "gold": "Paris",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You recently went on a family trip to Paris.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "You went to Paris on your most recent family trip.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "07741c44",
+      "gold": "under my bed",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "Under your bed.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "Under the bed.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "a1eacc2a",
+      "gold": "seven",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "Four short stories.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "184da446",
+      "gold": "220",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You have read 220 pages of 'A Short History of Nearly Everything' so far.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "You have read 220 pages of 'A Short History of Nearly Everything' so far.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "031748ae",
+      "gold": "When you just started your new role as Senior Software Engineer, you led 4 engineers. Now, you lead 5 engineers",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "4d6b87c8",
+      "gold": "25",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "0f05491a",
+      "gold": 120,
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You need 125 stars to reach the Gold level on your Starbucks Rewards app.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "You need 125 stars to reach the Gold level on your Starbucks Rewards app.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "08e075c7",
+      "gold": "9 months",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You have been using your Fitbit Charge 3 for 9 months.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "f9e8c073",
+      "gold": "five",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "41698283",
+      "gold": "a 70-200mm zoom lens",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You most recently acquired a new 50mm prime lens.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "You most recently acquired a new 50mm prime lens.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "2698e78f",
+      "gold": "every week",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "b6019101",
+      "gold": "5",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "45dc21b6",
+      "gold": "3",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "You have tried three of Emma's recipes.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "5a4f22c0",
+      "gold": "TechCorp",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "Rachel is currently working at TechCorp.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "Rachel is currently at TechCorp.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "6071bd76",
+      "gold": "You switched to less water (5 ounces) per tablespoon of coffee.",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "You switched to more water per tablespoon of coffee, preferring a ratio of 1 tablespoon of coffee for every 6 ounces of water.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "e493bb7c",
+      "gold": "in my bedroom",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "The 'Ethereal Dreams' painting by Emma Taylor is currently located above the user's bed.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "The painting 'Ethereal Dreams' by Emma Taylor is currently hanging above the user's bed.",
+          "correct": true
+        }
+      }
+    },
+    {
+      "id": "618f13b2",
+      "gold": "six",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You have worn your new black Converse Chuck Taylor All Star sneakers ten times.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "72e3ee87",
+      "gold": "50",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You have completed watching 50 episodes of Crash Course's Science series.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "c4ea545c",
+      "gold": "Yes",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "I don't know.",
+          "correct": false
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "01493427",
+      "gold": "25",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You have added 25 new postcards to your collection since you started collecting again.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "I don't know.",
+          "correct": false
+        }
+      }
+    },
+    {
+      "id": "6a27ffc2",
+      "gold": "30",
+      "variants": {
+        "nemos-v2-semantic": {
+          "ans": "You have completed 30 videos of Corey Schafer's Python series.",
+          "correct": true
+        },
+        "nemos-no-invalidation": {
+          "ans": "You have completed 30 videos of Corey Schafer's Python programming series.",
+          "correct": true
+        }
+      }
+    }
+  ]
+}
