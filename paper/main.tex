@@ -151,7 +151,15 @@ trivia at older timestamps; salient facts are revisited during the retention int
 \textit{Trivia Leakage} (cold trivia still surfacing; lower better) and
 \textit{Important-Fact Retention} (guardrail; must stay high).
 \subsection{Item schema and scoring}
-% TODO: include the JSON schema figure from bench/DESIGN.md §3; describe judge prompt.
+Each item is a JSON record with an ordered list of \texttt{sessions}
+(\texttt{\{speaker, text, contentDate?\}}) and one or more \texttt{probes}
+(\texttt{\{query, expected[], forbidden[]\}}). For BUC the labels are derived
+deterministically from the fact-script (the last value is the only \texttt{expected}
+current value; all earlier values are \texttt{forbidden}), so the labels cannot drift from
+the rendered narrative. The judge receives the query, the \texttt{expected} and
+\texttt{forbidden} lists, and the retrieved record set, and returns two booleans ---
+\texttt{contains\_expected} and \texttt{contains\_forbidden} --- where a record that
+explicitly marks a forbidden value as past does \emph{not} count as a leak.
 
 \section{Experimental Setup}
 \label{sec:setup}
@@ -167,7 +175,9 @@ test, so any difference is attributable to that mechanism:
   use cold threshold $0.3$, dormancy $0$, with a 120-day retention interval; important facts
   are accessed during the interval (modelling that salient facts are revisited).
 \end{itemize}
-% TODO: add mem0 as one external reference point (BUC); add a LongMemEval knowledge-update slice.
+As one external reference point we run mem0 (v2.0.8) on the BUC task with the same models and
+the identical judge. A standard-benchmark cross-anchor (a LongMemEval knowledge-update slice)
+is left to an extended version.
 
 \section{Results}
 \label{sec:results}
@@ -177,12 +187,14 @@ test, so any difference is attributable to that mechanism:
 \toprule
 System & Update Acc.\ (\%) & Stale Leakage (\%) \\
 \midrule
+mem0 (external)\footnotemark{}      & \bucUAmemo{} & \bucSLRmemo{} \\
 No invalidation (floor)        & \bucUAnone{} & \bucSLRnone{} \\
 Lexical detector (shipped)     & \bucUAvone{} & \bucSLRvone{} \\
 Semantic detector (this work)  & \bucUAfull{} & \bucSLRfull{} \\
 \bottomrule
 \end{tabular}
 \end{table}
+\footnotetext{mem0 v2.0.8, same gpt-4o + text-embedding-3-small, scored by the identical judge.}
 
 \begin{table}[t]\centering
 \caption{Anti-self-pollution (ASP) and forgetting (FOR).}
@@ -200,7 +212,30 @@ Decay on                 & \forTLdecay{}  & \forIFRdecay{} \\
 \bottomrule
 \end{tabular}
 \end{table}
-% TODO: per-item separation counts; mem0 row; LongMemEval slice.
+
+\paragraph{Belief update (BUC).} Stale leakage falls monotonically across the ablation
+ladder: \bucSLRnone{}\% with no invalidation, \bucSLRvone{}\% with the shipped lexical
+detector, and \bucSLRfull{}\% with the semantic detector --- the contradiction mechanism more
+than halves stale answers, and the lexical$\rightarrow$semantic change alone removes a further
+third of the leakage by catching attribute-replacement updates the lexical prefilter misses.
+This gain is not free: update accuracy drops from \bucUAnone{}\% (floor) to \bucUAfull{}\%
+(semantic), i.e.\ aggressive invalidation occasionally retires a still-current fact. BUC thus
+exposes a precision/recall knob absent from the other two tasks; we regard the operating point
+as tunable (candidate-similarity threshold, reconciliation conservativeness) rather than fixed.
+The external system, mem0, retains contradicted facts as active alongside their replacements
+(it appends without invalidating the old), placing its leakage near the no-invalidation floor.
+
+\paragraph{Anti-self-pollution (ASP).} This is the largest and cleanest effect. Across
+$250$ user-fact probes, namespace isolation reduces the pollution rate from \aspPRshared{}\%
+(a single shared store, as in append-only designs) to \aspPRiso{}\% --- a $\sim$44$\times$
+reduction --- while user-fact recall is statistically unchanged (\aspUFRshared{}\% vs.\
+\aspUFRiso{}\%). Physically separating the agent's self-narrative keyspace from the user's
+facts essentially eliminates the failure mode at no cost to recall.
+
+\paragraph{Forgetting (FOR).} Over $149$ salience probes, decay cuts trivia leakage from
+\forTLnone{}\% to \forTLdecay{}\% while important-fact retention is unchanged
+(\forIFRnone{}\% vs.\ \forIFRdecay{}\%): unreferenced trivia is cooled out of default
+retrieval without dropping the revisited important facts.
 
 \section{Discussion and Limitations}
 \label{sec:limits}
