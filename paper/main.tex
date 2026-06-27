@@ -30,6 +30,10 @@
 \newcommand{\forIFRdecay}{75.2}
 \newcommand{\forIFRnone}{73.8}
 \newcommand{\nItems}{50}                  % items per task
+% LongMemEval knowledge-update slice (external cross-anchor), QA accuracy
+\newcommand{\lmeAccFull}{\textbf{43.3}}   % nemos-v2-semantic
+\newcommand{\lmeAccNone}{33.3}            % no-invalidation
+\newcommand{\lmeN}{30}
 
 \title{MnemoBench: Evaluating Belief Update, Self-Pollution Resistance,\\
 and Forgetting in Long-Lived Memory Systems}
@@ -175,8 +179,10 @@ test, so any difference is attributable to that mechanism:
   are accessed during the interval (modelling that salient facts are revisited).
 \end{itemize}
 As one external reference point we run mem0 (v2.0.8) on the BUC task with the same models and
-the identical judge. A standard-benchmark cross-anchor (a LongMemEval knowledge-update slice)
-is left to an extended version.
+the identical judge. As a standard-benchmark cross-anchor we additionally evaluate a
+\lmeN{}-question slice of the LongMemEval~\cite{longmemeval} \emph{knowledge-update} subset
+(oracle setting), following its generate-then-judge QA-accuracy methodology, ablating
+invalidation (semantic vs.\ off).
 
 \section{Results}
 \label{sec:results}
@@ -223,6 +229,14 @@ exposes a precision/recall knob absent from the other two tasks; we regard the o
 as tunable (candidate-similarity threshold, reconciliation conservativeness) rather than fixed.
 The external system, mem0, retains contradicted facts as active alongside their replacements
 (it appends without invalidating the old), placing its leakage near the no-invalidation floor.
+
+\paragraph{External cross-anchor (LongMemEval).} The same effect appears on a standard
+benchmark: on a \lmeN{}-question slice of the LongMemEval knowledge-update subset (QA accuracy,
+generate-then-judge), enabling semantic invalidation raises accuracy from \lmeAccNone{}\% to
+\lmeAccFull{}\% --- a $+10$-point gain attributable solely to the invalidation ablation. The
+absolute level is modest (Nemos is used as a from-scratch memory over the oracle evidence
+sessions, without LongMemEval-specific tuning), so we read the \emph{delta}, not the level, as
+the result: belief maintenance helps even on recall-style external data.
 
 \paragraph{Anti-self-pollution (ASP).} This is the largest and cleanest effect. Across
 $250$ user-fact probes, namespace isolation reduces the pollution rate from \aspPRshared{}\%
