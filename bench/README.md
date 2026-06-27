@@ -54,6 +54,11 @@ node src/run.mjs --task FOR --n 50    # decay-on vs decay-off
 # external baseline (mem0), then score with the shared judge
 python src/adapters/mem0_run.py --task BUC --n 50
 node src/score-external.mjs --task BUC --sys mem0
+
+# standard-benchmark cross-anchor: LongMemEval knowledge-update slice
+curl -sL https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_oracle.json \
+  -o data/longmemeval/oracle.json          # ~15 MB, not vendored (upstream license)
+node src/run-lme.mjs --n 30                 # nemos-v2-semantic vs no-invalidation, QA accuracy
 ```
 
 > Note: the SDK must be built first — `cd ../sdk/typescript && npm run build`. The runner
