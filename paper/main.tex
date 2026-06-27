@@ -34,7 +34,7 @@
 \title{MnemoBench: Evaluating Belief Update, Self-Pollution Resistance,\\
 and Forgetting in Long-Lived Memory Systems}
 \author{Nemos founding team\thanks{Working draft. All reported numbers are from the frozen
-$n{=}50$ benchmark runs in the released harness; citations are pending arXiv-id verification.}}
+$n{=}50$ benchmark runs in the released harness.}}
 \date{2026}
 
 \begin{document}
@@ -46,7 +46,8 @@ can the system retrieve what was said earlier? We argue that in long-lived use t
 dominant failure modes are not recall but \emph{maintenance}: (1) failing to revise a
 belief when a fact changes, (2) letting the agent's own generated or imagined content
 pollute the user's fact base, and (3) never forgetting, so that stale trivia degrades
-precision over time. We introduce \textbf{MnemoBench}, a reproducible benchmark with
+precision over time.
+We introduce \textbf{MnemoBench}, a reproducible benchmark with
 three task families targeting exactly these behaviours, with ground truth fixed by a
 generator rather than judged post~hoc. We evaluate Nemos, an embeddable memory kernel
 with bitemporal contradiction invalidation, namespace isolation between user facts and
@@ -68,7 +69,6 @@ Memory systems for LLM agents (e.g.\ MemGPT/Letta~\cite{memgpt}, mem0~\cite{mem0
 Zep/Graphiti~\cite{zep}) are commonly assessed on multi-session question answering such as
 LOCOMO~\cite{locomo} and LongMemEval~\cite{longmemeval}, which primarily stress
 \emph{retrieval}. Yet the failures that erode trust in a long-lived assistant are different:
-% TODO(intro): tighten with one concrete companion-app anecdote per failure mode.
 \begin{itemize}
   \item \textbf{Belief staleness.} A fact changes (job, city, diet, relationship) and the
   system keeps surfacing the old value as if current --- a failure mode recent work on
@@ -87,7 +87,6 @@ defect we found and fixed in the contradiction detector.
 
 \section{Related Work}
 \label{sec:related}
-% TODO: 1 paragraph each. Verify all citations / arXiv IDs before submission (P5).
 \paragraph{Memory architectures.} MemGPT/Letta~\cite{memgpt}, mem0~\cite{mem0},
 Zep/Graphiti's temporal knowledge graph~\cite{zep}. Contrast: layered separation, explicit
 invalidation semantics, source-authority gating.
