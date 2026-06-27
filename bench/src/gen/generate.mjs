@@ -9,11 +9,15 @@ const DATA_DIR = join(__dirname, '../../data');
 
 // ── BUC ──────────────────────────────────────────────────────────────────────
 
+// Belief update is defined over SINGLE-VALUED, MUTUALLY-EXCLUSIVE attributes only:
+// the new value makes the old one false (you live in one city, have one current employer).
+// Additive attributes (pet, hobby, cuisine, streaming service — you can have several at once)
+// are excluded: an old value coexisting with a new one is NOT a contradiction, so labelling it
+// "forbidden" would be an invalid test item. See DESIGN.md §Task BUC.
 const BUC_ATTRIBUTES = [
-  'employer', 'city', 'diet', 'relationship_status', 'pet',
-  'job_title', 'primary_hobby', 'car', 'gym', 'phone_brand',
-  'neighborhood', 'exercise_routine', 'favorite_cuisine',
-  'commute_mode', 'streaming_service',
+  'employer', 'city', 'diet', 'relationship_status',
+  'job_title', 'gym', 'phone_brand', 'neighborhood',
+  'commute_mode', 'current_car',
 ];
 
 const BUC_SCRIPT_SYS = `You are a benchmark data generator. Output strict JSON only.
@@ -27,6 +31,10 @@ Output format:
 Rules:
 - values array must have 2 or 3 elements; first is oldest, last is current truth
 - values must be realistic, concrete, and clearly distinct from each other
+- CRITICAL: the attribute is single-valued and mutually exclusive — only ONE value can be
+  true at a time, and each new value makes ALL earlier values FALSE (e.g. you live in exactly
+  one city; starting at a new employer means you no longer work at the old one). Do not pick
+  values that could coexist.
 - no markdown, no explanation, just JSON`;
 
 const BUC_RENDER_SYS = `You are a benchmark data generator. Output strict JSON only.
