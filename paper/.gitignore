@@ -1,0 +1,10 @@
+# LaTeX build artifacts (the .pdf is committed as the rendered draft)
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.synctex.gz
+*.toc
+*.fls
+*.fdb_latexmk

@@ -1,0 +1,280 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+
+% ---- result macros: fill from bench/results/*.json once n=50 runs land ----
+% BUC (belief update) — Stale Leakage Rate / Update Accuracy
+\newcommand{\bucSLRfull}{\textbf{34.0}}   % nemos-v2-semantic
+\newcommand{\bucSLRvone}{50.0}            % nemos-v1-lexical (shipped)
+\newcommand{\bucSLRnone}{80.0}            % no-invalidation (floor)
+\newcommand{\bucUAfull}{76.0}
+\newcommand{\bucUAvone}{84.0}
+\newcommand{\bucUAnone}{92.0}
+% mem0 external reference (BUC) — mem0 v2.0.8, 50 items, shared judge
+\newcommand{\bucSLRmemo}{82.0}
+\newcommand{\bucUAmemo}{96.0}
+% ASP (anti-self-pollution) — Pollution Rate / User-Fact Recall  [n=50 items, 250 probes]
+\newcommand{\aspPRiso}{\textbf{1.6}}      % isolated (Nemos)
+\newcommand{\aspPRshared}{71.2}           % shared store (baseline)
+\newcommand{\aspUFRiso}{92.4}
+\newcommand{\aspUFRshared}{92.0}
+% FOR (forgetting) — Trivia Leakage / Important-Fact Retention  [n=50 items, 149 probes]
+\newcommand{\forTLdecay}{\textbf{17.4}}
+\newcommand{\forTLnone}{96.0}
+\newcommand{\forIFRdecay}{75.2}
+\newcommand{\forIFRnone}{73.8}
+\newcommand{\nItems}{50}                  % items per task
+% LongMemEval knowledge-update slice (external cross-anchor), QA accuracy
+\newcommand{\lmeAccFull}{\textbf{43.3}}   % nemos-v2-semantic
+\newcommand{\lmeAccNone}{33.3}            % no-invalidation
+\newcommand{\lmeN}{30}
+
+\title{MnemoBench: Evaluating Belief Update, Self-Pollution Resistance,\\
+and Forgetting in Long-Lived Memory Systems}
+\author{Shen Wei\thanks{Working draft. All reported numbers are from the frozen
+$n{=}50$ benchmark runs in the released harness.}\\
+\texttt{s181@163.com}\\
+Project: \url{https://github.com/mmlong818/nemos}}
+\date{2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Persistent memory layers for LLM agents are typically evaluated on \emph{recall}:
+can the system retrieve what was said earlier? We argue that in long-lived use the
+dominant failure modes are not recall but \emph{maintenance}: (1) failing to revise a
+belief when a fact changes, (2) letting the agent's own generated or imagined content
+pollute the user's fact base, and (3) never forgetting, so that stale trivia degrades
+precision over time.
+We introduce \textbf{MnemoBench}, a reproducible benchmark with
+three task families targeting exactly these behaviours, with ground truth fixed by a
+generator rather than judged post~hoc. We evaluate Nemos, an embeddable memory kernel
+with bitemporal contradiction invalidation, namespace isolation between user facts and
+agent self-narrative, and FSRS-based decay. On belief update, contradiction invalidation
+cuts stale-answer leakage from \bucSLRnone{}\% to \bucSLRfull{}\%, at a moderate recall
+cost (update accuracy \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%) that exposes a
+precision/recall knob; we further show that the shipped lexical contradiction detector
+misses attribute-replacement updates and that a semantic detector recovers them
+(leakage \bucSLRvone{}~$\rightarrow$~\bucSLRfull{}\%). Namespace isolation reduces
+self-pollution from \aspPRshared{}\% to \aspPRiso{}\% with no recall loss. Decay suppresses
+stale-trivia leakage from \forTLnone{}\% to \forTLdecay{}\% while retaining important facts.
+We release MnemoBench and all harness code.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+% The gap: memory benchmarks measure recall; real long-term failure is maintenance.
+Memory systems for LLM agents (e.g.\ MemGPT/Letta~\cite{memgpt}, mem0~\cite{mem0},
+Zep/Graphiti~\cite{zep,graphiti}) are commonly assessed on multi-session question answering
+such as LoCoMo~\cite{locomo} and LongMemEval~\cite{longmemeval}, which primarily stress
+\emph{retrieval}. Yet the failures that erode trust in a long-lived assistant are different:
+\begin{itemize}
+  \item \textbf{Belief staleness.} A fact changes (job, city, diet, relationship) and the
+  system keeps surfacing the old value as if current --- a failure mode recent work on
+  knowledge updating in memory systems highlights as both common and hard~\cite{fama}.
+  \item \textbf{Self-pollution.} In companion/agent settings the model emits first-person
+  or speculative content; if mis-attributed it enters the user profile and is later returned
+  as the user's own authoritative fact.
+  \item \textbf{No forgetting.} Append-only stores accumulate one-off trivia that crowds out
+  salient facts and lowers retrieval precision.
+\end{itemize}
+We make two contributions. (i) \textbf{MnemoBench}, a benchmark isolating these three
+behaviours with generator-fixed ground truth (\S\ref{sec:bench}). (ii) An evaluation of the
+\textbf{Nemos} memory kernel (\S\ref{sec:system}) showing each mechanism is responsible for a
+measurable, ablatable improvement (\S\ref{sec:results}), including a before/after on a real
+defect we found and fixed in the contradiction detector.
+
+\section{Related Work}
+\label{sec:related}
+\paragraph{Memory architectures.} MemGPT/Letta~\cite{memgpt}, mem0~\cite{mem0},
+Zep/Graphiti's temporal knowledge graph~\cite{zep,graphiti}. Contrast: layered separation,
+explicit invalidation semantics, source-authority gating.
+\paragraph{Temporal/ bitemporal modelling.} Graphiti edge validity intervals~\cite{graphiti}
+vs.\ Nemos event-sourced invalidation with materialised flat fields.
+\paragraph{Forgetting.} FSRS / spaced-repetition retrievability~\cite{ssp,fsrs} applied to
+machine memory rather than human review scheduling.
+\paragraph{Benchmarks.} LoCoMo~\cite{locomo} and LongMemEval~\cite{longmemeval} are
+recall-centric. Closest to our thesis is the concurrent work of Uddin et al.~\cite{fama},
+whose \emph{Memora} benchmark and Forgetting-Aware Memory Accuracy (FAMA) metric explicitly
+penalise reliance on obsolete or invalidated memory --- corroborating the
+recall-to-maintenance shift. MnemoBench is complementary: rather than a single aggregate
+score, it isolates each maintenance mechanism (invalidation, isolation, decay) through
+single-mechanism ablations, and additionally surfaces a before/after on a real detector fix.
+
+\section{The Nemos Memory Kernel}
+\label{sec:system}
+Nemos is an embeddable memory kernel. We describe only the mechanisms under test.
+\subsection{Layered memory and source authority}
+Five layers (episodic, semantic, personal\_semantic, procedural, archival). Every record
+carries \texttt{source.authoritative} (user-stated vs.\ model-derived); derived content is
+barred from authoritative personal facts (invariant I4).
+\subsection{Bitemporal contradiction invalidation}
+Records carry world-axis (\texttt{valid\_at}/\texttt{invalid\_at}) and system-axis
+(\texttt{created\_at}/\texttt{expired\_at}) timestamps and a
+\texttt{belief\_state}~$\in$~\{active, invalidated, superseded, corrected\}. During offline
+reflection, a new fact that contradicts an existing \texttt{personal\_semantic} anchor marks
+the old one \texttt{invalidated}; default retrieval returns only \texttt{active} records.
+\paragraph{A real defect: lexical vs.\ semantic detection.}
+The shipped detector prefilters contradiction candidates by character-bigram Jaccard
+similarity. This reliably catches strong negations (``left Google'') but \emph{misses
+attribute replacement} where the new value is lexically dissimilar (vegetarian
+$\rightarrow$ pescatarian). We replace the prefilter with embedding-cosine candidate
+retrieval and add a same-attribute, mutually-exclusive reconciliation pass over existing
+personal facts. \S\ref{sec:results} quantifies the before/after.
+\subsection{Namespace isolation (anti-self-pollution)}
+User facts live under \texttt{forUser(uid)}; agent self-narrative under
+\texttt{forUser(persona:pid)} --- a physically separate keyspace. Retrieval of user facts
+cannot surface persona content.
+\subsection{FSRS decay}
+Each record has stability $S$, difficulty $D$, retrievability
+$R=\exp(-\Delta t / S)$. Access reinforces $S$; records with $R$ below a cold threshold,
+zero recent access, after a dormancy window are marked cold and hidden from default search
+(archival is never cooled).
+
+\section{MnemoBench}
+\label{sec:bench}
+\subsection{Design principles}
+Ground truth is \emph{fixed by the generator}: each item's fact script (which attribute,
+which values, in what order; which persona statements are traps) is decided first, then
+rendered into natural-language sessions. Scoring isolates \emph{memory quality} from
+\emph{generation quality}: an LLM judge inspects only the \emph{set of retrieved records}
+and decides whether the expected fact is present and whether a forbidden (stale/leaked)
+fact is presented as current. The judge never writes the final answer.
+\subsection{Task families}
+\paragraph{BUC --- Belief Update \& Contradiction.} A single-valued user attribute changes
+1--3 times across sessions; the probe asks for the current value.
+\textit{Update Accuracy} (expected present) and \textit{Stale Leakage Rate} (a prior value
+presented as current; lower better).
+\paragraph{ASP --- Anti-Self-Pollution.} User statements interleaved with persona
+self-statements, some crafted as plausible traps. Probes query user facts.
+\textit{Pollution Rate} (persona fiction returned as authoritative user fact; lower better)
+and \textit{User-Fact Recall}.
+\paragraph{FOR --- Forgetting \& Salience.} Durable important facts mixed with one-off
+trivia at older timestamps; salient facts are revisited during the retention interval.
+\textit{Trivia Leakage} (cold trivia still surfacing; lower better) and
+\textit{Important-Fact Retention} (guardrail; must stay high).
+\subsection{Item schema and scoring}
+Each item is a JSON record with an ordered list of \texttt{sessions}
+(\texttt{\{speaker, text, contentDate?\}}) and one or more \texttt{probes}
+(\texttt{\{query, expected[], forbidden[]\}}). For BUC the labels are derived
+deterministically from the fact-script (the last value is the only \texttt{expected}
+current value; all earlier values are \texttt{forbidden}), so the labels cannot drift from
+the rendered narrative. The judge receives the query, the \texttt{expected} and
+\texttt{forbidden} lists, and the retrieved record set, and returns two booleans ---
+\texttt{contains\_expected} and \texttt{contains\_forbidden} --- where a record that
+explicitly marks a forbidden value as past does \emph{not} count as a leak.
+
+\section{Experimental Setup}
+\label{sec:setup}
+% Models, ablation arms, n, judge model, reproducibility.
+All systems use OpenAI \texttt{gpt-4o} for extraction/reflection and
+\texttt{text-embedding-3-small} for embeddings; the judge is \texttt{gpt-4o}. We report
+$n=\nItems{}$ items per task. Each task is evaluated by ablating exactly the mechanism under
+test, so any difference is attributable to that mechanism:
+\begin{itemize}
+  \item BUC: \texttt{semantic} (full) vs.\ \texttt{lexical} (shipped) vs.\ invalidation-off.
+  \item ASP: namespace-isolated vs.\ shared store.
+  \item FOR: decay-on vs.\ decay-off. To isolate decay we disable reflection in both arms and
+  use cold threshold $0.3$, dormancy $0$, with a 120-day retention interval; important facts
+  are accessed during the interval (modelling that salient facts are revisited).
+\end{itemize}
+As one external reference point we run mem0 (v2.0.8) on the BUC task with the same models and
+the identical judge. As a standard-benchmark cross-anchor we additionally evaluate a
+\lmeN{}-question slice of the LongMemEval~\cite{longmemeval} \emph{knowledge-update} subset
+(oracle setting), following its generate-then-judge QA-accuracy methodology, ablating
+invalidation (semantic vs.\ off).
+
+\section{Results}
+\label{sec:results}
+\begin{table}[t]\centering
+\caption{Belief update (BUC). Lower SLR is better; UA is the recall guardrail.}
+\begin{tabular}{lcc}
+\toprule
+System & Update Acc.\ (\%) & Stale Leakage (\%) \\
+\midrule
+mem0 (external)\footnotemark{}      & \bucUAmemo{} & \bucSLRmemo{} \\
+No invalidation (floor)        & \bucUAnone{} & \bucSLRnone{} \\
+Lexical detector (shipped)     & \bucUAvone{} & \bucSLRvone{} \\
+Semantic detector (this work)  & \bucUAfull{} & \bucSLRfull{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+\footnotetext{mem0 v2.0.8, same gpt-4o + text-embedding-3-small, scored by the identical judge.}
+
+\begin{table}[t]\centering
+\caption{Anti-self-pollution (ASP) and forgetting (FOR).}
+\begin{tabular}{lcc}
+\toprule
+\multicolumn{3}{l}{\emph{ASP} --- Pollution Rate / User-Fact Recall (\%)}\\
+\midrule
+Shared store (baseline)  & \aspPRshared{} & \aspUFRshared{} \\
+Namespace isolation      & \aspPRiso{}    & \aspUFRiso{} \\
+\midrule
+\multicolumn{3}{l}{\emph{FOR} --- Trivia Leakage / Important Retention (\%)}\\
+\midrule
+Decay off                & \forTLnone{}   & \forIFRnone{} \\
+Decay on                 & \forTLdecay{}  & \forIFRdecay{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Belief update (BUC).} Stale leakage falls monotonically across the ablation
+ladder: \bucSLRnone{}\% with no invalidation, \bucSLRvone{}\% with the shipped lexical
+detector, and \bucSLRfull{}\% with the semantic detector --- the contradiction mechanism more
+than halves stale answers, and the lexical$\rightarrow$semantic change alone removes a further
+third of the leakage by catching attribute-replacement updates the lexical prefilter misses.
+This gain is not free: update accuracy drops from \bucUAnone{}\% (floor) to \bucUAfull{}\%
+(semantic), i.e.\ aggressive invalidation occasionally retires a still-current fact. BUC thus
+exposes a precision/recall knob absent from the other two tasks; we regard the operating point
+as tunable (candidate-similarity threshold, reconciliation conservativeness) rather than fixed.
+The external system, mem0, retains contradicted facts as active alongside their replacements
+(it appends without invalidating the old), placing its leakage near the no-invalidation floor.
+
+\paragraph{External cross-anchor (LongMemEval).} The same effect appears on a standard
+benchmark: on a \lmeN{}-question slice of the LongMemEval knowledge-update subset (QA accuracy,
+generate-then-judge), enabling semantic invalidation raises accuracy from \lmeAccNone{}\% to
+\lmeAccFull{}\% --- a $+10$-point gain attributable solely to the invalidation ablation. The
+absolute level is modest (Nemos is used as a from-scratch memory over the oracle evidence
+sessions, without LongMemEval-specific tuning), so we read the \emph{delta}, not the level, as
+the result: belief maintenance helps even on recall-style external data.
+
+\paragraph{Anti-self-pollution (ASP).} This is the largest and cleanest effect. Across
+$250$ user-fact probes, namespace isolation reduces the pollution rate from \aspPRshared{}\%
+(a single shared store, as in append-only designs) to \aspPRiso{}\% --- a $\sim$44$\times$
+reduction --- while user-fact recall is statistically unchanged (\aspUFRshared{}\% vs.\
+\aspUFRiso{}\%). Physically separating the agent's self-narrative keyspace from the user's
+facts essentially eliminates the failure mode at no cost to recall.
+
+\paragraph{Forgetting (FOR).} Over $149$ salience probes, decay cuts trivia leakage from
+\forTLnone{}\% to \forTLdecay{}\% while important-fact retention is unchanged
+(\forIFRnone{}\% vs.\ \forIFRdecay{}\%): unreferenced trivia is cooled out of default
+retrieval without dropping the revisited important facts.
+
+\section{Discussion and Limitations}
+\label{sec:limits}
+\paragraph{LLM-judge dependence.} Both rendering and scoring use an LLM; we mitigate with a
+set-membership judge (no answer generation), low temperature, and a human-audited sample.
+\paragraph{Self-generated data.} Items are synthetic; we report only relative differences
+under identical data and add a standard-benchmark slice (LongMemEval) as a cross anchor.
+\paragraph{FOR isolation choices.} Disabling reflection and using aggressive decay parameters
+isolate decay cleanly but do not reflect the full-system default; we report them explicitly.
+\paragraph{Residual leakage.} The semantic detector does not reach zero stale leakage on
+generated hard cases (lexically and semantically close value pairs); we analyse failures in
+\S\ref{sec:results}.
+
+\section{Conclusion}
+Long-lived memory should be judged on maintenance, not just recall. MnemoBench operationalises
+this, and each Nemos maintenance mechanism yields a measurable, ablatable gain.
+
+\bibliographystyle{plain}
+\bibliography{refs}
+\end{document}

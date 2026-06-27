@@ -1,0 +1,7 @@
+{
+  "system": "mem0",
+  "task": "BUC",
+  "n": 50,
+  "expected_rate": 0.96,
+  "forbidden_rate": 0.82
+}
