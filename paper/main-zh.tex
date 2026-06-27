@@ -1,0 +1,149 @@
+% 中文版 —— 用 XeLaTeX 编译(ctexart + fandol 字体)。
+% 数字宏与参考文献与英文版 main.tex 完全一致,保证两版数据同源。
+\documentclass[11pt,fontset=fandol]{ctexart}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+% ---- 结果宏:与 main.tex 同源,取自 bench/results/*.json 的冻结结果 ----
+\newcommand{\bucSLRfull}{\textbf{34.0}}   % nemos-v2-semantic
+\newcommand{\bucSLRvone}{50.0}            % nemos-v1-lexical（已发布）
+\newcommand{\bucSLRnone}{80.0}            % no-invalidation（下界）
+\newcommand{\bucUAfull}{76.0}
+\newcommand{\bucUAvone}{84.0}
+\newcommand{\bucUAnone}{92.0}
+\newcommand{\bucSLRmemo}{82.0}
+\newcommand{\bucUAmemo}{96.0}
+\newcommand{\aspPRiso}{\textbf{1.6}}
+\newcommand{\aspPRshared}{71.2}
+\newcommand{\aspUFRiso}{92.4}
+\newcommand{\aspUFRshared}{92.0}
+\newcommand{\forTLdecay}{\textbf{17.4}}
+\newcommand{\forTLnone}{96.0}
+\newcommand{\forIFRdecay}{75.2}
+\newcommand{\forIFRnone}{73.8}
+\newcommand{\nItems}{50}
+\newcommand{\lmeAccFull}{\textbf{43.3}}
+\newcommand{\lmeAccNone}{33.3}
+\newcommand{\lmeN}{30}
+
+\title{MnemoBench：评估长生命周期记忆系统的\\信念更新、抗自污染与遗忘能力}
+\author{Nemos 创始团队\thanks{工作草稿。所报告的全部数字均来自随附评测框架中冻结的 $n{=}50$ 实验运行。}}
+\date{2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+面向大语言模型（LLM）智能体的持久记忆层，通常以\textbf{召回}为评测标准：系统能否检索回先前说过的内容？我们主张，在长期使用中，主导性的失败模式并非召回，而是\textbf{维护}：(1) 当事实发生变化时未能修正旧信念；(2) 让智能体自己生成或想象的内容污染用户的事实库；(3) 从不遗忘，使陈旧琐碎信息随时间拉低检索精度。我们提出 \textbf{MnemoBench}——一个可复现的评测基准，含三类任务，恰好针对上述行为，且真值由生成器预先固定，而非事后判定。我们据此评测 Nemos：一个具备双时间矛盾失效、用户事实与智能体自述之间命名空间隔离、以及基于 FSRS 的遗忘衰减的可嵌入记忆内核。在信念更新上，矛盾失效将旧值泄漏率从 \bucSLRnone{}\% 降到 \bucSLRfull{}\%，但伴随一定的召回代价（更新准确率 \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%），由此暴露出一个精度/召回的可调旋钮；我们进一步表明，已发布的\emph{词法}矛盾检测器会漏判“属性替换”型更新，而\emph{语义}检测器能将其捕回（泄漏 \bucSLRvone{}~$\rightarrow$~\bucSLRfull{}\%）。命名空间隔离将自污染率从 \aspPRshared{}\% 降到 \aspPRiso{}\%，且不损召回。遗忘衰减将陈旧琐碎泄漏从 \forTLnone{}\% 压到 \forTLdecay{}\%，同时保留重要事实。我们开源 MnemoBench 及全部评测代码。
+\end{abstract}
+
+\section{引言}
+\label{sec:intro}
+面向 LLM 智能体的记忆系统（如 MemGPT/Letta~\cite{memgpt}、mem0~\cite{mem0}、Zep/Graphiti~\cite{zep}）通常以多会话问答来评测，例如 LOCOMO~\cite{locomo} 与 LongMemEval~\cite{longmemeval}，它们主要考察\emph{检索}。然而真正侵蚀长期助手可信度的失败却另有其因：
+\begin{itemize}
+  \item \textbf{信念陈旧。}某事实变化了（工作、城市、饮食、感情状态），系统却仍把旧值当作现状反复给出——近期关于记忆系统中知识更新的研究指出，这既常见又棘手。
+  \item \textbf{自污染。}在陪伴/智能体场景中，模型会产出第一人称或推测性内容；一旦被错误归因，便进入用户档案，日后被当作用户自身的权威事实返回。
+  \item \textbf{从不遗忘。}仅追加（append-only）的存储会不断累积一次性琐碎，挤占重要事实、拉低检索精度。
+\end{itemize}
+我们做两点贡献：(i) \textbf{MnemoBench}，以生成器固定真值的方式隔离上述三种行为（\S\ref{sec:bench}）；(ii) 对 \textbf{Nemos} 记忆内核的评测（\S\ref{sec:system}），表明每个机制都对应一处可消融、可度量的改进（\S\ref{sec:results}），其中包含我们在矛盾检测器中发现并修复的一处真实缺陷的 before/after 对照。
+
+\section{相关工作}
+\label{sec:related}
+\paragraph{记忆架构。}MemGPT/Letta~\cite{memgpt}、mem0~\cite{mem0}、Zep/Graphiti 的时序知识图谱~\cite{zep}。区别在于：分层分离、显式的失效语义、来源权威性把关。
+\paragraph{时序/双时间建模。}Graphiti 用边的有效区间；Nemos 采用事件溯源式失效，并物化为扁平字段供热路径查询。
+\paragraph{遗忘。}FSRS / 间隔重复的可提取性模型~\cite{fsrs}，被用于机器记忆而非人类复习排程。
+\paragraph{评测基准。}LOCOMO~\cite{locomo}、LongMemEval~\cite{longmemeval} 均以召回为中心；MnemoBench 以\emph{维护}为中心，二者互补。
+
+\section{Nemos 记忆内核}
+\label{sec:system}
+Nemos 是一个可嵌入的记忆内核。此处只描述受测的机制。
+\subsection{分层记忆与来源权威性}
+五层（episodic、semantic、personal\_semantic、procedural、archival）。每条记录带 \texttt{source.authoritative}（用户陈述 vs.\ 模型推断）；推断内容被禁止进入权威的个人事实（不变量 I4）。
+\subsection{双时间矛盾失效}
+记录带世界轴（\texttt{valid\_at}/\texttt{invalid\_at}）与系统轴（\texttt{created\_at}/\texttt{expired\_at}）时间戳，以及 \texttt{belief\_state}~$\in$~\{active, invalidated, superseded, corrected\}。在离线反思中，与现有 \texttt{personal\_semantic} 锚点矛盾的新事实会把旧条目标为 \texttt{invalidated}；默认检索只返回 \texttt{active} 记录。
+\paragraph{一处真实缺陷：词法 vs.\ 语义检测。}已发布的检测器用字符二元组（bigram）Jaccard 相似度对矛盾候选做粗筛。它能可靠捕获强否定（“离开了 Google”），却\emph{漏判属性替换}——当新值与旧值在词法上不相似时（素食 $\rightarrow$ 鱼素）。我们用 embedding 余弦的候选检索替换该粗筛，并在现有个人事实上增加一道“同属性、互斥”的对账（reconciliation）。\S\ref{sec:results} 量化了其 before/after。
+\subsection{命名空间隔离（抗自污染）}
+用户事实存于 \texttt{forUser(uid)}；智能体自述存于 \texttt{forUser(persona:pid)}——一个物理上独立的键空间。检索用户事实时不可能浮现人格内容。
+\subsection{FSRS 遗忘衰减}
+每条记录有稳定度 $S$、难度 $D$、可提取性 $R=\exp(-\Delta t / S)$。访问会强化 $S$；当 $R$ 低于冷却阈值、近期零访问、且超过休眠窗口时，记录被标为 cold 并从默认检索中隐藏（archival 永不冷却）。
+
+\section{MnemoBench}
+\label{sec:bench}
+\subsection{设计原则}
+真值\emph{由生成器固定}：每条样本的事实脚本（哪个属性、取哪些值、按何顺序；哪些人格陈述是陷阱）先行确定，再渲染为自然语言会话。评分将\emph{记忆质量}与\emph{生成质量}解耦：一个 LLM 评判器只检视\emph{被检索出的记录集合}，判断期望事实是否在内、是否有被禁（陈旧/泄漏）事实被当作现状呈现；评判器从不撰写最终答案。
+\subsection{任务族}
+\paragraph{BUC —— 信念更新与矛盾。}某单值用户属性在多会话中变化 1--3 次；探针询问当前值。指标为\emph{更新准确率}（期望值在内）与\emph{旧值泄漏率}（某旧值被当作现状；越低越好）。
+\paragraph{ASP —— 抗自污染。}用户陈述与人格自述交错，其中若干被刻意构造成貌似可信的陷阱。探针查询用户事实。指标为\emph{污染率}（人格虚构被当作用户权威事实返回；越低越好）与\emph{用户事实召回}。
+\paragraph{FOR —— 遗忘与显著性。}持久重要事实与较旧时间戳的一次性琐碎混合；显著事实在保留期内被重访。指标为\emph{琐碎泄漏}（已冷却的琐碎仍浮现；越低越好）与\emph{重要事实保留率}（护栏；须保持高位）。
+\subsection{样本格式与评分}
+每条样本是一段 JSON：含有序的 \texttt{sessions}（\texttt{\{speaker, text, contentDate?\}}）与一个或多个 \texttt{probes}（\texttt{\{query, expected[], forbidden[]\}}）。对 BUC，标签由事实脚本\emph{确定性派生}（最后一个值是唯一的当前 \texttt{expected}，更早的值均为 \texttt{forbidden}），因此标签不会与所渲染的叙述发生漂移。评判器收到查询、\texttt{expected} 与 \texttt{forbidden} 列表、以及检索到的记录集合，返回两个布尔值——\texttt{contains\_expected} 与 \texttt{contains\_forbidden}；若某记录显式将被禁值标注为“过去”，则不计为泄漏。
+
+\section{实验设置}
+\label{sec:setup}
+所有系统的抽取/反思均用 OpenAI \texttt{gpt-4o}，嵌入用 \texttt{text-embedding-3-small}；评判器为 \texttt{gpt-4o}。每个任务报告 $n=\nItems{}$ 条样本。每个任务恰好消融受测的那一个机制，从而任何差异都可归因于该机制：
+\begin{itemize}
+  \item BUC：\texttt{语义}（完整）vs.\ \texttt{词法}（已发布）vs.\ 关闭失效。
+  \item ASP：命名空间隔离 vs.\ 共享存储。
+  \item FOR：开启衰减 vs.\ 关闭衰减。为隔离衰减，两侧均关闭反思，并取冷却阈值 $0.3$、休眠 $0$、保留期 120 天；重要事实在保留期内被访问（建模“显著事实会被重访”）。
+\end{itemize}
+作为一个外部参照点，我们用相同模型与相同评判器在 BUC 上运行 mem0（v2.0.8）。作为标准基准的交叉锚点，我们另在 LongMemEval~\cite{longmemeval} 的\emph{知识更新}子集（oracle 设定）上评测一个 \lmeN{} 题的切片，沿用其“先生成再评判”的问答准确率方法学，并消融失效（语义 vs.\ 关闭）。
+
+\section{结果}
+\label{sec:results}
+\begin{table}[t]\centering
+\caption{信念更新（BUC）。SLR 越低越好；UA 为召回护栏。}
+\begin{tabular}{lcc}
+\toprule
+系统 & 更新准确率 (\%) & 旧值泄漏率 (\%) \\
+\midrule
+mem0（外部）\footnotemark{}     & \bucUAmemo{} & \bucSLRmemo{} \\
+关闭失效（下界）                & \bucUAnone{} & \bucSLRnone{} \\
+词法检测器（已发布）            & \bucUAvone{} & \bucSLRvone{} \\
+语义检测器（本工作）            & \bucUAfull{} & \bucSLRfull{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+\footnotetext{mem0 v2.0.8，相同的 gpt-4o + text-embedding-3-small，由相同评判器评分。}
+
+\begin{table}[t]\centering
+\caption{抗自污染（ASP）与遗忘（FOR）。}
+\begin{tabular}{lcc}
+\toprule
+\multicolumn{3}{l}{\emph{ASP} —— 污染率 / 用户事实召回 (\%)}\\
+\midrule
+共享存储（基线）  & \aspPRshared{} & \aspUFRshared{} \\
+命名空间隔离      & \aspPRiso{}    & \aspUFRiso{} \\
+\midrule
+\multicolumn{3}{l}{\emph{FOR} —— 琐碎泄漏 / 重要事实保留 (\%)}\\
+\midrule
+关闭衰减          & \forTLnone{}   & \forIFRnone{} \\
+开启衰减          & \forTLdecay{}  & \forIFRdecay{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{信念更新（BUC）。}旧值泄漏沿消融阶梯单调下降：关闭失效 \bucSLRnone{}\%，已发布词法检测器 \bucSLRvone{}\%，语义检测器 \bucSLRfull{}\%——矛盾机制把旧值答案削减了一半以上；而仅词法$\rightarrow$语义这一改动，又通过捕获词法粗筛漏掉的属性替换更新，再去掉约三分之一的泄漏。该收益并非免费：更新准确率从 \bucUAnone{}\%（下界）降到 \bucUAfull{}\%（语义），即激进失效偶尔会把仍然有效的事实也退役掉。因此 BUC 暴露出另两个任务所没有的精度/召回旋钮；我们认为其工作点是\emph{可调的}（候选相似度阈值、对账保守度），而非固定。外部系统 mem0 会把被矛盾的事实与其替代值同时保留为 active（它只追加而不失效旧值），使其泄漏接近“关闭失效”的下界。
+
+\paragraph{外部交叉锚点（LongMemEval）。}同样的效应也出现在标准基准上：在 LongMemEval 知识更新子集的 \lmeN{} 题切片上（问答准确率，先生成再评判），开启语义失效把准确率从 \lmeAccNone{}\% 提升到 \lmeAccFull{}\%——这 $+10$ 个百分点完全归因于失效消融。其绝对水平不高（Nemos 在此是对 oracle 证据会话从零构建记忆，且未针对 LongMemEval 做任何调优），故我们读\emph{差值}而非绝对值：即便在以召回为主的外部数据上，信念维护也有帮助。
+
+\paragraph{抗自污染（ASP）。}这是最大、最干净的效应。在 $250$ 个用户事实探针上，命名空间隔离把污染率从 \aspPRshared{}\%（单一共享存储，正如仅追加式设计）降到 \aspPRiso{}\%——约 44 倍的下降——而用户事实召回在统计上不变（\aspUFRshared{}\% vs.\ \aspUFRiso{}\%）。把智能体自述的键空间与用户事实物理隔开，几乎消除了这一失败模式，且不损召回。
+
+\paragraph{遗忘（FOR）。}在 $149$ 个显著性探针上，衰减把琐碎泄漏从 \forTLnone{}\% 压到 \forTLdecay{}\%，而重要事实保留率不变（\forIFRnone{}\% vs.\ \forIFRdecay{}\%）：未被重访的琐碎被冷却出默认检索，而被重访的重要事实不丢失。
+
+\section{讨论与局限}
+\label{sec:limits}
+\paragraph{对 LLM 评判器的依赖。}渲染与评分都用 LLM；我们以集合成员式评判器（不生成答案）、低温度、并辅以人工抽检来缓解。
+\paragraph{合成数据。}样本为合成；我们只在相同数据下报告\emph{相对}差异，并加入一个标准基准切片（LongMemEval）作为交叉锚点。
+\paragraph{FOR 的隔离选择。}关闭反思并采用较激进的衰减参数，能干净地隔离衰减，但并不代表完整系统的默认配置；我们已显式说明。
+\paragraph{残余泄漏。}语义检测器在生成的困难样本上（值对在词法与语义上都很接近）未能将旧值泄漏降到零；其 BUC 的召回代价（UA \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%）表明该工作点应当随用例调整。
+
+\section{结论}
+长生命周期的记忆应当以\emph{维护}而非仅以召回来评判。MnemoBench 将这一主张操作化，而 Nemos 的每个维护机制都带来可消融、可度量的增益。
+
+\bibliographystyle{plain}
+\bibliography{refs}
+\end{document}
