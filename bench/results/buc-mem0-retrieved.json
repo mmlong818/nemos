@@ -1,0 +1,1132 @@
+[
+  {
+    "id": "buc-0001",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where are you currently employed?",
+        "expected": [
+          "GreenTech Industries"
+        ],
+        "forbidden": [
+          "TechCorp Inc.",
+          "Innovate Solutions LLC"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User switched jobs a few months ago and is now working at Innovate Solutions LLC.",
+          "User recently started working at TechCorp Inc. and finds it to be quite an experience so far.",
+          "User recently joined GreenTech Industries and finds it a fantastic place to work.",
+          "User is trying to pick up new skills in their free time."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0002",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where do you currently live?",
+        "expected": [
+          "San Francisco"
+        ],
+        "forbidden": [
+          "New York",
+          "Chicago"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently relocated to San Francisco and finds the weather there amazing.",
+          "User moved to Chicago in 2025 and has found it to be a great experience so far.",
+          "User moved to New York a few years ago and found it to be a significant change.",
+          "User initially found moving to New York overwhelming but eventually got used to it."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0003",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current diet preference?",
+        "expected": [
+          "vegan"
+        ],
+        "forbidden": [
+          "vegetarian",
+          "pescatarian"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently started including fish in their meals and now follows a pescatarian diet as of June 27, 2026.",
+          "User has been following a vegetarian diet for an extended period as of June 27, 2026.",
+          "User has decided to go fully vegan as of June 27, 2026, and is enjoying the change.",
+          "User loves trying out new vegetarian recipes to keep their diet interesting."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0004",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What's your current relationship status?",
+        "expected": [
+          "married"
+        ],
+        "forbidden": [
+          "single",
+          "in a relationship"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User is in a new relationship as of June 27, 2026, and describes it as wonderful",
+          "User has been single for a significant period of time as of June 27, 2026.",
+          "User got married in May 2026 and describes the experience as a whirlwind of joy"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0005",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current job title?",
+        "expected": [
+          "Senior Software Engineer"
+        ],
+        "forbidden": [
+          "Junior Developer",
+          "Software Engineer"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User started a new job as a Junior Developer on June 27, 2026.",
+          "User has been promoted to Senior Software Engineer.",
+          "User has been promoted to Software Engineer.",
+          "User is having a great learning experience and is really enjoying the team at their new job as a Junior Developer."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0006",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Which gym are you currently going to?",
+        "expected": [
+          "Equinox"
+        ],
+        "forbidden": [
+          "Planet Fitness",
+          "Gold's Gym"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently switched to Gold's Gym because it is closer to their new apartment as of June 27, 2026.",
+          "User has been going to Planet Fitness for a while as of June 27, 2026.",
+          "User tries to go to Planet Fitness at least three times a week as of June 27, 2026.",
+          "User joined Equinox for its amazing facilities and classes as of June 27, 2026."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0007",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What brand of phone are you currently using?",
+        "expected": [
+          "Apple"
+        ],
+        "forbidden": [
+          "Samsung",
+          "OnePlus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently got a new Samsung phone and is really enjoying it.",
+          "User switched from a Samsung phone to a OnePlus phone for a different experience.",
+          "User recently decided to try out an Apple phone and is really liking the ecosystem.",
+          "User finds the camera on their new Samsung phone amazing and took great photos during a trip on the weekend of June 20-21, 2026."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0008",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where do you currently live?",
+        "expected": [
+          "Downtown"
+        ],
+        "forbidden": [
+          "Greenwood",
+          "Riverside"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User used to live in Greenwood, which they describe as a quiet neighborhood.",
+          "User recently moved to Downtown in June 2026, finding it vibrant with everything within walking distance.",
+          "User moved to Riverside in 2025 because it was closer to work and offered a great view of the river."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0009",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "How do you currently commute to work?",
+        "expected": [
+          "car"
+        ],
+        "forbidden": [
+          "bicycle",
+          "bus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently decided to drive their car to work, finding it much more convenient.",
+          "User switched from biking to taking the bus for commuting, finding it more relaxing.",
+          "User used to bike to work every day, which was a great way for them to stay fit."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0010",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What car are you currently driving?",
+        "expected": [
+          "Tesla Model 3"
+        ],
+        "forbidden": [
+          "Toyota Corolla",
+          "Honda Civic"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User used to drive a Toyota Corolla for an extended period.",
+          "User switched from a Toyota Corolla to a Honda Civic in 2025.",
+          "User recently decided to go electric and purchased a Tesla Model 3 around June 2026."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0011",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where are you currently employed?",
+        "expected": [
+          "GreenTech Industries"
+        ],
+        "forbidden": [
+          "TechCorp Inc.",
+          "Innovate Solutions LLC"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently moved to a new role at Innovate Solutions LLC, which is different from their previous work.",
+          "User started working at TechCorp Inc. and describes the experience as quite a journey so far.",
+          "User is now working at GreenTech Industries, focusing on sustainability projects.",
+          "User finds the commute to TechCorp Inc. manageable, which is a positive aspect of their new job."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0012",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where do you live now?",
+        "expected": [
+          "San Francisco"
+        ],
+        "forbidden": [
+          "New York",
+          "Chicago"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User relocated to Chicago for work in 2025, which has been a big change.",
+          "User moved to San Francisco in May 2026, describing it as quite the adventure.",
+          "User recalls the incredible energy they experienced when they first moved to New York.",
+          "User sometimes misses the food scene in New York."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0013",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current diet?",
+        "expected": [
+          "vegan"
+        ],
+        "forbidden": [
+          "vegetarian",
+          "pescatarian"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has been following a vegetarian diet for an extended period as of June 27, 2026.",
+          "User has decided to transition to a fully vegan diet as of June 27, 2026, marking an interesting change from their previous pescatarian diet.",
+          "User has transitioned from a vegetarian diet to a pescatarian diet by incorporating fish into their meals as of June 27, 2026."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0014",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current relationship status?",
+        "expected": [
+          "married"
+        ],
+        "forbidden": [
+          "single",
+          "in a relationship"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has been single for a while and is currently focusing on themselves.",
+          "User got married last month in May 2026, and it was a beautiful ceremony.",
+          "User started seeing someone recently and finds it really nice.",
+          "User has been picking up new hobbies, including painting."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0015",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current job title?",
+        "expected": [
+          "Senior Software Engineer"
+        ],
+        "forbidden": [
+          "Junior Developer",
+          "Software Engineer"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User started a new job as a Junior Developer in May 2026.",
+          "User was promoted to a Senior Software Engineer recently, following their previous promotion to Software Engineer.",
+          "User is really enjoying the team they are working with at their new job as a Junior Developer.",
+          "User was promoted to a Software Engineer after a year, marking a significant career advancement."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0016",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Which gym are you currently going to?",
+        "expected": [
+          "Equinox"
+        ],
+        "forbidden": [
+          "Planet Fitness",
+          "Gold's Gym"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User switched from Planet Fitness to Gold's Gym recently because it is closer to their work as of June 27, 2026.",
+          "User has been going to Planet Fitness for a while as of June 27, 2026.",
+          "User joined Equinox recently and appreciates their amazing classes as of June 27, 2026."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0017",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What brand of phone do you currently use?",
+        "expected": [
+          "Apple"
+        ],
+        "forbidden": [
+          "Samsung",
+          "OnePlus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently switched from a Samsung phone to a OnePlus because it was a great deal.",
+          "User got a new Samsung phone in 2025 and has found it to be pretty good.",
+          "User upgraded to an Apple phone in May 2026 and is enjoying the ecosystem.",
+          "User finds the screen on their Samsung phone to be really nice and uses it a lot for watching videos."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0018",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where do you currently live?",
+        "expected": [
+          "Riverside"
+        ],
+        "forbidden": [
+          "Downtown",
+          "Greenwood"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User used to live in Downtown, which was convenient for work.",
+          "User recently relocated to Riverside and finds the view by the river amazing.",
+          "User moved from Downtown to Greenwood because it was quieter and had more parks."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0019",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "How do you commute to work now?",
+        "expected": [
+          "car"
+        ],
+        "forbidden": [
+          "bicycle",
+          "bus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently switched to driving their car to work, which saves them a lot of time.",
+          "User used to ride their bicycle to work every day as a way to stay fit.",
+          "User started taking the bus to work because it was more convenient during the rainy season."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0020",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What car do you currently drive?",
+        "expected": [
+          "Tesla Model 3"
+        ],
+        "forbidden": [
+          "Toyota Corolla",
+          "Honda Civic"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently got a new car, a Toyota Corolla.",
+          "User switched from a Toyota Corolla to a Honda Civic around June 27, 2026",
+          "User finds their new Toyota Corolla great for commuting to work and is considering taking a road trip soon.",
+          "User bought a Tesla Model 3 around June 27, 2026."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0021",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where are you currently working?",
+        "expected": [
+          "GreenTech Industries"
+        ],
+        "forbidden": [
+          "TechCorp Inc.",
+          "Innovate Solutions LLC"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User switched jobs a few months ago and is now working at Innovate Solutions LLC.",
+          "User has moved jobs again and is currently working at GreenTech Industries as of June 2026",
+          "User recently started working at TechCorp Inc. and describes it as quite a journey.",
+          "User is trying to balance work and personal life, finding it a bit tricky"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0022",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where are you currently living?",
+        "expected": [
+          "San Francisco"
+        ],
+        "forbidden": [
+          "New York",
+          "Chicago"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User moved to New York in May 2026 and is adjusting to the change.",
+          "User has been exploring different neighborhoods and trying new foods in New York since moving there in May 2026.",
+          "User is planning to move to San Francisco for a new project after receiving a job offer in Chicago.",
+          "User received a job offer in Chicago and will be moving there soon."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0023",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current diet?",
+        "expected": [
+          "vegan"
+        ],
+        "forbidden": [
+          "vegetarian",
+          "pescatarian"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has switched to a vegan diet as of June 27, 2026, after previously being a pescatarian.",
+          "User has been a vegetarian for a while as of June 27, 2026, but sometimes misses having more variety in their diet.",
+          "User has been a vegetarian for a while as of June 27, 2026.",
+          "User recently decided to add fish to their diet, transitioning from vegetarian to pescatarian as of June 27, 2026."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0024",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What's your current relationship status?",
+        "expected": [
+          "married"
+        ],
+        "forbidden": [
+          "single",
+          "in a relationship"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has been single for a while and is currently focusing on themselves.",
+          "User is using their time being single to explore new hobbies.",
+          "User started seeing someone recently and finds it really nice.",
+          "User got married in May 2026 and described the ceremony as beautiful."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0025",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current job title?",
+        "expected": [
+          "Senior Software Engineer"
+        ],
+        "forbidden": [
+          "Junior Developer",
+          "Software Engineer"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User started a new job as a Junior Developer and is really excited about it as of June 27, 2026.",
+          "User has been promoted to Senior Software Engineer, which is quite a responsibility.",
+          "User was promoted to Software Engineer recently, and it has been a great learning experience.",
+          "User's team at their new job as a Junior Developer is very supportive, making the transition smoother."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0026",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Which gym do you currently go to?",
+        "expected": [
+          "Equinox"
+        ],
+        "forbidden": [
+          "Planet Fitness",
+          "Gold's Gym"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User switched from Planet Fitness to Gold's Gym recently because they offer more equipment and classes that the user enjoys.",
+          "User has been trying to go to Planet Fitness a few times a week, and the location is really close to their place.",
+          "User signed up for a membership at Planet Fitness, finding it convenient and affordable.",
+          "User joined Equinox and appreciates their top-notch facilities and atmosphere."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0027",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What brand of phone are you currently using?",
+        "expected": [
+          "Apple"
+        ],
+        "forbidden": [
+          "Samsung",
+          "OnePlus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User is considering trying a different phone soon despite being satisfied with their new Samsung phone acquired in May 2026.",
+          "User got a new Samsung phone in May 2026.",
+          "User switched to a OnePlus phone recently and finds it a refreshing change.",
+          "User upgraded to an Apple phone on June 26, 2026, and finds it quite a change."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0028",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where do you live now?",
+        "expected": [
+          "Maplewood"
+        ],
+        "forbidden": [
+          "Greenwood",
+          "Riverside"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User used to live in Greenwood, which they describe as a nice place with lots of parks.",
+          "User recently relocated to Maplewood, which they describe as a charming neighborhood.",
+          "User moved to Riverside in 2025 because it was closer to their work.",
+          "User is really into outdoor activities"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0029",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "How do you currently commute to work?",
+        "expected": [
+          "car"
+        ],
+        "forbidden": [
+          "bicycle",
+          "bus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User used to ride their bicycle to work every day and found it a refreshing way to start the morning.",
+          "User recently bought a car and now drives to work, finding it a real time-saver.",
+          "User switched from riding their bicycle to taking the bus for their commute for a while, enjoying the opportunity to sit back and relax."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0030",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What car do you currently drive?",
+        "expected": [
+          "Tesla Model 3"
+        ],
+        "forbidden": [
+          "Toyota Corolla",
+          "Honda Civic"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User used to drive a Toyota Corolla and found it to be a reliable car.",
+          "User switched from a Toyota Corolla to a Honda Civic in 2025.",
+          "User upgraded to a Tesla Model 3 in May 2026 and has found it to be an amazing experience so far.",
+          "User recently started a new job downtown, resulting in a much shorter commute."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0031",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where are you currently working?",
+        "expected": [
+          "GreenTech Industries"
+        ],
+        "forbidden": [
+          "TechCorp Inc.",
+          "Innovate Solutions LLC"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently started working at TechCorp Inc., marking a significant change from their previous job.",
+          "User is now working at GreenTech Industries and is passionate about their mission.",
+          "User moved to Innovate Solutions LLC some time ago and describes the team as dynamic."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0032",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Which city do you currently live in?",
+        "expected": [
+          "San Francisco"
+        ],
+        "forbidden": [
+          "New York",
+          "Chicago"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently relocated to Chicago for a new job opportunity around June 2026.",
+          "User moved to New York a couple of years ago and describes it as quite an experience.",
+          "User is settling in San Francisco and loves the weather there as of June 2026"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0033",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current diet?",
+        "expected": [
+          "vegan"
+        ],
+        "forbidden": [
+          "vegetarian",
+          "pescatarian"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has been a vegetarian for a few years as of June 2026.",
+          "User recently started including fish in their diet and now identifies as a pescatarian as of June 2026.",
+          "User has decided to go fully vegan as of June 2026, marking an interesting transition from being a pescatarian."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0034",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What's your current relationship status?",
+        "expected": [
+          "married"
+        ],
+        "forbidden": [
+          "single",
+          "in a relationship"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has been single for quite some time and is currently focusing on themselves.",
+          "User started seeing someone recently and things are going well.",
+          "User got married last month, officially tying the knot.",
+          "User has recently started getting into painting and finds it relaxing."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0035",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What's your current job title?",
+        "expected": [
+          "Senior Software Engineer"
+        ],
+        "forbidden": [
+          "Junior Developer",
+          "Software Engineer"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User was promoted to Software Engineer recently and finds the role challenging but rewarding as of June 2026.",
+          "User was promoted to Senior Software Engineer as of June 27, 2026.",
+          "User started a new role as a Junior Developer and finds it to be a great learning experience as of June 27, 2026."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0036",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Which gym are you currently a member of?",
+        "expected": [
+          "Equinox"
+        ],
+        "forbidden": [
+          "Planet Fitness",
+          "Gold's Gym"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User switched from Planet Fitness to Gold's Gym because they prefer the equipment available there.",
+          "User signed up for a membership at Planet Fitness, finding it convenient.",
+          "User has been trying to go to Planet Fitness more often lately as a way to unwind after work.",
+          "User recently joined Equinox, attracted by their top-notch facilities."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0037",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What brand of phone do you currently have?",
+        "expected": [
+          "Apple"
+        ],
+        "forbidden": [
+          "Nokia",
+          "Samsung"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently got a new Nokia phone and is enjoying it so far.",
+          "User recently switched to a Samsung phone and finds the camera quality amazing.",
+          "User finds their new Nokia phone reliable.",
+          "User upgraded to an Apple phone and finds the ecosystem really convenient."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0038",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where do you live now?",
+        "expected": [
+          "Uptown"
+        ],
+        "forbidden": [
+          "Downtown",
+          "Midtown"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently decided to move to Midtown for a change of pace.",
+          "User recently moved to Downtown and is enjoying the vibe there.",
+          "User has settled into Uptown and finds it fantastic so far.",
+          "User enjoys exploring the amazing cafes in Downtown and spends a lot of time doing so."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0039",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "How do you currently commute to work?",
+        "expected": [
+          "car"
+        ],
+        "forbidden": [
+          "bicycle",
+          "bus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has started driving their own car to work, finding it much faster than previous methods.",
+          "User has switched from cycling to taking the bus to work, finding it more convenient during rainy days.",
+          "User has been cycling to work every day, finding it to be great exercise."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0040",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What car are you currently driving?",
+        "expected": [
+          "Tesla Model 3"
+        ],
+        "forbidden": [
+          "Toyota Corolla",
+          "Honda Civic"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently bought a Tesla Model 3 and is enjoying the electric drive.",
+          "User got a Honda Civic after driving a Toyota Corolla and considers it a nice upgrade.",
+          "User used to drive a Toyota Corolla and found it to be a reliable car."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0041",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where are you currently working?",
+        "expected": [
+          "GreenTech Industries"
+        ],
+        "forbidden": [
+          "TechCorp Inc.",
+          "Innovate Solutions LLC"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User switched jobs a few months ago and is now working at Innovate Solutions LLC.",
+          "User recently started working at TechCorp Inc. and describes it as quite the experience.",
+          "User recently moved to GreenTech Industries for a new job opportunity."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0042",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Which city are you currently living in?",
+        "expected": [
+          "San Francisco"
+        ],
+        "forbidden": [
+          "New York",
+          "Chicago"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User moved to New York in May 2026 and has found it to be quite an experience so far.",
+          "User received a new job offer in Chicago and will be relocating there soon.",
+          "User is planning to move to San Francisco in July 2026 for a new project.",
+          "User finds the food in New York incredible but misses having more space."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0043",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current diet preference?",
+        "expected": [
+          "vegan"
+        ],
+        "forbidden": [
+          "vegetarian",
+          "pescatarian"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has made a change to their diet and is now fully vegan, describing it as a big shift but enjoyable.",
+          "User recently decided to start including fish in their diet and is now pescatarian.",
+          "User has been a vegetarian for a while and describes it as an interesting journey.",
+          "User has discovered many new recipes and foods they hadn't tried before as part of their vegetarian journey."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0044",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current relationship status?",
+        "expected": [
+          "married"
+        ],
+        "forbidden": [
+          "single",
+          "in a relationship"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has been single for quite a while as of June 27, 2026.",
+          "User recently started seeing someone and finds the experience really nice as of June 27, 2026.",
+          "User got married in May 2026 and described the ceremony as beautiful."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0045",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What is your current job title?",
+        "expected": [
+          "Senior Software Engineer"
+        ],
+        "forbidden": [
+          "Junior Developer",
+          "Software Engineer"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User was promoted to Senior Software Engineer on June 27, 2026.",
+          "User started a new role as a Junior Developer on June 27, 2026.",
+          "User was promoted to Software Engineer around June 27, 2026.",
+          "User is finding their new role as a Junior Developer to be a learning curve but is enjoying the challenge."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0046",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Which gym are you currently going to?",
+        "expected": [
+          "Equinox"
+        ],
+        "forbidden": [
+          "Planet Fitness",
+          "Gold's Gym"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User switched to Gold's Gym a couple of months ago because they have more equipment that User likes.",
+          "User recently started going to Planet Fitness and has had a good experience so far.",
+          "User has been trying to go to Planet Fitness at least three times a week.",
+          "User joined Equinox around late June 2026 and loves the amazing facilities and classes they offer."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0047",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What brand of phone are you currently using?",
+        "expected": [
+          "Apple"
+        ],
+        "forbidden": [
+          "Samsung",
+          "OnePlus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User got a new Samsung phone in 2025, and it has been reliable.",
+          "User recently switched from a Samsung phone to a OnePlus, finding it a refreshing change.",
+          "User upgraded to an Apple phone around June 2026 and is enjoying the ecosystem.",
+          "User finds the camera quality of their Samsung phone, acquired in 2025, to be quite impressive."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0048",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "Where do you currently live?",
+        "expected": [
+          "Riverside"
+        ],
+        "forbidden": [
+          "Downtown",
+          "Greenwood"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User used to live in Downtown but found it too noisy.",
+          "User recently moved to Riverside after finding a lovely place there",
+          "User moved to Greenwood for peace and quiet after finding Downtown too noisy."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0049",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "How do you usually commute to work now?",
+        "expected": [
+          "car"
+        ],
+        "forbidden": [
+          "bicycle",
+          "bus"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User has recently switched to taking the bus to work when it is raining.",
+          "User has been biking to work every day recently, finding it a great way to start the morning.",
+          "User recently got a car and has been driving to work, finding it really comfortable."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "buc-0050",
+    "task": "BUC",
+    "probes": [
+      {
+        "query": "What car are you currently driving?",
+        "expected": [
+          "Tesla Model 3"
+        ],
+        "forbidden": [
+          "Toyota Corolla",
+          "Honda Civic"
+        ],
+        "kind": "current",
+        "retrieved": [
+          "User recently upgraded to a Tesla Model 3 and is enjoying the electric driving experience.",
+          "User used to drive a Toyota Corolla and found it to be reliable.",
+          "User got a Honda Civic after driving a Toyota Corolla and found it to be a nice change with cool features."
+        ]
+      }
+    ]
+  }
+]
