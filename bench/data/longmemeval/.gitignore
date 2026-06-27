@@ -1,0 +1,3 @@
+# LongMemEval dataset is downloaded, not vendored (size + upstream license).
+oracle.json
+*.json
