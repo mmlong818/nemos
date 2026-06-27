@@ -10,12 +10,15 @@
 
 % ---- result macros: fill from bench/results/*.json once n=50 runs land ----
 % BUC (belief update) — Stale Leakage Rate / Update Accuracy
-\newcommand{\bucSLRfull}{\textbf{TODO}}   % nemos-v2-semantic
-\newcommand{\bucSLRvone}{TODO}            % nemos-v1-lexical (shipped)
-\newcommand{\bucSLRnone}{TODO}            % no-invalidation (floor)
-\newcommand{\bucUAfull}{TODO}
-\newcommand{\bucUAvone}{TODO}
-\newcommand{\bucUAnone}{TODO}
+\newcommand{\bucSLRfull}{\textbf{34.0}}   % nemos-v2-semantic
+\newcommand{\bucSLRvone}{50.0}            % nemos-v1-lexical (shipped)
+\newcommand{\bucSLRnone}{80.0}            % no-invalidation (floor)
+\newcommand{\bucUAfull}{76.0}
+\newcommand{\bucUAvone}{84.0}
+\newcommand{\bucUAnone}{92.0}
+% mem0 external reference (BUC) — filled after mem0_run + score-external
+\newcommand{\bucSLRmemo}{TODO}
+\newcommand{\bucUAmemo}{TODO}
 % ASP (anti-self-pollution) — Pollution Rate / User-Fact Recall  [n=50 items, 250 probes]
 \newcommand{\aspPRiso}{\textbf{1.6}}      % isolated (Nemos)
 \newcommand{\aspPRshared}{71.2}           % shared store (baseline)
@@ -48,12 +51,14 @@ three task families targeting exactly these behaviours, with ground truth fixed 
 generator rather than judged post~hoc. We evaluate Nemos, an embeddable memory kernel
 with bitemporal contradiction invalidation, namespace isolation between user facts and
 agent self-narrative, and FSRS-based decay. On belief update, contradiction invalidation
-cuts stale-answer leakage from \bucSLRnone{} to \bucSLRfull{} at no recall cost; we further
-show that the original lexical contradiction detector misses attribute-replacement updates
-and that a semantic detector recovers them (\bucSLRvone{}~$\rightarrow$~\bucSLRfull{}).
-Namespace isolation reduces self-pollution from \aspPRshared{} to \aspPRiso{}. Decay
-suppresses stale-trivia leakage from \forTLnone{} to \forTLdecay{} without dropping
-important facts. We release MnemoBench and all harness code.
+cuts stale-answer leakage from \bucSLRnone{}\% to \bucSLRfull{}\%, at a moderate recall
+cost (update accuracy \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%) that exposes a
+precision/recall knob; we further show that the shipped lexical contradiction detector
+misses attribute-replacement updates and that a semantic detector recovers them
+(leakage \bucSLRvone{}~$\rightarrow$~\bucSLRfull{}\%). Namespace isolation reduces
+self-pollution from \aspPRshared{}\% to \aspPRiso{}\% with no recall loss. Decay suppresses
+stale-trivia leakage from \forTLnone{}\% to \forTLdecay{}\% while retaining important facts.
+We release MnemoBench and all harness code.
 \end{abstract}
 
 \section{Introduction}
