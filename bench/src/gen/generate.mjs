@@ -85,6 +85,14 @@ async function generateBUC(n) {
       0.4,
     );
 
+    // Derive labels DETERMINISTICALLY from the fact-script — never from the render LLM.
+    // script.values is ordered oldest→current; the last value is the only true current value,
+    // every earlier value is stale (forbidden). Letting the render LLM emit expected/forbidden
+    // produced misaligned labels (it sometimes tagged the value it narrated as "current" as
+    // forbidden), corrupting both UA and SLR. Source of truth = the script.
+    const vals = script.values;
+    const current = vals[vals.length - 1];
+    const olders = vals.slice(0, -1);
     const id = `buc-${String(i + 1).padStart(4, '0')}`;
     items.push({
       id,
@@ -94,12 +102,13 @@ async function generateBUC(n) {
       probes: [{
         kind: 'current',
         query: rendered.query,
-        expected: rendered.expected,
-        forbidden: rendered.forbidden,
+        expected: [current],
+        forbidden: olders,
       }],
       meta: {
         attribute: script.attribute,
-        changes: script.values.length - 1,
+        changes: vals.length - 1,
+        values: vals,
       },
     });
   }
