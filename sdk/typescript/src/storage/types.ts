@@ -70,6 +70,8 @@ export interface DecayCandidate {
   cold: number;
   cold_at: string | null;
   archival_protected: number;
+  /** decay 扫描游标：上次被 decay 检查的时刻；null = 从未检查（优先入选）。 */
+  last_decay_at?: string | null;
 }
 
 export interface Storage {
@@ -155,7 +157,7 @@ export interface Storage {
   // 队列
   enqueueIngest(row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count">): IngestQueueRow;
   getQueueRow(id: string): IngestQueueRow | null;
-  /** 取下一个 status='queued' 的（按 created_at 升序）。 */
+  /** 原子认领下一个 status='queued' 的任务（按 created_at 升序）：返回前已标为 analyzing。 */
   takeNextQueued(): IngestQueueRow | null;
   updateQueueStatus(
     id: string,
@@ -167,8 +169,8 @@ export interface Storage {
       derived_count?: number | null;
     },
   ): void;
-  /** 启动时把 'analyzing' 重置为 'queued'（崩溃恢复）。 */
-  resetStaleAnalyzing(): number;
+  /** 启动时把 'analyzing' 重置为 'queued'（崩溃恢复）。leaseMs>0 时仅重置 updated_at 早于租约窗口的行（多实例共库）。 */
+  resetStaleAnalyzing(leaseMs?: number): number;
   listPendingByUser(
     tenantId: string,
     userId: string,
