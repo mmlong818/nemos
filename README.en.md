@@ -58,8 +58,8 @@ Facts about you live in exactly one place. Each character only sees what it shou
 **④ Sparse activation by domain (MoE)**
 Memories self-organize into "domains" by topic (incubated offline by reflect). On retrieval it first routes to the **relevant domain** and brings up only that domain's memories, down-weighting the rest — four-tier activation: shared layer (always on) → primary domain rises to top → adjacent domains next → then one "cross-domain hop" along memory links to pull in related memories from other domains. This stays precise as scale grows, instead of stuffing the whole memory into the prompt every retrieval. It's soft isolation: on low confidence it falls back to global search, so a routing miss never drops anything. Rare among similar projects.
 
-**⑤ Self-correcting, never steps on a landmine (bi-temporal + contradiction invalidation)**
-Every memory carries a "when it was true" timeline and a belief state. The moment you change your mind ("I moved to Shanghai"), the new fact **invalidates** the old one rather than physically deleting it — history stays auditable, but retrieval returns only what's currently valid by default. So characters won't embarrass themselves with stale info, nor dredge up something you already corrected.
+**⑤ Self-correcting, doesn't dredge up the past (bi-temporal + contradiction invalidation)**
+Every memory carries a "when it was true" timeline and a belief state. The moment you change your mind ("I moved to Shanghai"), the new fact **invalidates** the old one rather than physically deleting it — history stays auditable, but retrieval returns only what's currently valid by default. So characters rarely embarrass themselves with stale info, and won't dredge up something you already corrected.
 
 **⑥ Anti-self-pollution**
 A character's own made-up "recent life" and "facts about you" are **physically isolated** in storage (separate namespace, marked non-authoritative) and never written back into your memory. What the model says is used only for the character's own consistency — it never masquerades as truth about you.
@@ -74,6 +74,20 @@ Long-unused memories are auto-decayed along a forgetting curve, so things don't 
 Inspect what the AI remembers about you anytime; wipe the whole memory store with one click to start over. Data lives in a local SQLite file, under your control. (Per-item editing isn't supported yet.)
 
 > Design details in [`rfcs/`](rfcs/): RFC-0004 forgetting & consolidation / RFC-0005 domain routing / RFC-0007 bi-temporal invalidation / RFC-0008 companion memory topology.
+
+---
+
+## Not just claims: measured on MnemoBench
+
+We built **MnemoBench**, a reproducible benchmark for memory *maintenance* (belief update / anti-self-pollution / forgetting; ground truth fixed by the generator before rendering, an LLM judge doing set-membership only — it never writes the answer), and showed by ablation that each key mechanism above accounts for a measurable improvement (n=50 per task):
+
+| Mechanism | Primary metric (lower is better) | Off → on |
+|---|---|---|
+| ⑥ anti-self-pollution (namespace isolation) | Pollution Rate | 96.8% → **1.6%** (~60×) |
+| ⑧ forgetting decay | Trivia Leakage | 100% → **16.4%** (important facts retained) |
+| ⑤ contradiction invalidation (semantic) | Stale Leakage Rate | 80.0% → **34.0%** |
+
+On the knowledge-update slice of LongMemEval, toggling invalidation alone is worth **+10 points** of QA accuracy. Full method and numbers: [`bench/`](bench/) (harness & data) and [`paper/`](paper/) (arXiv paper, bilingual).
 
 ---
 
@@ -121,9 +135,11 @@ const context = await user.getRelevantContext("help me design a UI")
 | [`sdk/typescript/README.md`](sdk/typescript/README.md) | SDK usage & API |
 | [`docs/architecture-overview.md`](docs/architecture-overview.md) | System design & the five-layer memory model |
 | [`rfcs/`](rfcs/) | Major design decisions |
+| [`bench/README.md`](bench/README.md) | MnemoBench memory-maintenance benchmark (reproducible) |
+| [`paper/`](paper/) | arXiv paper (method + ablation results, bilingual) |
 | [`ROADMAP.md`](ROADMAP.md) | Versioning & progress |
 
-The system currently supports the Zhipu API only — though you can wire in your own.
+The SDK ships with Anthropic / OpenAI / Zhipu LLM providers (plus a custom hook); the companion example defaults to Zhipu.
 
 ---
 
