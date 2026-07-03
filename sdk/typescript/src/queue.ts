@@ -76,6 +76,9 @@ export class NemosWorker {
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
   private stopped = false;
+
+  /** 在途异步工作（游离 reflect / 定时 tick）。close() 前 drain，防止恢复执行时命中已关闭的连接。 */
+  private readonly inFlight = new Set<Promise<unknown>>();
   /** 同进程内 derived 完成回调（测试 / API polling 友好）。 */
   private readonly waiters = new Map<string, Array<() => void>>();
 
@@ -117,8 +120,38 @@ export class NemosWorker {
     return this.reflectConfig;
   }
 
+  /** 登记一个在途 promise，settle 后自动移除。 */
+  private track<T>(p: Promise<T>): Promise<T> {
+    this.inFlight.add(p);
+    const drop = () => this.inFlight.delete(p);
+    p.then(drop, drop);
+    return p;
+  }
+
+  /** 是否有在途异步工作。 */
+  hasInFlight(): boolean {
+    return this.inFlight.size > 0;
+  }
+
+  /**
+   * 等待全部在途异步工作 settle（含 drain 期间新产生的级联工作）。
+   * Nemos.close() 在关闭 storage 前调用。
+   */
+  async drain(): Promise<void> {
+    while (this.inFlight.size > 0) {
+      await Promise.allSettled([...this.inFlight]);
+    }
+  }
+
   /** v0.4：朋友手动跑一次 reflect（不入 ingest 队列；直接执行）。 */
-  async runReflectFor(tenantId: string, userId: string, defaultScope: string): Promise<ReflectResult> {
+  runReflectFor(tenantId: string, userId: string, defaultScope: string): Promise<ReflectResult> {
+    if (this.stopped) {
+      return Promise.reject(new Error("[nemos] worker 已停止，拒绝新的 reflect"));
+    }
+    return this.track(this.doRunReflect(tenantId, userId, defaultScope));
+  }
+
+  private async doRunReflect(tenantId: string, userId: string, defaultScope: string): Promise<ReflectResult> {
     return runReflect(
       this.deps.storage,
       this.deps.llm,
@@ -146,7 +179,7 @@ export class NemosWorker {
 
   /** v0.4：累积阈值判定 → 自动跑 reflect。已超阈值才跑；跑完更新 baseline。 */
   async maybeAutoReflect(tenantId: string, userId: string, defaultScope: string): Promise<ReflectResult | null> {
-    if (!this.reflectConfig.enabled) return null;
+    if (this.stopped || !this.reflectConfig.enabled) return null;
     const key = `${tenantId}|${userId}`;
     const total = this.deps.storage.countEpisodicSinceLastReflect(tenantId, userId, null);
     const baseline = this.reflectBaseline.get(key) ?? 0;
@@ -162,7 +195,7 @@ export class NemosWorker {
     if (this.pollIntervalMs <= 0) return;
     if (this.timer) return;
     this.timer = setInterval(() => {
-      this.runTick().catch((e) => {
+      this.track(this.runTick()).catch((e) => {
         this.deps.log("warn", "[nemos worker] tick 异常", {
           err: e instanceof Error ? e.message : String(e),
         });
