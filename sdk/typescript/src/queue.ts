@@ -104,8 +104,8 @@ export class NemosWorker {
     this.decayConfig = resolveDecayConfig(config);
     this.reflectConfig = resolveReflectConfig(config);
 
-    // 崩溃恢复
-    const reset = deps.storage.resetStaleAnalyzing();
+    // 崩溃恢复（analyzingLeaseMs>0 时按租约窗口，避免多实例共库互抢在途任务）
+    const reset = deps.storage.resetStaleAnalyzing(config.worker?.analyzingLeaseMs ?? 0);
     if (reset > 0) {
       deps.log("info", `[nemos worker] 启动恢复：${reset} 个 'analyzing' → 'queued'`);
     }
@@ -352,10 +352,8 @@ export class NemosWorker {
 
   private async processOne(row: IngestQueueRow): Promise<void> {
     const attempts = row.attempts + 1;
-    this.deps.storage.updateQueueStatus(row.id, {
-      status: "analyzing",
-      attempts,
-    });
+    // takeNextQueued 已原子认领（status=analyzing），这里只记 attempts
+    this.deps.storage.updateQueueStatus(row.id, { attempts });
 
     try {
       const derivedCount = await this.runJob(row);

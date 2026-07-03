@@ -47,6 +47,8 @@ export class SqliteStorage implements Storage {
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
+    // 多写者时排队等锁而非立即抛 SQLITE_BUSY（多进程/多实例的前提）
+    this.db.pragma("busy_timeout = 5000");
     this.vecEnabled = tryLoadSqliteVec(this.db);
     applyMigrations(this.db);
   }
@@ -549,8 +551,8 @@ export class SqliteStorage implements Storage {
     queueOps.updateQueueStatus(this.db, id, patch);
   }
 
-  resetStaleAnalyzing(): number {
-    return queueOps.resetStaleAnalyzing(this.db);
+  resetStaleAnalyzing(leaseMs = 0): number {
+    return queueOps.resetStaleAnalyzing(this.db, leaseMs);
   }
 
   listPendingByUser(tenantId: string, userId: string): IngestQueueRow[] {

@@ -301,7 +301,13 @@ export class InMemoryStorage implements Storage {
       if (r.status === "queued") arr.push(r);
     }
     arr.sort((a, b) => a.created_at.localeCompare(b.created_at));
-    return arr[0] ?? null;
+    const next = arr[0] ?? null;
+    if (next) {
+      // 与 SQLite 实现对齐：出队即原子认领（标 analyzing）
+      next.status = "analyzing";
+      next.updated_at = new Date().toISOString();
+    }
+    return next;
   }
 
   updateQueueStatus(
@@ -324,10 +330,12 @@ export class InMemoryStorage implements Storage {
     r.updated_at = new Date().toISOString();
   }
 
-  resetStaleAnalyzing(): number {
+  resetStaleAnalyzing(leaseMs = 0): number {
+    const cutoff = leaseMs > 0 ? new Date(Date.now() - leaseMs).toISOString() : null;
     let n = 0;
     for (const r of this.queue.values()) {
       if (r.status === "analyzing") {
+        if (cutoff && r.updated_at >= cutoff) continue;
         r.status = "queued";
         r.updated_at = new Date().toISOString();
         n++;
@@ -384,9 +392,15 @@ export class InMemoryStorage implements Storage {
         cold: m.cold ? 1 : 0,
         cold_at: m.cold_at ?? null,
         archival_protected: 0,
+        last_decay_at: m.last_decay_at ?? null,
       });
     }
-    out.sort((a, b) => a.last_accessed.localeCompare(b.last_accessed));
+    // 游标语义与 SQLite 对齐：最久未做 decay 检查的优先（null 最前），轮转整库
+    out.sort((a, b) => {
+      const da = a.last_decay_at ?? "";
+      const dbb = b.last_decay_at ?? "";
+      return da === dbb ? a.last_accessed.localeCompare(b.last_accessed) : da.localeCompare(dbb);
+    });
     return out.slice(0, limit);
   }
 

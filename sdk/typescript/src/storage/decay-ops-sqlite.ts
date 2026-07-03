@@ -30,13 +30,17 @@ export function listDecayCandidates(db: Database.Database, limit = 500): DecayCa
   const out: DecayCandidate[] = [];
   for (const layer of LAYERS) {
     if (layer === "archival") continue;
+    // 游标：按 last_decay_at 升序（SQLite 中 NULL 排最前 = 从未检查的优先）。
+    // runDecayScan 对每个候选都会 updateDecayMeta 回写 last_decay_at，
+    // 因此每轮取「最久未检查」的一批，多轮自然轮转整表——
+    // 此前按 last_accessed 排序会每轮反复选中同一批最旧行，其余永不被扫到。
     const rows = db
       .prepare(
         `SELECT id, layer, tenant_id, user_id, last_accessed, access_count,
-                stability, sensitive, cold, cold_at, archival_protected
+                stability, sensitive, cold, cold_at, archival_protected, last_decay_at
            FROM ${layer}
           WHERE archival_protected = 0
-          ORDER BY last_accessed ASC
+          ORDER BY last_decay_at ASC, last_accessed ASC
           LIMIT ?`,
       )
       .all(limit) as DecayCandidate[];
