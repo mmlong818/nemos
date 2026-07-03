@@ -59,7 +59,7 @@ We introduce \textbf{MnemoBench}, a reproducible benchmark with
 three task families targeting exactly these behaviours, with ground truth fixed by a
 generator rather than judged post~hoc. We evaluate Nemos, an embeddable memory kernel
 with bitemporal contradiction invalidation, namespace isolation between user facts and
-agent self-narrative, and FSRS-based decay. On belief update, contradiction invalidation
+agent self-narrative, and FSRS-style decay. On belief update, contradiction invalidation
 cuts stale-answer leakage from \bucSLRnone{}\% to \bucSLRfull{}\%, at a moderate recall
 cost (update accuracy \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%) that exposes a
 precision/recall knob; we further show that the shipped lexical contradiction detector
@@ -134,11 +134,12 @@ personal facts. \S\ref{sec:results} quantifies the before/after.
 User facts live under \texttt{forUser(uid)}; agent self-narrative under
 \texttt{forUser(persona:pid)} --- a physically separate keyspace. Retrieval of user facts
 cannot surface persona content.
-\subsection{FSRS decay}
-Each record has stability $S$, difficulty $D$, retrievability
-$R=\exp(-\Delta t / S)$. Access reinforces $S$; records with $R$ below a cold threshold,
-zero recent access, after a dormancy window are marked cold and hidden from default search
-(archival is never cooled).
+\subsection{FSRS-style decay}
+Each record has stability $S$ and retrievability $R=\exp(-\Delta t / S)$ --- a simplified
+exponential variant of FSRS-style spaced-repetition memory (the difficulty parameter is
+carried in the schema but not yet used by the update rule). Access reinforces $S$; records
+with $R$ below a cold threshold, zero recent access, after a dormancy window are marked
+cold and hidden from default search (archival is never cooled).
 
 \section{MnemoBench}
 \label{sec:bench}
@@ -165,10 +166,15 @@ trivia at older timestamps; salient facts are revisited during the retention int
 \subsection{Item schema and scoring}
 Each item is a JSON record with an ordered list of \texttt{sessions}
 (\texttt{\{speaker, text, contentDate?\}}) and one or more \texttt{probes}
-(\texttt{\{query, expected[], forbidden[]\}}). For BUC the labels are derived
-deterministically from the fact-script (the last value is the only \texttt{expected}
-current value; all earlier values are \texttt{forbidden}), so the labels cannot drift from
-the rendered narrative. The judge receives the query, the \texttt{expected} and
+(\texttt{\{query, expected[], forbidden[]\}}). Labels are derived deterministically from
+the fact-script for all three tasks, so they cannot drift from the rendered narrative:
+for BUC the last scripted value is the only \texttt{expected} current value and all earlier
+values are \texttt{forbidden}; for ASP \texttt{expected} is the scripted user fact and
+\texttt{forbidden} is each trap's \emph{misattribution} --- the distilled false user fact
+that would result from misattributing the persona statement (using the trap's full sentence
+instead measurably inflates the pollution rate with judge topical-overlap false positives);
+for FOR \texttt{expected} is the scripted important fact and \texttt{forbidden} is every
+scripted trivial item. The judge receives the query, the \texttt{expected} and
 \texttt{forbidden} lists, and the retrieved record set, and returns two booleans ---
 \texttt{contains\_expected} and \texttt{contains\_forbidden} --- where a record that
 explicitly marks a forbidden value as past does \emph{not} count as a leak.
@@ -178,7 +184,10 @@ explicitly marks a forbidden value as past does \emph{not} count as a leak.
 % Models, ablation arms, n, judge model, reproducibility.
 All systems use OpenAI \texttt{gpt-4o} for extraction/reflection and
 \texttt{text-embedding-3-small} for embeddings; the judge is \texttt{gpt-4o}. We report
-$n=\nItems{}$ items per task. Each task is evaluated by ablating exactly the mechanism under
+$n=\nItems{}$ items per task. A memory-system run that fails all transient-error retries is
+scored as an empty retrieval (all its probes count as misses, matching the external
+baseline's path); a judge call that fails all retries excludes the probe from the rates and
+is reported separately (zero such failures in the frozen runs). Each task is evaluated by ablating exactly the mechanism under
 test, so any difference is attributable to that mechanism:
 \begin{itemize}
   \item BUC: \texttt{semantic} (full) vs.\ \texttt{lexical} (shipped) vs.\ invalidation-off.

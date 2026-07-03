@@ -24,7 +24,7 @@ xelatex main-zh.tex
 xelatex main-zh.tex
 ```
 
-Output: `main-zh.pdf` (6 pages).
+Output: `main-zh.pdf` (7 pages).
 
 Numbers in the tables/abstract are LaTeX macros defined at the top of `main.tex`; they are
 filled from the frozen runs in `../bench/results/*.json`.

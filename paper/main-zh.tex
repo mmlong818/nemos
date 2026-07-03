@@ -40,7 +40,7 @@
 \maketitle
 
 \begin{abstract}
-面向大语言模型（LLM）智能体的持久记忆层，通常以\textbf{召回}为评测标准：系统能否检索回先前说过的内容？我们主张，在长期使用中，主导性的失败模式并非召回，而是\textbf{维护}：(1) 当事实发生变化时未能修正旧信念；(2) 让智能体自己生成或想象的内容污染用户的事实库；(3) 从不遗忘，使陈旧琐碎信息随时间拉低检索精度。我们提出 \textbf{MnemoBench}——一个可复现的评测基准，含三类任务，恰好针对上述行为，且真值由生成器预先固定，而非事后判定。我们据此评测 Nemos：一个具备双时间矛盾失效、用户事实与智能体自述之间命名空间隔离、以及基于 FSRS 的遗忘衰减的可嵌入记忆内核。在信念更新上，矛盾失效将旧值泄漏率从 \bucSLRnone{}\% 降到 \bucSLRfull{}\%，但伴随一定的召回代价（更新准确率 \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%），由此暴露出一个精度/召回的可调旋钮；我们进一步表明，已发布的\emph{词法}矛盾检测器会漏判“属性替换”型更新，而\emph{语义}检测器能将其捕回（泄漏 \bucSLRvone{}~$\rightarrow$~\bucSLRfull{}\%）。命名空间隔离将自污染率从 \aspPRshared{}\% 降到 \aspPRiso{}\%，且不损召回。遗忘衰减将陈旧琐碎泄漏从 \forTLnone{}\% 压到 \forTLdecay{}\%，同时保留重要事实。我们开源 MnemoBench 及全部评测代码。
+面向大语言模型（LLM）智能体的持久记忆层，通常以\textbf{召回}为评测标准：系统能否检索回先前说过的内容？我们主张，在长期使用中，主导性的失败模式并非召回，而是\textbf{维护}：(1) 当事实发生变化时未能修正旧信念；(2) 让智能体自己生成或想象的内容污染用户的事实库；(3) 从不遗忘，使陈旧琐碎信息随时间拉低检索精度。我们提出 \textbf{MnemoBench}——一个可复现的评测基准，含三类任务，恰好针对上述行为，且真值由生成器预先固定，而非事后判定。我们据此评测 Nemos：一个具备双时间矛盾失效、用户事实与智能体自述之间命名空间隔离、以及 FSRS 风格遗忘衰减的可嵌入记忆内核。在信念更新上，矛盾失效将旧值泄漏率从 \bucSLRnone{}\% 降到 \bucSLRfull{}\%，但伴随一定的召回代价（更新准确率 \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%），由此暴露出一个精度/召回的可调旋钮；我们进一步表明，已发布的\emph{词法}矛盾检测器会漏判“属性替换”型更新，而\emph{语义}检测器能将其捕回（泄漏 \bucSLRvone{}~$\rightarrow$~\bucSLRfull{}\%）。命名空间隔离将自污染率从 \aspPRshared{}\% 降到 \aspPRiso{}\%，且不损召回。遗忘衰减将陈旧琐碎泄漏从 \forTLnone{}\% 压到 \forTLdecay{}\%，同时保留重要事实。我们开源 MnemoBench 及全部评测代码。
 \end{abstract}
 
 \section{引言}
@@ -70,8 +70,8 @@ Nemos 是一个可嵌入的记忆内核。此处只描述受测的机制。
 \paragraph{一处真实缺陷：词法 vs.\ 语义检测。}已发布的检测器用字符二元组（bigram）Jaccard 相似度对矛盾候选做粗筛。它能可靠捕获强否定（“离开了 Google”），却\emph{漏判属性替换}——当新值与旧值在词法上不相似时（素食 $\rightarrow$ 鱼素）。我们用 embedding 余弦的候选检索替换该粗筛，并在现有个人事实上增加一道“同属性、互斥”的对账（reconciliation）。\S\ref{sec:results} 量化了其 before/after。
 \subsection{命名空间隔离（抗自污染）}
 用户事实存于 \texttt{forUser(uid)}；智能体自述存于 \texttt{forUser(persona:pid)}——一个物理上独立的键空间。检索用户事实时不可能浮现人格内容。
-\subsection{FSRS 遗忘衰减}
-每条记录有稳定度 $S$、难度 $D$、可提取性 $R=\exp(-\Delta t / S)$。访问会强化 $S$；当 $R$ 低于冷却阈值、近期零访问、且超过休眠窗口时，记录被标为 cold 并从默认检索中隐藏（archival 永不冷却）。
+\subsection{FSRS 风格的遗忘衰减}
+每条记录有稳定度 $S$ 与可提取性 $R=\exp(-\Delta t / S)$——这是 FSRS 风格间隔重复记忆的一个简化指数变体（难度参数保留在 schema 中，但更新规则尚未使用）。访问会强化 $S$；当 $R$ 低于冷却阈值、近期零访问、且超过休眠窗口时，记录被标为 cold 并从默认检索中隐藏（archival 永不冷却）。
 
 \section{MnemoBench}
 \label{sec:bench}
@@ -82,11 +82,11 @@ Nemos 是一个可嵌入的记忆内核。此处只描述受测的机制。
 \paragraph{ASP —— 抗自污染。}用户陈述与人格自述交错，其中若干被刻意构造成貌似可信的陷阱。探针查询用户事实。指标为\emph{污染率}（人格虚构被当作用户权威事实返回；越低越好）与\emph{用户事实召回}。
 \paragraph{FOR —— 遗忘与显著性。}持久重要事实与较旧时间戳的一次性琐碎混合；显著事实在保留期内被重访。指标为\emph{琐碎泄漏}（已冷却的琐碎仍浮现；越低越好）与\emph{重要事实保留率}（护栏；须保持高位）。
 \subsection{样本格式与评分}
-每条样本是一段 JSON：含有序的 \texttt{sessions}（\texttt{\{speaker, text, contentDate?\}}）与一个或多个 \texttt{probes}（\texttt{\{query, expected[], forbidden[]\}}）。对 BUC，标签由事实脚本\emph{确定性派生}（最后一个值是唯一的当前 \texttt{expected}，更早的值均为 \texttt{forbidden}），因此标签不会与所渲染的叙述发生漂移。评判器收到查询、\texttt{expected} 与 \texttt{forbidden} 列表、以及检索到的记录集合，返回两个布尔值——\texttt{contains\_expected} 与 \texttt{contains\_forbidden}；若某记录显式将被禁值标注为“过去”，则不计为泄漏。
+每条样本是一段 JSON：含有序的 \texttt{sessions}（\texttt{\{speaker, text, contentDate?\}}）与一个或多个 \texttt{probes}（\texttt{\{query, expected[], forbidden[]\}}）。三个任务的标签均由事实脚本\emph{确定性派生}，因此标签不会与所渲染的叙述发生漂移：BUC 中最后一个脚本值是唯一的当前 \texttt{expected}，更早的值均为 \texttt{forbidden}；ASP 中 \texttt{expected} 是脚本中的用户事实，\texttt{forbidden} 是每条陷阱的\emph{误归因蒸馏}——若把该人格陈述误归因于用户会形成的那条假事实（若改用陷阱的完整原句，评判器会因话题重叠产生可测量的误报，虚增污染率）；FOR 中 \texttt{expected} 是脚本中的重要事实，\texttt{forbidden} 是全部脚本琐事条目。评判器收到查询、\texttt{expected} 与 \texttt{forbidden} 列表、以及检索到的记录集合，返回两个布尔值——\texttt{contains\_expected} 与 \texttt{contains\_forbidden}；若某记录显式将被禁值标注为“过去”，则不计为泄漏。
 
 \section{实验设置}
 \label{sec:setup}
-所有系统的抽取/反思均用 OpenAI \texttt{gpt-4o}，嵌入用 \texttt{text-embedding-3-small}；评判器为 \texttt{gpt-4o}。每个任务报告 $n=\nItems{}$ 条样本。每个任务恰好消融受测的那一个机制，从而任何差异都可归因于该机制：
+所有系统的抽取/反思均用 OpenAI \texttt{gpt-4o}，嵌入用 \texttt{text-embedding-3-small}；评判器为 \texttt{gpt-4o}。每个任务报告 $n=\nItems{}$ 条样本。记忆系统一侧在瞬时错误重试全部失败后按\emph{空检索}计分（其全部探针记为 miss，与外部基线路径一致）；评判器调用重试全部失败则将该探针从比率中剔除并单独上报（冻结跑批中此类失败为零）。每个任务恰好消融受测的那一个机制，从而任何差异都可归因于该机制：
 \begin{itemize}
   \item BUC：\texttt{语义}（完整）vs.\ \texttt{词法}（已发布）vs.\ 关闭失效。
   \item ASP：命名空间隔离 vs.\ 共享存储。
