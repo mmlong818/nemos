@@ -14,6 +14,11 @@
 - reflect 的「写入新事实 + 失效被推翻旧事实」并入同一事务——此前两步分开提交，中途崩溃会留下新旧矛盾并存（恰是矛盾失效要防的状态）
 - `persistDerivedList` 拆为 `prepareDerived`（异步：约束+embedding，事务外）+ `writePreparedDerived`（同步：事务内），两者公开导出
 
+### 修复：多实例前提三件套（次级项）
+- **busy_timeout=5000**：多写者排队等锁而非立即 SQLITE_BUSY
+- **队列原子出队**：`takeNextQueued` 改为 `UPDATE..RETURNING` 单语句认领（挑选+标 analyzing 原子化），多 worker 不再重复处理同一任务；`resetStaleAnalyzing(leaseMs)` 支持租约窗口（`worker.analyzingLeaseMs` 配置，默认 0 保持单实例启动全量回收语义）
+- **decay 游标**：`listDecayCandidates` 从按 `last_accessed` 排序（每轮反复选同一批最旧行，其余永不被扫）改为按 `last_decay_at` 升序（NULL 最前）——每轮取最久未检查的一批，多轮自然轮转整库
+
 ### 性能：sqlite-vec 真实接线
 - `tryLoadSqliteVec` 从硬编码 `false` 改为真探测（load + 冒烟验证）；可用时 `searchEmbedding` 走 SQL 侧 `vec_distance_cosine`（排序/截断在 SQLite 内完成，带 `dim` 守卫防混合维度报错），不可用回退原 JS 余弦扫描
 - 实测 50k×1536 维：p50 709ms → 359ms（~2×），并消除每次查询把全表 embedding 反序列化进 JS 的内存搬运；仍为 O(N) 扫描，量级跃迁待 vec0 虚拟表 + 量化粗筛（后续项）
