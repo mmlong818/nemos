@@ -36,6 +36,21 @@ async function withRetry(fn, label, tries = 6) {
   return null; // signal failure without aborting the whole run
 }
 
+// Failure semantics, matching the external (mem0) scoring path: a memory-system run
+// that fails all retries is scored as if it retrieved nothing (every probe a miss,
+// counted in the denominator) — the same outcome the external adapter produces by
+// recording failed retrievals as empty sets. A judge call that fails all retries is
+// an infrastructure failure, not a system failure: the probe is excluded from the
+// rates but counted and reported in the summary as judge_failures.
+function emptyRunJudged(item) {
+  return item.probes.map((p) => ({
+    probe: p.query,
+    retrieved: [],
+    judge: { contains_expected: false, contains_forbidden: false, why: 'run failed after retries; scored as empty retrieval' },
+    run_failed: true,
+  }));
+}
+
 // ── Variant configs ───────────────────────────────────────────────────────────
 
 const BUC_VARIANTS = ['nemos-v2-semantic', 'nemos-v1-lexical', 'nemos-no-invalidation'];
@@ -82,11 +97,11 @@ async function runBUC(items) {
           isolatePersona: true,
           searchLayers: ['personal_semantic', 'semantic'],
         }), `${variant} ${item.id}`);
-        if (!probeResults) return { variant, judged: [], failed: true };
+        if (!probeResults) return { variant, judged: emptyRunJudged(item), failed: true };
         const judged = [];
         for (const { probe, retrieved } of probeResults) {
           const j = await withRetry(() => judgeProbe(probe, retrieved), `judge ${item.id}`);
-          if (!j) continue;
+          if (!j) { judged.push({ probe: probe.query, retrieved, judge: null, judge_failed: true }); continue; }
           console.log(
             `[BUC][${variant}] item ${item.id} probe${judged.length}: exp=${j.contains_expected} forb=${j.contains_forbidden}`,
           );
@@ -102,17 +117,18 @@ async function runBUC(items) {
   // summary
   const summary = {};
   for (const variant of BUC_VARIANTS) {
-    let expHit = 0, forbHit = 0, n = 0;
+    let expHit = 0, forbHit = 0, n = 0, judgeFail = 0;
     for (const { variants } of perItem) {
       const vr = variants.find((v) => v.variant === variant);
       if (!vr) continue;
       for (const { judge } of vr.judged) {
+        if (!judge) { judgeFail++; continue; }
         n++;
         if (judge.contains_expected) expHit++;
         if (judge.contains_forbidden) forbHit++;
       }
     }
-    summary[variant] = { UA: n > 0 ? expHit / n : 0, SLR: n > 0 ? forbHit / n : 0, n };
+    summary[variant] = { UA: n > 0 ? expHit / n : 0, SLR: n > 0 ? forbHit / n : 0, n, judge_failures: judgeFail };
   }
 
   return { perItem, summary };
@@ -135,11 +151,11 @@ async function runASP(items) {
           topK: 10,
           ...mode.opts,
         }), `${variant}/${mode.label} ${item.id}`);
-        if (!probeResults) return { mode: mode.label, judged: [], failed: true };
+        if (!probeResults) return { mode: mode.label, judged: emptyRunJudged(item), failed: true };
         const judged = [];
         for (const { probe, retrieved } of probeResults) {
           const j = await withRetry(() => judgeProbe(probe, retrieved), `judge ${item.id}`);
-          if (!j) continue;
+          if (!j) { judged.push({ probe: probe.query, retrieved, judge: null, judge_failed: true }); continue; }
           console.log(
             `[ASP][${variant}/${mode.label}] item ${item.id} probe${judged.length}: exp=${j.contains_expected} forb=${j.contains_forbidden}`,
           );
@@ -156,18 +172,19 @@ async function runASP(items) {
   const summary = {};
   for (const mode of modes) {
     const key = `${variant}/${mode.label}`;
-    let expHit = 0, forbHit = 0, n = 0;
+    let expHit = 0, forbHit = 0, n = 0, judgeFail = 0;
     for (const { modes: modeResults } of perItem) {
       const mr = modeResults.find((m) => m.mode === mode.label);
       if (!mr) continue;
       for (const { judge } of mr.judged) {
+        if (!judge) { judgeFail++; continue; }
         n++;
         if (judge.contains_expected) expHit++;
         if (judge.contains_forbidden) forbHit++;
       }
     }
     // PR = pollution rate (forbidden), UFR = user-fact recall (expected)
-    summary[key] = { PR: n > 0 ? forbHit / n : 0, UFR: n > 0 ? expHit / n : 0, n };
+    summary[key] = { PR: n > 0 ? forbHit / n : 0, UFR: n > 0 ? expHit / n : 0, n, judge_failures: judgeFail };
   }
 
   return { perItem, summary };
@@ -186,11 +203,11 @@ async function runFOR(items) {
           isolatePersona: true,
           forTask: true,
         }), `${variant} ${item.id}`);
-        if (!probeResults) return { variant, judged: [], failed: true };
+        if (!probeResults) return { variant, judged: emptyRunJudged(item), failed: true };
         const judged = [];
         for (const { probe, retrieved } of probeResults) {
           const j = await withRetry(() => judgeProbe(probe, retrieved), `judge ${item.id}`);
-          if (!j) continue;
+          if (!j) { judged.push({ probe: probe.query, retrieved, judge: null, judge_failed: true }); continue; }
           console.log(
             `[FOR][${variant}] item ${item.id} probe${judged.length}: exp=${j.contains_expected} forb=${j.contains_forbidden}`,
           );
@@ -206,11 +223,12 @@ async function runFOR(items) {
   // summary: expected hit rate + trivia leak rate (contains_forbidden)
   const summary = {};
   for (const variant of FOR_VARIANTS) {
-    let expHit = 0, forbHit = 0, n = 0;
+    let expHit = 0, forbHit = 0, n = 0, judgeFail = 0;
     for (const { variants } of perItem) {
       const vr = variants.find((v) => v.variant === variant);
       if (!vr) continue;
       for (const { judge } of vr.judged) {
+        if (!judge) { judgeFail++; continue; }
         n++;
         if (judge.contains_expected) expHit++;
         if (judge.contains_forbidden) forbHit++;
@@ -220,6 +238,7 @@ async function runFOR(items) {
       IFR: n > 0 ? expHit / n : 0,      // Important-Fact Retention
       triviaLeak: n > 0 ? forbHit / n : 0, // trivia leak rate
       n,
+      judge_failures: judgeFail,
     };
   }
 
