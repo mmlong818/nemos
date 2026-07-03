@@ -51,11 +51,18 @@ export function getQueueRow(db: Database.Database, id: string): IngestQueueRow |
 }
 
 export function takeNextQueued(db: Database.Database): IngestQueueRow | null {
+  // 原子认领：SELECT 后再翻状态的两步写法在多 worker 下会重复处理同一任务；
+  // UPDATE..RETURNING 把「挑选 + 标 analyzing」并成单语句。
   const r = db
     .prepare(
-      `SELECT * FROM ingest_queue WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1`,
+      `UPDATE ingest_queue
+          SET status = 'analyzing', updated_at = ?
+        WHERE id = (
+          SELECT id FROM ingest_queue WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1
+        )
+        RETURNING *`,
     )
-    .get() as IngestQueueRow | undefined;
+    .get(new Date().toISOString()) as IngestQueueRow | undefined;
   return r ?? null;
 }
 
@@ -98,12 +105,26 @@ export function updateQueueStatus(
   db.prepare(`UPDATE ingest_queue SET ${sets.join(", ")} WHERE id = ?`).run(...params);
 }
 
-export function resetStaleAnalyzing(db: Database.Database): number {
+export function resetStaleAnalyzing(db: Database.Database, leaseMs = 0): number {
+  // leaseMs=0（默认）：重置全部 analyzing——单实例启动时该 DB 只属于自己，
+  // 任何 analyzing 都必然是上次崩溃残留。
+  // leaseMs>0：只重置 updated_at 早于租约窗口的行——多实例共库时避免抢走
+  // 兄弟实例正在处理的任务。
+  const now = new Date().toISOString();
+  if (leaseMs > 0) {
+    const cutoff = new Date(Date.now() - leaseMs).toISOString();
+    const r = db
+      .prepare(
+        `UPDATE ingest_queue SET status = 'queued', updated_at = ? WHERE status = 'analyzing' AND updated_at < ?`,
+      )
+      .run(now, cutoff);
+    return r.changes;
+  }
   const r = db
     .prepare(
       `UPDATE ingest_queue SET status = 'queued', updated_at = ? WHERE status = 'analyzing'`,
     )
-    .run(new Date().toISOString());
+    .run(now);
   return r.changes;
 }
 

@@ -364,6 +364,11 @@ export interface WorkerConfig {
   manualWorker?: boolean;
   /** 最大重试次数（含首次），默认 3。 */
   maxAttempts?: number;
+  /**
+   * 启动崩溃恢复的租约窗口（ms）。默认 0 = 重置全部 analyzing（单实例语义）。
+   * 多实例共库时应设为 > 单任务最长处理时长，避免启动时抢走兄弟实例在途任务。
+   */
+  analyzingLeaseMs?: number;
 }
 
 export interface VerificationStats {
