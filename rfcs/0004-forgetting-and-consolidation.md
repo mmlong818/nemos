@@ -109,7 +109,7 @@ type Memory = {
 完整 FSRS 算法太复杂；Nemos 用简化版：
 
 - **stability (S)**：访问被记住的强度
-- **difficulty (D)**：访问失败次数 / 总访问 = 难记度（v0.4 不实施，留 v0.5）
+- **difficulty (D)**：访问失败次数 / 总访问 = 难记度（v0.4 不实施，留 v0.5；现状 2026-07-03：至今未推进，schema 字段存在但更新规则未消费。另注：decay 扫描目前无游标，每轮固定选最旧一批不轮转，大库下多数记录不会被扫到——规模化前需修）
 - **retrievability (R)**：基于 (now - last_accessed) / S 计算，遗忘曲线
 
 公式：

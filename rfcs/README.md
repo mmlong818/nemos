@@ -89,7 +89,7 @@
 | 0002 | Scenario Profiles & Content Awareness | accepted |
 | 0003 | Production Pipeline | accepted |
 | 0004 | Forgetting & Consolidation | accepted |
-| 0005 | Domain Experts & Sparse Activation Routing | draft |
+| 0005 | Domain Experts & Sparse Activation Routing | accepted（implementation merged） |
 | 0006 | Prospective Memory & Prediction-Verification Loop | draft |
-| 0007 | Bi-Temporal Validity & Invalidation Semantics | draft |
-| 0008 | Companion Memory Topology — Relational Visibility & Persona Self-State | draft |
+| 0007 | Bi-Temporal Validity & Invalidation Semantics | accepted（核心失效链路 implemented，MnemoBench 消融验证） |
+| 0008 | Companion Memory Topology — Relational Visibility & Persona Self-State | accepted（implementation merged） |
