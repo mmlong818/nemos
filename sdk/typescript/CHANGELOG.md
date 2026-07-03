@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+规模化审计（2026-07）暴露的三个 P0 修复：
+
+### 修复：close() 与游离 reflect 的竞态
+- fire-and-forget auto-reflect 与 `close()` 竞速会命中已关闭连接（"The database connection is not open"），reflect 产物静默丢失
+- `NemosWorker` 追踪在途异步工作并暴露 `drain()`；`Nemos.close()` 有在途工作时先 drain 再关连接（返回 `Promise<void>`；无在途工作时同步关闭，未 await 的旧调用方行为不变）；停止后的 worker 显式拒绝新 reflect
+
+### 修复：核心写路径事务化
+- **`Storage.transaction(fn)`**（接口新增）：better-sqlite3 事务，支持 savepoint 嵌套；memory 实现无回滚语义（仅测试）
+- `insert`（主表+FTS+entity FTS）与 `delete`（4 条语句）原子化
+- reflect 的「写入新事实 + 失效被推翻旧事实」并入同一事务——此前两步分开提交，中途崩溃会留下新旧矛盾并存（恰是矛盾失效要防的状态）
+- `persistDerivedList` 拆为 `prepareDerived`（异步：约束+embedding，事务外）+ `writePreparedDerived`（同步：事务内），两者公开导出
+
+### 性能：sqlite-vec 真实接线
+- `tryLoadSqliteVec` 从硬编码 `false` 改为真探测（load + 冒烟验证）；可用时 `searchEmbedding` 走 SQL 侧 `vec_distance_cosine`（排序/截断在 SQLite 内完成，带 `dim` 守卫防混合维度报错），不可用回退原 JS 余弦扫描
+- 实测 50k×1536 维：p50 709ms → 359ms（~2×），并消除每次查询把全表 embedding 反序列化进 JS 的内存搬运；仍为 O(N) 扫描，量级跃迁待 vec0 虚拟表 + 量化粗筛（后续项）
+
 ## 0.4.0 — 2026-06-05
 
 Forgetting & Consolidation：让 nemos 从「全部记住」走向「有质量地记忆」。RFC 0004 实施。
