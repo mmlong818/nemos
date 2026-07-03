@@ -5,7 +5,7 @@ authors:
   - nemos team
 status: accepted
 created_at: 2026-06-17
-updated_at: 2026-06-22
+updated_at: 2026-07-03
 discussion_url: ROADMAP.md
 implementation_pr: merged（已并入 main；分期落地状态见正文 Implementation Plan）
 supersedes: []
@@ -115,6 +115,8 @@ belief_state?: "active" | "invalidated" | "superseded" | "corrected";
          写双向 corrects / corrected_by
 ```
 
+> **现状（2026-07-03）**：第 2 步的粗筛已升级为**语义检测器**（embedding 余弦候选检索 + LLM 终判 + psem 同属性互斥对账 reconcile），并成为默认推荐路径；字符 bigram Jaccard 词法粗筛降级为 `v1-lexical` 消融基线（MnemoBench BUC 实测：SLR 词法 50% → 语义 34%）。MinHash/LSH 不再计划——语义候选检索已替代其职能。第 4 步的 `audit.mutation` 未采纳（见 §3 现状注），实现为 `storage.markInvalidated` 直写物化字段，且「写入新事实 + 失效旧事实」在单个 `storage.transaction` 内原子提交。
+
 **I4 加严**：当候选属于 personal_semantic 层时，仅当**新事实也是 authoritative** 才允许自动失效；derived 永不自动失效个人事实（只能向 `proposals/` 队列提请，由用户确认）。这比通用矛盾失效规则更严，守住原则 1。
 
 ### 2.4 查询语义：双轴 as-of
@@ -149,6 +151,8 @@ AND (invalid_at IS NULL OR invalid_at > :asOfValid)
 
 ## 3. 失效作为事件，而非字段（事件溯源基底）
 
+> **现状（2026-07-03）：本节方案未采纳。** 最终架构以 §2 的平铺物化字段（`valid_at`/`invalid_at`/`expired_at`/`belief_state`）为**唯一存储与真相源**——`audit.mutations` 至今不存在于 SDK，事件溯源层不再计划引入。原子性由 `storage.transaction`（写入+失效同事务）保证，无需事件流与 rematerialize 兜底。本节保留为当时的设计论证存档；如未来确需信念演变史 / 时间旅行审计，应作为独立 RFC 重新评估。
+
 §2 的扁平字段是**物化视图**，不是真相源。真相源是 append-only 的时态事件流，**复用既有 `audit.mutations[]`**——Nemos 已经有这条流，archival 不可变也是同一哲学，因此本 RFC 几乎不引入新概念。
 
 ```ts
@@ -182,7 +186,7 @@ kind: "asserted" | "invalidated" | "revalidated" | "corrected" | "superseded" | 
 
 # Drawbacks
 
-- **物化一致性负担**：扁平字段与事件流双写，需 `rematerialize` 兜底，增维护面。
+- **物化一致性负担**：扁平字段与事件流双写，需 `rematerialize` 兜底，增维护面。（现状 2026-07-03：事件流未采纳，本条不再适用；原子性由单事务提交保证。）
 - **矛盾检测成本与误判**：LLM 判矛盾有假阳性风险，可能误失效正确事实。缓解：MinHash 粗筛降调用量；失效可逆（revalidate）；personal_semantic 走用户确认。
 - **概念负荷**：使用者需理解「失效 ≠ 遗忘 ≠ 取代 ≠ 纠错」四分。缓解：默认查询语义屏蔽全部复杂度，as-of 是 power-user 接口。
 - **`valid_to` 迁移**：现有 personal_semantic 数据需迁移脚本，date → ISO 8601 提精度。
@@ -230,14 +234,16 @@ kind: "asserted" | "invalidated" | "revalidated" | "corrected" | "superseded" | 
 # Implementation Plan（accepted 后填）
 
 > **实现现状校正（2026-06-18）**：审计 TS SDK 发现 §3 依赖的 `audit.mutations` 事件流**只存在于 spec，SDK 从未实现**（`Memory` 无 `audit` 字段）；同理 `valid_from`/`valid_to` 也只在 spec、SDK 仅有 v0.2 `event_at`。因此本 RFC 分阶段落地：**先平铺物化字段**（独立解锁 Step 3 as-of），**事件溯源基底（§3）作为后续单独一步**在 SDK 引入 `audit.mutations`。这是 Alternative A 作为 C 式终态的中间态，非推翻 §3 选型。
+>
+> **终态定型（2026-07-03）**：上一条的"中间态"即为**最终态**——事件溯源基底已放弃（见 §3 现状注），平铺物化字段为唯一存储。矛盾失效核心链路（语义候选 + LLM 判定 + psem 对账 + 单事务原子提交）已实现并由 MnemoBench 消融验证（BUC SLR 80→34，LongMemEval +10pt）。
 
 - Step 1（✅ 平铺字段半已落地 2026-06-18）：`Memory` 新增 `valid_at`/`invalid_at`/`expired_at`/`belief_state`；SQLite schema 迁移（v0.5 → v0.6，存量 `valid_at=created_at` + 被 supersede 旧记录回填 `superseded`+`expired_at`，archival 不参与双时间）；row-mapper + 双 storage 写路径 + 迁移/round-trip 测试。
-  - ⏳ 待办：`audit.mutations` 事件流引入 SDK + `kind` 扩枚举（§3 真相源；当前物化字段为唯一存储）。
+  - ❌ 不再计划（2026-07-03）：`audit.mutations` 事件流已放弃（§3 现状注）；物化字段为唯一存储即最终架构。
 - Step 2: `valid_from`/`valid_to`/`event_at` → `valid_at`/`invalid_at` 迁移脚本 + `@deprecated` 读兼容层。
 - Step 3: 双轴 as-of 查询接入 `SearchOptions`（`asOfValid` / `asOfSystem` / `includeInvalidated`）。
 - Step 4: 失效状态机写路径（取代 / 纠错与既有 supersedes / corrects 接线）+ 物化刷新。
 - Step 5: 矛盾驱动自动失效 worker（复用 queue.ts + MinHash 粗筛 + LLM 判矛盾），默认关闭。
-  - 🟡 最小闭环已落地（2026-06-20，由 RFC 0008 陪伴 App「从不踩雷」需求驱动）：reflect **内联**识别 `invalidates`（守门仅 personal_semantic anchor）→ `storage.markInvalidated`（belief_state=invalidated + invalid_at/expired_at + corrected_by 回链）；检索默认 `belief_state='active'` 过滤（`SearchOptions.includeInvalidated` 逃生阀）；gate = `features.invalidation.enabled`（默认关）。**已补（2026-06-22）**：Jaccard 词法粗筛已接入 reflect——anchor 先过 `prefilterCandidates`（字符 bigram Jaccard）滤掉不相干候选，再送 LLM 判矛盾，省 prompt。**仍未做**：独立 worker 化（当前仍内联在 `runReflect`）；MinHash/LSH（粗筛现用字符 bigram Jaccard，规模更大时可平替，接口不变）。
+  - 🟡 最小闭环已落地（2026-06-20，由 RFC 0008 陪伴 App「从不踩雷」需求驱动）：reflect **内联**识别 `invalidates`（守门仅 personal_semantic anchor）→ `storage.markInvalidated`（belief_state=invalidated + invalid_at/expired_at + corrected_by 回链）；检索默认 `belief_state='active'` 过滤（`SearchOptions.includeInvalidated` 逃生阀）；gate = `features.invalidation.enabled`（默认关）。**已补（2026-06-22）**：Jaccard 词法粗筛已接入 reflect——anchor 先过 `prefilterCandidates`（字符 bigram Jaccard）滤掉不相干候选，再送 LLM 判矛盾，省 prompt。**仍未做**：独立 worker 化（当前仍内联在 `runReflect`）。**已升级（2026-07-03）**：粗筛从词法 Jaccard 升级为语义检测器（embedding 余弦候选 + psem 同属性互斥对账），成为默认推荐路径（`v2-semantic`），词法保留为 `v1-lexical` 消融基线；「写新 + 失效旧」并入 `storage.transaction` 单事务。MinHash/LSH 不再计划（语义候选检索替代其职能）。
 - Step 6: `nemos verify --rematerialize` 一致性兜底 + 时间旅行 eval fixture + E2EE 客户端路径。
 
 预计里程碑：对齐 ROADMAP v0.6，可在 RFC 0005/0006 之后独立推进。
