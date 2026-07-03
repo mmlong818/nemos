@@ -76,20 +76,23 @@ export function applyInvalidations(
   anchorById: Map<string, Memory>,
   now: string,
 ): number {
-  let invalidated = 0;
-  for (const p of persisted) {
-    const oldIds = invalidatesMap.get(p.id);
-    if (!oldIds) continue;
-    for (const oldId of oldIds) {
-      const old = anchorById.get(oldId);
-      if (!old) continue;
-      storage.markInvalidated(tenantId, userId, old.layer, oldId, {
-        invalidAt: p.valid_at ?? now,
-        expiredAt: now,
-        correctedBy: p.id,
-      });
-      invalidated++;
+  // 整批失效原子提交（调用方若已开事务则走 savepoint 嵌套）。
+  return storage.transaction(() => {
+    let invalidated = 0;
+    for (const p of persisted) {
+      const oldIds = invalidatesMap.get(p.id);
+      if (!oldIds) continue;
+      for (const oldId of oldIds) {
+        const old = anchorById.get(oldId);
+        if (!old) continue;
+        storage.markInvalidated(tenantId, userId, old.layer, oldId, {
+          invalidAt: p.valid_at ?? now,
+          expiredAt: now,
+          correctedBy: p.id,
+        });
+        invalidated++;
+      }
     }
-  }
-  return invalidated;
+    return invalidated;
+  });
 }
