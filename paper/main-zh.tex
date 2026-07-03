@@ -18,13 +18,13 @@
 \newcommand{\bucSLRmemo}{82.0}
 \newcommand{\bucUAmemo}{96.0}
 \newcommand{\aspPRiso}{\textbf{1.6}}
-\newcommand{\aspPRshared}{71.2}
-\newcommand{\aspUFRiso}{92.4}
-\newcommand{\aspUFRshared}{92.0}
-\newcommand{\forTLdecay}{\textbf{17.4}}
-\newcommand{\forTLnone}{96.0}
-\newcommand{\forIFRdecay}{75.2}
-\newcommand{\forIFRnone}{73.8}
+\newcommand{\aspPRshared}{96.8}
+\newcommand{\aspUFRiso}{97.2}
+\newcommand{\aspUFRshared}{96.0}
+\newcommand{\forTLdecay}{\textbf{16.4}}
+\newcommand{\forTLnone}{100.0}
+\newcommand{\forIFRdecay}{97.9}
+\newcommand{\forIFRnone}{98.6}
 \newcommand{\nItems}{50}
 \newcommand{\lmeAccFull}{\textbf{43.3}}
 \newcommand{\lmeAccNone}{33.3}
@@ -132,9 +132,9 @@ mem0（外部）\footnotemark{}     & \bucUAmemo{} & \bucSLRmemo{} \\
 
 \paragraph{外部交叉锚点（LongMemEval）。}同样的效应也出现在标准基准上：在 LongMemEval 知识更新子集的 \lmeN{} 题切片上（问答准确率，先生成再评判），开启语义失效把准确率从 \lmeAccNone{}\% 提升到 \lmeAccFull{}\%——这 $+10$ 个百分点完全归因于失效消融。其绝对水平不高（Nemos 在此是对 oracle 证据会话从零构建记忆，且未针对 LongMemEval 做任何调优），故我们读\emph{差值}而非绝对值：即便在以召回为主的外部数据上，信念维护也有帮助。
 
-\paragraph{抗自污染（ASP）。}这是最大、最干净的效应。在 $250$ 个用户事实探针上，命名空间隔离把污染率从 \aspPRshared{}\%（单一共享存储，正如仅追加式设计）降到 \aspPRiso{}\%——约 44 倍的下降——而用户事实召回在统计上不变（\aspUFRshared{}\% vs.\ \aspUFRiso{}\%）。把智能体自述的键空间与用户事实物理隔开，几乎消除了这一失败模式，且不损召回。
+\paragraph{抗自污染（ASP）。}这是最大、最干净的效应。在 $250$ 个用户事实探针上，命名空间隔离把污染率从 \aspPRshared{}\%（单一共享存储，正如仅追加式设计）降到 \aspPRiso{}\%——约 60 倍的下降——而用户事实召回在统计上不变（\aspUFRshared{}\% vs.\ \aspUFRiso{}\%）。把智能体自述的键空间与用户事实物理隔开，几乎消除了这一失败模式，且不损召回。
 
-\paragraph{遗忘（FOR）。}在 $149$ 个显著性探针上，衰减把琐碎泄漏从 \forTLnone{}\% 压到 \forTLdecay{}\%，而重要事实保留率不变（\forIFRnone{}\% vs.\ \forIFRdecay{}\%）：未被重访的琐碎被冷却出默认检索，而被重访的重要事实不丢失。
+\paragraph{遗忘（FOR）。}在 $146$ 个显著性探针上，衰减把琐碎泄漏从 \forTLnone{}\% 压到 \forTLdecay{}\%，而重要事实保留率不变（\forIFRnone{}\% vs.\ \forIFRdecay{}\%）：未被重访的琐碎被冷却出默认检索，而被重访的重要事实不丢失。
 
 \section{讨论与局限}
 \label{sec:limits}

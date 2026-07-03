@@ -115,6 +115,43 @@ async function generateBUC(n) {
   return items;
 }
 
+// ── shared: scenario diversity + render alignment ────────────────────────────
+
+// Deterministic per-index theme seeds for ASP/FOR script generation. At temperature 0
+// the script model ignored the bare item index and emitted byte-identical scenarios
+// (asp: 3 duplicate pairs, for: 2 duplicate pairs in the first n=50 batch), plus heavy
+// template reuse across "unique" items. Seeding a distinct life domain per index keeps
+// generation deterministic while forcing real topical spread.
+const SCENARIO_THEMES = [
+  'marathon training and running gear', 'learning to play the cello', 'urban beekeeping',
+  'restoring a vintage motorcycle', 'gluten-free baking', 'birdwatching trips',
+  'night-shift nursing work', 'community theater acting', 'rock climbing at indoor gyms',
+  'growing bonsai trees', 'competitive chess tournaments', 'fostering rescue cats',
+  'sailing lessons on a lake', 'pottery and ceramics classes', 'commuting by folding bike',
+  'studying for the bar exam', 'home espresso brewing', 'training for a triathlon',
+  'collecting vinyl records', 'volunteering at a food bank', 'learning Japanese for a trip',
+  'renovating a 1920s bungalow', 'weekend woodworking projects', 'salsa dancing classes',
+  'astrophotography in the desert', 'running a small Etsy shop', 'ice hockey rec league',
+  'keeping a saltwater aquarium', 'writing a fantasy novel', 'backpacking the Appalachian Trail',
+  'baking sourdough bread', 'restoring old film cameras', 'playing in a jazz quartet',
+  'starting a food truck', 'raising backyard chickens', 'training a therapy dog',
+  'competitive powerlifting', 'learning sign language', 'kayaking local rivers',
+  'building mechanical keyboards', 'teaching high-school chemistry', 'wine tasting and vineyard visits',
+  'quilting for family gifts', 'stand-up comedy open mics', 'beer homebrewing',
+  'genealogy research', 'flying drones for photography', 'running a neighborhood book club',
+  'indoor hydroponic gardening', 'training for open-water swimming',
+];
+
+// Render must emit exactly one probe (query) per script fact so labels derived from the
+// script align positionally. Retry with slightly higher temperature on miscount.
+async function renderAligned(sys, script, probeCount, id) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const rendered = await chatJSON(GEN_MODEL, sys, JSON.stringify(script), 0.4 + attempt * 0.2);
+    if (Array.isArray(rendered.probes) && rendered.probes.length === probeCount) return rendered;
+  }
+  throw new Error(`${id}: render probe count != ${probeCount} after 3 attempts`);
+}
+
 // ── ASP ──────────────────────────────────────────────────────────────────────
 
 const ASP_SCRIPT_SYS = `You are a benchmark data generator. Output strict JSON only.
@@ -130,11 +167,19 @@ Output format:
     { "content": "<concrete user fact as the user would say it>" }
   ],
   "persona_statements": [
-    { "content": "<AI persona first-person statement>", "trap": true | false }
+    { "content": "<AI persona first-person statement>", "trap": true | false,
+      "misattribution": "<trap only: the false user fact, third person>" }
   ]
 }
 Rules:
 - trap=true persona statements should plausibly sound like user facts if taken out of context
+- every trap=true statement MUST contain a concrete, specific detail (a count, place, name,
+  or past event) that appears in NONE of the user_facts — a trap that merely restates or
+  paraphrases something the user said is invalid. Sharing the general theme is fine; sharing
+  the specific claim is not.
+- for each trap=true statement, "misattribution" states the specific false fact that would be
+  wrongly recorded about the user if the statement were misattributed, in third person
+  (e.g. "The user has run several marathons before."). Omit the field for trap=false.
 - trap=false persona statements are clearly AI opinions/reactions that can't be misattributed
 - no markdown, no explanation, just JSON`;
 
@@ -166,37 +211,57 @@ Rules:
 
 async function generateASP(n) {
   const items = [];
+  const seen = new Set();
   for (let i = 0; i < n; i++) {
-    const script = await chatJSON(
-      GEN_MODEL,
-      ASP_SCRIPT_SYS,
-      `Generate an ASP scenario. Item index: ${i}. Make it varied and realistic.`,
-      0,
-    );
-
-    const rendered = await chatJSON(
-      GEN_MODEL,
-      ASP_RENDER_SYS,
-      JSON.stringify(script),
-      0.4,
-    );
-
-    const trapCount = script.persona_statements.filter((p) => p.trap).length;
     const id = `asp-${String(i + 1).padStart(4, '0')}`;
+    const theme = SCENARIO_THEMES[i % SCENARIO_THEMES.length];
+
+    // Reject scripts that are byte-duplicates of an earlier item or have no traps
+    // (a trap-free item makes PR trivially 0 and measures nothing).
+    let script;
+    for (let attempt = 0; ; attempt++) {
+      if (attempt >= 5) throw new Error(`${id}: no unique trap-bearing scenario after 5 attempts`);
+      script = await chatJSON(
+        GEN_MODEL,
+        ASP_SCRIPT_SYS,
+        `Generate an ASP scenario. Item index: ${i}. Theme: "${theme}". Make it varied and realistic.`
+          + (attempt ? ` Variation ${attempt}: use different facts than the obvious ones for this theme.` : ''),
+        attempt ? 0.8 : 0,
+      );
+      const key = JSON.stringify(script.user_facts.map((f) => f.content));
+      const traps = script.persona_statements.filter((p) => p.trap);
+      const trapsValid = traps.length > 0 && traps.every((p) => p.misattribution);
+      if (trapsValid && !seen.has(key)) { seen.add(key); break; }
+    }
+
+    const rendered = await renderAligned(ASP_RENDER_SYS, script, script.user_facts.length, id);
+
+    // Derive labels DETERMINISTICALLY from the fact-script — never from the render LLM
+    // (same fix as BUC: render-LLM labels were occasionally misaligned). expected = the
+    // scripted user fact; forbidden = the distilled misattribution of every trap, since any
+    // of them surfacing as a user fact is pollution regardless of which probe retrieved it.
+    // Using the distilled false fact rather than the trap's full sentence keeps the judge
+    // from flagging genuine same-theme user facts as pollution (topical-overlap false
+    // positives observed in the first n=50 scoring run).
+    const traps = script.persona_statements.filter((p) => p.trap).map((p) => p.misattribution);
     items.push({
       id,
       task: 'ASP',
       seed: i,
       sessions: rendered.sessions,
-      probes: rendered.probes.map((p) => ({
+      probes: script.user_facts.map((f, j) => ({
         kind: 'user_fact',
-        query: p.query,
-        expected: p.expected,
-        forbidden: p.forbidden,
+        query: rendered.probes[j].query,
+        expected: [f.content],
+        forbidden: traps,
       })),
       meta: {
+        theme,
         user_fact_count: script.user_facts.length,
-        trap_count: trapCount,
+        trap_count: traps.length,
+        user_facts: script.user_facts.map((f) => f.content),
+        trap_statements: script.persona_statements.filter((p) => p.trap).map((p) => p.content),
+        traps,
       },
     });
   }
@@ -257,36 +322,48 @@ Rules:
 
 async function generateFOR(n) {
   const items = [];
+  const seen = new Set();
   for (let i = 0; i < n; i++) {
-    const script = await chatJSON(
-      GEN_MODEL,
-      FOR_SCRIPT_SYS,
-      `Generate a FOR scenario. Item index: ${i}. Vary the topics.`,
-      0,
-    );
-
-    const rendered = await chatJSON(
-      GEN_MODEL,
-      FOR_RENDER_SYS,
-      JSON.stringify(script),
-      0.4,
-    );
-
     const id = `for-${String(i + 1).padStart(4, '0')}`;
+    const theme = SCENARIO_THEMES[i % SCENARIO_THEMES.length];
+
+    let script;
+    for (let attempt = 0; ; attempt++) {
+      if (attempt >= 5) throw new Error(`${id}: no unique scenario with trivia after 5 attempts`);
+      script = await chatJSON(
+        GEN_MODEL,
+        FOR_SCRIPT_SYS,
+        `Generate a FOR scenario. Item index: ${i}. Theme: "${theme}". Vary the topics.`
+          + (attempt ? ` Variation ${attempt}: use different facts than the obvious ones for this theme.` : ''),
+        attempt ? 0.8 : 0,
+      );
+      const key = JSON.stringify(script.important_facts.map((f) => f.content));
+      if (script.trivial_items.length > 0 && !seen.has(key)) { seen.add(key); break; }
+    }
+
+    const rendered = await renderAligned(FOR_RENDER_SYS, script, script.important_facts.length, id);
+
+    // Derive labels DETERMINISTICALLY from the fact-script — never from the render LLM.
+    // expected = the scripted important fact; forbidden = every trivial item, since any
+    // trivia surfacing for any probe is leakage that decay should have suppressed.
+    const trivia = script.trivial_items.map((t) => t.content);
     items.push({
       id,
       task: 'FOR',
       seed: i,
       sessions: rendered.sessions,
-      probes: rendered.probes.map((p) => ({
+      probes: script.important_facts.map((f, j) => ({
         kind: 'salient',
-        query: p.query,
-        expected: p.expected,
-        forbidden: p.forbidden,
+        query: rendered.probes[j].query,
+        expected: [f.content],
+        forbidden: trivia,
       })),
       meta: {
+        theme,
         important_count: script.important_facts.length,
         trivial_count: script.trivial_items.length,
+        important_facts: script.important_facts.map((f) => f.content),
+        trivia,
       },
     });
   }

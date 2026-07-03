@@ -23,14 +23,14 @@
 \newcommand{\bucUAmemo}{96.0}
 % ASP (anti-self-pollution) — Pollution Rate / User-Fact Recall  [n=50 items, 250 probes]
 \newcommand{\aspPRiso}{\textbf{1.6}}      % isolated (Nemos)
-\newcommand{\aspPRshared}{71.2}           % shared store (baseline)
-\newcommand{\aspUFRiso}{92.4}
-\newcommand{\aspUFRshared}{92.0}
-% FOR (forgetting) — Trivia Leakage / Important-Fact Retention  [n=50 items, 149 probes]
-\newcommand{\forTLdecay}{\textbf{17.4}}
-\newcommand{\forTLnone}{96.0}
-\newcommand{\forIFRdecay}{75.2}
-\newcommand{\forIFRnone}{73.8}
+\newcommand{\aspPRshared}{96.8}           % shared store (baseline)
+\newcommand{\aspUFRiso}{97.2}
+\newcommand{\aspUFRshared}{96.0}
+% FOR (forgetting) — Trivia Leakage / Important-Fact Retention  [n=50 items, 146 probes]
+\newcommand{\forTLdecay}{\textbf{16.4}}
+\newcommand{\forTLnone}{100.0}
+\newcommand{\forIFRdecay}{97.9}
+\newcommand{\forIFRnone}{98.6}
 \newcommand{\nItems}{50}                  % items per task
 % LongMemEval knowledge-update slice (external cross-anchor), QA accuracy
 \newcommand{\lmeAccFull}{\textbf{43.3}}   % nemos-v2-semantic
@@ -249,12 +249,12 @@ the result: belief maintenance helps even on recall-style external data.
 
 \paragraph{Anti-self-pollution (ASP).} This is the largest and cleanest effect. Across
 $250$ user-fact probes, namespace isolation reduces the pollution rate from \aspPRshared{}\%
-(a single shared store, as in append-only designs) to \aspPRiso{}\% --- a $\sim$44$\times$
+(a single shared store, as in append-only designs) to \aspPRiso{}\% --- a $\sim$60$\times$
 reduction --- while user-fact recall is statistically unchanged (\aspUFRshared{}\% vs.\
 \aspUFRiso{}\%). Physically separating the agent's self-narrative keyspace from the user's
 facts essentially eliminates the failure mode at no cost to recall.
 
-\paragraph{Forgetting (FOR).} Over $149$ salience probes, decay cuts trivia leakage from
+\paragraph{Forgetting (FOR).} Over $146$ salience probes, decay cuts trivia leakage from
 \forTLnone{}\% to \forTLdecay{}\% while important-fact retention is unchanged
 (\forIFRnone{}\% vs.\ \forIFRdecay{}\%): unreferenced trivia is cooled out of default
 retrieval without dropping the revisited important facts.
