@@ -403,11 +403,26 @@ function applyV05Migrations(db: Database.Database): void {
 }
 
 /**
- * v0.2 hook：探测 sqlite-vec 是否可用 → 切到 SQL ANN。
- * v0.1 不强制 sqlite-vec；如果环境装了，未来 v0.2 切到 SQL ANN。
- * 这里只占位，先返回 false 表示走 JS cosine。
+ * 探测并加载 sqlite-vec（optionalDependencies）。可用 → searchEmbedding 走 SQL 侧
+ * vec_distance_cosine（C 实现，免去每次查询把全表 embedding 反序列化进 JS）；
+ * 未安装 / 平台无预编译产物 / 加载失败 → 返回 false，回退 JS cosine 暴力扫描。
  */
-export function tryLoadSqliteVec(db: Database.Database): boolean {
-  void db;
-  return false;
+export function tryLoadSqliteVec(
+  db: Database.Database,
+  log?: (msg: string) => void,
+): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const sqliteVec = require("sqlite-vec") as { load(db: Database.Database): void };
+    sqliteVec.load(db);
+    // 冒烟：标量函数真实可用才算数（防止 load 成功但函数缺失的半残状态）
+    db.prepare("SELECT vec_distance_cosine(?, ?) AS d").get(
+      Buffer.from(new Float32Array([1, 0]).buffer),
+      Buffer.from(new Float32Array([0, 1]).buffer),
+    );
+    return true;
+  } catch (e) {
+    log?.(`[nemos] sqlite-vec 不可用，向量检索回退 JS cosine：${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  }
 }

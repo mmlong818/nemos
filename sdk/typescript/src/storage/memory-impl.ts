@@ -39,6 +39,11 @@ export class InMemoryStorage implements Storage {
     return `${t}|${u}|${layer}|${id}`;
   }
 
+  /** 内存实现无回滚语义（仅测试用）；接口契约见 storage/types.ts。 */
+  transaction<T>(fn: () => T): T {
+    return fn();
+  }
+
   insert(tenantId: string, userId: string, m: Memory): Memory {
     // archival 自动 protected（hard rule）
     if (m.layer === "archival") {

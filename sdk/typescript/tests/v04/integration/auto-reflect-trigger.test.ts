@@ -23,6 +23,8 @@ test("v0.4: 累积 N 条 episodic 后自动触发 reflect（threshold=5）", asy
   for (let i = 0; i < 5; i++) {
     await u.ingest(`今天我又做了高产的事 ${i}`);
   }
+  // auto-reflect 是 fire-and-forget；用 drain 确定性等它完成（不再依赖微任务时序）
+  await mem.workerHandle().drain();
 
   // auto-reflect 在第 5 条 ingest 时已触发；检查是否有 personal_semantic 产出
   const psem = await u.listByLayer("personal_semantic");

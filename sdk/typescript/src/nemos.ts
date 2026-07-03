@@ -152,10 +152,17 @@ export class Nemos {
   }
 
   /**
-   * 关闭底层资源（SQLite 连接等）。Node 进程退出时建议调用。
+   * 关闭底层资源（SQLite 连接等）。Node 进程退出时建议调用（await）。
+   * 有在途异步工作（游离 reflect / 定时 tick）时先 drain 再关连接——
+   * 否则恢复执行的 reflect 会命中已关闭的连接（"The database connection is not open"）；
+   * 无在途工作时同步关闭，未 await 的旧调用方行为不变。
    */
-  close(): void {
+  close(): Promise<void> {
     this.worker.stop();
-    this.storage.close();
+    if (!this.worker.hasInFlight()) {
+      this.storage.close();
+      return Promise.resolve();
+    }
+    return this.worker.drain().then(() => this.storage.close());
   }
 }
