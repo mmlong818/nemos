@@ -48,7 +48,16 @@ export class SqliteStorage implements Storage {
     applyMigrations(this.db);
   }
 
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
+
   insert(tenantId: string, userId: string, m: Memory): Memory {
+    return this.transaction(() => this.insertInner(tenantId, userId, m));
+  }
+
+  /** insert 的三条语句（主表 + FTS + entity FTS）必须原子：崩溃中途会留下"写入成功但搜索不到"的半套数据。 */
+  private insertInner(tenantId: string, userId: string, m: Memory): Memory {
     const table = m.layer;
     // archival 自动 protected=true（hard rule：archival 永不衰减）
     const archivalProtected = m.layer === "archival" || m.archival_protected === true ? 1 : 0;
@@ -345,18 +354,20 @@ export class SqliteStorage implements Storage {
         "[nemos] archival 不允许直接 delete（spec I3）。如需 GDPR burn，请用 forget() + 后续 v0.2 burn 接口",
       );
     }
-    this.db
-      .prepare(`DELETE FROM ${layer} WHERE id = ? AND tenant_id = ? AND user_id = ?`)
-      .run(id, tenantId, userId);
-    this.db
-      .prepare(`DELETE FROM ${layer}_fts WHERE id = ?`)
-      .run(id);
-    this.db
-      .prepare(`DELETE FROM nemos_embeddings WHERE record_id = ? AND layer = ?`)
-      .run(id, layer);
-    this.db
-      .prepare(`DELETE FROM nemos_entities_fts WHERE record_id = ? AND layer = ?`)
-      .run(id, layer);
+    this.transaction(() => {
+      this.db
+        .prepare(`DELETE FROM ${layer} WHERE id = ? AND tenant_id = ? AND user_id = ?`)
+        .run(id, tenantId, userId);
+      this.db
+        .prepare(`DELETE FROM ${layer}_fts WHERE id = ?`)
+        .run(id);
+      this.db
+        .prepare(`DELETE FROM nemos_embeddings WHERE record_id = ? AND layer = ?`)
+        .run(id, layer);
+      this.db
+        .prepare(`DELETE FROM nemos_entities_fts WHERE record_id = ? AND layer = ?`)
+        .run(id, layer);
+    });
   }
 
   // v0.3 新增 ----------------------------------------------------------------

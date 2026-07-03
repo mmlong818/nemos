@@ -4,14 +4,14 @@
 // - 读最近 N 条 episodic + （可选）现有 personal_semantic 当 anchor
 // - LLM 抽出可升 semantic / personal_semantic 的 pattern（每条带 consolidated_from）
 // - 矛盾检测：新 episodic 与现 personal_semantic 不一致时标 perspectives_conflict 提示
-// - 输出 derived 走 persistDerivedList，所有硬约束沿用（authoritative=false 强制）
+// - 输出 derived 走 prepareDerived + writePreparedDerived（与失效同事务），硬约束沿用（authoritative=false 强制）
 // - archival 永不被修改（reflect 只产新 derived，不 update 已有 archival）
 // - 跨 user namespace 永不互相 reflect
 
 import type { EmbeddingProvider, LLMProvider, LogLevel, Memory, NemosConfig } from "./types.js";
 import { SCHEMA_VERSION } from "./types.js";
 import type { Storage } from "./storage.js";
-import { persistDerivedList } from "./persist-derived.js";
+import { prepareDerived, writePreparedDerived } from "./persist-derived.js";
 import {
   runDomainEvolution,
   runProspectiveVerification,
@@ -170,7 +170,7 @@ interface ReflectJsonOutput {
  * 不变量：
  * - 仅生成 semantic / personal_semantic derived
  * - 每条带 consolidated_from / consolidated_at
- * - 走 persistDerivedList → 自动应用 authoritative=false / kind='derived' 守门
+ * - 走 prepareDerived + writePreparedDerived → 自动应用 authoritative=false / kind='derived' 守门
  * - archival 不被读也不被写（reflect 只看 derived）
  * - 跨 user 隔离由 storage 接口保证（tenantId + userId 强制）
  */
@@ -285,21 +285,20 @@ export async function runReflect(
     }
   }
 
-  const persisted = await persistDerivedList(
-    storage,
-    embedding,
-    log,
-    input.tenantId,
-    input.userId,
-    built,
-  );
-
-  // v0.6（RFC 0007 §2.3 / RFC 0008 §5）：把被推翻的旧 personal_semantic 标失效。
-  // I4：anchor 恒为 personal_semantic，且只在 reflect 这条用户自述流上触发；flag 默认关。
-  let invalidated =
-    input.invalidationEnabled && invalidatesMap.size > 0
-      ? applyInvalidations(storage, input.tenantId, input.userId, persisted, invalidatesMap, anchorById, nowIso())
-      : 0;
+  // 持久化新事实 + 失效被推翻的旧事实必须在同一事务里：两步分开提交时，
+  // 中途崩溃会留下新旧矛盾并存（新事实已写、旧事实仍 active）。
+  // embedding 计算（异步）在事务外先行完成。
+  const prepared = await prepareDerived(embedding, log, built);
+  let invalidated = 0;
+  const persisted = storage.transaction(() => {
+    const p = writePreparedDerived(storage, input.tenantId, input.userId, prepared);
+    // v0.6（RFC 0007 §2.3 / RFC 0008 §5）：把被推翻的旧 personal_semantic 标失效。
+    // I4：anchor 恒为 personal_semantic，且只在 reflect 这条用户自述流上触发；flag 默认关。
+    if (input.invalidationEnabled && invalidatesMap.size > 0) {
+      invalidated = applyInvalidations(storage, input.tenantId, input.userId, p, invalidatesMap, anchorById, nowIso());
+    }
+    return p;
+  });
 
   // 通道二（psem ↔ psem 属性替换核对）：仅 semantic 失效路径。
   // 解决「新旧值在 ingest 阶段都已升为 personal_semantic、episodic 为空」的属性替换漏判：

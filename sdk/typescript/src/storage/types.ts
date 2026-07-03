@@ -73,6 +73,12 @@ export interface DecayCandidate {
 }
 
 export interface Storage {
+  /**
+   * 在单个事务里执行 fn（fn 必须是同步的——SQLite 事务不能跨 await）。
+   * 抛异常时整体回滚；支持嵌套（内层走 savepoint）。
+   * memory 实现无回滚语义（仅测试用），调用方不得依赖其原子性。
+   */
+  transaction<T>(fn: () => T): T;
   insert(tenantId: string, userId: string, memory: Memory): Memory;
   insertEmbedding(
     tenantId: string,
