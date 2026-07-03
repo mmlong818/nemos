@@ -24,6 +24,7 @@ import {
   sanitizeFtsQuery,
   type RowMemory,
 } from "./row-mapper.js";
+import { float32ToBuffer } from "../utils/vector.js";
 import * as queueOps from "./queue-ops-sqlite.js";
 import * as decayOps from "./decay-ops-sqlite.js";
 import * as domainOps from "./domain-ops-sqlite.js";
@@ -39,16 +40,27 @@ import type { ProspectivePatch } from "./types.js";
 export class SqliteStorage implements Storage {
   private readonly db: Database.Database;
 
+  /** sqlite-vec 是否加载成功（true → searchEmbedding 走 SQL 侧余弦）。 */
+  private readonly vecEnabled: boolean;
+
   constructor(path: string) {
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
-    // v0.2 hook：探测 sqlite-vec 是否可用 → 切到 SQL ANN
-    tryLoadSqliteVec(this.db);
+    this.vecEnabled = tryLoadSqliteVec(this.db);
     applyMigrations(this.db);
   }
 
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
+
   insert(tenantId: string, userId: string, m: Memory): Memory {
+    return this.transaction(() => this.insertInner(tenantId, userId, m));
+  }
+
+  /** insert 的三条语句（主表 + FTS + entity FTS）必须原子：崩溃中途会留下"写入成功但搜索不到"的半套数据。 */
+  private insertInner(tenantId: string, userId: string, m: Memory): Memory {
     const table = m.layer;
     // archival 自动 protected=true（hard rule：archival 永不衰减）
     const archivalProtected = m.layer === "archival" || m.archival_protected === true ? 1 : 0;
@@ -294,35 +306,9 @@ export class SqliteStorage implements Storage {
     topK: number,
     filter: SearchFilter = {},
   ): Array<{ memory: Memory; score: number }> {
-    // 取所有该用户在指定 layers/scope 下的 embedding，本地算 cosine
-    // 注：v0.1 不依赖 sqlite-vec 的 ANN（朋友可能没装 native 扩展）；这种朴素扫描
-    // 对个人量级（<10k）够用。v0.2+ 若安装 sqlite-vec → 切 SQL 内置 cosine。
-    let sql = `
-      SELECT record_id, layer, vector_blob, dim
-      FROM nemos_embeddings
-      WHERE tenant_id = ? AND user_id = ? AND layer IN (${layers.map(() => "?").join(",")})
-    `;
-    const params: unknown[] = [tenantId, userId, ...layers];
-    if (Array.isArray(scope) && scope.length > 0) {
-      sql += ` AND scope IN (${scope.map(() => "?").join(",")})`;
-      params.push(...scope);
-    } else if (typeof scope === "string") {
-      sql += ` AND scope = ?`;
-      params.push(scope);
-    }
-    const rows = this.db.prepare(sql).all(...params) as Array<{
-      record_id: string;
-      layer: Layer;
-      vector_blob: Buffer;
-      dim: number;
-    }>;
-
-    const scored = rows.map((row) => {
-      const vec = bufferToFloat32(row.vector_blob);
-      const score = cosineSimLocal(queryVec, vec);
-      return { record_id: row.record_id, layer: row.layer, score };
-    });
-    scored.sort((a, b) => b.score - a.score);
+    const scored = this.vecEnabled
+      ? this.scanEmbeddingsSql(tenantId, userId, queryVec, layers, scope, topK)
+      : this.scanEmbeddingsJs(tenantId, userId, queryVec, layers, scope);
     // 先按分数排，再 hydrate memory；hydrate 时按 sensitive 过滤后继续取直到 topK
     const out: Array<{ memory: Memory; score: number }> = [];
     for (const s of scored) {
@@ -339,24 +325,114 @@ export class SqliteStorage implements Storage {
     return out;
   }
 
+  /** scope 条件拼接（两条扫描路径共用）。 */
+  private appendScopeFilter(
+    sql: string,
+    params: unknown[],
+    scope: string | string[] | undefined,
+  ): string {
+    if (Array.isArray(scope) && scope.length > 0) {
+      params.push(...scope);
+      return sql + ` AND scope IN (${scope.map(() => "?").join(",")})`;
+    }
+    if (typeof scope === "string") {
+      params.push(scope);
+      return sql + ` AND scope = ?`;
+    }
+    return sql;
+  }
+
+  /**
+   * SQL 侧余弦（sqlite-vec 可用时）：排序与截断都发生在 SQLite 内，
+   * 不再把全表 embedding 反序列化进 JS。
+   * - dim=? 守卫：vec_distance_cosine 对维度不一致会报错（模型切换后的混血库），
+   *   与查询向量维度不同的记录直接不参与本次检索。
+   * - LIMIT 取 topK 的 4 倍（下限 50）：hydrate 阶段还要过滤 sensitive/cold/invalidated，
+   *   预留余量避免过滤后凑不满 topK。
+   */
+  private scanEmbeddingsSql(
+    tenantId: string,
+    userId: string,
+    queryVec: Float32Array,
+    layers: Layer[],
+    scope: string | string[] | undefined,
+    topK: number,
+  ): Array<{ record_id: string; layer: Layer; score: number }> {
+    let sql = `
+      SELECT record_id, layer, vec_distance_cosine(vector_blob, ?) AS dist
+      FROM nemos_embeddings
+      WHERE tenant_id = ? AND user_id = ? AND dim = ?
+        AND layer IN (${layers.map(() => "?").join(",")})
+    `;
+    const params: unknown[] = [
+      float32ToBuffer(queryVec),
+      tenantId,
+      userId,
+      queryVec.length,
+      ...layers,
+    ];
+    sql = this.appendScopeFilter(sql, params, scope);
+    sql += ` ORDER BY dist ASC LIMIT ?`;
+    params.push(Math.max(topK * 4, 50));
+    const rows = this.db.prepare(sql).all(...params) as Array<{
+      record_id: string;
+      layer: Layer;
+      dist: number;
+    }>;
+    // cosine distance = 1 - cosine similarity
+    return rows.map((r) => ({ record_id: r.record_id, layer: r.layer, score: 1 - r.dist }));
+  }
+
+  /** JS 兜底（sqlite-vec 不可用时）：全量拉取 + 本地余弦。O(N·D)/查询，仅适合个人量级（<10k）。 */
+  private scanEmbeddingsJs(
+    tenantId: string,
+    userId: string,
+    queryVec: Float32Array,
+    layers: Layer[],
+    scope: string | string[] | undefined,
+  ): Array<{ record_id: string; layer: Layer; score: number }> {
+    let sql = `
+      SELECT record_id, layer, vector_blob, dim
+      FROM nemos_embeddings
+      WHERE tenant_id = ? AND user_id = ? AND layer IN (${layers.map(() => "?").join(",")})
+    `;
+    const params: unknown[] = [tenantId, userId, ...layers];
+    sql = this.appendScopeFilter(sql, params, scope);
+    const rows = this.db.prepare(sql).all(...params) as Array<{
+      record_id: string;
+      layer: Layer;
+      vector_blob: Buffer;
+      dim: number;
+    }>;
+    const scored = rows.map((row) => {
+      const vec = bufferToFloat32(row.vector_blob);
+      const score = cosineSimLocal(queryVec, vec);
+      return { record_id: row.record_id, layer: row.layer, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored;
+  }
+
   delete(tenantId: string, userId: string, layer: Layer, id: string): void {
     if (layer === "archival") {
       throw new Error(
         "[nemos] archival 不允许直接 delete（spec I3）。如需 GDPR burn，请用 forget() + 后续 v0.2 burn 接口",
       );
     }
-    this.db
-      .prepare(`DELETE FROM ${layer} WHERE id = ? AND tenant_id = ? AND user_id = ?`)
-      .run(id, tenantId, userId);
-    this.db
-      .prepare(`DELETE FROM ${layer}_fts WHERE id = ?`)
-      .run(id);
-    this.db
-      .prepare(`DELETE FROM nemos_embeddings WHERE record_id = ? AND layer = ?`)
-      .run(id, layer);
-    this.db
-      .prepare(`DELETE FROM nemos_entities_fts WHERE record_id = ? AND layer = ?`)
-      .run(id, layer);
+    this.transaction(() => {
+      this.db
+        .prepare(`DELETE FROM ${layer} WHERE id = ? AND tenant_id = ? AND user_id = ?`)
+        .run(id, tenantId, userId);
+      this.db
+        .prepare(`DELETE FROM ${layer}_fts WHERE id = ?`)
+        .run(id);
+      this.db
+        .prepare(`DELETE FROM nemos_embeddings WHERE record_id = ? AND layer = ?`)
+        .run(id, layer);
+      this.db
+        .prepare(`DELETE FROM nemos_entities_fts WHERE record_id = ? AND layer = ?`)
+        .run(id, layer);
+    });
   }
 
   // v0.3 新增 ----------------------------------------------------------------
