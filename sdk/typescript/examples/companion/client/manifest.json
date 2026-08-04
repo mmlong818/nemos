@@ -1,0 +1,15 @@
+{
+  "appId": "nemos-companion",
+  "name": "Nemos Companion",
+  "version": "0.2.19",
+  "channel": "local",
+  "schemaVersion": 1,
+  "server": {
+    "defaultPort": 8787,
+    "entry": "app/examples/companion/server.ts"
+  },
+  "data": {
+    "defaultDirName": ".nemos-companion",
+    "backupOnStartup": true
+  }
+}

@@ -2,33 +2,44 @@
 
 [中文](README.md) | **English**
 
-> An AI chat app whose contacts are AI friends that **actually remember you**.
+> A local-first AI work and companion client whose characters remember you, use tools, execute tasks, and deliver results.
 
 ---
 
 ## Why we built it
 
-You spend an evening talking to an AI — your tastes, what's going on in your life, what's been bugging you. Open it again tomorrow and it's forgotten everything; you're a stranger again. Most AI chat apps are like this — a new session wipes the slate.
+Most chatbots stop at a reply. They do not reliably retain long-term preferences or carry work through to a downloadable deliverable.
 
-Nemos is a handful of AI characters that **remember you across time**: the things you've said, your preferences, how you've been lately — they keep it; and when you change your mind, they update too.
+Nemos combines an independent long-term memory engine with the Nemos Companion client and Agent Runtime. Characters remember preferences, changes, and conversation boundaries while authorized tools can read web pages and images, process speech and documents, run background jobs, and return results to the chat.
 
-You don't have to type, either: send a **voice message** (auto-transcribed), or open a **voice call** — a continuous spoken conversation, as if there's a real person on the other end.
+Memory, task history, and artifacts stay local by default. A regular user only needs one Zhipu API key to start.
 
-What makes this actually work is an independent memory system underneath. — **Nemos**
+**Companionship is the entry point; memory and execution are the core.**
+
+## Who is in your contacts
+
+The default contact list stays focused. Additional characters can be added from the plus button beside search, and users can create groups:
+
+- **Zhiwei**: the default personal assistant and the single dispatcher for capabilities, tasks, and delivery.
+- **Feifei and Tuanzi**: everyday conversation and companionship.
+- **Azhe and Lingling**: optional contacts for practical judgment and quiet companionship.
+- **Musk, Jobs, Munger, and Socrates**: distinct reasoning styles for difficult questions.
+- **Bezos and additional specialists**: strategy, product, engineering, design, testing, market, and business analysis.
+
+The user avatar and every character's name, avatar, persona, and voice can be edited and persisted independently. In groups, mentioning a character routes the request to that character without making everyone respond. Search, OCR, documents, tasks, and external tools remain under Zhiwei's execution control.
 
 ---
 
-**The companion is the shell; memory is the core.**
+## What Nemos Companion can do
 
-## Who's in your contacts
+- **Natural interaction**: text, images, screenshots, voice messages, and voice calls; bubbles support Markdown, HTML, and downloadable files.
+- **Content work**: web reading, image understanding, OCR, long-audio transcription, meeting notes, rewriting, and document conversion.
+- **Real delivery**: research and analysis can be saved as Markdown or HTML and opened from the conversation.
+- **Durable jobs**: scheduled or turn-based collection, briefing, and monitoring with recoverable run, retry, cancel, and delivery state.
+- **Extensible capabilities**: install, disable, update, and remove Skills; connect MCP tools behind permissions, approvals, credential brokering, and sandboxes.
+- **Controlled expert collaboration**: Zhiwei can invite 2-4 specialists, apply fixed budgets and review, and return one final result to the active chat.
 
-Five built-in characters, each with a distinct personality and voice:
-
-- **Feifei** 🎨 friend — 25, freelance illustrator, a warm and delicate "rational romantic" with a ginger cat. Empathizes first, gives you space, never nags or lectures.
-- **Azhe** ☕ friend — 30, product consultant; rational, terse, problem-oriented; a no-nonsense buddy who helps you stop spiraling and get things done.
-- **Yuebai** 📋 personal assistant — calm and crisp; sorts your tasks, drafts text, searches the web, reads images, tracks deadlines and reminds you.
-- **Tuanzi** 🍡 unidentified creature — round and soft, naive and warm; expresses feelings by "spinning in circles / flattening into mochi," and is unconditionally there for you.
-- **Lingling** 🐾 spirit pet — a palm-sized fluffball that barely talks, keeping you company through coos and little gestures like "purr~ (nuzzles you)."
+See the [Agent Runtime design](sdk/typescript/examples/companion/docs/agent-runtime-design.md) and [Capability OS design](sdk/typescript/examples/companion/docs/capability-os-design.md) for implementation and security boundaries.
 
 ---
 
@@ -91,29 +102,32 @@ On the knowledge-update slice of LongMemEval, toggling invalidation alone is wor
 
 ---
 
-## The characters are yours — make your own version
+## The characters are yours
 
-Characters aren't hard-coded:
-
-- **Edit right in the web UI** — "⚙️ Settings → Character" to change name, personality, talkativeness; takes effect instantly and persists. A character's background facts live in its own memory store and evolve naturally through conversation (new things update, old contradictions get invalidated).
-- **Customize in code** — characters are defined in [`examples/companion/personas.ts`](sdk/typescript/examples/companion/personas.ts); add characters, rewrite personas, tune models.
+In the client, users can edit their own avatar and separately change each character's name, avatar, persona, language style, and voice. Avatar images can be cropped and are scaled automatically. Developers can add or change defaults in [personas.ts](sdk/typescript/examples/companion/personas.ts).
 
 ---
 
 ## Run it
 
-```bash
+Development mode:
+
+~~~bash
 cd sdk/typescript
 npm install
-npx tsx examples/companion/server.ts        # open http://localhost:8787
-```
+npm run companion
+~~~
 
-It runs without a key too (offline fallback — you can see the UI and memory topology). For real multi-persona conversation, supply a Zhipu key — **just paste it in the web "⚙️ Settings" and switch at runtime, no restart needed** — or start with an env var:
+Then open http://localhost:8787. The UI works without a key; real model responses and built-in AI capabilities require one Zhipu key entered in client settings.
 
-```bash
-# PowerShell:  $env:ZHIPU_API_KEY="<your-key>"; npx tsx examples/companion/server.ts
-# bash:        ZHIPU_API_KEY=<your-key> npx tsx examples/companion/server.ts
-```
+Windows standalone client:
+
+~~~powershell
+cd sdk\typescript
+powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-NemosCompanion.ps1
+~~~
+
+Run examples\companion\client\dist\portable\Nemos Companion\Nemos Companion.exe after the build. Start Nemos Companion.cmd is a compatibility entry point, not a requirement.
 
 ---
 
@@ -132,7 +146,9 @@ const context = await user.getRelevantContext("help me design a UI")
 
 | Doc | Content |
 |---|---|
-| [`sdk/typescript/README.md`](sdk/typescript/README.md) | SDK usage & API |
+| [sdk/typescript/README.en.md](sdk/typescript/README.en.md) | SDK usage and API |
+| [Companion README](sdk/typescript/examples/companion/README.md) | Client setup, configuration, and packaging |
+| [Agent Runtime design](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Architecture, implementation status, and acceptance baseline |
 | [`docs/architecture-overview.md`](docs/architecture-overview.md) | System design & the five-layer memory model |
 | [`rfcs/`](rfcs/) | Major design decisions |
 | [`bench/README.md`](bench/README.md) | MnemoBench memory-maintenance benchmark (reproducible) |

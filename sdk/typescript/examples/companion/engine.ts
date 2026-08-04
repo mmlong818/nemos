@@ -11,6 +11,7 @@
 // 依赖注入：engine 不关心用哪个 LLM —— SDK 抽取 LLM 由 Nemos 配置，人格回复由 chat 注入。
 
 import type { Nemos } from "../../src/index.js";
+import { groupParticipationFor, selectGroupResponderIds, type GroupReplyRoute } from "./group-routing.js";
 
 export interface Persona {
   id: string;
@@ -35,22 +36,57 @@ export interface Persona {
 /** 话量档位（人际表达的基线性格）。 */
 export type Verbosity = "terse" | "normal" | "talkative";
 
-/** 人格"开口回复"用的 LLM。与 SDK 的抽取 LLM 分开。model/maxTokens 可按角色覆盖。 */
-export type ChatFn = (system: string, user: string, model?: string, maxTokens?: number) => Promise<string>;
+export interface ChatAgentContext {
+  runId?: string;
+  sessionId: string;
+  userId: string;
+  personaId: string;
+  instruction: string;
+  scope: string;
+  memoryScopes: readonly string[];
+  mode: "chat" | "task" | "group";
+  signal?: AbortSignal;
+  runtimeLimits?: {
+    maxRounds: number;
+    maxToolRounds: number;
+    maxTotalTokens: number;
+    maxOutputChars: number;
+  };
+}
+
+/** 人格“开口回复”用的 LLM。与 SDK 的抽取 LLM 分开。model/maxTokens 可按角色覆盖。 */
+export type ChatFn = (
+  system: string,
+  user: string,
+  model?: string,
+  maxTokens?: number,
+  context?: ChatAgentContext,
+) => Promise<string>;
 
 /** 流式回调：onStatus 推进度（查询中/工作中），onToken 推文字增量。 */
 export interface StreamCb {
   onStatus: (s: string) => void;
   onToken: (t: string) => void;
 }
-export type ChatStreamFn = (system: string, user: string, cb: StreamCb, model?: string, maxTokens?: number) => Promise<string>;
+export type ChatStreamFn = (
+  system: string,
+  user: string,
+  cb: StreamCb,
+  model?: string,
+  maxTokens?: number,
+  context?: ChatAgentContext,
+) => Promise<string>;
 
 export interface VoiceMeta {
   durationSec: number;
 }
 export interface SendOptions {
-  /** 作为语音条发送（走 voice-transcript profile；transcript 即 text）。 */
   voice?: VoiceMeta;
+  groupRoute?: GroupReplyRoute;
+  signal?: AbortSignal;
+  runtimeLimits?: ChatAgentContext["runtimeLimits"];
+  runId?: string;
+  sessionId?: string;
 }
 
 export interface CompanionEngineOptions {
@@ -61,6 +97,16 @@ export interface CompanionEngineOptions {
   asyncIngest?: boolean;
   /** 流式回复 LLM（助理用）。不给则 sendStream 退化为一次性发整段。 */
   chatStream?: ChatStreamFn;
+  /** 当前用户称呼设置。由外层服务保存，engine 只在构造提示时读取。 */
+  userProfile?: () => UserAddressingProfile | null;
+  /** 当前角色可用的后台能力/Skills 摘要。由服务层提供，engine 只负责注入聊天上下文。 */
+  capabilityContext?: (personaId: string) => string;
+}
+
+export interface UserAddressingProfile {
+  displayName?: string;
+  spokenName?: string;
+  personaNicknames?: Record<string, string>;
 }
 
 export interface CompanionReply {
@@ -86,6 +132,18 @@ interface Turn {
 const RECENT_MAX = 8;
 const SELF_LAYER = "episodic" as const;
 const SELF_SCOPE = "self";
+const WORK_MAX_REPLY_TOKENS = 6000;
+const WORK_PROMPT_MARKER = /后台专有能力|能力名称：|目标产物格式：|执行要求：/;
+const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  weekday: "long",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
 // 角色「基础记忆」（背景事实：外貌/职业/宠物/住处/经历…）独立 scope，
 // 与 prompt 解耦：prompt 只留抽象性格/语气/边界，具体事实放这里、可召回、可增删、可随交流演变。
 const BIO_SCOPE = "bio";
@@ -177,6 +235,27 @@ export class CompanionEngine {
     return [...ids].map((id) => this.requirePersona(id));
   }
 
+  groupTranscript(groupId: string): string {
+    const turns = this.groupRecent.get(groupId) ?? [];
+    return turns.map((t) => `${t.speaker}${t.voice ? "(语音)" : ""}：${t.text}`).join("\n");
+  }
+
+  rememberSystemReply(userId: string, personaId: string, reply: string): void {
+    const persona = this.requirePersona(personaId);
+    this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+  }
+
+  async addGroupSystemNote(userId: string, groupId: string, text: string): Promise<void> {
+    const scope = groupScope(groupId);
+    await this.nemos.forUser(userId).write({
+      layer: "semantic",
+      content: text,
+      scope,
+      source: { authoritative: true, origin: "group-management" },
+    });
+    this.pushRecent(this.groupRecent, groupId, "系统", text, false);
+  }
+
   /**
    * 给某人格种入"近况"（轻倾诉素材）。写进**独立 namespace**，
    * authoritative=false（对用户而言是虚构），永不污染用户事实库。
@@ -232,6 +311,7 @@ export class CompanionEngine {
       this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice),
       persona.chatModel,
       persona.maxReplyTokens,
+      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
     );
 
     await this.ingestPersonaReply(personaId, scope, reply);
@@ -257,13 +337,115 @@ export class CompanionEngine {
     const userMsg = this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice);
     let reply: string;
     if (this.opts.chatStream) {
-      reply = await this.opts.chatStream(system, userMsg, cb, persona.chatModel, persona.maxReplyTokens);
+      reply = await this.opts.chatStream(
+        system,
+        userMsg,
+        cb,
+        persona.chatModel,
+        persona.maxReplyTokens,
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+      );
     } else {
-      reply = await this.chat(system, userMsg, persona.chatModel, persona.maxReplyTokens);
+      reply = await this.chat(
+        system,
+        userMsg,
+        persona.chatModel,
+        persona.maxReplyTokens,
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+      );
       cb.onToken(reply);
     }
     await this.ingestPersonaReply(personaId, scope, reply);
     this.pushRecent(this.recent, this.rkey(userId, personaId), "对方", text, !!opts.voice);
+    this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    return { personaId, reply, context };
+  }
+
+  /** 把服务重启后续跑得到的回复补回角色记忆和最近对话。 */
+  async recordRecoveredReply(
+    userId: string,
+    personaId: string,
+    scope: string,
+    reply: string,
+  ): Promise<void> {
+    const persona = this.requirePersona(personaId);
+    const targetScope = this.visibleScopes(userId, personaId).includes(scope)
+      ? scope
+      : convScope(userId, personaId);
+    await this.ingestPersonaReply(personaId, targetScope, reply);
+    if (targetScope.startsWith("conv:group:")) {
+      const groupId = targetScope.slice("conv:group:".length);
+      this.pushRecent(this.groupRecent, groupId, persona.name, reply, false);
+    } else {
+      this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    }
+  }
+  /** 人格主动开口：用于定时提醒等场景。不会把提醒触发文本写入用户记忆库。 */
+  async notify(
+    userId: string,
+    personaId: string,
+    text: string,
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId"> = {},
+  ): Promise<CompanionReply> {
+    const persona = this.requirePersona(personaId);
+    const scope = convScope(userId, personaId);
+    const context = await this.recall(userId, personaId, text);
+    const workMode = WORK_PROMPT_MARKER.test(text);
+    const reply = await this.chat(
+      workMode
+        ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)))
+        : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false),
+      workMode
+        ? this.buildWorkUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text)
+        : this.buildProactiveUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text),
+      persona.chatModel,
+      workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens,
+      this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+    );
+
+    await this.ingestPersonaReply(personaId, scope, reply);
+    this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    return { personaId, reply, context };
+  }
+
+  /** 主动开口的流式版：用于能力任务等长输出，边生成边显示。 */
+  async notifyStream(
+    userId: string,
+    personaId: string,
+    text: string,
+    cb: StreamCb,
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId"> = {},
+  ): Promise<CompanionReply> {
+    const persona = this.requirePersona(personaId);
+    const scope = convScope(userId, personaId);
+    const context = await this.recall(userId, personaId, text);
+    const workMode = WORK_PROMPT_MARKER.test(text);
+    const system = workMode
+      ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)))
+      : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false);
+    const userMsg = workMode
+      ? this.buildWorkUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text)
+      : this.buildProactiveUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text);
+    const maxTokens = workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens;
+    const reply = this.opts.chatStream
+      ? await this.opts.chatStream(
+          system,
+          userMsg,
+          cb,
+          persona.chatModel,
+          maxTokens,
+          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+        )
+      : await this.chat(
+          system,
+          userMsg,
+          persona.chatModel,
+          maxTokens,
+          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+        );
+    if (!this.opts.chatStream) cb.onToken(reply);
+
+    await this.ingestPersonaReply(personaId, scope, reply);
     this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
     return { personaId, reply, context };
   }
@@ -280,19 +462,28 @@ export class CompanionEngine {
     opts: SendOptions = {},
   ): Promise<CompanionReply[]> {
     const members = this.groupMembers(groupId);
+    const responderIds = new Set(selectGroupResponderIds(members.map((p) => p.id), opts.groupRoute));
+    const responders = members.filter((p) => responderIds.has(p.id));
     const scope = groupScope(groupId);
 
     await this.ingestUtterance(userId, scope, text, undefined, opts);
     this.pushRecent(this.groupRecent, groupId, "对方", text, !!opts.voice);
 
     const replies: CompanionReply[] = [];
-    for (const p of members) {
+    for (const p of responders) {
       const context = await this.recall(userId, p.id, text);
+      const participation = groupParticipationFor(p.id, opts.groupRoute);
       const raw = await this.chat(
         this.buildSystem(p, context, this.relSetting.get(this.rkey(userId, p.id)), this.turnsOf(userId, p.id), detectCrisis(text)),
-        this.buildGroupUser(groupId, p),
+        this.buildGroupUser(
+          groupId,
+          p,
+          participation.directlyMentioned,
+          participation.coordinating,
+        ),
         p.chatModel,
         p.maxReplyTokens,
+        this.agentContext(userId, p.id, text, scope, "group", opts.signal, opts.runtimeLimits, opts.runId ? opts.runId + "/" + p.id : undefined, opts.sessionId),
       );
       // 群里模型有时会把自己名字写进开头（"团子：…"）；气泡已显示名字，去掉这层重复前缀。
       const reply = raw.replace(new RegExp(`^\\s*${p.name}\\s*[:：]\\s*`), "");
@@ -375,18 +566,71 @@ export class CompanionEngine {
     return scopes;
   }
 
-  private buildSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined, turnCount = 0, crisis = false): string {
+  private agentContext(
+    userId: string,
+    personaId: string,
+    instruction: string,
+    scope: string,
+    mode: ChatAgentContext["mode"],
+    signal?: AbortSignal,
+    runtimeLimits?: ChatAgentContext["runtimeLimits"],
+    runId?: string,
+    sessionId?: string,
+  ): ChatAgentContext {
+    return {
+      userId,
+      runId,
+      sessionId: sessionId ?? scope,
+      personaId,
+      instruction,
+      scope,
+      memoryScopes: this.visibleScopes(userId, personaId),
+      mode,
+      signal,
+      runtimeLimits,
+    };
+  }
+
+  private isExecutionAssistant(persona: Persona): boolean {
+    return persona.id === "zhiwei" || persona.tag === "个人助理";
+  }
+
+  private speechModeBlock(persona: Persona): string[] {
+    if (this.isExecutionAssistant(persona)) {
+      return [
+        `【知微的说话方式 —— 最高优先】`,
+        `你是 AI 个人助理，不要模仿人类同事排期。用户让你整理、总结、查询、分析、写作、转换、纪要、跟踪或交付时，必须在当前回复里直接执行并给出结果。`,
+        `不要把"我接下来会怎么做"当成结果；用户问能不能今晚 / 明天 / 稍后赶出来时，也要直接给当前可交付正文。`,
+        `格式未指定时默认交付 Markdown，不要停下来问格式；只有缺少会改变结论的关键信息时才问，否则先交付可用版本。`,
+        `禁止说"今晚赶出来"、"今晚交付"、"明天给你"、"晚点发你"、"回头整理"、"我先记着"、"我盯着"、"稍后提交"、"尽快处理"、"马上开写"这类拖延承诺。`,
+        `如果缺少必要信息、权限、工具或可靠来源，就明确列出缺口，并交付当前能完成的部分或核验入口。`,
+        `保持知微的女性助理气质：清楚、细腻、可靠，有温度但不撒娇；像微信对话，但交付优先，不要为了像朋友而牺牲结果。`,
+      ];
+    }
     return [
-      ...(crisis ? [SAFETY_PREAMBLE] : []), // 危机信号 → 顶置强制安全指令，凌驾人设
-      persona.persona, // 人设已自我介绍（「你是X，…」），不重复加前缀
-      ``,
       `【你怎么说话 —— 最高优先，违反就完全出戏】`,
       `你是 ta 的朋友 / 亲近的人，在微信上聊天。你不是 AI 助手、不是客服、不是搜索引擎，绝不能像它们那样说话：`,
       `· 绝不列 1. 2. 3. 式的条目建议，绝不写"根据我查到的资料 / 给你几个建议"——朋友不会这样讲话。`,
       `· 绝不用空泛问题收尾："有什么想聊的吗 / 还有什么想说的 / 最近怎么样 / 需要我帮你做什么吗"——这是客服腔。真朋友常常只是接话、共情、吐槽、分享，根本不提问。`,
       `· 要回应"今天好累""有点烦"这种，就先共情一句人话（"啊…听着就够呛"），别立刻给方案；想了解就问一个具体的小问题（"咋了，是事多还是人烦"），不是泛泛地问。`,
       `· 短、口语、像发微信。一条能说完就别拆成长篇；可以用语气词、可以不完整。`,
+    ];
+  }
+
+  private buildSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined, turnCount = 0, crisis = false): string {
+    return [
+      ...(crisis ? [SAFETY_PREAMBLE] : []), // 危机信号 → 顶置强制安全指令，凌驾人设
+      persona.persona, // 人设已自我介绍（「你是X，…」），不重复加前缀
+      ``,
+      ...this.userAddressingBlock(persona),
+      ``,
+      ...this.speechModeBlock(persona),
       ...(relSetting ? [``, `【你和 ta 现在的关系】${relSetting}`] : []),
+      ``,
+      `【当前时间】${currentTimeBlock()}`,
+      `涉及日期、星期、今天/明天/下周、截止时间或预约时间时，以这里的本机时间为准。`,
+      `如果 ta 没给具体日期，不要凭空假设某个星期几；要么问清楚，要么明确写"日期待确认"。`,
+      ...this.capabilityContextBlock(persona),
       ``,
       this.buildStyle(persona, turnCount),
       ``,
@@ -424,21 +668,114 @@ export class CompanionEngine {
     ].join("\n");
   }
 
+  private buildWorkSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined): string {
+    return [
+      persona.persona,
+      ``,
+      ...this.userAddressingBlock(persona),
+      ``,
+      `Task delivery mode: deliver the result directly. This is not casual chat.`,
+      `Keep the persona voice, but prioritize delivery quality. Markdown headings, tables, lists, code blocks, and complete HTML are allowed.`,
+      `Do not only say you will do it. Do not hand the task back to the user.`,
+      `Do not output an execution plan instead of the deliverable. If no format is specified, deliver Markdown by default.`,
+      `Never promise future delivery such as tonight, tomorrow, later, soon, or as soon as possible. Do not say you will start writing. If blocked, state the blocker and deliver the usable partial result now.`,
+      `First identify the source type the task needs: official system, structured API, merchant/platform page, map/review service, news/announcement, community source, or general web page.`,
+      `For live prices, inventory, remaining tickets, room status, opening hours, menu prices, or booking slots, general web snippets are only leads, not confirmed truth. Prefer first-party or verifiable sources.`,
+      `Current local time: ${currentTimeBlock()}`,
+      `Do not invent weekdays, dates, deadlines, booking times, or recurrence limits. If the user did not specify a date/time, mark it as missing or ask for it.`,
+      `If reliable access is unavailable, downgrade clearly, give verification links or integration steps, and do not fabricate.`,
+      `If information is incomplete, still deliver a useful version based on known constraints and list the gaps.`,
+      ...this.capabilityContextBlock(persona),
+      ...(relSetting ? [``, `Relationship context: ${relSetting}`] : []),
+      ``,
+      `Known facts about the user. Use only if helpful:`,
+      ctx.userFacts.trim() || `(none)`,
+      ``,
+      `Persona self-state. Keep consistency, but never override task requirements:`,
+      ctx.selfState.trim() || `(none)`,
+    ].join("\n");
+  }
+
   private buildUserTurns(turns: Turn[], text: string, voice: boolean): string {
     const history = turns.map((t) => `${t.speaker}${t.voice ? "(语音)" : ""}：${t.text}`).join("\n");
     const now = `对方${voice ? "(语音)" : ""}：${text}`;
     return history ? `${history}\n${now}` : now;
   }
 
-  private buildGroupUser(groupId: string, persona: Persona): string {
-    const members = this.groupMembers(groupId).map((p) => p.name).join("、");
-    const turns = this.groupRecent.get(groupId) ?? [];
-    const transcript = turns
-      .map((t) => `${t.speaker}${t.voice ? "(语音)" : ""}：${t.text}`)
-      .join("\n");
+  private userAddressingBlock(persona: Persona): string[] {
+    const profile = this.opts.userProfile?.();
+    const displayName = (profile?.displayName || "").trim();
+    if (!displayName) return [];
+    const spokenName = (profile?.spokenName || displayName).trim();
+    const specific = (profile?.personaNicknames?.[persona.id] || "").trim();
+    return [
+      `【对方称呼】`,
+      `ta 希望默认被称呼为「${displayName}」。你可以按自己的人设做一点自然、克制的亲昵称呼变化，但必须清爽、尊重、不过界。`,
+      spokenName !== displayName ? `「${displayName}」不适合频繁朗读；需要口头称呼或语音播报时，优先用「${spokenName}」或直接用「你」。` : `语音播报时也可以自然称呼为「${spokenName}」，但不要每句话都叫名字。`,
+      specific
+        ? `ta 对你单独指定的称呼是「${specific}」，你和 ta 对话时优先使用这个称呼。`
+        : `如果 ta 明确要求你以后用某个特定称呼，就自然接受并按那个称呼回应。`,
+      `禁止露骨、色情、低俗或让人不适的称呼；不要每句话都硬塞称呼，像真实微信聊天一样自然使用。`,
+    ];
+  }
+
+  private capabilityContextBlock(persona: Persona): string[] {
+    const context = this.opts.capabilityContext?.(persona.id)?.trim();
+    if (!context) return [];
+    return [
+      ``,
+      `【你可调用的后台能力和 Skills】`,
+      context,
+      `如果 ta 问"你有什么能力 / 这个 Skill 什么时候调用 / 能不能用某个 Skill"，要基于这里回答；不要说自己不知道。`,
+      `如果 ta 明确要求执行这些能力，应该直接执行或引导到「能力与任务」运行，不要只把它当普通闲聊。`,
+    ];
+  }
+
+  private buildProactiveUser(turns: Turn[], text: string): string {
+    const history = turns.map((t) => `${t.speaker}${t.voice ? "(语音)" : ""}：${t.text}`).join("\n");
+    const now = [
+      `（这是你需要主动告诉对方的事项，不是对方刚刚发来的消息。）`,
+      `请你像正常聊天一样自然开口，不要暴露"系统提醒 / 触发器 / 定时任务"这些内部机制。`,
+      `不要写标题，不要写免责声明模板，不要说"不构成投资建议"这类生硬句子。`,
+      `你可以简短提醒交易纪律和风险边界，但不要给具体买入 / 卖出建议。`,
+      ``,
+      text,
+    ].join("\n");
+    return history ? `${history}\n${now}` : now;
+  }
+
+  private buildWorkUser(turns: Turn[], text: string): string {
+    const history = turns.slice(-4).map((t) => `${t.speaker}${t.voice ? "(语音)" : ""}：${t.text}`).join("\n");
+    const now = [
+      `（这是一个需要交付结果的任务。请直接输出最终结果正文。）`,
+      ``,
+      text,
+    ].join("\n");
+    return history ? `${history}\n${now}` : now;
+  }
+
+  private buildGroupUser(
+    groupId: string,
+    persona: Persona,
+    directlyMentioned = false,
+    coordinating = false,
+  ): string {
+    const memberList = this.groupMembers(groupId);
+    const members = memberList.map((p) => p.name).join("、");
+    const transcript = this.groupTranscript(groupId);
+    const coordinatorPrompt = coordinating
+      ? [
+          "你在这个群里是统一承载者和调度者：默认由你回应用户，避免所有角色一起刷屏。",
+          "你可以综合群内专家的视角来帮助用户，例如战略、产品、体验、技术、测试、营销、财务等；但不要假装其他专家已经逐字发言。",
+          "如果用户明确 @ 某位成员，那一轮应由被 @ 的成员直接回复；如果用户只是向群里说话，你要先接住需求、判断需要哪些专家视角，并给出整合后的回复或交付物。",
+          "涉及搜索、OCR、文档、Skills、定时任务和交付物时，你仍然是执行入口；能执行就当场交付，不能执行就说明缺少的信息或权限。",
+        ].join("\n")
+      : "";
     return (
       `这是一个群聊，成员有：${members}，还有对方（用户）。\n` +
-      `你只以「${persona.name}」的身份回应，简短自然，不要替别人说话。\n\n` +
+      `你只以「${persona.name}」的身份回应，简短自然，不要替别人说话。\n` +
+      (coordinatorPrompt ? `${coordinatorPrompt}\n\n` : "\n") +
+      (directlyMentioned ? `对方刚刚 @ 了你，这一轮只有你需要及时回应；不要替其他群成员回复。\n\n` : "") +
       transcript
     );
   }
@@ -518,4 +855,8 @@ export class CompanionEngine {
     while (arr.length > RECENT_MAX) arr.shift();
     store.set(key, arr);
   }
+}
+
+function currentTimeBlock(): string {
+  return `${TIME_FORMAT.format(new Date())}（Asia/Shanghai）`;
 }

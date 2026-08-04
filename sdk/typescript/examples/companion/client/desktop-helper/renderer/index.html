@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>&#26700;&#38754;&#23567;&#24037;&#20855;</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="theme-candy">
+    <main class="shell">
+      <header class="titlebar">
+        <div class="drag">
+          <strong>&#26700;&#38754;&#23567;&#24037;&#20855;</strong>
+          <i></i>
+          <span id="saveState">&#21551;&#21160;&#20013;</span>
+        </div>
+        <div class="window-actions">
+          <button id="pinBtn" class="icon-btn" title="pin">&#8599;</button>
+          <button id="minBtn" class="icon-btn" title="minimize">-</button>
+          <button id="closeBtn" class="icon-btn danger" title="close">x</button>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="tools">
+        <button class="tab active" data-tab="translate">&#32763;&#35793;</button>
+        <button class="tab" data-tab="speech">&#35821;&#38899;</button>
+        <button class="tab icon-tab" data-tab="settings" title="&#35774;&#32622;" aria-label="&#35774;&#32622;">&#9881;</button>
+      </nav>
+
+      <section id="translate" class="panel active">
+        <div class="section-head">
+          <strong>&#32763;&#35793;</strong>
+          <button id="pasteTranslateBtn" class="secondary">&#35835;&#21462;&#21098;&#36148;&#26495;</button>
+        </div>
+        <textarea id="translateSource" class="translate-area" spellcheck="false" placeholder="&#25226;&#35201;&#32763;&#35793;&#30340;&#20013;&#25991;&#25110;&#33521;&#25991;&#25918;&#21040;&#36825;&#37324;&#12290;"></textarea>
+        <div class="row">
+          <button id="translateBtn" class="record-button">&#10022; &#32763;&#35793;</button>
+          <button id="copyTranslationBtn" class="secondary">&#22797;&#21046;&#32467;&#26524;</button>
+        </div>
+        <div id="translationBox" class="result-box muted">&#32763;&#35793;&#32467;&#26524;&#20250;&#26174;&#31034;&#22312;&#36825;&#37324;&#12290;</div>
+      </section>
+
+      <section id="speech" class="panel">
+        <div class="voice-actions">
+          <button id="recordBtn" class="record-button">&#9835; &#24320;&#22987;&#24405;&#38899;</button>
+          <button id="polishBtn" class="polish-button">&#10022; &#28070;&#33394;&#25991;&#23383;</button>
+        </div>
+        <div class="wave-row">
+          <canvas id="waveCanvas" class="waveform" width="640" height="72" aria-label="&#24405;&#38899;&#38899;&#27874;"></canvas>
+          <span id="recordTimer" class="record-timer">00:00</span>
+        </div>
+
+        <div class="section-head">
+          <strong>&#21407;&#25991;</strong>
+        </div>
+        <div class="text-card">
+          <div class="card-head">
+            <div class="mini-actions">
+              <button id="copySpeechBtn" class="icon-only" title="&#22797;&#21046;&#21407;&#25991;" aria-label="&#22797;&#21046;&#21407;&#25991;">&#10697;</button>
+            </div>
+          </div>
+          <textarea id="speechText" class="speech-area" placeholder="&#28857;&#20987;&#24320;&#22987;&#24405;&#38899;&#21518;&#20250;&#23454;&#26102;&#36861;&#21152;&#36716;&#20889;&#65307;&#20063;&#21487;&#20197;&#31896;&#36148;&#25991;&#23383;&#21518;&#30452;&#25509;&#28070;&#33394;&#12290;"></textarea>
+        </div>
+        <div id="speechStatus" class="hint">&#35831;&#20808;&#22312;&#35774;&#32622;&#37324;&#22635;&#20837;&#38463;&#37324;&#20113;&#30334;&#28860; API Key&#12290;</div>
+      </section>
+
+      <section id="settings" class="panel">
+        <div class="toolbar">
+          <button id="saveSettingsBtn">&#20445;&#23384;&#35774;&#32622;</button>
+          <button id="testSettingsBtn" class="secondary">&#26816;&#26597;&#29366;&#24577;</button>
+        </div>
+        <label class="field">
+          <span>&#35821;&#38899;&#35782;&#21035;&#27169;&#24335;</span>
+          <select id="speechModeSelect">
+            <option value="aliyun-funasr">&#38463;&#37324;&#20113; FunASR</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>&#38463;&#37324;&#20113;&#30334;&#28860; API Key</span>
+          <input id="aliyunApiKeyInput" class="text-input" type="password" placeholder="&#22635;&#20837;&#21518;&#20445;&#23384;&#65292;&#20250;&#21152;&#23494;&#20445;&#23384;&#21040;&#26412;&#22320;" />
+        </label>
+        <label class="field">
+          <span>&#38463;&#37324;&#20113; FunASR Python</span>
+          <input id="aliyunFunasrPythonInput" class="text-input" placeholder="C:\path\to\python.exe" />
+        </label>
+        <label class="field">
+          <span>&#38463;&#37324;&#20113; FunASR &#27169;&#22411;</span>
+          <input id="aliyunFunasrModelInput" class="text-input" value="fun-asr-realtime" />
+        </label>
+        <label class="field">
+          <span>&#38463;&#37324;&#20113; FunASR WebSocket</span>
+          <input id="aliyunFunasrWebSocketInput" class="text-input" value="wss://dashscope.aliyuncs.com/api-ws/v1/inference" />
+        </label>
+        <label class="field">
+          <span>&#28070;&#33394;&#27169;&#22411;</span>
+          <input id="polishModelInput" class="text-input" value="qwen-plus" />
+        </label>
+        <div class="data-path">
+          <strong>&#26412;&#22320;&#25968;&#25454;&#30446;&#24405;</strong>
+          <code id="dataDirText"></code>
+        </div>
+        <button id="openDataDirBtn" class="wide secondary">&#25171;&#24320;&#25968;&#25454;&#30446;&#24405;</button>
+        <div id="settingsStatus" class="hint">&#25968;&#25454;&#20250;&#20445;&#23384;&#21040;&#19978;&#38754;&#30340;&#26412;&#22320;&#30446;&#24405;&#12290;</div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
