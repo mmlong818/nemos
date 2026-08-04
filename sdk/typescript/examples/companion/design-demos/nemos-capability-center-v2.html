@@ -1,0 +1,1741 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Nemos · 能力中心设计原型</title>
+  <!--
+    当前假设：
+    1. 这是 Nemos Companion 的独立能力中心，不是公开市场或开发者安装页。
+    2. 普通用户先看到熟悉的动作和结果；专业说明放在第二层。
+    3. PPT、正式文档、网页报告分别拥有版式链路，不再只是同一个格式下拉框。
+    4. 记忆系统每次最多应用 4 项交付习惯；当前任务明确要求优先。
+    5. 本原型不连接生产接口，但会完整模拟准备、执行和完成流程。
+
+    设计理由：
+    - 保留现有 Nemos 的柔和感，但把紫粉渐变收敛为单一莓红强调色。
+    - 用三栏工作台替代超长弹窗，分开事情分类、可做事项和结果详情。
+    - 不展示安装方式、来源地址、内部 Skill 类型或原始提示词。
+  -->
+  <style>
+    :root {
+      --canvas: #ece8df;
+      --paper: #fffcf7;
+      --paper-2: #f7f3ec;
+      --paper-3: #eee8de;
+      --ink: #20221f;
+      --ink-2: #464a44;
+      --muted: #686d66;
+      --subtle: #8f938c;
+      --line: #ddd7cd;
+      --line-strong: #c9c1b6;
+      --accent: #b33f72;
+      --accent-dark: #84264f;
+      --accent-soft: #fae8f0;
+      --success: #2f6a57;
+      --success-soft: #e4f1eb;
+      --warning: #966128;
+      --warning-soft: #f7ebd8;
+      --danger: #a33d3d;
+      --rail: #242824;
+      --rail-muted: #aeb5ad;
+      --shadow: 0 18px 48px rgba(52, 47, 39, .12);
+      --shadow-soft: 0 7px 20px rgba(52, 47, 39, .07);
+      --radius: 14px;
+      --font-body: "Segoe UI Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-display: Georgia, "Noto Serif SC", "Songti SC", serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.55;
+      text-rendering: optimizeLegibility;
+    }
+    button, input, textarea { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    button { touch-action: manipulation; }
+    button:disabled { cursor: not-allowed; opacity: .52; }
+    svg { display: block; }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 82px minmax(0, 1fr);
+    }
+
+    .rail {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 18px 10px 14px;
+      color: #f4f1e9;
+      background: var(--rail);
+      border-right: 1px solid rgba(255,255,255,.08);
+    }
+    .brand-mark {
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 18px;
+      border: 1px solid rgba(255,255,255,.16);
+      color: #fff9f2;
+      background: #30352f;
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-style: italic;
+      border-radius: 50%;
+    }
+    .rail-nav { width: 100%; display: grid; gap: 5px; }
+    .rail-spacer { flex: 1; }
+    .rail-button {
+      width: 62px;
+      min-height: 54px;
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      padding: 6px 4px;
+      border: 0;
+      border-radius: 10px;
+      color: var(--rail-muted);
+      background: transparent;
+      cursor: pointer;
+    }
+    .rail-button svg { width: 20px; height: 20px; }
+    .rail-button span { font-size: 10px; letter-spacing: .04em; }
+    .rail-button:hover { color: #fff; background: rgba(255,255,255,.07); }
+    .rail-button.active {
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .shell {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: 72px minmax(0, 1fr);
+      background: var(--paper-2);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 0 28px;
+      background: rgba(255,252,247,.92);
+      border-bottom: 1px solid var(--line);
+    }
+    .wordmark {
+      min-width: 170px;
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -.025em;
+    }
+    .wordmark small {
+      margin-left: 9px;
+      color: var(--subtle);
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .view-tabs { display: flex; align-self: stretch; gap: 4px; }
+    .view-tab {
+      position: relative;
+      min-width: 78px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .view-tab::after {
+      content: "";
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 0;
+      height: 3px;
+      background: transparent;
+    }
+    .view-tab.active { color: var(--ink); font-weight: 650; }
+    .view-tab.active::after { background: var(--accent); }
+    .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .avatar {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: white;
+      background: #3d443d;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .quiet-button, .primary-button, .icon-button {
+      min-height: 42px;
+      border-radius: 9px;
+      cursor: pointer;
+    }
+    .quiet-button {
+      padding: 0 15px;
+      border: 1px solid var(--line-strong);
+      background: var(--paper);
+    }
+    .quiet-button:hover { border-color: var(--ink-2); }
+    .primary-button {
+      padding: 0 18px;
+      border: 1px solid var(--accent);
+      color: white;
+      background: var(--accent);
+      font-weight: 650;
+      letter-spacing: .015em;
+    }
+    .primary-button:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+    .icon-button {
+      width: 42px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .screen { min-height: 0; overflow: hidden; }
+    .screen[hidden] { display: none; }
+    .capability-screen {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+    .page-head {
+      display: flex;
+      align-items: end;
+      gap: 24px;
+      padding: 25px 28px 20px;
+    }
+    .page-head h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(28px, 2.4vw, 39px);
+      line-height: 1.08;
+      letter-spacing: -.028em;
+      text-wrap: balance;
+    }
+    .page-head p {
+      max-width: 560px;
+      margin: 5px 0 0;
+      color: var(--muted);
+      text-wrap: pretty;
+    }
+    .goal-side {
+      width: min(440px, 38vw);
+      margin-left: auto;
+    }
+    .goal-box {
+      width: 100%;
+      position: relative;
+    }
+    .goal-box:focus-within input {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .goal-box input {
+      width: 100%;
+      height: 46px;
+      padding: 0 48px 0 16px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    .goal-box button {
+      position: absolute;
+      right: 5px;
+      top: 5px;
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 8px;
+      color: white;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    .goal-feedback {
+      min-height: 20px;
+      margin: 7px 3px 0;
+      color: var(--success);
+      font-size: 11px;
+      letter-spacing: .01em;
+    }
+    .goal-feedback.error { color: var(--danger); }
+
+    .recent-task-strip {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin: 0 20px 14px;
+      padding: 13px 16px;
+      border: 1px solid var(--line);
+      background: #f4efe6;
+    }
+    .recent-task-copy { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 3px 12px; }
+    .recent-task-copy .recent-label {
+      grid-row: 1 / 3;
+      align-self: center;
+      color: var(--accent-dark);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .recent-task-copy strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    .recent-task-copy small { color: var(--muted); font-size: 11px; letter-spacing: .01em; }
+    .recent-task-actions { margin-left: auto; display: flex; gap: 8px; }
+    .recent-task-actions .quiet-button { min-height: 38px; }
+
+    .workspace {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(340px, 390px) minmax(520px, 1fr);
+      margin: 0 20px 20px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+    }
+    .catalog, .detail { min-height: 0; overflow: auto; }
+
+    .catalog { border-right: 1px solid var(--line); }
+    .catalog-head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 15px 16px;
+      background: rgba(255,252,247,.96);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    .catalog-head-copy { min-width: 0; }
+    .catalog-head-copy strong { display: block; color: var(--ink); font-size: 13px; letter-spacing: .01em; }
+    .catalog-head-copy span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; letter-spacing: .01em; }
+    .catalog-toggle {
+      flex: 0 0 auto;
+      min-height: 44px;
+      padding: 0 11px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      color: var(--ink-2);
+      background: var(--paper-2);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: .02em;
+    }
+    .catalog-toggle:hover { border-color: #d6a4ba; background: var(--accent-soft); }
+    .ability-list { display: grid; }
+    .ability-row[hidden] { display: none; }
+    .ability-row {
+      position: relative;
+      width: 100%;
+      min-height: 92px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      padding: 16px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+    .ability-row::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 14px;
+      bottom: 14px;
+      width: 3px;
+      background: transparent;
+    }
+    .ability-row:hover { background: var(--paper-2); }
+    .ability-row.active { background: #fff7fa; }
+    .ability-row.active::before { background: var(--accent); }
+    .ability-name { display: block; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+    .ability-summary { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .ability-meta { display: flex; gap: 8px; margin-top: 9px; color: var(--subtle); font-size: 11px; }
+    .readiness {
+      align-self: start;
+      padding: 3px 7px;
+      border-radius: 999px;
+      color: var(--success);
+      background: var(--success-soft);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+
+    .detail { padding: 20px clamp(22px, 3vw, 44px) 0; scroll-behavior: smooth; }
+    .flow-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0 0 20px;
+      padding: 0;
+      list-style: none;
+    }
+    .flow-step {
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      color: var(--subtle);
+      background: var(--paper-2);
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: .02em;
+    }
+    .flow-step span {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--muted);
+      background: var(--paper-3);
+      font-variant-numeric: tabular-nums;
+    }
+    .flow-step.active { color: var(--accent-dark); border-color: #e1a8c1; background: var(--accent-soft); }
+    .flow-step.active span { color: white; background: var(--accent); }
+    .flow-step.done { color: var(--success); border-color: #bdd4ca; background: #f0f6f2; }
+    .flow-step.done span { color: white; background: var(--success); }
+    .detail-top { display: flex; align-items: start; gap: 24px; }
+    .detail-copy { min-width: 0; flex: 1; }
+    .detail-copy h2 {
+      margin: 5px 0 7px;
+      font-family: var(--font-display);
+      font-size: 30px;
+      line-height: 1.1;
+      letter-spacing: -.025em;
+    }
+    .detail-copy p { max-width: 56ch; margin: 0; color: var(--muted); }
+    .kind-label {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border: 1px solid #e1a8c1;
+      border-radius: 999px;
+      color: var(--accent-dark);
+      background: var(--accent-soft);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .output-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .output-chip {
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--ink-2);
+      background: var(--paper-2);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .stage {
+      margin-top: 22px;
+      padding: 16px;
+      border: 1px solid var(--line-strong);
+      background: #e7e2d9;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.55);
+    }
+    .stage-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: .02em;
+    }
+    .stage-toolbar strong { color: var(--ink-2); }
+    .slide-sheet {
+      aspect-ratio: 16 / 9;
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      overflow: hidden;
+      color: #f8f4ec;
+      background: #252a25;
+      box-shadow: 0 14px 32px rgba(49,45,38,.2);
+    }
+    .slide-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 8%;
+    }
+    .slide-kicker { color: #d5a3b9; font-size: clamp(8px, .75vw, 12px); letter-spacing: .12em; text-transform: uppercase; }
+    .slide-title {
+      max-width: 12ch;
+      margin-top: 5%;
+      font-family: var(--font-display);
+      font-size: clamp(22px, 3.1vw, 52px);
+      line-height: 1.02;
+      letter-spacing: -.035em;
+      text-wrap: balance;
+    }
+    .slide-subtitle { margin-top: 7%; color: #c8cec7; font-size: clamp(8px, .82vw, 14px); }
+    .slide-structure {
+      display: grid;
+      grid-template-rows: repeat(3, 1fr);
+      gap: 1px;
+      background: rgba(255,255,255,.15);
+    }
+    .slide-block { display: flex; flex-direction: column; justify-content: end; padding: 13%; background: #313731; }
+    .slide-block:nth-child(2) { background: #f5e7ed; color: #3d2530; }
+    .slide-block:nth-child(3) { background: var(--accent); }
+    .slide-block small { font-size: clamp(7px, .65vw, 10px); letter-spacing: .08em; }
+    .slide-block b { margin-top: 4px; font-family: var(--font-display); font-size: clamp(14px, 1.35vw, 22px); line-height: 1; }
+
+    .style-section { margin-top: 23px; }
+    .section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+    .section-title h3 { margin: 0; font-size: 13px; letter-spacing: .02em; }
+    .section-title span { color: var(--subtle); font-size: 11px; }
+    .style-pills { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); border: 1px solid var(--line); }
+    .style-pill {
+      min-height: 54px;
+      border: 0;
+      border-right: 1px solid var(--line);
+      background: transparent;
+      cursor: pointer;
+    }
+    .style-pill:last-child { border-right: 0; }
+    .style-pill:hover { background: var(--paper-2); }
+    .style-pill.active { color: var(--accent-dark); background: var(--accent-soft); font-weight: 700; }
+
+    .memory-strip {
+      display: grid;
+      grid-template-columns: auto minmax(0,1fr) auto auto;
+      align-items: center;
+      gap: 12px;
+      margin-top: 18px;
+      padding: 13px 14px;
+      border: 1px solid #bdd4ca;
+      background: #f0f6f2;
+    }
+    .memory-symbol {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: white;
+      background: var(--success);
+    }
+    .memory-copy strong { display: block; font-size: 12px; }
+    .memory-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .memory-adjust {
+      min-height: 30px;
+      padding: 0 9px;
+      border: 1px solid #bdd4ca;
+      border-radius: 7px;
+      color: var(--success);
+      background: transparent;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .toggle {
+      width: 42px;
+      height: 24px;
+      padding: 2px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--success);
+      cursor: pointer;
+    }
+    .toggle::after {
+      content: "";
+      display: block;
+      width: 20px;
+      height: 20px;
+      margin-left: 18px;
+      border-radius: 50%;
+      background: white;
+      transition: margin .18s ease;
+    }
+    .toggle[aria-pressed="false"] { background: var(--line-strong); }
+    .toggle[aria-pressed="false"]::after { margin-left: 0; }
+
+    .material-section {
+      margin-top: 18px;
+      padding: 16px;
+      border: 1px solid var(--line-strong);
+      background: var(--paper-2);
+    }
+    .material-section[hidden] { display: none; }
+    .task-brief { display: grid; gap: 7px; }
+    .task-brief > span {
+      color: var(--ink-2);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    .task-brief textarea {
+      width: 100%;
+      min-height: 88px;
+      resize: vertical;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.55;
+    }
+    .material-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .material-button, .material-state {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px dashed var(--line-strong);
+      color: var(--ink-2);
+      background: var(--paper);
+      text-align: left;
+    }
+    .material-button { cursor: pointer; }
+    .material-button:hover { border-color: var(--accent); background: #fff7fa; }
+    .material-button svg { width: 20px; height: 20px; color: var(--accent-dark); }
+    .material-button strong, .material-state strong { display: block; font-size: 12px; }
+    .material-button small, .material-state span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .material-state.ready { border-style: solid; border-color: #bdd4ca; background: #f0f6f2; }
+    .material-state.ready strong { color: var(--success); }
+
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 0 24px;
+      margin-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .spec { padding: 13px 0; border-bottom: 1px solid var(--line); }
+    .spec dt { color: var(--subtle); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .spec dd { margin: 5px 0 0; color: var(--ink-2); font-size: 12px; }
+    .detail-actions {
+      position: sticky;
+      bottom: 0;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      margin: 22px calc(clamp(22px, 3vw, 44px) * -1) 0;
+      padding: 13px clamp(22px, 3vw, 44px);
+      border-top: 1px solid var(--line);
+      background: rgba(255,252,247,.95);
+      backdrop-filter: blur(12px);
+    }
+    .action-copy { min-width: 0; margin-right: auto; }
+    .action-copy strong { display: block; font-size: 12px; }
+    .action-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+
+    .run-screen, .completed-screen {
+      height: 100%;
+      overflow: auto;
+      padding: clamp(24px, 4vw, 54px);
+    }
+    .flow-page {
+      width: min(920px, 100%);
+      margin: 0 auto;
+    }
+    .flow-page-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+    }
+    .flow-page-head h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(30px, 3vw, 44px);
+      line-height: 1.08;
+      letter-spacing: -.028em;
+    }
+    .flow-page-head p { max-width: 56ch; margin: 7px 0 0; color: var(--muted); }
+    .run-empty {
+      padding: clamp(28px, 5vw, 54px);
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+      text-align: center;
+    }
+    .run-empty[hidden] { display: none; }
+    .run-empty h2 { margin: 0; font-family: var(--font-display); font-size: 28px; }
+    .run-empty p { max-width: 46ch; margin: 8px auto 18px; color: var(--muted); }
+    .run-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr);
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+    }
+    .run-main { padding: clamp(22px, 4vw, 38px); }
+    .run-side { padding: clamp(20px, 3vw, 30px); border-left: 1px solid var(--line); background: var(--paper-2); }
+    .run-label { color: var(--accent-dark); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .run-main h2 { margin: 9px 0 7px; font-family: var(--font-display); font-size: 30px; }
+    .run-main p { margin: 0; color: var(--muted); }
+    .progress-track { height: 8px; margin-top: 28px; overflow: hidden; border-radius: 999px; background: var(--paper-3); }
+    .progress-bar { width: 18%; height: 100%; border-radius: inherit; background: var(--accent); transition: width .28s ease; }
+    .progress-meta { display: flex; justify-content: space-between; margin-top: 9px; color: var(--muted); font-size: 11px; }
+    .run-status-list { margin: 0; padding: 0; list-style: none; }
+    .run-status {
+      position: relative;
+      padding: 4px 0 19px 28px;
+      color: var(--subtle);
+      font-size: 12px;
+    }
+    .run-status::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 4px;
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      background: var(--paper);
+    }
+    .run-status::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: 21px;
+      bottom: 0;
+      border-left: 1px solid var(--line);
+    }
+    .run-status:last-child::after { display: none; }
+    .run-status.active { color: var(--accent-dark); font-weight: 700; }
+    .run-status.active::before { border: 4px solid var(--accent-soft); background: var(--accent); }
+    .run-status.done { color: var(--success); }
+    .run-status.done::before { border-color: var(--success); background: var(--success); box-shadow: inset 0 0 0 4px #f0f6f2; }
+    .run-footnote { margin-top: 19px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+
+    .history-guide {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      background: #f4efe6;
+    }
+    .history-guide div { min-width: 0; padding: 13px 15px; border-right: 1px solid var(--line); }
+    .history-guide div:last-child { border-right: 0; }
+    .history-guide strong { display: block; font-size: 12px; }
+    .history-guide span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .history-group-label { margin: 20px 2px 9px; color: var(--subtle); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .completed-list { display: grid; gap: 10px; }
+    .completed-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 20px;
+      padding: 17px 18px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+    }
+    .completed-row[hidden] { display: none; }
+    .completed-row strong { display: block; font-size: 15px; }
+    .completed-row span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .completed-actions { display: flex; align-items: center; gap: 8px; }
+    .completed-row .quiet-button { min-height: 38px; white-space: nowrap; }
+
+    .artifact-screen {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr) 280px;
+    }
+    .artifact-list, .artifact-inspector { background: var(--paper); overflow: auto; }
+    .artifact-list { border-right: 1px solid var(--line); }
+    .artifact-inspector { border-left: 1px solid var(--line); padding: 22px; }
+    .panel-head { padding: 22px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-family: var(--font-display); font-size: 24px; }
+    .panel-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .artifact-row {
+      width: 100%;
+      padding: 16px 20px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+    .artifact-row.active { background: var(--accent-soft); }
+    .artifact-row strong { display: block; }
+    .artifact-row span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .artifact-workbench { min-width: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); background: #ded9cf; }
+    .slide-sorter { padding: 18px 12px; overflow: auto; border-right: 1px solid #cbc4b9; }
+    .thumb {
+      position: relative;
+      display: block;
+      width: 100%;
+      aspect-ratio: 16/9;
+      margin-bottom: 12px;
+      border: 2px solid transparent;
+      background: #303630;
+      box-shadow: 0 3px 8px rgba(45,40,34,.14);
+      cursor: pointer;
+    }
+    .thumb::after { content: attr(data-page); position: absolute; left: -8px; top: -6px; color: var(--muted); font-size: 9px; }
+    .thumb:nth-child(2) { background: linear-gradient(90deg,#f9f4ec 62%,#b33f72 62%); }
+    .thumb:nth-child(3) { background: linear-gradient(#2f6a57 34%,#f9f4ec 34%); }
+    .thumb:nth-child(4) { background: #f9f4ec; }
+    .thumb.active { border-color: var(--accent); }
+    .canvas-area { min-width: 0; display: grid; place-items: center; padding: 34px; overflow: auto; }
+    .editor-slide {
+      width: min(980px, 100%);
+      aspect-ratio: 16/9;
+      display: grid;
+      grid-template-columns: 1.05fr .95fr;
+      color: #f9f4ed;
+      background: #252b26;
+      box-shadow: var(--shadow);
+    }
+    .editor-slide-copy { display: flex; flex-direction: column; justify-content: center; padding: 9%; }
+    .editor-slide-copy .slide-title { font-size: clamp(32px,4vw,64px); }
+    .editor-side { display: grid; grid-template-rows: repeat(3,1fr); }
+    .editor-side > div { display: flex; flex-direction: column; justify-content: end; padding: 12%; border-left: 1px solid rgba(255,255,255,.14); border-bottom: 1px solid rgba(255,255,255,.14); }
+    .editor-side > div:nth-child(2) { color: #3c2830; background: #f5e7ed; }
+    .editor-side > div:nth-child(3) { background: var(--accent); }
+    .editor-side small { font-size: 10px; letter-spacing: .08em; }
+    .editor-side b { margin-top: 5px; font-family: var(--font-display); font-size: clamp(18px,2vw,30px); }
+    .inspector-section { padding: 17px 0; border-bottom: 1px solid var(--line); }
+    .inspector-section:first-child { padding-top: 0; }
+    .inspector-section h3 { margin: 0 0 9px; font-size: 12px; }
+    .inspector-section p { margin: 0; color: var(--muted); font-size: 11px; }
+    .preference-list { margin: 0; padding: 0; list-style: none; }
+    .preference-list li { padding: 5px 0; color: var(--ink-2); font-size: 11px; }
+    .preference-list li::before { content: "—"; margin-right: 7px; color: var(--success); }
+    .export-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+    .export-button { min-height: 38px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper-2); cursor: pointer; font-size: 11px; font-weight: 650; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 26px;
+      z-index: 20;
+      min-width: 260px;
+      padding: 12px 16px;
+      border-radius: 9px;
+      color: white;
+      background: #262b26;
+      box-shadow: var(--shadow);
+      transform: translate(-50%, 18px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 1180px) {
+      .workspace { grid-template-columns: 350px minmax(420px, 1fr); }
+      .goal-side { width: min(370px, 35vw); }
+      .style-pills { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .style-pill:nth-child(2) { border-right: 0; }
+      .style-pill:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .artifact-screen { grid-template-columns: 230px minmax(0,1fr); }
+      .artifact-inspector { display: none; }
+    }
+
+    @media (max-width: 820px) {
+      body { overflow: auto; }
+      .app { min-height: 100%; height: auto; display: block; padding-bottom: 68px; }
+      .rail {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 30;
+        width: auto;
+        height: 66px;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-around;
+        padding: 6px 8px;
+        border: 0;
+        border-top: 1px solid rgba(255,255,255,.1);
+      }
+      .brand-mark, .rail-spacer, .rail .hide-mobile { display: none; }
+      .rail-nav { display: contents; }
+      .rail-button { width: 62px; min-height: 52px; }
+      .shell { display: block; min-height: 100vh; }
+      .topbar { height: 64px; padding: 0 16px; }
+      .wordmark { min-width: auto; font-size: 21px; }
+      .wordmark small, .topbar-actions .quiet-button { display: none; }
+      .view-tabs { margin-left: auto; }
+      .view-tab { min-width: 60px; }
+      .topbar-actions { margin-left: 0; }
+      .screen { overflow: visible; }
+      .capability-screen { display: block; }
+      .page-head { display: block; padding: 22px 16px 15px; }
+      .page-head h1 { font-size: 30px; }
+      .goal-side { width: 100%; margin: 17px 0 0; }
+      .recent-task-strip { align-items: stretch; flex-direction: column; gap: 11px; margin: 0 10px 12px; }
+      .recent-task-copy { grid-template-columns: 1fr; }
+      .recent-task-copy .recent-label { grid-row: auto; }
+      .recent-task-actions { width: 100%; margin: 0; }
+      .recent-task-actions .quiet-button { flex: 1; min-height: 44px; }
+      .workspace { display: block; margin: 0 10px 14px; }
+      .catalog { max-height: 320px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .ability-row { min-height: 82px; }
+      .detail { padding: 18px 17px 0; overflow: visible; scroll-margin-top: 68px; }
+      .flow-steps { margin-bottom: 17px; }
+      .flow-step { justify-content: center; padding: 0 5px; }
+      .flow-step span { display: none; }
+      .detail-copy h2 { font-size: 27px; }
+      .style-pills { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .spec-grid { grid-template-columns: 1fr; }
+      .material-row { grid-template-columns: 1fr; }
+      .memory-strip { grid-template-columns: auto minmax(0,1fr) auto; }
+      .memory-adjust { grid-column: 2; grid-row: 2; justify-self: start; }
+      .memory-strip .toggle { grid-column: 3; grid-row: 1; }
+      .detail-actions {
+        bottom: 66px;
+        flex-direction: column;
+        align-items: stretch;
+        margin: 20px -17px 0;
+        padding: 12px 17px;
+      }
+      .detail-actions button { width: 100%; }
+      .action-copy { margin: 0 0 2px; }
+      .run-screen, .completed-screen { padding: 24px 14px; }
+      .flow-page-head { display: block; }
+      .flow-page-head .quiet-button { margin-top: 14px; }
+      .history-guide { grid-template-columns: 1fr; }
+      .history-guide div { border-right: 0; border-bottom: 1px solid var(--line); }
+      .history-guide div:last-child { border-bottom: 0; }
+      .run-card { grid-template-columns: 1fr; }
+      .run-side { border-left: 0; border-top: 1px solid var(--line); }
+      .completed-row { grid-template-columns: 1fr; }
+      .completed-actions { width: 100%; }
+      .completed-actions .quiet-button { flex: 1; min-height: 44px; }
+      .artifact-screen { display: block; }
+      .artifact-list { max-height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .artifact-workbench { grid-template-columns: 74px minmax(0,1fr); min-height: 480px; }
+      .canvas-area { padding: 18px 10px; }
+      .slide-sorter { padding: 12px 8px; }
+      .editor-slide-copy { padding: 8%; }
+      .editor-slide-copy .slide-subtitle { display: none; }
+      .toast { bottom: 84px; width: calc(100% - 30px); min-width: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: .01ms !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 18.5 3.5 21v-5.1A8.5 8.5 0 1 1 12 20H7.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h8l4 4v13H6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3.5v4h4M9 12h6M9 15.5h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-memory" viewBox="0 0 24 24"><path d="M12 20c4.5-2.4 7-5.5 7-9.2a7 7 0 0 0-14 0C5 14.5 7.5 17.6 12 20Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 17V8m0 5-3-2m3 0 3-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m19 13.5 1.2 1-.9 2.1-1.6-.1-1.2 1.2.1 1.6-2.1.9-1-1.2h-1.7l-1 1.2-2.1-.9.1-1.6-1.2-1.2-1.6.1-.9-2.1 1.2-1v-1.7l-1.2-1 .9-2.1 1.6.1 1.2-1.2-.1-1.6 2.1-.9 1 1.2h1.7l1-1.2 2.1.9-.1 1.6 1.2 1.2 1.6-.1.9 2.1-1.2 1Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5m-4 4 4-4 4 4M5 15v4h14v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+
+  <div class="app">
+    <aside class="rail" aria-label="主导航">
+      <div class="brand-mark" aria-label="Nemos">N</div>
+      <nav class="rail-nav">
+        <button class="rail-button" data-toast="聊天仍是交流入口；这个原型聚焦能力中心。"><svg><use href="#i-chat"/></svg><span>聊天</span></button>
+        <button class="rail-button active" aria-current="page" data-rail="capabilities" data-open-view="capabilities"><svg><use href="#i-grid"/></svg><span>能力</span></button>
+        <button class="rail-button" data-toast="自动任务会在后续版本中接入同一套任务状态。"><svg><use href="#i-clock"/></svg><span>自动</span></button>
+        <button class="rail-button" data-rail="artifacts" data-open-view="artifacts"><svg><use href="#i-file"/></svg><span>文件</span></button>
+        <button class="rail-button hide-mobile" data-rail="history" data-open-view="completed"><svg><use href="#i-clock"/></svg><span>历史</span></button>
+      </nav>
+      <div class="rail-spacer"></div>
+      <button class="rail-button hide-mobile" data-toast="记忆只轻量影响交付习惯，不改变产品界面。"><svg><use href="#i-memory"/></svg><span>记忆</span></button>
+      <button class="rail-button"><svg><use href="#i-settings"/></svg><span>设置</span></button>
+    </aside>
+
+    <main class="shell">
+      <header class="topbar">
+        <div class="wordmark">Nemos <small>Companion</small></div>
+        <nav class="view-tabs" aria-label="当前区域">
+          <button class="view-tab active" data-view="capabilities">开始</button>
+          <button class="view-tab" data-view="runs">进行中</button>
+          <button class="view-tab" data-view="completed">历史</button>
+        </nav>
+        <div class="topbar-actions">
+          <button class="quiet-button" data-new-task>新建任务</button>
+          <div class="avatar" aria-label="当前用户">你</div>
+        </div>
+      </header>
+
+      <section class="screen capability-screen" id="capabilities-screen">
+        <div class="page-head">
+          <div>
+            <h1>直接说，你想完成什么？</h1>
+            <p>不用先找能力。Nemos 会选择合适的做法、准备材料，并保存为可以继续修改的文件。</p>
+          </div>
+          <div class="goal-side">
+            <form class="goal-box" id="goal-form">
+              <input id="goal-input" name="goal" autocomplete="off" aria-label="描述目标" aria-describedby="goal-feedback" placeholder="例如：给管理层做一份 12 页的项目汇报…">
+              <button type="submit" aria-label="让 Nemos 安排这件事"><svg width="18" height="18"><use href="#i-arrow"/></svg></button>
+            </form>
+            <div class="goal-feedback" id="goal-feedback" role="status" aria-live="polite">不用先判断该选哪个能力，直接描述结果即可</div>
+          </div>
+        </div>
+
+        <section class="recent-task-strip" aria-label="继续上次任务">
+          <div class="recent-task-copy">
+            <span class="recent-label">继续上次</span>
+            <strong id="recent-task-title">管理层项目汇报</strong>
+            <small id="recent-task-meta">做 PPT · 已保存目标和 1 份材料 · 8 分钟前</small>
+          </div>
+          <div class="recent-task-actions">
+            <button class="quiet-button" id="resume-recent-task" type="button" data-ability="presentation" data-goal="给管理层做一份 12 页的项目汇报，重点说明进展和风险">继续</button>
+            <button class="quiet-button" type="button" data-open-view="completed">查看历史</button>
+          </div>
+        </section>
+
+        <div class="workspace">
+          <section class="catalog" aria-label="可做事项">
+            <div class="catalog-head">
+              <div class="catalog-head-copy"><strong>常用能力</strong><span>不确定选哪个，就在上面说目标</span></div>
+              <button class="catalog-toggle" id="toggle-all-abilities" type="button" aria-controls="ability-list" aria-expanded="false">查看全部 11 项</button>
+            </div>
+            <div class="ability-list" id="ability-list">
+              <button class="ability-row active" data-id="presentation" data-category="layout" data-featured="true">
+                <span><strong class="ability-name">做 PPT</strong><span class="ability-summary">先梳理故事线，再按内容选择版式并逐页检查。</span><span class="ability-meta">可编辑 PPT · PDF · 网页演示</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="document" data-category="layout document" data-featured="true">
+                <span><strong class="ability-name">写正式文档</strong><span class="ability-summary">整理标题、分页、表格和引用，生成规范文档。</span><span class="ability-meta">Word 文档 · PDF</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="web" data-category="layout document" data-featured="false" hidden>
+                <span><strong class="ability-name">做网页报告</strong><span class="ability-summary">把内容做成电脑和手机都能打开的网页报告。</span><span class="ability-meta">网页文件 · PDF</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="research" data-category="information" data-featured="true">
+                <span><strong class="ability-name">深入研究一个问题</strong><span class="ability-summary">拆分研究问题，收集多方资料并核对关键结论。</span><span class="ability-meta">研究报告 · 证据清单</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="decision" data-category="information" data-featured="false" hidden>
+                <span><strong class="ability-name">比较方案并给建议</strong><span class="ability-summary">比较方案、证据和风险，给出有条件的行动建议。</span><span class="ability-meta">决策文档 · PPT</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="thinking" data-category="information" data-featured="true">
+                <span><strong class="ability-name">梳理复杂问题</strong><span class="ability-summary">逐步厘清目标、相关人、使用情景、替代方案和盲点。</span><span class="ability-meta">思考记录 · 方案框架</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="product" data-category="business" data-featured="true">
+                <span><strong class="ability-name">设计产品方案</strong><span class="ability-summary">从机会和假设出发，形成 PRD、优先级和路线图。</span><span class="ability-meta">产品方案 · PRD · 路线图</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="business" data-category="business" data-featured="false" hidden>
+                <span><strong class="ability-name">推进商务合作</strong><span class="ability-summary">从筛选对象、设计合作方案到意向和签约准备。</span><span class="ability-meta">合作档案 · 推进清单</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="market" data-category="information business" data-featured="false" hidden>
+                <span><strong class="ability-name">评估商业机会</strong><span class="ability-summary">用多种视角推演机会、风险和低成本验证办法。</span><span class="ability-meta">机会评估 · 验证计划</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="meeting" data-category="operation" data-featured="true">
+                <span><strong class="ability-name">整理会议纪要</strong><span class="ability-summary">从录音或记录中整理决议、待办和未决问题。</span><span class="ability-meta">Word 文档 · 任务清单</span></span><span class="readiness">可以开始</span>
+              </button>
+              <button class="ability-row" data-id="workflow" data-category="workflow" data-featured="false" hidden>
+                <span><strong class="ability-name">保存成常用流程</strong><span class="ability-summary">把反复做的步骤整理成可以重复运行的能力。</span><span class="ability-meta">流程草稿 · 试运行记录</span></span><span class="readiness">可以开始</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="detail" id="ability-detail" aria-live="polite">
+            <ol class="flow-steps" aria-label="任务准备步骤">
+              <li class="flow-step active" data-flow-step="goal"><span>1</span>说清目标</li>
+              <li class="flow-step" data-flow-step="prepare"><span>2</span>准备材料</li>
+              <li class="flow-step" data-flow-step="start"><span>3</span>开始执行</li>
+            </ol>
+            <div class="detail-top">
+              <div class="detail-copy">
+                <span class="kind-label" id="detail-kind">文稿和演示</span>
+                <h2 id="detail-title">做 PPT</h2>
+                <p id="detail-summary">把资料整理成适合讲述的故事线，自动完成逐页排版和检查。</p>
+                <div class="output-chips" id="detail-outputs"><span class="output-chip">可编辑 PPT</span><span class="output-chip">PDF</span><span class="output-chip">网页演示</span></div>
+              </div>
+            </div>
+
+            <div class="stage" id="artifact-stage">
+              <div class="stage-toolbar"><strong>结果预览</strong><span id="stage-meta">16:9 · 建议 10—14 页</span></div>
+              <div class="slide-sheet" id="preview-sheet">
+                <div class="slide-copy"><span class="slide-kicker">Nemos · 做 PPT</span><div class="slide-title">能力中心，不该是一面工具墙</div><div class="slide-subtitle">从说清目标，到得到可继续修改的文件。</div></div>
+                <div class="slide-structure"><div class="slide-block"><small>01 · 问题</small><b>入口混杂</b></div><div class="slide-block"><small>02 · 转变</small><b>结果优先</b></div><div class="slide-block"><small>03 · 落地</small><b>文件工作台</b></div></div>
+              </div>
+            </div>
+
+            <div class="style-section" id="style-section">
+              <div class="section-title"><h3>选择 PPT 类型</h3><span>Nemos 会按每页内容自动排版</span></div>
+              <div class="style-pills">
+                <button class="style-pill active">结构汇报</button>
+                <button class="style-pill">方案提案</button>
+                <button class="style-pill">教学讲解</button>
+                <button class="style-pill">极简演示</button>
+              </div>
+            </div>
+
+            <div class="memory-strip">
+              <div class="memory-symbol"><svg width="16" height="16"><use href="#i-memory"/></svg></div>
+              <div class="memory-copy"><strong>按我的习惯生成</strong><span>本次参考：演示节奏 · 常用版式 · 品牌偏好</span></div>
+              <button class="memory-adjust" type="button" data-toast="本次可临时调整文笔、排版和格式，不会改动长期习惯。">调整本次</button>
+              <button class="toggle" type="button" aria-label="按我的习惯生成" aria-pressed="true"></button>
+            </div>
+
+            <section class="material-section" id="material-section" hidden>
+              <div class="section-title"><h3>准备这次任务</h3><span>至少写一句目标，或添加一份材料</span></div>
+              <label class="task-brief">
+                <span>这次具体要完成什么</span>
+                <textarea id="task-brief" autocomplete="off" placeholder="例如：给管理层汇报，12 页以内，重点说明进展和风险…"></textarea>
+              </label>
+              <div class="material-row">
+                <button class="material-button" id="add-material" type="button">
+                  <svg aria-hidden="true"><use href="#i-upload"/></svg>
+                  <span><strong>添加材料</strong><small>文件、文字或已有聊天内容</small></span>
+                </button>
+                <div class="material-state" id="material-state" role="status">
+                  <span><strong>还没有材料</strong><small>可以先写目标，材料稍后补充</small></span>
+                </div>
+              </div>
+            </section>
+
+            <dl class="spec-grid">
+              <div class="spec"><dt>需要</dt><dd id="spec-input">主题、已有材料、目标受众与使用场景</dd></div>
+              <div class="spec"><dt>会得到</dt><dd id="spec-output">故事线、逐页预览、可编辑 PPT 与 PDF</dd></div>
+              <div class="spec"><dt>怎么完成</dt><dd id="spec-process">先生成结构，再逐页制作和检查</dd></div>
+              <div class="spec"><dt>需要注意</dt><dd id="spec-boundary">品牌模板和真实数据需要由你提供或确认</dd></div>
+            </dl>
+
+            <div class="detail-actions">
+              <div class="action-copy"><strong id="action-title">下一步：准备材料</strong><span id="action-note">确认目标和材料后再开始，避免返工</span></div>
+              <button class="quiet-button" type="button" data-open-view="artifacts">查看以前的文件</button>
+              <button class="primary-button" id="primary-action" type="button">继续：准备材料</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+
+      <section class="screen run-screen" id="runs-screen" hidden>
+        <div class="flow-page">
+          <div class="flow-page-head">
+            <div><h1 id="run-heading">正在执行任务</h1><p id="run-summary">Nemos 会持续保存进度，你可以先去做别的事情。</p></div>
+            <button class="quiet-button" type="button" data-open-view="capabilities">返回能力</button>
+          </div>
+          <div class="run-empty" id="run-empty">
+            <h2>暂时没有进行中的任务</h2>
+            <p>选择一个能力并补充目标后，任务进度会显示在这里。</p>
+            <button class="primary-button" type="button" data-open-view="capabilities">说说要做什么</button>
+          </div>
+          <div class="run-card" id="run-card" hidden>
+            <div class="run-main">
+              <span class="run-label">当前任务</span>
+              <h2 id="run-title">做 PPT</h2>
+              <p id="run-goal">正在读取目标和已有材料。</p>
+              <div class="progress-track"><div class="progress-bar" id="run-progress"></div></div>
+              <div class="progress-meta"><span id="run-status-text">正在理解目标和材料</span><span id="run-progress-text">18%</span></div>
+            </div>
+            <aside class="run-side">
+              <ol class="run-status-list">
+                <li class="run-status active">理解目标和材料</li>
+                <li class="run-status">生成内容结构</li>
+                <li class="run-status">制作并检查结果</li>
+              </ol>
+              <div class="run-footnote">进度会自动保存。离开这个页面不会中断任务。</div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen completed-screen" id="completed-screen" hidden>
+        <div class="flow-page">
+          <div class="flow-page-head">
+            <div><h1>历史任务</h1><p>保留每次任务的目标和结果；再次使用会创建新任务，不会覆盖原记录。</p></div>
+            <button class="primary-button" type="button" data-new-task>新建任务</button>
+          </div>
+
+          <div class="history-guide" aria-label="历史记录的三个层次">
+            <div><strong>任务历史</strong><span>记录目标、状态、时间和结果入口。</span></div>
+            <div><strong>文件版本</strong><span>每次修改留在对应文件中，可随时回看。</span></div>
+            <div><strong>记忆影响</strong><span>只保留确认后的长期习惯，可单独调整或清除。</span></div>
+          </div>
+
+          <div class="history-group-label">今天</div>
+          <div class="completed-list">
+            <article class="completed-row" id="current-completed-row" hidden>
+              <div><strong id="current-completed-title">刚刚完成的任务</strong><span id="current-completed-meta">已完成 · 刚刚</span></div>
+              <div class="completed-actions">
+                <button class="quiet-button" type="button" data-reuse-task="presentation" data-reuse-goal="">再次使用</button>
+                <button class="quiet-button" type="button" data-open-result="presentation">打开结果</button>
+              </div>
+            </article>
+            <article class="completed-row">
+              <div><strong>项目阶段周报</strong><span>写正式文档 · 已完成 · 昨天 18:42</span></div>
+              <div class="completed-actions">
+                <button class="quiet-button" type="button" data-reuse-task="document" data-reuse-goal="更新本周项目阶段周报，保留原有结构并补充进展和风险">再次使用</button>
+                <button class="quiet-button" type="button" data-open-result="document">打开结果</button>
+              </div>
+            </article>
+          </div>
+
+          <div class="history-group-label">更早</div>
+          <div class="completed-list">
+            <article class="completed-row">
+              <div><strong>市场观察简报</strong><span>深入研究一个问题 · 已完成 · 8 月 2 日</span></div>
+              <div class="completed-actions">
+                <button class="quiet-button" type="button" data-reuse-task="research" data-reuse-goal="更新近期市场观察，核对关键变化并标出仍需确认的信息">再次使用</button>
+                <button class="quiet-button" type="button" data-open-result="research">打开结果</button>
+              </div>
+            </article>
+            <article class="completed-row">
+              <div><strong>竞品资料收集</strong><span>深入研究一个问题 · 未完成 · 8 月 1 日</span></div>
+              <div class="completed-actions">
+                <button class="quiet-button" type="button" data-reuse-task="research" data-reuse-goal="继续收集竞品资料，先确认对比范围和证据要求">重新开始</button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen artifact-screen" id="artifacts-screen" hidden>
+        <aside class="artifact-list">
+          <div class="panel-head"><h2>文件</h2><p>打开、修改、比较和下载。</p></div>
+          <button class="artifact-row active"><strong>管理层项目汇报</strong><span>可编辑 PPT · 12 页 · 刚刚更新</span></button>
+          <button class="artifact-row"><strong>项目阶段周报</strong><span>Word 文档 · 6 页 · 昨天</span></button>
+          <button class="artifact-row"><strong>市场观察简报</strong><span>网页报告 · 8 月 2 日</span></button>
+        </aside>
+
+        <div class="artifact-workbench">
+          <aside class="slide-sorter" aria-label="幻灯片页面">
+            <button class="thumb active" data-page="1" aria-label="第 1 页"></button>
+            <button class="thumb" data-page="2" aria-label="第 2 页"></button>
+            <button class="thumb" data-page="3" aria-label="第 3 页"></button>
+            <button class="thumb" data-page="4" aria-label="第 4 页"></button>
+          </aside>
+          <div class="canvas-area">
+            <div class="editor-slide">
+              <div class="editor-slide-copy"><span class="slide-kicker">Nemos · 项目汇报</span><div class="slide-title">能力中心，不该是一面工具墙</div><div class="slide-subtitle">先理解用户要完成的结果，再组织能力与文件。</div></div>
+              <div class="editor-side"><div><small>01 · 问题</small><b>入口混杂</b></div><div><small>02 · 转变</small><b>结果优先</b></div><div><small>03 · 落地</small><b>文件工作台</b></div></div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="artifact-inspector">
+          <div class="inspector-section"><h3>当前文件</h3><p>结构汇报 · 16:9 · 12 页<br>故事线与页面节奏已检查</p></div>
+          <div class="inspector-section"><h3>版本</h3><p>v3 当前版本 · 刚刚<br>v2 调整故事线 · 12 分钟前</p><button class="quiet-button" type="button" data-toast="版本记录留在当前文件内，不占用任务历史。">查看 3 个版本</button></div>
+          <div class="inspector-section"><h3>使用的习惯</h3><ul class="preference-list"><li>中文，表达简洁</li><li>先结论，再给依据</li><li>三级以内标题</li></ul></div>
+          <div class="inspector-section"><h3>下载为</h3><div class="export-grid"><button class="export-button" data-toast="PPTX 导出需要真实转换器；此处仅演示。">可编辑 PPT</button><button class="export-button" data-toast="PDF 导出需要真实转换器；此处仅演示。">PDF</button><button class="export-button" data-toast="HTML 演示导出需要真实转换器；此处仅演示。">网页文件</button><button class="export-button" data-toast="已复制为新版本（原型）">复制一份</button></div></div>
+        </aside>
+      </section>
+    </main>
+  </div>
+  <div class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const details = {
+      presentation: { kind: "文稿和演示", title: "做 PPT", summary: "把资料整理成适合讲述的故事线，按内容选择版式并逐页检查。", outputs: ["可编辑 PPT","PDF","网页演示"], meta: "16:9 · 建议 10—14 页", input: "主题、已有材料、目标受众与使用场景", output: "故事线、逐页预览、可编辑 PPT、PDF 与网页演示", process: "先定故事线，再按内容选择版式，最后检查节奏和可编辑性", boundary: "品牌模板和真实数据需要由你提供或确认", memory: "演示节奏 · 常用版式 · 品牌偏好", preview: "slides" },
+      document: { kind: "文稿和演示", title: "写正式文档", summary: "把材料整理成有标题、分页、表格和引用的规范文档。", outputs: ["Word 文档","PDF"], meta: "A4 · 适合打印与归档", input: "原始材料、文档目的、收件人和必要格式", output: "可编辑 Word 文档、打印版 PDF 与格式说明", process: "先整理信息结构，再完成标题、分页、表格和引用检查", boundary: "正式数据、签署内容和对外版本需要由你确认", memory: "文笔 · 标题层级 · 表格与引用格式", preview: "document" },
+      web: { kind: "文稿和演示", title: "做网页报告", summary: "把内容制作成电脑和手机都能阅读、可打印且离线可打开的网页报告。", outputs: ["网页文件","PDF"], meta: "响应式 · 桌面与小屏", input: "内容、目标读者、数据与展示重点", output: "离线网页、打印样式与必要图表", process: "先组织阅读顺序，再完成响应式版式和打印检查", boundary: "上线地址、真实数据和公开范围需要由你提供或确认", memory: "阅读密度 · 常用版式 · 图表偏好", preview: "web" },
+      research: { kind: "研究和判断", title: "深入研究一个问题", summary: "拆分研究问题，收集多方资料并核对关键结论。", outputs: ["研究报告","证据清单"], meta: "来源质量 · 核验时间 · 结论把握", input: "研究问题、时间范围、关注对象和证据要求", output: "结论摘要、完整报告、证据清单与待确认项", process: "明确问题、搜集多方资料、核对关键说法，再形成带证据的报告", boundary: "无法核验的信息会标为待确认，不会当作事实", memory: "研究深度 · 来源偏好 · 引用格式", preview: "research" },
+      decision: { kind: "研究和判断", title: "比较方案并给建议", summary: "把零散信息变成可比较的方案、证据、风险和行动建议。", outputs: ["决策文档","PPT"], meta: "方案比较 · 风险边界", input: "目标、限制条件、已有方案与判断期限", output: "方案比较、建议、触发条件与失效条件", process: "先统一评价标准，再比较证据、风险和可逆性", boundary: "信息不足时只给有条件建议，不替你做最终决定", memory: "判断原则 · 风险偏好 · 表格习惯", preview: "decision" },
+      thinking: { kind: "研究和判断", title: "梳理复杂问题", summary: "逐步厘清目标、相关人、使用情景、替代方案和隐藏假设。", outputs: ["思考记录","方案框架"], meta: "问题定义 · 假设记录 · 可追溯", input: "一段原始想法、当前困惑和希望推进到的结果", output: "问题地图、相关人、情景、替代方案和下一步问题", process: "沿着目标、相关人、情景和替代方案逐步追问并修正", boundary: "不会急着替你给答案；关键假设需要你确认", memory: "思考节奏 · 常用框架 · 输出结构", preview: "thinking" },
+      product: { kind: "产品和业务", title: "设计产品方案", summary: "从机会和假设出发，逐步形成 PRD、功能优先级和路线图。", outputs: ["产品方案","PRD","路线图"], meta: "项目工作台 · 分阶段沉淀", input: "产品想法、目标用户、现有证据、限制条件和时间", output: "机会判断、竞品证据、验证计划、PRD、优先级和路线图", process: "机会探索、竞品分析、假设验证、PRD、优先级和路线图分步推进", boundary: "未经验证的用户和市场判断会保留为假设", memory: "产品原则 · 常用文档结构 · 优先级偏好", preview: "product" },
+      business: { kind: "产品和业务", title: "推进商务合作", summary: "从筛选合作对象、设计合作结构到意向和签约准备持续推进。", outputs: ["合作档案","推进清单"], meta: "按对象建档 · 记录阶段与卡点", input: "我方情况、合作目标、对象资料、进展和约束", output: "对象清单、合作方案、异议准备、触达材料和推进清单", process: "筛选对象、设计价值交换、压力测试、准备意向和签约交接", boundary: "外部发送、报价承诺和法律判断必须由你或专业人士确认", memory: "沟通语气 · 合作红线 · 复盘教训", preview: "business" },
+      market: { kind: "产品和业务", title: "评估商业机会", summary: "用多种分析视角和模拟评审，找出机会、风险与验证办法。", outputs: ["机会评估","验证计划"], meta: "情景推演 · 低成本验证", input: "项目计划、目标市场、资源限制和最担心的假设", output: "机会判断、主要分歧、风险清单和验证实验", process: "结构化分析、多视角推演、交叉检查，再设计真实验证", boundary: "模拟结果是假设，不替代用户访谈、市场数据或实际实验", memory: "风险偏好 · 资源上限 · 验证方式", preview: "market" },
+      meeting: { kind: "会议和跟进", title: "整理会议纪要", summary: "从录音、转写或会议记录提取纪要、决议、行动项与风险。", outputs: ["Word 文档","任务清单"], meta: "纪要 · 行动项 · 风险", input: "录音、转写、聊天记录或会议草稿", output: "会议纪要、决议、行动项和待确认问题", process: "识别议题、结论、负责人和期限，再标出冲突与遗漏", boundary: "姓名、期限和最终决议不清楚时会要求确认", memory: "纪要格式 · 负责人写法 · 跟进习惯", preview: "meeting" },
+      workflow: { kind: "常用流程", title: "保存成常用流程", summary: "把反复做的步骤整理成可以复用、检查和重复运行的能力。", outputs: ["流程草稿","试运行记录"], meta: "先判断是否值得保存", input: "目标、触发场景、所需材料、步骤、输出和不能做的事", output: "能力说明、输入输出约定、执行步骤和验证清单", process: "先判断是否值得固化，再定义边界、试运行并保存", boundary: "保存前必须完成一次试运行；不会记录密钥或私人配置", memory: "只参考流程习惯，不写入个人文风和隐私内容", preview: "workflow" }
+    };
+
+    const previewMarkup = {
+      slides: `<div class="slide-copy"><span class="slide-kicker">Nemos · 做 PPT</span><div class="slide-title">能力中心，不该是一面工具墙</div><div class="slide-subtitle">从说清目标，到得到可继续修改的文件。</div></div><div class="slide-structure"><div class="slide-block"><small>01 · 问题</small><b>入口混杂</b></div><div class="slide-block"><small>02 · 转变</small><b>结果优先</b></div><div class="slide-block"><small>03 · 落地</small><b>文件工作台</b></div></div>`,
+      document: `<div class="slide-copy" style="background:#fbf7f0;color:#252824"><span class="slide-kicker" style="color:#966080">写正式文档</span><div class="slide-title" style="font-size:clamp(20px,2.6vw,42px)">项目阶段总结</div><div class="slide-subtitle" style="color:#686d66">结论摘要 · 关键进展 · 风险与下一步</div></div><div class="slide-structure"><div class="slide-block" style="background:#f3ede4;color:#252824"><small>01</small><b>摘要</b></div><div class="slide-block" style="background:#e5eee9;color:#244d40"><small>02</small><b>进展</b></div><div class="slide-block" style="background:#b33f72"><small>03</small><b>行动</b></div></div>`,
+      web: `<div class="slide-copy" style="background:#faf7f0;color:#222"><span class="slide-kicker" style="color:#2f6a57">离线网页报告</span><div class="slide-title" style="font-size:clamp(18px,2.4vw,38px)">一页读懂项目进展</div><div class="slide-subtitle" style="color:#686d66">响应式导航、数据摘要与打印版本</div></div><div class="slide-structure"><div class="slide-block" style="background:#2f6a57"><small>状态</small><b>进行中</b></div><div class="slide-block"><small>重点</small><b>3 项</b></div><div class="slide-block" style="background:#f1dedf;color:#4a2b34"><small>风险</small><b>需确认</b></div></div>`,
+      research: `<div class="slide-copy"><span class="slide-kicker">深入研究一个问题</span><div class="slide-title">关键结论必须经得住核对</div><div class="slide-subtitle">来源质量、事实把握和未知项分开呈现。</div></div><div class="slide-structure"><div class="slide-block"><small>多方资料</small><b>搜集</b></div><div class="slide-block"><small>关键说法</small><b>核对</b></div><div class="slide-block"><small>仍缺少</small><b>未知</b></div></div>`,
+      decision: `<div class="slide-copy"><span class="slide-kicker">比较方案并给建议</span><div class="slide-title">判断，不只是列出利弊</div><div class="slide-subtitle">给出触发条件、失效条件和下一步。</div></div><div class="slide-structure"><div class="slide-block"><small>方案 A</small><b>最快</b></div><div class="slide-block"><small>方案 B</small><b>最稳</b></div><div class="slide-block"><small>建议</small><b>有条件采用</b></div></div>`,
+      thinking: `<div class="slide-copy"><span class="slide-kicker">梳理复杂问题</span><div class="slide-title">先把问题看清，再讨论答案</div><div class="slide-subtitle">保留每次修正，让思考过程可追溯。</div></div><div class="slide-structure"><div class="slide-block"><small>为什么做</small><b>目标</b></div><div class="slide-block"><small>影响谁</small><b>相关人</b></div><div class="slide-block"><small>还没看见</small><b>盲点</b></div></div>`,
+      product: `<div class="slide-copy"><span class="slide-kicker">设计产品方案</span><div class="slide-title">从机会走到可执行的产品计划</div><div class="slide-subtitle">每一步的结论都会流入下一份成果。</div></div><div class="slide-structure"><div class="slide-block"><small>先验证</small><b>机会</b></div><div class="slide-block"><small>再说清</small><b>PRD</b></div><div class="slide-block"><small>最后安排</small><b>路线图</b></div></div>`,
+      business: `<div class="slide-copy"><span class="slide-kicker">推进商务合作</span><div class="slide-title">每个合作对象都有清楚的下一步</div><div class="slide-subtitle">进展、卡点、异议与承诺集中在同一份档案。</div></div><div class="slide-structure"><div class="slide-block"><small>双方得到什么</small><b>交换</b></div><div class="slide-block"><small>对方会质疑什么</small><b>异议</b></div><div class="slide-block"><small>谁在何时做什么</small><b>推进</b></div></div>`,
+      market: `<div class="slide-copy"><span class="slide-kicker">评估商业机会</span><div class="slide-title">先验证最危险的假设</div><div class="slide-subtitle">推演负责找分歧，真实实验负责给答案。</div></div><div class="slide-structure"><div class="slide-block"><small>可能成立</small><b>机会</b></div><div class="slide-block"><small>最怕发生</small><b>风险</b></div><div class="slide-block"><small>下一步</small><b>低成本实验</b></div></div>`,
+      meeting: `<div class="slide-copy"><span class="slide-kicker">整理会议纪要</span><div class="slide-title">把讨论变成下一步</div><div class="slide-subtitle">决议、负责人、期限与未决问题。</div></div><div class="slide-structure"><div class="slide-block"><small>决议</small><b>2 项</b></div><div class="slide-block"><small>行动</small><b>5 项</b></div><div class="slide-block"><small>风险</small><b>待确认</b></div></div>`,
+      workflow: `<div class="slide-copy"><span class="slide-kicker">保存成常用流程</span><div class="slide-title">把一次做对，变成以后直接复用</div><div class="slide-subtitle">先说清什么时候用、怎么做、做到什么程度。</div></div><div class="slide-structure"><div class="slide-block"><small>需要什么</small><b>输入</b></div><div class="slide-block"><small>按什么顺序</small><b>步骤</b></div><div class="slide-block"><small>怎样算完成</small><b>验收</b></div></div>`
+    };
+
+    const toast = document.querySelector(".toast");
+    const state = {
+      selectedId: "presentation",
+      goal: "",
+      preparing: false,
+      materialAdded: false,
+      runTimers: [],
+      currentRunId: null,
+      currentRunGoal: "",
+      runActive: false,
+      view: "capabilities"
+    };
+
+    const screens = {
+      capabilities: document.querySelector("#capabilities-screen"),
+      runs: document.querySelector("#runs-screen"),
+      completed: document.querySelector("#completed-screen"),
+      artifacts: document.querySelector("#artifacts-screen")
+    };
+
+    let toastTimer;
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toast.classList.remove("show"); }, 2200);
+    }
+
+    function setRailState(view) {
+      const target = view === "artifacts" ? "artifacts" : view === "completed" ? "history" : "capabilities";
+      document.querySelectorAll("[data-rail]").forEach(function (button) {
+        const active = button.dataset.rail === target;
+        button.classList.toggle("active", active);
+        if (active) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+      });
+    }
+
+    function openView(view) {
+      state.view = view;
+      Object.entries(screens).forEach(function (entry) {
+        entry[1].hidden = entry[0] !== view;
+      });
+      if (view === "runs") {
+        document.querySelector("#run-empty").hidden = state.runActive;
+        document.querySelector("#run-card").hidden = !state.runActive;
+      }
+      document.querySelectorAll(".view-tab").forEach(function (tab) {
+        tab.classList.toggle("active", tab.dataset.view === view);
+      });
+      setRailState(view);
+      if (view !== "artifacts") document.querySelector(".shell").scrollTop = 0;
+      if (window.matchMedia("(max-width: 820px)").matches && view !== "capabilities") {
+        window.scrollTo({ top: 0, behavior: "auto" });
+      }
+    }
+
+    function currentDetail() {
+      return details[state.selectedId];
+    }
+
+    function updateFlowSteps() {
+      const goal = document.querySelector('[data-flow-step="goal"]');
+      const prepare = document.querySelector('[data-flow-step="prepare"]');
+      const start = document.querySelector('[data-flow-step="start"]');
+      goal.className = "flow-step " + (state.preparing ? "done" : "active");
+      prepare.className = "flow-step " + (state.preparing ? "active" : "");
+      start.className = "flow-step";
+    }
+
+    function isReadyToStart() {
+      return Boolean(document.querySelector("#task-brief").value.trim() || state.materialAdded);
+    }
+
+    function updatePrimaryAction() {
+      const button = document.querySelector("#primary-action");
+      const title = document.querySelector("#action-title");
+      const note = document.querySelector("#action-note");
+      const data = currentDetail();
+
+      if (!state.preparing) {
+        button.disabled = false;
+        button.textContent = "继续：准备材料";
+        title.textContent = "下一步：准备材料";
+        note.textContent = "确认目标和材料后再开始，避免返工";
+        return;
+      }
+
+      if (!isReadyToStart()) {
+        button.disabled = true;
+        button.textContent = "等待补充";
+        title.textContent = "还差一项";
+        note.textContent = "至少写一句目标，或添加一份材料";
+        return;
+      }
+
+      button.disabled = false;
+      button.textContent = "开始" + data.title;
+      title.textContent = "已经可以开始";
+      note.textContent = "执行后会进入“进行中”，完成结果自动保存到文件";
+    }
+
+    function showPreparation(focusInput) {
+      state.preparing = true;
+      document.querySelector("#material-section").hidden = false;
+      updateFlowSteps();
+      updatePrimaryAction();
+      if (focusInput) document.querySelector("#task-brief").focus();
+    }
+
+    function selectAbility(row, options) {
+      const settings = options || {};
+      document.querySelectorAll(".ability-row").forEach(function (item) { item.classList.remove("active"); });
+      row.classList.add("active");
+      state.selectedId = row.dataset.id;
+      const data = currentDetail();
+
+      document.querySelector("#detail-kind").textContent = data.kind;
+      document.querySelector("#detail-title").textContent = data.title;
+      document.querySelector("#detail-summary").textContent = data.summary;
+      document.querySelector("#detail-outputs").innerHTML = data.outputs.map(function (item) {
+        return '<span class="output-chip">' + item + "</span>";
+      }).join("");
+      document.querySelector("#stage-meta").textContent = data.meta;
+      document.querySelector("#spec-input").textContent = data.input;
+      document.querySelector("#spec-output").textContent = data.output;
+      document.querySelector("#spec-process").textContent = data.process;
+      document.querySelector("#spec-boundary").textContent = data.boundary;
+      document.querySelector("#preview-sheet").innerHTML = previewMarkup[data.preview];
+      document.querySelector("#style-section").hidden = data.preview !== "slides";
+      const memoryEnabled = document.querySelector(".toggle").getAttribute("aria-pressed") === "true";
+      document.querySelector(".memory-copy span").textContent = memoryEnabled
+        ? "本次参考：" + data.memory
+        : "本次不使用长期习惯";
+      updatePrimaryAction();
+
+      if (settings.scroll && window.matchMedia("(max-width: 820px)").matches) {
+        const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        requestAnimationFrame(function () {
+          document.querySelector("#ability-detail").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+        });
+      }
+    }
+
+    const matchingRules = [
+      { id: "meeting", words: ["会议", "纪要", "录音", "转写"] },
+      { id: "presentation", words: ["ppt", "演示", "汇报", "幻灯片"] },
+      { id: "business", words: ["商务合作", "谈合作", "合作方", "授权", "意向书", "签约", "渠道合作"] },
+      { id: "product", words: ["产品方案", "prd", "产品设计", "功能优先级", "路线图", "需求文档"] },
+      { id: "market", words: ["商业机会", "市场机会", "创业项目", "市场验证", "可行性评估", "生意"] },
+      { id: "workflow", words: ["常用流程", "重复流程", "保存流程", "自动重复", "以后都这样做"] },
+      { id: "thinking", words: ["梳理问题", "理清问题", "复杂问题", "干系人", "使用情景", "需求还不清楚"] },
+      { id: "research", words: ["查资料", "深入研究", "研究", "调研", "事实核验", "资料"] },
+      { id: "web", words: ["网页", "html", "网站", "在线报告"] },
+      { id: "document", words: ["word", "正式文档", "公文", "方案书", "文档", "报告", "总结", "周报"] },
+      { id: "decision", words: ["比较", "方案", "建议", "决策", "取舍"] }
+    ];
+
+    function matchGoal(goal) {
+      const normalized = goal.trim().toLowerCase();
+      const matchedRule = matchingRules.find(function (rule) {
+        return rule.words.some(function (word) { return normalized.includes(word); });
+      });
+      if (!matchedRule) return { id: "research", reason: "目标较开放", matched: false };
+      const matchedWord = matchedRule.words.find(function (word) { return normalized.includes(word); });
+      return { id: matchedRule.id, reason: matchedWord, matched: true };
+    }
+
+    function submitGoal(event) {
+      event.preventDefault();
+      const input = document.querySelector("#goal-input");
+      const feedback = document.querySelector("#goal-feedback");
+      const goal = input.value.trim();
+
+      if (!goal) {
+        feedback.textContent = "先写一句想完成什么，例如“把方案做成 12 页 PPT”。";
+        feedback.classList.add("error");
+        input.setAttribute("aria-invalid", "true");
+        input.focus();
+        return;
+      }
+
+      feedback.classList.remove("error");
+      input.removeAttribute("aria-invalid");
+      state.goal = goal;
+      const match = matchGoal(goal);
+      const row = document.querySelector('.ability-row[data-id="' + match.id + '"]');
+      row.hidden = false;
+      selectAbility(row, { scroll: false });
+      setAllAbilitiesShown(false);
+      document.querySelector("#task-brief").value = goal;
+      showPreparation(false);
+      feedback.textContent = match.matched
+        ? "Nemos 已安排“" + currentDetail().title + "”。下面只需补充材料。"
+        : "目标还比较开放，Nemos 先用“深入研究一个问题”帮你把问题和证据理清。";
+      updatePrimaryAction();
+
+      if (window.matchMedia("(max-width: 820px)").matches) {
+        document.querySelector("#ability-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+    function setAllAbilitiesShown(showAll) {
+      const rows = Array.from(document.querySelectorAll(".ability-row"));
+      rows.forEach(function (row) {
+        const keepVisible = row.dataset.featured === "true" || row.classList.contains("active");
+        row.hidden = !showAll && !keepVisible;
+      });
+      const button = document.querySelector("#toggle-all-abilities");
+      button.setAttribute("aria-expanded", String(showAll));
+      button.textContent = showAll ? "只看常用" : "查看全部 11 项";
+    }
+
+    function clearRunTimers() {
+      state.runTimers.forEach(clearTimeout);
+      state.runTimers = [];
+    }
+
+    function setRunStage(stage, label, percent) {
+      document.querySelector("#run-progress").style.width = percent + "%";
+      document.querySelector("#run-progress-text").textContent = percent + "%";
+      document.querySelector("#run-status-text").textContent = label;
+      document.querySelectorAll(".run-status").forEach(function (item, index) {
+        item.classList.toggle("done", index < stage);
+        item.classList.toggle("active", index === stage && stage < 3);
+      });
+    }
+
+    function recordCompleted() {
+      const runId = state.currentRunId || state.selectedId;
+      const data = details[runId];
+      const title = state.currentRunGoal || data.title;
+      state.runActive = false;
+      document.querySelector("#current-completed-row").hidden = false;
+      document.querySelector("#current-completed-title").textContent = title;
+      document.querySelector("#current-completed-meta").textContent = data.title + " · 已完成 · 刚刚";
+      document.querySelector("#current-completed-row [data-open-result]").dataset.openResult = runId;
+      const reuseButton = document.querySelector("#current-completed-row [data-reuse-task]");
+      reuseButton.dataset.reuseTask = runId;
+      reuseButton.dataset.reuseGoal = title;
+      document.querySelector("#recent-task-title").textContent = title;
+      document.querySelector("#recent-task-meta").textContent = data.title + " · 已保存目标和材料 · 刚刚";
+      const resumeButton = document.querySelector("#resume-recent-task");
+      resumeButton.dataset.ability = runId;
+      resumeButton.dataset.goal = title;
+    }
+
+    function openResult(id) {
+      const resultId = id || state.currentRunId || state.selectedId;
+      const data = details[resultId] || currentDetail();
+      const isCurrentRun = resultId === state.currentRunId;
+      const title = isCurrentRun && state.currentRunGoal ? state.currentRunGoal : data.title + "结果";
+      const firstRow = document.querySelector(".artifact-row");
+      firstRow.querySelector("strong").textContent = title;
+      firstRow.querySelector("span").textContent = data.outputs[0] + " · 刚刚更新";
+      document.querySelector(".inspector-section p").innerHTML = data.meta + "<br>结构与格式已经检查";
+      openView("artifacts");
+    }
+
+    function prepareSavedTask(id, goal, resume) {
+      const row = document.querySelector('.ability-row[data-id="' + id + '"]');
+      if (!row || !details[id]) return;
+      clearRunTimers();
+      state.goal = goal;
+      state.materialAdded = Boolean(resume);
+      state.runActive = false;
+      row.hidden = false;
+      selectAbility(row, { scroll: false });
+      setAllAbilitiesShown(false);
+      document.querySelector("#goal-input").value = goal;
+      document.querySelector("#task-brief").value = goal;
+      const materialState = document.querySelector("#material-state");
+      if (resume) {
+        document.querySelector("#add-material strong").textContent = "再添加一份材料";
+        document.querySelector("#add-material small").textContent = "当前已有 1 份保存的材料";
+        materialState.classList.add("ready");
+        materialState.innerHTML = "<span><strong>已恢复：项目方案.pdf</strong><small>上次保存的材料 · 可以继续</small></span>";
+      } else {
+        document.querySelector("#add-material strong").textContent = "添加材料";
+        document.querySelector("#add-material small").textContent = "文件、文字或已有聊天内容";
+        materialState.classList.remove("ready");
+        materialState.innerHTML = "<span><strong>还没有材料</strong><small>原任务不会改变，可按新情况补充</small></span>";
+      }
+      showPreparation(false);
+      openView("capabilities");
+      document.querySelector("#goal-feedback").textContent = resume
+        ? "已恢复上次任务，可以继续补充材料。"
+        : "已根据历史记录创建新任务，原记录不会改变。";
+      if (window.matchMedia("(max-width: 820px)").matches) {
+        const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        document.querySelector("#ability-detail").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+      }
+    }
+
+    function startRun() {
+      if (!isReadyToStart()) return;
+      clearRunTimers();
+      state.currentRunId = state.selectedId;
+      state.runActive = true;
+      const data = currentDetail();
+      const goal = document.querySelector("#task-brief").value.trim() || "根据已添加材料完成任务";
+      state.currentRunGoal = goal;
+
+      document.querySelector("#run-empty").hidden = true;
+      document.querySelector("#run-card").hidden = false;
+      document.querySelector("#run-heading").textContent = "正在" + data.title;
+      document.querySelector("#run-title").textContent = data.title;
+      document.querySelector("#run-goal").textContent = goal;
+      openView("runs");
+      setRunStage(0, "正在理解目标和材料", 18);
+
+      state.runTimers.push(setTimeout(function () { setRunStage(1, "正在生成结构", 52); }, 650));
+      state.runTimers.push(setTimeout(function () { setRunStage(2, "正在制作并检查结果", 82); }, 1300));
+      state.runTimers.push(setTimeout(function () {
+        setRunStage(3, "已完成，结果已保存到文件", 100);
+        recordCompleted();
+      }, 1950));
+      state.runTimers.push(setTimeout(function () {
+        if (state.view === "runs") openResult(state.currentRunId);
+        else showToast("任务已完成，结果已保存到文件");
+      }, 2550));
+    }
+
+    function resetTask() {
+      clearRunTimers();
+      state.goal = "";
+      state.preparing = false;
+      state.materialAdded = false;
+      state.currentRunId = null;
+      state.currentRunGoal = "";
+      state.runActive = false;
+      document.querySelector("#run-empty").hidden = false;
+      document.querySelector("#run-card").hidden = true;
+      document.querySelector("#goal-input").value = "";
+      document.querySelector("#goal-feedback").textContent = "不用先判断该选哪个能力，直接描述结果即可";
+      document.querySelector("#goal-feedback").classList.remove("error");
+      document.querySelector("#task-brief").value = "";
+      document.querySelector("#material-section").hidden = true;
+      document.querySelector("#material-state").classList.remove("ready");
+      document.querySelector("#material-state").innerHTML = "<span><strong>还没有材料</strong><small>可以先写目标，材料稍后补充</small></span>";
+      document.querySelector("#add-material strong").textContent = "添加材料";
+      document.querySelector("#add-material small").textContent = "文件、文字或已有聊天内容";
+      const defaultRow = document.querySelector('.ability-row[data-id="presentation"]');
+      selectAbility(defaultRow, { scroll: false });
+      setAllAbilitiesShown(false);
+      updateFlowSteps();
+      updatePrimaryAction();
+      openView("capabilities");
+      document.querySelector("#goal-input").focus();
+    }
+
+    document.querySelector("#goal-form").addEventListener("submit", submitGoal);
+    document.querySelector("#task-brief").addEventListener("input", updatePrimaryAction);
+    document.querySelector("#resume-recent-task").addEventListener("click", function (event) {
+      prepareSavedTask(event.currentTarget.dataset.ability, event.currentTarget.dataset.goal, true);
+    });
+    document.querySelectorAll("[data-reuse-task]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        prepareSavedTask(button.dataset.reuseTask, button.dataset.reuseGoal, false);
+      });
+    });
+
+    document.querySelectorAll(".ability-row").forEach(function (row) {
+      row.addEventListener("click", function () {
+        row.hidden = false;
+        selectAbility(row, { scroll: true });
+        const shouldFocus = !window.matchMedia("(max-width: 820px)").matches;
+        showPreparation(shouldFocus);
+        document.querySelector("#goal-feedback").textContent = "已选择“" + currentDetail().title + "”，直接补充目标或材料。";
+      });
+    });
+
+    document.querySelector("#toggle-all-abilities").addEventListener("click", function (event) {
+      const showAll = event.currentTarget.getAttribute("aria-expanded") !== "true";
+      setAllAbilitiesShown(showAll);
+    });
+
+    document.querySelectorAll(".style-pill").forEach(function (button) {
+      button.addEventListener("click", function () {
+        document.querySelectorAll(".style-pill").forEach(function (item) { item.classList.remove("active"); });
+        button.classList.add("active");
+        showToast("已切换为“" + button.textContent + "”版式");
+      });
+    });
+
+    document.querySelector(".toggle").addEventListener("click", function (event) {
+      const next = event.currentTarget.getAttribute("aria-pressed") !== "true";
+      event.currentTarget.setAttribute("aria-pressed", String(next));
+      document.querySelector(".memory-copy span").textContent = next
+        ? "本次参考：" + currentDetail().memory
+        : "本次不使用长期习惯";
+    });
+
+    document.querySelector("#add-material").addEventListener("click", function () {
+      state.materialAdded = true;
+      document.querySelector("#add-material strong").textContent = "再添加一份材料";
+      document.querySelector("#add-material small").textContent = "当前已有 1 份示例文件";
+      const materialState = document.querySelector("#material-state");
+      materialState.classList.add("ready");
+      materialState.innerHTML = "<span><strong>已添加：项目方案.pdf</strong><small>原型示例 · 可以开始执行</small></span>";
+      updatePrimaryAction();
+    });
+
+    document.querySelector("#primary-action").addEventListener("click", function () {
+      if (!state.preparing) {
+        showPreparation(true);
+        return;
+      }
+      startRun();
+    });
+
+    document.querySelectorAll("[data-view]").forEach(function (button) {
+      button.addEventListener("click", function () { openView(button.dataset.view); });
+    });
+    document.querySelectorAll("[data-open-view]").forEach(function (button) {
+      button.addEventListener("click", function () { openView(button.dataset.openView); });
+    });
+    document.querySelectorAll("[data-new-task]").forEach(function (button) {
+      button.addEventListener("click", resetTask);
+    });
+    document.querySelectorAll("[data-open-result]").forEach(function (button) {
+      button.addEventListener("click", function () { openResult(button.dataset.openResult); });
+    });
+    document.querySelectorAll("[data-toast]").forEach(function (button) {
+      button.addEventListener("click", function () { showToast(button.dataset.toast); });
+    });
+
+    document.querySelectorAll(".artifact-row").forEach(function (button) {
+      button.addEventListener("click", function () {
+        document.querySelectorAll(".artifact-row").forEach(function (item) { item.classList.remove("active"); });
+        button.classList.add("active");
+      });
+    });
+
+    document.querySelectorAll(".thumb").forEach(function (button) {
+      button.addEventListener("click", function () {
+        document.querySelectorAll(".thumb").forEach(function (item) { item.classList.remove("active"); });
+        button.classList.add("active");
+        showToast("已切换到第 " + button.dataset.page + " 页");
+      });
+    });
+
+    setAllAbilitiesShown(false);
+    updateFlowSteps();
+    updatePrimaryAction();
+  </script>
+</body>
+</html>

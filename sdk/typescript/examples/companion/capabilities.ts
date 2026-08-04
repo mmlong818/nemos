@@ -16,6 +16,16 @@ import {
   parseImagePromptResult,
   renderImagePromptResult,
 } from "./image-prompt-reconstruction.js";
+import {
+  generatedAbilitySpec,
+  isNativeCapabilityId,
+  nativeCapabilityAuditPrompt,
+  nativeCapabilityContract,
+  nativeCapabilityNeedsAudit,
+  parseNativeCapabilityPayload,
+  type GeneratedAbilitySpec,
+} from "./native-capability-contracts.js";
+import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
 
 const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -28,7 +38,7 @@ const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   hour12: false,
 });
 
-export type ArtifactFormat = "md" | "html" | "txt" | "json" | "doc";
+export type ArtifactFormat = "md" | "html" | "txt" | "json" | "doc" | "pptx";
 
 export interface CapabilityPersona {
   id: string;
@@ -87,6 +97,11 @@ export interface CapabilityArtifact {
   file: string;
   createdAt: string;
   summary: string;
+  previewFile?: string;
+  metadata?: {
+    native?: boolean;
+    generatedAbilityId?: string;
+  };
   verification?: SourceVerificationReport;
 }
 
@@ -166,8 +181,8 @@ export interface SkillAudit {
 
 export interface CapabilityRuntimeOptions {
   dataDir: string;
-  notify: (personaId: string, text: string, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string) => Promise<{ reply: string; facts: string[] }>;
-  notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string) => Promise<{ reply: string; facts: string[] }>;
+  notify: (personaId: string, text: string, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off") => Promise<{ reply: string; facts: string[] }>;
+  notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off") => Promise<{ reply: string; facts: string[] }>;
   personas: () => CapabilityPersona[];
   toolRegistry?: CapabilityToolRegistry;
 }
@@ -378,7 +393,7 @@ export class CapabilityRuntime {
     };
     if (kinds.has("artifact")) {
       for (const artifact of this.artifacts) {
-        const content = safeReadArtifactText(artifact.file);
+        const content = safeReadArtifactText(artifact.previewFile || artifact.file);
         add({
           kind: "artifact",
           id: artifact.id,
@@ -716,13 +731,13 @@ export class CapabilityRuntime {
     return this.finishTaskRun(task, ability, persona, reply);
   }
 
-  private finishTaskRun(
+  private async finishTaskRun(
     task: CapabilityTask,
     ability: Capability,
     persona: CapabilityPersona,
     reply: string,
-  ): CapabilityNotification {
-    const artifact = this.writeArtifact(task, ability, reply);
+  ): Promise<CapabilityNotification> {
+    const artifact = await this.writeArtifact(task, ability, reply);
     task.lastRunAt = artifact.createdAt;
     task.lastRunKey = runKey(task, new Date());
     if (task.schedule.mode === "turns") task.schedule.lastTurnRun = task.schedule.turnCount ?? 0;
@@ -746,6 +761,8 @@ export class CapabilityRuntime {
     format?: ArtifactFormat;
     trigger?: string;
     runId?: string;
+    memoryMode?: "default" | "preferences" | "off";
+    onProgress?: (message: string, percent: number) => void;
   }, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
     const ability = this.requireAbility(input.capabilityId);
     const persona = this.persona(input.personaId);
@@ -762,9 +779,11 @@ export class CapabilityRuntime {
       createdAt: now,
       updatedAt: now,
     };
-    const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId);
+    input.onProgress?.("正在分析目标并生成结构", 20);
+    const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
     this.markSkillUsed(ability);
-    const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId });
+    const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress });
+    input.onProgress?.("正在生成并保存交付物", 85);
     return this.finishAdHocRun(task, ability, persona, reply);
   }
 
@@ -776,15 +795,16 @@ export class CapabilityRuntime {
     format?: ArtifactFormat;
     trigger?: string;
     runId?: string;
+    memoryMode?: "default" | "preferences" | "off";
   }, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
     const { task, ability, persona } = this.createAdHocTask(input);
     const prompt = await this.buildRunPrompt(task, ability, persona, input.trigger || "chat");
     const result = this.opts.notifyStream
-      ? await this.opts.notifyStream(task.personaId, prompt, cb, signal, limits, input.runId)
-      : await this.opts.notify(task.personaId, prompt, signal, limits, input.runId);
+      ? await this.opts.notifyStream(task.personaId, prompt, cb, signal, limits, input.runId, input.memoryMode)
+      : await this.opts.notify(task.personaId, prompt, signal, limits, input.runId, input.memoryMode);
     if (!this.opts.notifyStream) cb.onToken(result.reply);
     this.markSkillUsed(ability);
-    const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId });
+    const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode });
     return this.finishAdHocRun(task, ability, persona, reply);
   }
 
@@ -793,8 +813,11 @@ export class CapabilityRuntime {
     ability: Capability,
     initialReply: string,
     cb?: CapabilityStreamCb,
-    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string } = {},
+    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void } = {},
   ): Promise<string> {
+    if (isNativeCapabilityId(ability.id)) {
+      return this.completeNativeAbilityReply(task, ability.id, initialReply, execution);
+    }
     if (ability.id !== IMAGE_PROMPT_CAPABILITY_ID) {
       return this.completeReply(task, ability, initialReply, cb, execution);
     }
@@ -810,6 +833,7 @@ export class CapabilityRuntime {
       execution.signal,
       execution.limits,
       repairRunId,
+      execution.memoryMode,
     );
     const checked = parseImagePromptResult(repaired.reply);
     if (!checked.value) {
@@ -818,12 +842,51 @@ export class CapabilityRuntime {
     return renderImagePromptResult(checked.value);
   }
 
+  private async completeNativeAbilityReply(
+    task: CapabilityTask,
+    abilityId: Parameters<typeof nativeCapabilityContract>[0],
+    initialReply: string,
+    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void },
+  ): Promise<string> {
+    execution.onProgress?.("正在校验交付结构", 48);
+    let initialError = "";
+    let parsed: ReturnType<typeof parseNativeCapabilityPayload> | null = null;
+    try {
+      parsed = parseNativeCapabilityPayload(abilityId, initialReply);
+    } catch (error) {
+      initialError = error instanceof Error ? error.message : String(error);
+    }
+    if (parsed && !nativeCapabilityNeedsAudit(abilityId)) {
+      return JSON.stringify(parsed);
+    }
+
+    execution.onProgress?.(
+      abilityId === "research-brief" ? "正在核验来源与关键结论" : abilityId === "ability-builder" ? "正在检查触发边界与验收条件" : "正在修复交付结构",
+      62,
+    );
+    const auditRunId = execution.runId ? execution.runId + "/native-audit" : undefined;
+    const audited = await this.opts.notify(
+      task.personaId,
+      nativeCapabilityAuditPrompt(abilityId, task.instruction, initialReply, initialError || undefined),
+      execution.signal,
+      execution.limits,
+      auditRunId,
+      execution.memoryMode,
+    );
+    try {
+      return JSON.stringify(parseNativeCapabilityPayload(abilityId, audited.reply));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error("能力结果未通过结构校验：" + reason);
+    }
+  }
+
   private async completeReply(
     task: CapabilityTask,
     ability: Capability,
     initialReply: string,
     cb?: CapabilityStreamCb,
-    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string } = {},
+    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void } = {},
   ): Promise<string> {
     let reply = initialReply.trim();
     const maxOutputChars = execution.limits?.maxOutputChars;
@@ -833,8 +896,8 @@ export class CapabilityRuntime {
       const prompt = this.buildContinuationPrompt(task, ability, reply);
       const runId = execution.runId ? `${execution.runId}/continuation-${attempt + 1}` : undefined;
       const more = this.opts.notifyStream && cb
-        ? await this.opts.notifyStream(task.personaId, prompt, cb, execution.signal, execution.limits, runId)
-        : await this.opts.notify(task.personaId, prompt, execution.signal, execution.limits, runId);
+        ? await this.opts.notifyStream(task.personaId, prompt, cb, execution.signal, execution.limits, runId, execution.memoryMode)
+        : await this.opts.notify(task.personaId, prompt, execution.signal, execution.limits, runId, execution.memoryMode);
       if (!this.opts.notifyStream && cb) cb.onToken(more.reply);
       const addition = more.reply.trim();
       if (!addition) break;
@@ -870,13 +933,13 @@ export class CapabilityRuntime {
     return { task, ability, persona };
   }
 
-  private finishAdHocRun(
+  private async finishAdHocRun(
     task: CapabilityTask,
     ability: Capability,
     persona: CapabilityPersona,
     reply: string,
-  ): CapabilityNotification {
-    const artifact = this.writeArtifact(task, ability, reply);
+  ): Promise<CapabilityNotification> {
+    const artifact = await this.writeArtifact(task, ability, reply);
     this.artifacts.push(artifact);
     this.saveArtifacts();
     return {
@@ -907,9 +970,17 @@ export class CapabilityRuntime {
     const artifact = this.artifacts.find((item) => item.id === id);
     if (!artifact) return false;
     const root = resolve(this.artifactDir);
-    const file = resolve(artifact.file);
+    const file = resolve(artifact.previewFile || artifact.file);
     if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) return false;
-    if (artifact.format === "html") return this.sendArtifact(res, id);
+    if (artifact.previewFile || artifact.format === "html") {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": "inline",
+        "Cache-Control": "no-store",
+      });
+      createReadStream(file).pipe(res);
+      return true;
+    }
     const raw = readFileSync(file, "utf8");
     const downloadUrl = `/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}`;
     const html = `<!doctype html>
@@ -1058,6 +1129,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
   private async buildRunPrompt(task: CapabilityTask, ability: Capability, persona: CapabilityPersona, trigger: string): Promise<string> {
     const isOcr = ability.id === "ocr-extraction";
     const isImagePrompt = ability.id === IMAGE_PROMPT_CAPABILITY_ID;
+    const nativeId = isNativeCapabilityId(ability.id) ? ability.id : null;
     const isVisualOnly = isOcr || isImagePrompt;
     const backendTools = isImagePrompt ? "" : this.opts.toolRegistry?.buildPromptBlock(task.instruction) ?? buildSourceConnectorGuide(task.instruction);
     const demandIntake = isImagePrompt ? "" : this.intakeDemand({ request: task.instruction, targetFormat: task.format, persist: false }).promptBlock;
@@ -1065,7 +1137,17 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     const privateSources = isVisualOnly ? "" : await buildPrivateSourcePromptBlock(this.opts.dataDir, task.instruction);
     const retrievalBlock = isVisualOnly ? "" : this.localRetrievalPromptBlock(task.instruction);
     const skillBlock = this.skillPromptBlock(ability);
-    const executionRequirements = isImagePrompt
+    const executionRequirements = nativeId
+      ? [
+        "Execution requirements:",
+        "1. Complete the work now; the JSON is an internal handoff contract that Nemos will render into the final artifact.",
+        "2. Use configured search or source tools when the request depends on current or source-sensitive facts.",
+        "3. Do not mention the internal contract, prompts, external projects, repositories, or implementation sources.",
+        "4. Do not append a completion marker.",
+        "",
+        nativeCapabilityContract(nativeId),
+      ].join("\n")
+      : isImagePrompt
       ? [
         "Execution requirements:",
         "1. Treat the image observation embedded in the user request as the only visual evidence.",
@@ -1327,15 +1409,53 @@ ${task.instruction}`,
     return join(this.skillDirPath(ability), "SKILL.md");
   }
 
-  private writeArtifact(task: CapabilityTask, ability: Capability, raw: string): CapabilityArtifact {
+  private async writeArtifact(task: CapabilityTask, ability: Capability, raw: string): Promise<CapabilityArtifact> {
     const now = new Date();
     const createdAt = now.toISOString();
     const id = uniqueId("art");
     const dir = join(this.artifactDir, createdAt.slice(0, 10));
     mkdirSync(dir, { recursive: true });
-    const ext = extension(task.format);
-    const file = join(dir, `${safeFileName(task.title)}-${id}.${ext}`);
     const verification = ability.id === "ocr-extraction" || ability.id === IMAGE_PROMPT_CAPABILITY_ID ? undefined : buildSourceVerificationReport(task.instruction);
+    const fileBase = join(dir, `${safeFileName(task.title)}-${id}`);
+    let generatedAbilityId: string | undefined;
+    if (ability.id === "ability-builder") {
+      const payload = parseNativeCapabilityPayload("ability-builder", raw);
+      const qualification = payload.data.qualification && typeof payload.data.qualification === "object"
+        ? payload.data.qualification as Record<string, unknown>
+        : {};
+      if (qualification.shouldBuild === true) {
+        const spec = generatedAbilitySpec(payload);
+        if (spec) generatedAbilityId = this.upsertGeneratedAbilitySpec(task.personaId, spec).id;
+      }
+    }
+    if (isNativeCapabilityId(ability.id)) {
+      const rendered = await writeNativeCapabilityArtifact({
+        capabilityId: ability.id,
+        title: task.title,
+        raw,
+        requestedFormat: task.format,
+        fileBase,
+        metadata: { generatedAbilityId },
+      });
+      return {
+        id,
+        taskId: task.id,
+        capabilityId: ability.id,
+        personaId: task.personaId,
+        title: task.title,
+        format: rendered.format,
+        file: rendered.file,
+        previewFile: rendered.previewFile,
+        createdAt,
+        summary: rendered.summary,
+        metadata: { native: true, generatedAbilityId },
+        verification: verification?.relevant ? verification : undefined,
+      };
+    }
+    if (task.format === "pptx") throw new Error("只有演示文稿能力支持 PowerPoint 导出。");
+
+    const ext = extension(task.format);
+    const file = `${fileBase}.${ext}`;
     const content = normalizeArtifactContent(raw, task.format, task.title, verification);
     writeFileSync(file, content, "utf8");
     return {
@@ -1352,10 +1472,56 @@ ${task.instruction}`,
     };
   }
 
+  private upsertGeneratedAbilitySpec(personaId: string, spec: GeneratedAbilitySpec): Capability {
+    const now = new Date().toISOString();
+    const learnedKey = `builder:${slug(spec.name)}`;
+    const prompt = [
+      spec.prompt,
+      "",
+      "触发边界：",
+      ...spec.triggerExamples.map((item) => `- 应触发：${item}`),
+      ...spec.nonTriggerExamples.map((item) => `- 不触发：${item}`),
+      "",
+      "交付前检查：",
+      ...spec.checks.map((item) => `- ${item}`),
+    ].join("\n");
+    const existing = this.generatedAbilities.find((item) =>
+      item.ownerPersonaId === personaId && item.source === "manual" && item.learnedKey === learnedKey);
+    if (existing) {
+      existing.name = spec.name;
+      existing.description = spec.description;
+      existing.defaultFormat = spec.defaultFormat;
+      existing.prompt = prompt;
+      existing.updatedAt = now;
+      delete existing.archivedAt;
+      this.writeSkillFile(existing, spec.triggerExamples.join("；"), "manual");
+      this.saveAbilities();
+      return existing;
+    }
+    const ability: Capability = {
+      id: uniqueId("cap"),
+      name: spec.name,
+      description: spec.description,
+      kind: "generated",
+      ownerPersonaId: personaId,
+      defaultFormat: spec.defaultFormat,
+      source: "manual",
+      learnedKey,
+      prompt,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.generatedAbilities.push(ability);
+    this.writeSkillFile(ability, spec.triggerExamples.join("；"), "manual");
+    this.saveAbilities();
+    return ability;
+  }
+
   private notificationText(personaName: string, task: CapabilityTask, artifact: CapabilityArtifact, raw: string): string {
-    const format = formatLabel(task.format);
-    const visible = deliveryExcerpt(raw);
-    return `${personaName}已经完成「${task.title}」。\n\n我先把内容交在这里：\n\n${visible}\n\n---\n产物格式：${format}\n保存位置：${artifact.file}`;
+    const format = formatLabel(artifact.format);
+    const visible = artifact.metadata?.native ? artifact.summary : deliveryExcerpt(raw);
+    const installed = artifact.metadata?.generatedAbilityId ? "\n新能力已通过检查并加入本机能力库。" : "";
+    return `${personaName}已经完成「${task.title}」。\n\n${visible}${installed}\n\n---\n产物格式：${format}\n保存位置：${artifact.file}`;
   }
 }
 
@@ -1375,11 +1541,11 @@ const BUILTIN_ABILITIES: Capability[] = [
   },
   {
     id: "research-brief",
-    name: "资料收集简报",
-    description: "围绕指定主题收集公开资料，整理为可阅读的简报。",
+    name: "深度研究",
+    description: "把问题拆成研究路径，搜索和分级来源，核验关键声明后交付可追溯的研究报告。",
     kind: "builtin",
-    defaultFormat: "md",
-    prompt: "适合每日资料收集、行业观察、项目追踪。输出包含：结论摘要、关键资料、来源线索、待确认问题、下一步建议。",
+    defaultFormat: "html",
+    prompt: "先规划研究问题与查询，再使用可用的联网搜索和来源工具。来源按权威程度分级并记录核验时间；关键结论必须能回指证据。至少进行一次独立质量复核，明确限制与仍待核验项。",
     createdAt: BUILTIN_CREATED_AT,
   },
   {
@@ -1608,6 +1774,104 @@ const BUILTIN_ABILITIES: Capability[] = [
     ].join("\n"),
     createdAt: BUILTIN_CREATED_AT,
   },
+  {
+    id: "presentation-builder",
+    name: "演示文稿",
+    description: "把目标和材料组织成有叙事节奏、可放映并可继续编辑的 PowerPoint。",
+    kind: "builtin",
+    defaultFormat: "pptx",
+    prompt: [
+      "Create a presentation-ready deliverable, not a long article.",
+      "Start with audience, purpose, speaking situation, and one clear narrative spine.",
+      "Output a page-by-page plan with title, key message, supporting evidence, recommended visual or layout, and speaker note.",
+      "Keep one main idea per page, vary layouts intentionally, and include opening, transition, conclusion, and next action.",
+      "Return the structured slide contract; Nemos will render it into a standalone preview or editable PPTX.",
+    ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "thinking-workbench",
+    name: "思考工作台",
+    description: "把模糊问题整理成目标、假设、矛盾、选择、验证与下一步。",
+    kind: "builtin",
+    defaultFormat: "html",
+    prompt: [
+      "Turn an ambiguous question into a working thinking surface.",
+      "Separate facts, assumptions, interpretations, constraints, contradictions, and unknowns.",
+      "Develop multiple plausible frames before recommending a direction.",
+      "Output: problem statement, key questions, assumption map, options, counterarguments, low-cost tests, decision signals, and next actions.",
+      "Do not force certainty when evidence is insufficient.",
+    ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "product-design",
+    name: "产品设计",
+    description: "从真实用户任务出发，形成流程、信息结构、关键界面与验收标准。",
+    kind: "builtin",
+    defaultFormat: "html",
+    prompt: [
+      "Design the product around the user's real job and complete path, not a collection of components.",
+      "Output: user and situation, primary job, success criteria, end-to-end flow, information architecture, key screens, states and errors, content language, responsive behavior, and acceptance checks.",
+      "Use progressive disclosure, clear hierarchy, accessible focus states, and realistic data.",
+      "Explain which memory preferences may affect writing, layout, or formatting, while keeping task-specific instructions primary.",
+    ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "business-deal",
+    name: "商务推进",
+    description: "梳理合作价值、关键人、异议、谈判边界和可执行的跟进动作。",
+    kind: "builtin",
+    defaultFormat: "html",
+    prompt: [
+      "Prepare an ethical, evidence-based business development plan.",
+      "Output: account context, stakeholder map, mutual value, evidence, open questions, likely objections, response strategy, negotiation boundaries, meeting agenda, follow-up messages, and next actions.",
+      "Distinguish confirmed facts from assumptions and never invent customer commitments, budgets, authority, or replies.",
+    ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "market-opportunity",
+    name: "市场机会模拟",
+    description: "结合用户、竞争、趋势与不确定性，用可调整的情景模拟形成机会判断和验证路径。",
+    kind: "builtin",
+    defaultFormat: "html",
+    prompt: [
+      "Assess a market opportunity without pretending uncertain data is current or causal.",
+      "Output: target user and problem, current alternatives, demand signals, competitive structure, differentiation, business constraints, risks, evidence status, opportunity thesis, invalidation conditions, and low-cost validation plan.",
+      "Mark volatile market data and unsupported estimates as needing verification.",
+    ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "ability-builder",
+    name: "生成新能力",
+    description: "判断重复工作是否值得沉淀，并生成带触发边界、步骤、异常路径和测试的可用能力。",
+    kind: "builtin",
+    defaultFormat: "html",
+    prompt: [
+      "Start from the repeated job, not from a folder or template.",
+      "First decide whether the job deserves a reusable ability. Reject one-off, vague, or unsafe automation.",
+      "Define clear positive and negative trigger examples, required inputs, ordered steps, decision rules, output contract, exception paths, and acceptance checks.",
+      "Create trigger test cases that include close non-matches.",
+      "When qualification passes, Nemos will install the validated result into the local ability library.",
+    ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "workflow-builder",
+    name: "流程搭建",
+    description: "把重复工作整理成清楚、可复用、可检查的输入与步骤。",
+    kind: "builtin",
+    defaultFormat: "md",
+    prompt: [
+      "Turn a repeated job into a practical reusable workflow.",
+      "Output: trigger, required inputs, roles, ordered steps, decision points, tools or sources, output contract, checks, exception paths, handoff, and review cadence.",
+      "Keep the workflow as simple as the task allows and identify which steps are safe to automate versus which need human confirmation.",
+    ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
 ];
 
 function readJson<T>(file: string, fallback: T): T {
@@ -1713,7 +1977,7 @@ function firstParagraph(content: string): string {
 }
 
 function normalizeFormat(format?: string): ArtifactFormat {
-  if (format === "html" || format === "txt" || format === "json" || format === "doc") return format;
+  if (format === "html" || format === "txt" || format === "json" || format === "doc" || format === "pptx") return format;
   return "md";
 }
 
@@ -1912,6 +2176,7 @@ function asciiFileName(name: string): string {
 }
 
 function extension(format: ArtifactFormat): string {
+  if (format === "pptx") return "pptx";
   if (format === "html") return "html";
   if (format === "txt") return "txt";
   if (format === "json") return "json";
@@ -1919,12 +2184,14 @@ function extension(format: ArtifactFormat): string {
 }
 
 function contentType(format: ArtifactFormat): string {
+  if (format === "pptx") return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   if (format === "html") return "text/html; charset=utf-8";
   if (format === "json") return "application/json; charset=utf-8";
   return "text/plain; charset=utf-8";
 }
 
 function formatLabel(format: ArtifactFormat): string {
+  if (format === "pptx") return "可编辑 PowerPoint";
   if (format === "html") return "HTML";
   if (format === "json") return "JSON";
   if (format === "txt") return "纯文本";
