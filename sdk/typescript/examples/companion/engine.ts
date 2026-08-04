@@ -87,6 +87,8 @@ export interface SendOptions {
   runtimeLimits?: ChatAgentContext["runtimeLimits"];
   runId?: string;
   sessionId?: string;
+  /** 单次任务可关闭用户习惯与事实的召回；角色自身状态仍保留。 */
+  memoryMode?: "default" | "preferences" | "off";
 }
 
 export interface CompanionEngineOptions {
@@ -133,7 +135,7 @@ const RECENT_MAX = 8;
 const SELF_LAYER = "episodic" as const;
 const SELF_SCOPE = "self";
 const WORK_MAX_REPLY_TOKENS = 6000;
-const WORK_PROMPT_MARKER = /后台专有能力|能力名称：|目标产物格式：|执行要求：/;
+const WORK_PROMPT_MARKER = /后台专有能力|能力名称：|目标产物格式：|执行要求：|Run a backend capability|Capability:|Target artifact format:|Execution requirements:/i;
 const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
   year: "numeric",
@@ -385,11 +387,11 @@ export class CompanionEngine {
     userId: string,
     personaId: string,
     text: string,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
-    const context = await this.recall(userId, personaId, text);
+    const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
     const reply = await this.chat(
       workMode
@@ -403,8 +405,10 @@ export class CompanionEngine {
       this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
     );
 
-    await this.ingestPersonaReply(personaId, scope, reply);
-    this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    if (!workMode) {
+      await this.ingestPersonaReply(personaId, scope, reply);
+      this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    }
     return { personaId, reply, context };
   }
 
@@ -414,11 +418,11 @@ export class CompanionEngine {
     personaId: string,
     text: string,
     cb: StreamCb,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
-    const context = await this.recall(userId, personaId, text);
+    const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
     const system = workMode
       ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)))
@@ -445,8 +449,10 @@ export class CompanionEngine {
         );
     if (!this.opts.chatStream) cb.onToken(reply);
 
-    await this.ingestPersonaReply(personaId, scope, reply);
-    this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    if (!workMode) {
+      await this.ingestPersonaReply(personaId, scope, reply);
+      this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    }
     return { personaId, reply, context };
   }
 
@@ -499,10 +505,19 @@ export class CompanionEngine {
    * - 块1：对方事实 —— 本人格在场的全部 scope（1-on-1 + 所在群）；默认隐藏失效（从不踩雷）。
    * - 块2：人格自我 —— 独立 namespace 的最近近况。
    */
-  async recall(userId: string, personaId: string, query: string): Promise<RecallResult> {
-    const userFacts = await this.nemos.forUser(userId).getRelevantContext(query, {
-      scopes: this.visibleScopes(userId, personaId),
-    });
+  async recall(
+    userId: string,
+    personaId: string,
+    query: string,
+    memoryMode: "default" | "preferences" | "off" = "default",
+  ): Promise<RecallResult> {
+    const userFacts = memoryMode === "off"
+      ? ""
+      : memoryMode === "preferences"
+        ? await this.recallPreferences(userId, personaId, query)
+        : await this.nemos.forUser(userId).getRelevantContext(query, {
+            scopes: this.visibleScopes(userId, personaId),
+          });
     // 块2 = 角色自己的记忆库：
     //  - 基础记忆（scope=bio）：背景事实（取代 prompt 里的具体设定），全量带上（每角色小集合）
     //  - 种入的近况（scope=self）
@@ -517,6 +532,20 @@ export class CompanionEngine {
       ...said.map((m) => `（我曾说过）${m.content.trim().slice(0, 140)}`),
     ].filter(Boolean).join("\n");
     return { userFacts, selfState };
+  }
+
+  private async recallPreferences(userId: string, personaId: string, query: string): Promise<string> {
+    const candidates = await this.nemos.forUser(userId).search(query, {
+      layers: ["procedural", "personal_semantic"],
+      scopes: this.visibleScopes(userId, personaId),
+      topK: 12,
+    });
+    const preferenceCue = /偏好|喜欢|习惯|文风|文笔|排版|格式|语气|称呼|长度|简洁|详细|标题|列表|表格|配色|风格|prefer|style|format|tone|layout/i;
+    const selected = candidates
+      .filter((memory) => memory.layer === "procedural" || preferenceCue.test(memory.content))
+      .slice(0, 6);
+    if (selected.length === 0) return "";
+    return ["## User delivery preferences", "", ...selected.map((memory) => `- ${memory.content}`)].join("\n");
   }
 
   /** 离线整合：沉淀事实 + 矛盾失效（需 SDK features.reflect / invalidation 开）。 */
@@ -690,9 +719,6 @@ export class CompanionEngine {
       ``,
       `Known facts about the user. Use only if helpful:`,
       ctx.userFacts.trim() || `(none)`,
-      ``,
-      `Persona self-state. Keep consistency, but never override task requirements:`,
-      ctx.selfState.trim() || `(none)`,
     ].join("\n");
   }
 

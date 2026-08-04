@@ -46,7 +46,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
-    "better-sqlite3": "^12.10.0"
+    "better-sqlite3": "^12.10.0",
+    "pptxgenjs": "^4.0.1"
   },
   "optionalDependencies": {
     "sqlite-vec": "^0.1.0"

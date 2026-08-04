@@ -23,6 +23,13 @@ import {
   type LLMConfig,
 } from "../../src/index.js";
 import type { ChatAgentContext, ChatFn, ChatStreamFn } from "./engine.js";
+import {
+  companionModelProviderPreset,
+  defaultCompanionModelConnection,
+  modelConnectionEndpoint,
+  normalizeCompanionModelConnection,
+  type CompanionModelConnection,
+} from "./model-connection.js";
 
 const ZHIPU_CHAT_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const ZHIPU_SEARCH_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/web_search";
@@ -76,7 +83,7 @@ export interface ResolvedLLM {
   live: boolean;
 }
 
-export function resolveLLM(): ResolvedLLM {
+export function resolveLLM(config?: CompanionModelConnection): ResolvedLLM {
   let agentToolProvider: AgentToolProvider = () => [];
   let agentObserver: AgentRunObserver | undefined;
   let agentAuthorizer: AgentToolAuthorizer | undefined;
@@ -90,33 +97,39 @@ export function resolveLLM(): ResolvedLLM {
   const configureAgentAuthorizer = (authorizer?: AgentToolAuthorizer): void => {
     agentAuthorizer = authorizer;
   };
-  const zhipuKey = process.env.ZHIPU_API_KEY;
-  if (zhipuKey) {
-    // 对话默认用旗舰 glm-5.2 保质量（弱模型不听指令、乱调工具、易退化）；可用 ZHIPU_MODEL 降档换速度。
-    const chatModel = process.env.ZHIPU_MODEL || DEFAULT_ZHIPU_MODEL;
-    // 抽取=后台/不可见，用 glm-5.2 保质量（关思考保速度）；可用 EXTRACT_MODEL 覆盖。
-    const extractModel = process.env.EXTRACT_MODEL || DEFAULT_ZHIPU_MODEL;
-    const tools = [makeWebSearchTool(zhipuKey)];
+  const connection = config ? normalizeCompanionModelConnection(config) : connectionFromEnvironment();
+  if (connection) {
+    const chatModel = connection.model;
+    const extractModel = process.env.EXTRACT_MODEL || chatModel;
+    const provider = companionModelProviderPreset(connection.provider);
+    const isZhipu = connection.provider === "zhipu";
+    const isOfficialOpenAI = connection.provider === "openai"
+      && connection.baseUrl === "https://api.openai.com/v1";
+    const tools = isZhipu ? [makeWebSearchTool(connection.apiKey)] : [];
     return {
-      extraction: makeZhipuExtract(zhipuKey, extractModel),
-      embedding: { provider: "zhipu", apiKey: zhipuKey },
-      chat: makeZhipuChat(zhipuKey, chatModel, tools, additionalTools, () => agentObserver, () => agentAuthorizer),
-      chatStream: makeZhipuChatStream(zhipuKey, chatModel, tools, additionalTools, () => agentObserver, () => agentAuthorizer),
-      vision: makeVision(zhipuKey),
-      tts: makeTts(zhipuKey),
-      asr: makeAsr(zhipuKey),
+      extraction: makeConnectionExtract(connection, extractModel),
+      embedding: isZhipu
+        ? { provider: "zhipu", apiKey: connection.apiKey }
+        : isOfficialOpenAI
+          ? { provider: "openai", apiKey: connection.apiKey }
+          : { provider: "none" },
+      chat: makeConnectionChat(connection, chatModel, tools, additionalTools, () => agentObserver, () => agentAuthorizer),
+      chatStream: makeConnectionChatStream(connection, chatModel, tools, additionalTools, () => agentObserver, () => agentAuthorizer),
+      vision: isZhipu ? makeVision(connection.apiKey) : null,
+      tts: isZhipu ? makeTts(connection.apiKey) : null,
+      asr: isZhipu ? makeAsr(connection.apiKey) : null,
       configureAgentTools,
       configureAgentObserver,
       configureAgentAuthorizer,
-      resumeAgentRun: makeZhipuAgentResume(
-        zhipuKey,
+      resumeAgentRun: makeConnectionAgentResume(
+        connection,
         chatModel,
         tools,
         additionalTools,
         () => agentObserver,
         () => agentAuthorizer,
       ),
-      label: `zhipu chat=${chatModel} / extract=${extractModel} + embedding-3 + 按需联网 + 识图`,
+      label: `${provider.name} · ${chatModel}`,
       live: true,
     };
   }
@@ -132,12 +145,44 @@ export function resolveLLM(): ResolvedLLM {
     configureAgentObserver,
     configureAgentAuthorizer,
     resumeAgentRun: null,
-    label: "offline（本地启发式抽取 + 回声脑；设 ZHIPU_API_KEY 切真实 LLM + 工具）",
+    label: "离线模式（本地启发式抽取 + 基础回复）",
     live: false,
   };
 }
 
+function connectionFromEnvironment(): CompanionModelConnection | undefined {
+  const apiKey = process.env.ZHIPU_API_KEY?.trim();
+  if (!apiKey) return undefined;
+  const connection = defaultCompanionModelConnection("zhipu", apiKey);
+  connection.model = process.env.ZHIPU_MODEL || DEFAULT_ZHIPU_MODEL;
+  return connection;
+}
+
 // —— 联网搜索工具（function calling；handler 调独立 Web Search API）——
+export interface CompanionWebSearchItem {
+  title: string;
+  content: string;
+  url: string;
+}
+
+export async function searchWeb(apiKey: string, rawQuery: string, signal?: AbortSignal): Promise<CompanionWebSearchItem[]> {
+  const query = freshSearchQuery(rawQuery.trim());
+  if (!query) return [];
+  const resp = await fetch(ZHIPU_SEARCH_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ search_engine: "search_pro", search_query: query, count: 8 }),
+    signal,
+  });
+  if (!resp.ok) throw new Error(`搜索失败 HTTP ${resp.status}`);
+  const data = await resp.json() as { search_result?: Array<{ title?: string; content?: string; link?: string }> };
+  return (data.search_result ?? []).slice(0, 8).map((item) => ({
+    title: String(item.title || "").trim(),
+    content: String(item.content || "").trim(),
+    url: String(item.link || "").trim(),
+  }));
+}
+
 function makeWebSearchTool(apiKey: string): AgentTool {
   return {
     definition: {
@@ -155,21 +200,17 @@ function makeWebSearchTool(apiKey: string): AgentTool {
     execute: async (args, context) => {
       const query = freshSearchQuery(String(args.query ?? "").trim());
       if (!query) return { content: "（空查询）", isError: true };
-      const resp = await fetch(ZHIPU_SEARCH_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        // search_pro：高级引擎，结果更新更准（search_std 会返回过时旧文）。
-        body: JSON.stringify({ search_engine: "search_pro", search_query: query, count: 5 }),
-        signal: context.signal,
-      });
-      if (!resp.ok) return { content: `（搜索失败 HTTP ${resp.status}）`, isError: true };
-      const data = (await resp.json()) as { search_result?: Array<{ title?: string; content?: string; link?: string }> };
-      const items = (data.search_result ?? []).slice(0, 5);
+      let items: CompanionWebSearchItem[];
+      try {
+        items = await searchWeb(apiKey, query, context.signal);
+      } catch (error) {
+        return { content: `（${error instanceof Error ? error.message : String(error)}）`, isError: true };
+      }
       if (items.length === 0) return { content: "（没搜到相关结果）" };
       return {
         content: [
           `Search checked at: ${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}`,
-          ...items.map((r, i) => `[${i + 1}] ${r.title ?? ""}\n${(r.content ?? "").slice(0, 300)}\n${r.link ?? ""}`),
+          ...items.slice(0, 5).map((r, i) => `[${i + 1}] ${r.title}\n${r.content.slice(0, 300)}\n${r.url}`),
         ].join("\n\n"),
       };
     },
@@ -194,30 +235,28 @@ function freshSearchQuery(query: string): string {
 }
 
 // —— 抽取 LLM（包一层强制中文，避免 flash 偶尔输出英文事实）——
-function makeZhipuExtract(apiKey: string, model: string): LLMConfig {
+function makeConnectionExtract(connection: CompanionModelConnection, model: string): LLMConfig {
   const ZH = "\n\n【语言要求】抽取出的所有文本字段（content / basis 等）必须用中文（与用户输入语言一致），绝不要译成英文。JSON 结构保持不变。";
   return {
     provider: "custom",
-    name: `zhipu-extract-zh(${model})`,
+    name: `${connection.provider}-extract-zh(${model})`,
     chat: async (system: string, user: string): Promise<string> => {
-      const resp = await fetch(ZHIPU_CHAT_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: system + ZH },
-            { role: "user", content: user },
-          ],
-          response_format: { type: "json_object" },
-          thinking: { type: "disabled" }, // 抽取是机械任务，关 CoT 保速度
-        }),
+      const agentModel = makeConnectionAgentModel({
+        connection,
+        model,
+        maxTokens: 2200,
+        temperature: 0,
+        stream: false,
       });
-      if (!resp.ok) {
-        throw new Error(`[companion] zhipu extract HTTP ${resp.status}: ${(await resp.text()).slice(0, 240)}`);
-      }
-      const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-      return data.choices?.[0]?.message?.content ?? "{}";
+      const response = await agentModel.complete({
+        messages: [
+          { role: "system", content: system + ZH + "\n只返回 JSON，不要附加解释或 Markdown 代码块。" },
+          { role: "user", content: user },
+        ],
+        tools: [],
+        signal: new AbortController().signal,
+      });
+      return response.text || "{}";
     },
   };
 }
@@ -340,8 +379,8 @@ function mightNeedWeb(user: string): boolean {
   return WEB_CUES.test(lines) || WEB_VERBS.test(lines);
 }
 
-function makeZhipuChat(
-  apiKey: string,
+function makeConnectionChat(
+  connection: CompanionModelConnection,
   defaultModel: string,
   tools: AgentTool[] = [],
   additionalTools: AgentToolProvider = () => [],
@@ -356,12 +395,13 @@ function makeZhipuChat(
     const sys = useTools
       ? `${system}${TOOL_POLICY}\n（现在是 ${now}（北京时间），引用搜索结果时务必注意时效，过时的就说过时。）`
       : system;
-    const limits = agentLimits(context, 800);
+    const requestedMaxTokens = maxTokens || 800;
+    const limits = agentLimits(context, requestedMaxTokens);
     const selectedModel = model || defaultModel;
-    const completionTokens = Math.min(maxTokens || 800, limits.maxTokens);
+    const completionTokens = Math.min(requestedMaxTokens, limits.maxTokens);
     const runtime = new AgentRuntime(
-      makeZhipuAgentModel({
-        apiKey,
+      makeConnectionAgentModel({
+        connection,
         model: selectedModel,
         maxTokens: completionTokens,
         temperature: 0.85,
@@ -398,8 +438,8 @@ function makeZhipuChat(
 }
 
 // —— 流式对话（助理用）：每回合走 stream:true；命中工具推「查询中/工作中」，最终回合逐字推文字 ——
-function makeZhipuChatStream(
-  apiKey: string,
+function makeConnectionChatStream(
+  connection: CompanionModelConnection,
   defaultModel: string,
   tools: AgentTool[] = [],
   additionalTools: AgentToolProvider = () => [],
@@ -414,14 +454,15 @@ function makeZhipuChatStream(
     const sys = useTools
       ? `${system}${TOOL_POLICY}\n（现在是 ${now}（北京时间），引用搜索结果注意时效。）`
       : system;
-    const limits = agentLimits(context, 1200);
+    const requestedMaxTokens = maxTokens || 1200;
+    const limits = agentLimits(context, requestedMaxTokens);
     const selectedModel = model || defaultModel;
-    const completionTokens = Math.min(maxTokens || 1200, limits.maxTokens);
+    const completionTokens = Math.min(requestedMaxTokens, limits.maxTokens);
     let emittedChars = 0;
     cb.onStatus("工作中");
     const runtime = new AgentRuntime(
-      makeZhipuAgentModel({
-        apiKey,
+      makeConnectionAgentModel({
+        connection,
         model: selectedModel,
         maxTokens: completionTokens,
         temperature: 0.6,
@@ -471,8 +512,8 @@ function makeZhipuChatStream(
   };
 }
 
-function makeZhipuAgentResume(
-  apiKey: string,
+function makeConnectionAgentResume(
+  connection: CompanionModelConnection,
   defaultModel: string,
   tools: AgentTool[],
   additionalTools: AgentToolProvider,
@@ -493,8 +534,8 @@ function makeZhipuAgentResume(
     cb?.onStatus("恢复任务");
 
     const runtime = new AgentRuntime(
-      makeZhipuAgentModel({
-        apiKey,
+      makeConnectionAgentModel({
+        connection,
         model: selectedModel,
         maxTokens,
         temperature: 0.6,
@@ -612,8 +653,8 @@ function agentLimits(context: ChatAgentContext | undefined, defaultMaxTokens: nu
   );
   return { maxRounds, maxToolRounds, maxTotalTokens, maxOutputChars, maxTokens };
 }
-interface ZhipuAgentModelOptions {
-  apiKey: string;
+interface ConnectionAgentModelOptions {
+  connection: CompanionModelConnection;
   model: string;
   maxTokens: number;
   temperature: number;
@@ -634,16 +675,27 @@ interface ZhipuChatResponse {
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
-function makeZhipuAgentModel(options: ZhipuAgentModelOptions): AgentModel {
+function makeConnectionAgentModel(options: ConnectionAgentModelOptions): AgentModel {
+  return options.connection.protocol === "anthropic"
+    ? makeAnthropicAgentModel(options)
+    : makeOpenAICompatibleAgentModel(options);
+}
+
+function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): AgentModel {
   return {
     complete: async (request) => {
       const body: Record<string, unknown> = {
         model: options.model,
         messages: request.messages.map(toZhipuMessage),
-        temperature: options.temperature,
-        max_tokens: Math.max(1, Math.min(options.maxTokens, request.maxOutputTokens ?? options.maxTokens)),
-        thinking: { type: "disabled" },
       };
+      const outputTokens = Math.max(1, Math.min(options.maxTokens, request.maxOutputTokens ?? options.maxTokens));
+      if (options.connection.provider === "openai") {
+        body.max_completion_tokens = outputTokens;
+      } else {
+        body.max_tokens = outputTokens;
+        body.temperature = options.temperature;
+      }
+      if (options.connection.provider === "zhipu") body.thinking = { type: "disabled" };
       if (request.tools.length > 0) body.tools = request.tools.map((tool) => ({
         type: "function",
         function: {
@@ -654,20 +706,115 @@ function makeZhipuAgentModel(options: ZhipuAgentModelOptions): AgentModel {
       }));
       if (options.stream) body.stream = true;
 
-      const resp = await fetch(ZHIPU_CHAT_ENDPOINT, {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (options.connection.apiKey) headers.Authorization = `Bearer ${options.connection.apiKey}`;
+      const resp = await fetch(modelConnectionEndpoint(options.connection), {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.apiKey}` },
+        headers,
         body: JSON.stringify(body),
         signal: request.signal,
       });
       if (!resp.ok) {
-        throw new Error(`[companion] zhipu chat HTTP ${resp.status}: ${(await resp.text()).slice(0, 240)}`);
+        const provider = companionModelProviderPreset(options.connection.provider).name;
+        throw new Error(`[companion] ${provider} HTTP ${resp.status}: ${(await resp.text()).slice(0, 240)}`);
       }
       return options.stream
         ? readZhipuStream(resp, request.onTextDelta)
         : readZhipuResponse(resp);
     },
   };
+}
+
+interface AnthropicContentBlock {
+  type?: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+}
+
+function makeAnthropicAgentModel(options: ConnectionAgentModelOptions): AgentModel {
+  return {
+    complete: async (request) => {
+      const system = request.messages
+        .filter((message) => message.role === "system")
+        .map((message) => message.content)
+        .join("\n\n");
+      const body: Record<string, unknown> = {
+        model: options.model,
+        system,
+        messages: request.messages.flatMap(toAnthropicMessage),
+        max_tokens: Math.max(1, Math.min(options.maxTokens, request.maxOutputTokens ?? options.maxTokens)),
+        temperature: options.temperature,
+      };
+      if (request.tools.length > 0) body.tools = request.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.inputSchema,
+      }));
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+      };
+      if (options.connection.apiKey) {
+        headers["x-api-key"] = options.connection.apiKey;
+        headers.Authorization = `Bearer ${options.connection.apiKey}`;
+      }
+      const resp = await fetch(modelConnectionEndpoint(options.connection), {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: request.signal,
+      });
+      if (!resp.ok) {
+        const provider = companionModelProviderPreset(options.connection.provider).name;
+        throw new Error(`[companion] ${provider} HTTP ${resp.status}: ${(await resp.text()).slice(0, 240)}`);
+      }
+      const data = await resp.json() as {
+        content?: AnthropicContentBlock[];
+        stop_reason?: string;
+        usage?: { input_tokens?: number; output_tokens?: number };
+      };
+      const blocks = data.content ?? [];
+      const text = blocks.filter((block) => block.type === "text").map((block) => block.text ?? "").join("");
+      if (text) request.onTextDelta?.(text);
+      return {
+        text,
+        toolCalls: blocks.flatMap((block, index) => block.type === "tool_use" && block.name
+          ? [{
+              id: block.id || `tool-call-${index + 1}`,
+              name: block.name,
+              arguments: block.input && typeof block.input === "object" ? block.input : {},
+            }]
+          : []),
+        stopReason: data.stop_reason,
+        inputTokens: data.usage?.input_tokens,
+        outputTokens: data.usage?.output_tokens,
+      };
+    },
+  };
+}
+
+function toAnthropicMessage(message: AgentMessage): Array<Record<string, unknown>> {
+  if (message.role === "system") return [];
+  if (message.role === "assistant" && message.toolCalls?.length) {
+    const content: Array<Record<string, unknown>> = [];
+    if (message.content) content.push({ type: "text", text: message.content });
+    content.push(...message.toolCalls.map((call) => ({
+      type: "tool_use",
+      id: call.id,
+      name: call.name,
+      input: call.arguments,
+    })));
+    return [{ role: "assistant", content }];
+  }
+  if (message.role === "tool") {
+    return [{
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: message.toolCallId, content: message.content }],
+    }];
+  }
+  return [{ role: message.role, content: message.content }];
 }
 
 function toZhipuMessage(message: AgentMessage): Record<string, unknown> {
@@ -804,6 +951,39 @@ function parseToolArguments(raw?: string): Record<string, unknown> {
       : { value };
   } catch {
     return { __invalidJson: raw };
+  }
+}
+
+export async function validateCompanionModelConnection(
+  input: CompanionModelConnection,
+): Promise<{ provider: string; model: string }> {
+  const connection = normalizeCompanionModelConnection(input);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const model = makeConnectionAgentModel({
+      connection,
+      model: connection.model,
+      maxTokens: 16,
+      temperature: 0,
+      stream: false,
+    });
+    const response = await model.complete({
+      messages: [
+        { role: "system", content: "你是连通性测试接口，只回复 OK。" },
+        { role: "user", content: "ping" },
+      ],
+      tools: [],
+      signal: controller.signal,
+      maxOutputTokens: 16,
+    });
+    if (!response.text.trim()) throw new Error("接口没有返回有效回复。");
+    return { provider: connection.provider, model: connection.model };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("连接超时，请检查 API 地址与网络。 ");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

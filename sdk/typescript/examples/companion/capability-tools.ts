@@ -176,6 +176,7 @@ export function createDefaultCapabilityToolRegistry(
     hasLiveSearch: () => boolean;
     hasVision: () => boolean;
     hasVoice: () => boolean;
+    runLiveSearch?: (query: string, signal?: AbortSignal) => Promise<Array<{ title: string; content: string; url: string }>>;
   },
 ): CapabilityToolRegistry {
   const registry = new CapabilityToolRegistry({ dataDir });
@@ -187,6 +188,38 @@ export function createDefaultCapabilityToolRegistry(
     toolset: "web",
     requires: ["ZHIPU_API_KEY"],
     check: checks.hasLiveSearch,
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "需要联网搜索的问题或关键词" } },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    effect: "read",
+    timeoutMs: 30_000,
+    run: checks.runLiveSearch ? async (args, context) => {
+      const query = String(args.query || "").trim();
+      if (!query) return { ok: false, text: "搜索词不能为空", checkedAt: new Date().toISOString(), needsVerification: true };
+      try {
+        const items = await checks.runLiveSearch!(query, context.signal);
+        const checkedAt = new Date().toISOString();
+        return {
+          ok: true,
+          checkedAt,
+          text: items.length
+            ? [`Search checked at: ${checkedAt}`, ...items.map((item, index) => `[${index + 1}] ${item.title}\n${item.content.slice(0, 500)}\n${item.url}`)].join("\n\n")
+            : "没有找到相关结果",
+          data: { query, items },
+          needsVerification: items.length === 0,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          checkedAt: new Date().toISOString(),
+          text: error instanceof Error ? error.message : String(error),
+          needsVerification: true,
+        };
+      }
+    } : undefined,
   });
 
   registry.register({

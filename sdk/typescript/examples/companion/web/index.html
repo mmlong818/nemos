@@ -1022,7 +1022,7 @@
   .is-busy #txt { opacity:.72; }
   .is-busy #send { pointer-events:none; }
 
-  #onboardingmodal, #memmodal, #groupmodal, #contactmodal, #personamodal, #avatarcropmodal, #historymodal, #toolmodal, #toolsettingsmodal, #hkmodal, #capmodal, #approvalmodal, #sourcemodal, #settingsmenu {
+  #onboardingmodal, #memmodal, #groupmodal, #contactmodal, #personamodal, #avatarcropmodal, #historymodal, #toolmodal, #toolsettingsmodal, #modelmodal, #hkmodal, #capmodal, #approvalmodal, #sourcemodal, #settingsmenu {
     display:none;
     position:fixed;
     inset:0;
@@ -1036,7 +1036,7 @@
   #memmodal, #groupmodal, #contactmodal, #personamodal, #avatarcropmodal, #historymodal, #toolmodal, #toolsettingsmodal, #hkmodal, #capmodal, #sourcemodal { z-index:60; }
   #approvalmodal { z-index:80; }
   #onboardingmodal { z-index:90; }
-  #onboardingmodal.show, #memmodal.show, #groupmodal.show, #contactmodal.show, #personamodal.show, #avatarcropmodal.show, #historymodal.show, #toolmodal.show, #toolsettingsmodal.show, #hkmodal.show, #capmodal.show, #approvalmodal.show, #sourcemodal.show, #settingsmenu.show { display:flex; animation:fade .15s ease; }
+  #onboardingmodal.show, #memmodal.show, #groupmodal.show, #contactmodal.show, #personamodal.show, #avatarcropmodal.show, #historymodal.show, #toolmodal.show, #toolsettingsmodal.show, #modelmodal.show, #hkmodal.show, #capmodal.show, #approvalmodal.show, #sourcemodal.show, #settingsmenu.show { display:flex; animation:fade .15s ease; }
   @keyframes fade { from{ opacity:0; } to{ opacity:1; } }
   .modal-box {
     background:linear-gradient(180deg,#ffffff,#f5f1ff);
@@ -2447,29 +2447,306 @@
     background:#e9e3ee;
     color:#afa6bb;
   }
+  /* Nemos unified product system: warm paper, berry accent, compact work surfaces. */
+  :root {
+    --ink:#20221f;
+    --ink-2:#464942;
+    --muted:#686b64;
+    --faint:#96998f;
+    --paper:#f4f0e8;
+    --paper-2:#ebe6dc;
+    --paper-3:#fffcf7;
+    --line:#ddd7cd;
+    --side:#ddd6cb;
+    --side-2:#f1ece3;
+    --accent:#b33f72;
+    --accent-2:#8f2f59;
+    --grad:#b33f72;
+    --shadow:0 18px 48px rgba(48,39,42,.14);
+    --shadow-sm:0 8px 24px rgba(48,39,42,.09);
+    --ring:0 0 0 3px rgba(179,63,114,.15);
+  }
+  * { touch-action:manipulation; }
+  body, #main, #msgs { background:#f4f0e8; color:var(--ink); }
+  #sidebar { background:#f1ece3; border-right-color:#d8d1c6; }
+  #wechatRail { background:#ddd6cb; border-right-color:#cfc7bb; }
+  #sessionPane, #contacts { background:#f1ece3; }
+  .rail-avatar { background:#b33f72; box-shadow:none; }
+  .rail-icon, #settingsbtn { color:#676960; }
+  .rail-icon:hover, #settingsbtn:hover { color:#20221f; background:rgba(255,252,247,.72); }
+  .rail-icon.active { color:#8f2f59; background:#f8f1f3; }
+  .rail-avatar, .rail-icon, #settingsbtn { border-radius:8px; }
+  #wechatSearch input { background:#fffcf7; color:#686b64; box-shadow:inset 0 0 0 1px #ded7cd; }
+  #wechatSearch > button:hover { color:#8f2f59; background:#e8e0d6; }
+  .contact { border-bottom-color:#ded7cd; }
+  .contact { width:100%; color:inherit; font:inherit; text-align:left; }
+  .contact:hover { background:#e8e1d7; }
+  .contact.active { color:#20221f; background:#ead3dd; border-color:transparent; }
+  .contact.active .contact-time, .contact.active .meta span { color:#735a65; }
+  .contact-search-empty { padding:28px 14px; color:#777970; font-size:12px; line-height:1.6; text-align:center; }
+  #topbar, #composer { background:#fffcf7; border-color:#ddd7cd; }
+  #header .hname, #txt, .row.other .bub { color:#20221f; }
+  #topActions button, .top-icon, #vbtn, #imgbtn, #shotbtn { color:#5d6059; }
+  #topActions button:hover, .top-icon:hover, #vbtn:hover, #imgbtn:hover, #shotbtn:hover { color:#8f2f59; background:#f3e9ed; }
+  .row.other .bub { background:#fffcf7; border:1px solid #e2dbd0; }
+  .row.me .bub, .msg-avatar.me-avatar, #callbtn.on { color:#fff; background:#b33f72; }
+  #txtWrap { background:#fffefa; border-color:#d8d1c6; }
+  #txtWrap:focus-within { border-color:#b33f72; box-shadow:var(--ring); }
+  #send, .btn-primary, .primary { color:#fff; background:#b33f72; box-shadow:none; }
+  #send:hover, .btn-primary:hover, .primary:hover { background:#8f2f59; transform:none; }
+  #composerTool {
+    min-width:78px;
+    height:34px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:0 10px;
+    border:0;
+    border-left:1px solid #ddd7cd;
+    border-radius:4px;
+    color:#5d6059;
+    background:transparent;
+    cursor:pointer;
+    font-size:12.5px;
+    font-weight:500;
+    letter-spacing:.015em;
+  }
+  #composerTool:hover { color:#8f2f59; background:#f3e9ed; }
+  #composerTool .ui-icon { width:17px; height:17px; }
+  button:disabled { cursor:not-allowed; opacity:.48; }
+  button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
+    outline:2px solid rgba(179,63,114,.72);
+    outline-offset:2px;
+  }
+  #quickCreateMenu {
+    color:#20221f;
+    background:#fffcf7;
+    border:1px solid #d8d1c6;
+    box-shadow:var(--shadow-sm);
+  }
+  #quickCreateMenu .quick-create-item { color:#20221f; }
+  #quickCreateMenu .quick-create-item:hover, #quickCreateMenu .quick-create-item:focus-visible { color:#8f2f59; background:#f4e9ed; outline:none; }
+
+  #onboardingmodal, #memmodal, #groupmodal, #contactmodal, #personamodal, #avatarcropmodal, #historymodal, #toolmodal, #toolsettingsmodal, #modelmodal, #hkmodal, #capmodal, #approvalmodal, #sourcemodal, #settingsmenu {
+    background:rgba(38,33,34,.42);
+    backdrop-filter:blur(3px);
+    -webkit-backdrop-filter:blur(3px);
+  }
+  .modal-box, .onboard-box {
+    color:#20221f;
+    background:#fffcf7;
+    border:1px solid #d8d1c6;
+    border-radius:10px;
+    box-shadow:var(--shadow);
+    overscroll-behavior:contain;
+  }
+  .modal-head {
+    min-height:52px;
+    padding:0 18px;
+    color:#20221f;
+    background:#fffcf7;
+    border-bottom-color:#e1dbd1;
+    font-size:15px;
+    font-weight:650;
+    letter-spacing:.01em;
+  }
+  .modal-head button:not(#memclearone) {
+    width:36px;
+    height:36px;
+    display:grid;
+    place-items:center;
+    border-radius:6px;
+    color:#686b64;
+    font-size:20px;
+  }
+  .modal-head button:not(#memclearone):hover { color:#8f2f59; background:#f4e9ed; }
+  .history-panel, .tool-panel { min-height:0; padding:16px 18px 18px; }
+  .history-list { min-height:180px; }
+  .history-row {
+    width:100%;
+    display:block;
+    padding:12px;
+    border:1px solid #e1dbd1;
+    border-radius:7px;
+    color:#20221f;
+    background:#fffcf7;
+    text-align:left;
+  }
+  .history-row:hover { border-color:#c999ad; background:#f8f1f3; }
+  .history-meta, .history-summary, .tool-card p, .tool-status, .persona-field small { color:#686b64; letter-spacing:.012em; }
+  .tool-tabs { gap:4px; padding:4px; border-color:#ddd7cd; border-radius:7px; background:#f2ede5; }
+  .tool-tab { min-height:38px; border-radius:5px; color:#686b64; }
+  .tool-tab.active { color:#7d234e; background:#ead3dd; box-shadow:none; }
+  .tool-card { border-color:#ddd7cd; border-radius:8px; background:#fffefa; box-shadow:none; }
+  .tool-file-picker {
+    min-height:64px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    margin-top:12px;
+    padding:12px 14px;
+    border:1px dashed #c7bcb0;
+    border-radius:7px;
+    color:#20221f;
+    background:#f8f4ed;
+    cursor:pointer;
+  }
+  .tool-file-picker:hover { border-color:#b33f72; background:#f7edf1; }
+  .tool-file-picker span { min-width:0; overflow:hidden; color:#686b64; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+  .sr-only-file { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+  #settingsmenu .modal-box { width:370px !important; }
+  .smlist { padding:8px; }
+  .smitem {
+    width:100%;
+    min-height:58px;
+    display:grid;
+    grid-template-columns:22px minmax(0,1fr);
+    align-items:center;
+    gap:12px;
+    padding:9px 10px;
+    border:0;
+    border-radius:7px;
+    color:#20221f;
+    background:transparent;
+    text-align:left;
+  }
+  .smitem:hover { background:#f2ede5; }
+  .smitem-icon { width:22px; height:22px; display:grid; place-items:center; color:#6d6e67; }
+  .smitem-icon .ui-icon { width:20px; height:20px; }
+  .smitem > span { min-width:0; display:grid; gap:3px; }
+  .smitem b { font-size:13.5px; font-weight:600; }
+  .smitem small { color:#777970; font-size:11.5px; font-weight:400; letter-spacing:.015em; }
+  .smitem.danger, .smitem.danger .smitem-icon { color:#a23747; }
+  .smkey { border-top-color:#e1dbd1; background:#f8f4ed; }
+  .smkey-label { color:#20221f; letter-spacing:.01em; }
+  .smkey-hint { color:#686b64; }
+  .model-connect-box { width:560px !important; max-height:min(760px,92vh); }
+  .model-connect-body { min-height:0; display:flex; flex-direction:column; gap:16px; padding:18px; overflow-y:auto; }
+  .model-current {
+    display:grid;
+    grid-template-columns:12px minmax(0,1fr);
+    align-items:center;
+    gap:12px;
+    padding:13px 14px;
+    border:1px solid #ddd7cd;
+    border-radius:8px;
+    color:#20221f;
+    background:#f8f4ed;
+  }
+  .model-current-dot { width:9px; height:9px; border-radius:50%; background:#898b84; box-shadow:0 0 0 3px rgba(137,139,132,.14); }
+  .model-current.live .model-current-dot { background:#2e7d5a; box-shadow:0 0 0 3px rgba(46,125,90,.14); }
+  .model-current > span:last-child { min-width:0; display:grid; gap:3px; }
+  .model-current b { overflow:hidden; font-size:13.5px; font-weight:650; letter-spacing:.01em; text-overflow:ellipsis; white-space:nowrap; }
+  .model-current small { color:#686b64; font-size:11.5px; letter-spacing:.015em; }
+  .model-fields, .model-advanced-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
+  .model-field { min-width:0; display:grid; align-content:start; gap:7px; color:#4e514b; font-size:12px; font-weight:600; letter-spacing:.015em; }
+  .model-field-wide { grid-column:1 / -1; }
+  .model-field input, .model-field select {
+    width:100%;
+    min-height:42px;
+    padding:8px 10px;
+    border:1px solid #d8d1c6;
+    border-radius:6px;
+    color:#20221f;
+    background:#fffefa;
+    font:inherit;
+    font-size:13px;
+    font-weight:400;
+    letter-spacing:0;
+  }
+  .model-field input:focus-visible, .model-field select:focus-visible {
+    border-color:#a83a69;
+    outline:2px solid rgba(168,58,105,.16);
+    outline-offset:1px;
+  }
+  .model-field small { color:#686b64; font-size:11.5px; font-weight:400; line-height:1.5; letter-spacing:.015em; }
+  .model-advanced { border:1px solid #ddd7cd; border-radius:7px; background:#fbf8f2; }
+  .model-advanced summary { min-height:42px; display:flex; align-items:center; padding:0 12px; color:#555850; cursor:pointer; font-size:12.5px; font-weight:600; letter-spacing:.015em; }
+  .model-advanced[open] summary { border-bottom:1px solid #e1dbd1; }
+  .model-advanced-fields { padding:14px; }
+  .model-note { margin:0; color:#686b64; font-size:11.5px; line-height:1.55; letter-spacing:.015em; }
+  .model-actions {
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr) auto;
+    align-items:center;
+    gap:10px;
+    padding-top:2px;
+  }
+  .model-actions button { min-height:40px; padding:0 14px; border-radius:6px; font-size:12.5px; font-weight:600; letter-spacing:.015em; }
+  .btn-secondary { border:1px solid #d8d1c6; color:#555850; background:#fffefa; }
+  .btn-secondary:hover { border-color:#b9aea2; background:#f2ede5; }
+  .model-actions #llmstatus { min-width:0; color:#686b64; font-size:11.5px; line-height:1.4; letter-spacing:.015em; text-align:right; }
+  .model-actions #llmstatus.error { color:#a23747; }
+  .model-actions #llmstatus.success { color:#2e7155; }
+  .model-actions button:focus-visible, .model-advanced summary:focus-visible { outline:2px solid #a83a69; outline-offset:2px; }
+  .group-name-field { display:grid; gap:7px; padding:14px 16px 5px; }
+  .group-name-field label, .persona-field { color:#4e514b; font-size:12px; font-weight:600; letter-spacing:.015em; }
+  .group-name-field input, .persona-field input, .persona-field select, .persona-advanced textarea {
+    width:100%;
+    min-height:40px;
+    margin-top:6px;
+    padding:8px 10px;
+    border:1px solid #d8d1c6;
+    border-radius:6px;
+    color:#20221f;
+    background:#fffefa;
+  }
+  .group-footer { min-height:58px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px; border-top:1px solid #e1dbd1; }
+  .group-footer span { color:#686b64; font-size:12px; }
+  .persona-form { display:flex; flex-direction:column; gap:14px; padding:16px 18px 18px; overflow-y:auto; }
+  .persona-field { display:grid; gap:1px; }
+  .persona-field small { margin-top:5px; font-size:11.5px; font-weight:400; }
+  .persona-advanced { border:1px solid #ddd7cd; border-radius:7px; background:#f8f4ed; }
+  .persona-advanced summary { min-height:42px; display:flex; align-items:center; padding:0 12px; color:#4e514b; cursor:pointer; font-size:13px; font-weight:600; }
+  .persona-advanced[open] { padding-bottom:12px; }
+  .persona-advanced[open] summary { border-bottom:1px solid #e1dbd1; }
+  .persona-advanced label, .persona-advanced p, .persona-advanced textarea { display:block; margin-right:12px; margin-left:12px; }
+  .persona-advanced label { margin-top:12px; color:#4e514b; font-size:12px; font-weight:600; }
+  .persona-advanced p { margin-top:5px; color:#686b64; font-size:11.5px; line-height:1.5; }
+  .persona-advanced textarea { min-height:180px; resize:vertical; font-size:13px; line-height:1.55; }
+  .persona-actions { display:flex; justify-content:flex-end; gap:8px; }
+  .persona-actions > button:not(.btn-primary) { min-height:38px; padding:0 13px; border:1px solid #d8d1c6; border-radius:6px; color:#555850; background:#fffefa; cursor:pointer; }
+  .avatar-editor { border-color:#ddd7cd; border-radius:8px; background:#f8f4ed; }
+
   @media (max-width:720px) {
-    body { flex-direction:column; }
-    #sidebar {
-      width:100%;
-      height:220px;
-      flex-direction:row;
-    }
-    #wechatRail { width:52px; flex-basis:52px; padding-top:16px; }
+    body { display:flex; flex-direction:column; overflow:hidden; padding-top:0; }
+    #sidebar { width:100%; height:204px; flex-direction:row; }
+    #wechatRail { width:52px; flex-basis:52px; padding:14px 0 10px; }
+    .rail-avatar { margin-bottom:12px; }
     #sessionPane { width:calc(100% - 52px); }
-    #brand { padding:16px 12px 8px; }
+    #wechatSearch { padding:10px; }
     #wechatSearch input { width:calc(100vw - 124px); }
-    #contacts { display:flex; overflow-x:auto; overflow-y:hidden; }
-    .contact { min-width:176px; border-right:1px solid #e9e9e9; border-bottom:0; }
-    #main { height:calc(100vh - 220px); }
-    #topbar { min-height:52px; padding:0 12px; }
+    #contacts { display:flex; min-height:76px; overflow-x:auto; overflow-y:hidden; padding:0 8px 8px; }
+    .contact { min-width:176px; min-height:62px; margin:0; border-right:1px solid #ded7cd; border-bottom:0; }
+    #main { height:calc(100vh - 204px); }
+    #topbar { min-height:52px; padding:0 10px; }
+    #header .hname { max-width:38vw; }
     #msgs { padding:14px 12px; }
     .row { max-width:96%; }
-    .msg-body { max-width:calc(100vw - 92px); }
-    #composer { min-height:112px; padding:8px; }
-    #txtWrap { min-height:62px; }
-    #vbtn, #imgbtn, #shotbtn { width:34px; height:34px; }
-    #txt { min-width:0; height:62px; min-height:62px; }
-    #send { min-width:54px; height:34px; padding:0 10px; }
+    .msg-body { max-width:calc(100vw - 84px); }
+    #composer { min-height:104px; padding:8px; }
+    #txtWrap { min-height:58px; }
+    #vbtn, #imgbtn, #shotbtn { width:36px; height:36px; }
+    #txt { min-width:0; height:58px; min-height:58px; }
+    #send { min-width:58px; height:36px; padding:0 11px; }
+    .modal-box { width:calc(100vw - 24px) !important; max-width:none; max-height:88vh; border-radius:9px; }
+    #settingsmenu .modal-box { width:calc(100vw - 24px) !important; }
+    .model-connect-body { gap:14px; padding:14px 12px; }
+    .model-fields, .model-advanced-fields { grid-template-columns:1fr; }
+    .model-field-wide { grid-column:auto; }
+    .model-actions { grid-template-columns:1fr 1fr; }
+    .model-actions #llmstatus { grid-column:1 / -1; grid-row:1; text-align:left; }
+    .model-actions button { min-height:44px; }
+    .modal-head { padding:0 12px; }
+    .tool-panel, .history-panel { padding:12px; }
+    .tool-tabs { overflow-x:auto; }
+    .tool-tab { flex:0 0 auto; }
+    .persona-form { padding:12px; }
+    .persona-actions { flex-direction:column-reverse; }
+    .persona-actions button { width:100%; min-height:42px; }
+    .empty-state { min-height:240px; }
   }
 </style>
 </head>
@@ -2477,17 +2754,16 @@
   <div id="sidebar">
     <div id="wechatRail">
       <button class="rail-avatar" id="railUserAvatar" type="button" title="我的头像" aria-label="编辑我的头像">我</button>
-      <button class="rail-icon active" type="button" title="聊天" data-icon="message-circle"></button>
-      <button class="rail-icon" id="railCap" type="button" title="能力与任务" data-icon="boxes"></button>
-      <button class="rail-icon" id="railDesktop" type="button" title="工具" data-icon="monitor"></button>
+      <button class="rail-icon active" type="button" title="聊天" aria-label="聊天" data-icon="message-circle"></button>
+      <button class="rail-icon" id="railCap" type="button" title="能力" aria-label="能力" data-icon="boxes"></button>
       <div class="rail-spacer"></div>
-      <button class="rail-icon" id="settingsbtn" type="button" title="设置" data-icon="menu"></button>
+      <button class="rail-icon" id="settingsbtn" type="button" title="设置" aria-label="设置" data-icon="settings"></button>
     </div>
     <div id="sessionPane">
       <div id="brand">Nemos<small id="llm">…</small></div>
       <div id="wechatSearch">
         <span class="search-icon" data-icon="search"></span>
-        <input value="搜索" readonly />
+        <input id="contactSearch" type="search" placeholder="搜索联系人" autocomplete="off" aria-label="搜索联系人和群聊" />
         <button id="quickGroup" type="button" title="更多" aria-haspopup="menu" aria-expanded="false" data-icon="plus-circle"></button>
         <div id="quickCreateMenu" role="menu" aria-label="新建">
           <button id="quickAddRole" class="quick-create-item" type="button" role="menuitem"><span class="quick-create-icon" data-icon="user-plus"></span><span>添加角色</span></button>
@@ -2496,7 +2772,7 @@
       </div>
       <div id="contacts"></div>
       <div id="side-actions">
-        <button id="sideDesktopTool" type="button">工具</button>
+        <button id="sideDesktopTool" type="button">小工具</button>
         <button id="sideCap" type="button">能力与任务</button>
       </div>
     </div>
@@ -2516,32 +2792,34 @@
       </div>
     </div>
   </div>
-  <div id="memmodal">
+  <div id="memmodal" role="dialog" aria-modal="true" aria-labelledby="memTitle">
     <div class="modal-box">
-      <div class="modal-head">🧠 记忆库
+      <div class="modal-head"><span id="memTitle">记忆</span>
         <select id="memwho" style="margin-left:8px;padding:3px 6px;border:1px solid #ccc;border-radius:6px;font-size:12px"></select>
         <span id="memcount" style="color:#999;font-weight:400;font-size:12px;margin-left:8px"></span>
-        <button id="memclearone" title="清空当前所选记忆库" style="margin-left:auto;margin-right:8px;border:1px solid #f0c0c0;background:#fff5f5;color:#d9534f;border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer">🗑️ 清空此库</button>
-        <button id="memclose">×</button>
+        <button id="memclearone" title="清空当前所选记忆库" style="margin-left:auto;margin-right:8px;border:1px solid #f0c0c0;background:#fff5f5;color:#d9534f;border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer">清空此库</button>
+        <button id="memclose" type="button" aria-label="关闭记忆">×</button>
       </div>
       <div id="memlist"></div>
     </div>
   </div>
-  <div id="groupmodal">
+  <div id="groupmodal" role="dialog" aria-modal="true" aria-labelledby="grouptitle">
     <div class="modal-box">
-      <div class="modal-head"><span id="grouptitle">发起群聊</span><button id="groupclose">×</button></div>
-      <div style="padding:12px 16px 4px">
-        <input id="groupname" placeholder="群名称，例如：项目同步群" style="width:100%;padding:9px 11px;border:1px solid #ddd;border-radius:10px" />
+      <div class="modal-head"><span id="grouptitle">发起群聊</span><button id="groupclose" type="button" aria-label="关闭群聊设置">×</button></div>
+      <div class="group-name-field">
+        <label for="groupname">群聊名称</label>
+        <input id="groupname" placeholder="例如：项目同步群" />
       </div>
       <div id="groupmembers" style="overflow-y:auto;padding:8px 16px"></div>
-      <div style="padding:10px 16px;border-top:1px solid #eee;text-align:right">
-        <button id="groupok" class="btn-primary">保存</button>
+      <div class="group-footer">
+        <span id="groupstatus" role="status" aria-live="polite">请选择至少一位成员</span>
+        <button id="groupok" class="btn-primary" type="button" disabled>保存</button>
       </div>
     </div>
   </div>
-  <div id="contactmodal">
+  <div id="contactmodal" role="dialog" aria-modal="true" aria-labelledby="contactTitle">
     <div class="modal-box contact-add-box">
-      <div class="modal-head"><span>添加角色</span><button id="contactclose" aria-label="关闭">×</button></div>
+      <div class="modal-head"><span id="contactTitle">添加角色</span><button id="contactclose" type="button" aria-label="关闭添加角色">×</button></div>
       <div class="contact-add-note">选择要加入通讯录的角色</div>
       <div id="contactcandidates"></div>
       <div class="contact-add-footer">
@@ -2550,36 +2828,76 @@
       </div>
     </div>
   </div>
-  <div id="settingsmenu">
+  <div id="settingsmenu" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="modal-box" style="width:300px">
-      <div class="modal-head">设置 <button id="smclose">×</button></div>
+      <div class="modal-head"><span id="settingsTitle">设置</span><button id="smclose" type="button" aria-label="关闭设置">×</button></div>
       <div class="smlist">
-        <div class="smitem" id="sm-group">＋ 群聊 / 群管理</div>
-        <div class="smitem" id="sm-avatar">◉ 我的头像</div>
-        <div class="smitem dev-only" id="sm-sources">⌁ 私域源 / X 时间线</div>
-        <div class="smitem dev-only" id="sm-toolsettings">▣ 工具设置</div>
-        <div class="smitem" id="sm-persona">⚙️ 角色与头像</div>
-        <div class="smitem dev-only" id="sm-memview">🧠 查看记忆</div>
-        <div class="smitem dev-only" id="sm-chathtml">💬 导出当前对话 HTML</div>
-        <div class="smitem dev-only" id="sm-export">⬇️ 导出备份</div>
-        <div class="smitem danger dev-only" id="sm-memclear">🗑️ 清空记忆（TA 忘掉你）</div>
-        <div class="smitem danger dev-only" id="sm-chatclear">🧹 清空聊天（只清气泡）</div>
-        <div class="smitem" id="sm-devtoggle">开发者模式：关闭</div>
-      </div>
-      <div class="smkey">
-        <div class="smkey-label">🔑 智谱 Key</div>
-        <div class="smkey-status" id="llmstatus">…</div>
-        <div class="smkey-row">
-          <input id="llmkeyinput" type="password" placeholder="粘贴智谱 Key，留空 = 离线" autocomplete="off" spellcheck="false" />
-          <button id="llmkeysave" class="btn-primary">应用</button>
-        </div>
-        <div class="smkey-hint">普通用户只需要填这一个 Key。聊天、记忆、识图、语音转写和工具都会优先使用它；保存后会用当前 Windows 用户加密存到本机。</div>
+        <button class="smitem" id="sm-group" type="button"><span class="smitem-icon" data-icon="users"></span><span><b>群聊与成员</b><small>发起群聊，或管理当前群聊</small></span></button>
+        <button class="smitem" id="sm-avatar" type="button"><span class="smitem-icon" data-icon="image"></span><span><b>我的头像</b><small>更换自己的聊天头像</small></span></button>
+        <button class="smitem" id="sm-model" type="button"><span class="smitem-icon" data-icon="link"></span><span><b>模型连接</b><small id="sm-model-summary">选择服务商、模型与 API Key</small></span></button>
+        <button class="smitem" id="sm-persona" type="button"><span class="smitem-icon" data-icon="user"></span><span><b>角色设置</b><small>调整称呼、话量与角色说明</small></span></button>
+        <button class="smitem dev-only" id="sm-sources" type="button"><span class="smitem-icon" data-icon="database"></span><span><b>内容来源</b><small>维护本机来源与连接</small></span></button>
+        <button class="smitem dev-only" id="sm-toolsettings" type="button"><span class="smitem-icon" data-icon="settings"></span><span><b>工具设置</b><small>调整翻译、转写和润色</small></span></button>
+        <button class="smitem dev-only" id="sm-memview" type="button"><span class="smitem-icon" data-icon="brain"></span><span><b>查看记忆</b><small>核对本机保存的信息</small></span></button>
+        <button class="smitem dev-only" id="sm-chathtml" type="button"><span class="smitem-icon" data-icon="file"></span><span><b>导出当前对话</b><small>保存为 HTML 文件</small></span></button>
+        <button class="smitem dev-only" id="sm-export" type="button"><span class="smitem-icon" data-icon="download"></span><span><b>导出备份</b><small>备份当前本机数据</small></span></button>
+        <button class="smitem danger dev-only" id="sm-memclear" type="button"><span class="smitem-icon" data-icon="trash"></span><span><b>清空记忆</b><small>删除所有角色记住的信息</small></span></button>
+        <button class="smitem danger dev-only" id="sm-chatclear" type="button"><span class="smitem-icon" data-icon="trash"></span><span><b>清空当前聊天</b><small>只删除当前聊天气泡</small></span></button>
+        <button class="smitem" id="sm-devtoggle" type="button" aria-pressed="false"><span class="smitem-icon" data-icon="settings"></span><span><b>开发者模式</b><small>当前已关闭</small></span></button>
       </div>
     </div>
   </div>
-  <div id="toolsettingsmodal">
+  <div id="modelmodal" role="dialog" aria-modal="true" aria-labelledby="modelTitle">
+    <div class="modal-box model-connect-box">
+      <div class="modal-head"><span id="modelTitle">模型连接</span><button id="modelclose" type="button" aria-label="关闭模型连接">×</button></div>
+      <form id="modelForm" class="model-connect-body">
+        <div class="model-current" id="modelCurrent" role="status" aria-live="polite">
+          <span class="model-current-dot" aria-hidden="true"></span>
+          <span><b>正在读取连接状态…</b><small>请稍候</small></span>
+        </div>
+        <div class="model-fields">
+          <label class="model-field" for="modelProvider">
+            <span>模型服务商</span>
+            <select id="modelProvider" name="provider"></select>
+          </label>
+          <label class="model-field" for="modelName">
+            <span>模型名称</span>
+            <input id="modelName" name="model" placeholder="例如：glm-5.2" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="model-field model-field-wide" for="modelKey">
+            <span>API Key</span>
+            <input id="modelKey" name="key" type="password" placeholder="粘贴该服务商提供的 API Key" autocomplete="off" spellcheck="false" />
+            <small id="modelKeyHint">密钥会使用当前 Windows 用户加密，仅保存在本机。</small>
+          </label>
+        </div>
+        <details class="model-advanced">
+          <summary>高级设置</summary>
+          <div class="model-advanced-fields">
+            <label class="model-field" for="modelProtocol">
+              <span>接口格式</span>
+              <select id="modelProtocol" name="protocol">
+                <option value="openai-compatible">OpenAI 兼容</option>
+                <option value="anthropic">Anthropic 兼容</option>
+              </select>
+            </label>
+            <label class="model-field model-field-wide" for="modelBaseUrl">
+              <span>API 地址</span>
+              <input id="modelBaseUrl" name="baseUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" />
+            </label>
+          </div>
+        </details>
+        <p class="model-note" id="modelNote">选择服务商后，这里会说明当前可用范围。</p>
+        <div class="model-actions">
+          <button id="modelOffline" class="btn-secondary" type="button">使用离线模式</button>
+          <span id="llmstatus" role="status" aria-live="polite"></span>
+          <button id="modelSave" class="btn-primary" type="submit">测试并保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="toolsettingsmodal" role="dialog" aria-modal="true" aria-labelledby="toolSettingsTitle">
     <div class="modal-box" style="width:620px">
-      <div class="modal-head">工具设置 <button id="toolsettingsclose">×</button></div>
+      <div class="modal-head"><span id="toolSettingsTitle">工具设置</span><button id="toolsettingsclose" type="button" aria-label="关闭工具设置">×</button></div>
       <div class="tool-settings-panel">
         <div class="tool-setting-row">
           <label for="toolZhipuKey">工具智谱 Key</label>
@@ -2679,9 +2997,9 @@
       </div>
     </div>
   </div>
-  <div id="sourcemodal">
+  <div id="sourcemodal" role="dialog" aria-modal="true" aria-labelledby="sourceTitle">
     <div class="modal-box" style="width:760px">
-      <div class="modal-head">⌁ 私域源 / X 时间线 <button id="sourceclose">×</button></div>
+      <div class="modal-head"><span id="sourceTitle">内容来源</span><button id="sourceclose" type="button" aria-label="关闭内容来源">×</button></div>
       <div class="source-panel">
         <div class="source-note">这里配置的是后台来源，不是新的聊天入口。知微执行“AI 圈 24 小时重要事件”这类任务时，会先读取微信私域收件箱和 X 时间线；读不到时会明确说明缺少来源，不会假装已经看过。</div>
         <div id="sourceStatus" class="source-status"></div>
@@ -2719,9 +3037,9 @@
       </div>
     </div>
   </div>
-  <div id="historymodal">
+  <div id="historymodal" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
     <div class="modal-box" style="width:760px">
-      <div class="modal-head"><span id="historyTitle">聊天历史</span><button id="historyclose">×</button></div>
+      <div class="modal-head"><span id="historyTitle">聊天历史</span><button id="historyclose" type="button" aria-label="关闭聊天历史">×</button></div>
       <div class="history-panel">
         <div class="history-tools">
           <input id="historySearch" placeholder="搜索聊天内容、发送人或会话名" autocomplete="off" spellcheck="false" />
@@ -2731,16 +3049,16 @@
       </div>
     </div>
   </div>
-  <div id="toolmodal">
+  <div id="toolmodal" role="dialog" aria-modal="true" aria-labelledby="toolTitle">
     <div class="modal-box" style="width:760px">
-      <div class="modal-head">工具 <button id="toolclose">×</button></div>
+      <div class="modal-head"><span id="toolTitle">小工具</span><button id="toolclose" type="button" aria-label="关闭小工具">×</button></div>
       <div class="tool-panel">
         <div class="tool-tabs" role="tablist" aria-label="工具">
-          <button class="tool-tab active" type="button" data-tool-tab="translate">翻译</button>
-          <button class="tool-tab" type="button" data-tool-tab="speech">语音转写</button>
-          <button class="tool-tab" type="button" data-tool-tab="polish">文字润色</button>
+          <button class="tool-tab active" id="toolTabTranslate" type="button" role="tab" aria-selected="true" aria-controls="tool-translate" data-tool-tab="translate">翻译</button>
+          <button class="tool-tab" id="toolTabSpeech" type="button" role="tab" aria-selected="false" aria-controls="tool-speech" tabindex="-1" data-tool-tab="speech">语音转写</button>
+          <button class="tool-tab" id="toolTabPolish" type="button" role="tab" aria-selected="false" aria-controls="tool-polish" tabindex="-1" data-tool-tab="polish">文字润色</button>
         </div>
-        <section id="tool-translate" class="tool-page active">
+        <section id="tool-translate" class="tool-page active" role="tabpanel" aria-labelledby="toolTabTranslate">
           <div class="tool-card">
             <h3>翻译</h3>
             <p>用于临时翻译；重要材料可以直接发给知微，让她整理成正式交付物。</p>
@@ -2755,11 +3073,12 @@
             <div id="toolTranslateResult" class="tool-result">翻译结果会显示在这里。</div>
           </div>
         </section>
-        <section id="tool-speech" class="tool-page">
+        <section id="tool-speech" class="tool-page" role="tabpanel" aria-labelledby="toolTabSpeech" hidden>
           <div class="tool-card">
             <h3>语音转写</h3>
             <p>选择音频文件，或直接录一段。长音频会按工具设置里的秒数自动切段提交识别。</p>
-            <input id="toolSpeechFile" type="file" accept="audio/*,video/mp4,video/webm" />
+            <label class="tool-file-picker" for="toolSpeechFile"><strong>选择音频或视频</strong><span id="toolSpeechFileName">尚未选择文件</span></label>
+            <input id="toolSpeechFile" class="sr-only-file" type="file" accept="audio/*,video/mp4,video/webm" />
             <div class="tool-actions">
               <button id="toolSpeechRun" class="primary" type="button">识别文件</button>
               <button id="toolSpeechRecord" type="button">开始录音</button>
@@ -2770,7 +3089,7 @@
             <textarea id="toolSpeechText" placeholder="转写文本会显示在这里。"></textarea>
           </div>
         </section>
-        <section id="tool-polish" class="tool-page">
+        <section id="tool-polish" class="tool-page" role="tabpanel" aria-labelledby="toolTabPolish" hidden>
           <div class="tool-card">
             <h3>文字润色</h3>
             <p>轻量处理错别字、标点和断句，不扩写、不改变含义。需要复杂改稿时直接交给知微。</p>
@@ -2788,11 +3107,11 @@
       </div>
     </div>
   </div>
-  <div id="personamodal">
+  <div id="personamodal" role="dialog" aria-modal="true" aria-labelledby="personaTitle">
     <div class="modal-box" style="width:700px">
-      <div class="modal-head"><span id="personaTitle">角色属性</span><button id="personaclose">×</button></div>
-      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px;overflow-y:auto">
-        <select id="personasel" style="padding:6px;border:1px solid #ccc;border-radius:6px"></select>
+      <div class="modal-head"><span id="personaTitle">角色设置</span><button id="personaclose" type="button" aria-label="关闭角色设置">×</button></div>
+      <div class="persona-form">
+        <label class="persona-field" for="personasel">选择角色<select id="personasel"></select></label>
         <div class="avatar-editor">
           <div id="personaAvatarPreview" class="avatar-preview">我</div>
           <div>
@@ -2804,23 +3123,28 @@
             <small>头像会保存在本机数据目录。上传后可以拖动裁切并自动缩放成聊天头像。</small>
           </div>
         </div>
-        <input id="personaname" placeholder="名字" style="padding:7px;border:1px solid #ccc;border-radius:6px" />
-        <label style="font-size:13px;color:#555;display:flex;align-items:center;gap:8px">话量
-          <select id="personaverb" style="padding:6px;border:1px solid #ccc;border-radius:6px">
+        <label class="persona-field" id="personaNameField" for="personaname">名字<input id="personaname" placeholder="角色名字" /></label>
+        <label class="persona-field" id="personaVerbField" for="personaverb">回复长度
+          <select id="personaverb">
             <option value="terse">话少（惜字如金）</option>
             <option value="normal">适中</option>
             <option value="talkative">话多（爱展开）</option>
           </select>
-          <span style="color:#999">· 还会随熟悉度自动上下浮动</span>
+          <small>还会随熟悉度轻微调整</small>
         </label>
-        <textarea id="personatext" rows="15" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-family:inherit;font-size:13px;line-height:1.6;resize:vertical"></textarea>
-        <div style="text-align:right"><button id="personasave" class="btn-primary">保存并生效</button></div>
+        <details class="persona-advanced" id="personaAdvanced">
+          <summary>高级设置</summary>
+          <label for="personatext">角色说明</label>
+          <p>只在需要精确调整角色表达时修改。名称和回复长度通常已经足够。</p>
+          <textarea id="personatext" rows="10"></textarea>
+        </details>
+        <div class="persona-actions"><button id="personaRestore" type="button">恢复未保存内容</button><button id="personasave" class="btn-primary" type="button">保存并生效</button></div>
       </div>
     </div>
   </div>
-  <div id="avatarcropmodal">
+  <div id="avatarcropmodal" role="dialog" aria-modal="true" aria-labelledby="avatarCropTitle">
     <div class="modal-box" style="width:390px">
-      <div class="modal-head">调整头像 <button id="avatarCropClose">×</button></div>
+      <div class="modal-head"><span id="avatarCropTitle">调整头像</span><button id="avatarCropClose" type="button" aria-label="关闭头像调整">×</button></div>
       <div class="avatar-crop-wrap">
         <div class="avatar-crop-stage">
           <canvas id="avatarCropCanvas" width="280" height="280"></canvas>
@@ -2836,9 +3160,9 @@
       </div>
     </div>
   </div>
-  <div id="hkmodal">
+  <div id="hkmodal" role="dialog" aria-modal="true" aria-labelledby="hkTitle">
     <div class="modal-box" style="width:760px">
-      <div class="modal-head">📈 港股交易辅助 · <span class="cap-owner-name">知微</span>提醒 <button id="hkclose">×</button></div>
+      <div class="modal-head"><span id="hkTitle">港股交易辅助 · <span class="cap-owner-name">知微</span>提醒</span><button id="hkclose" type="button" aria-label="关闭港股提醒">×</button></div>
       <div class="hk-panel">
         <div class="hk-note">按香港时间提醒。默认只做交易流程和纪律提醒，不接行情。提醒到点后 <span class="cap-owner-name">知微</span> 会像正常聊天一样主动开口，并写入对应聊天记录。</div>
         <div id="hklist"></div>
@@ -2856,7 +3180,7 @@
   </div>
   <div id="approvalmodal" role="dialog" aria-modal="true" aria-labelledby="approvalTitle">
     <div class="modal-box" style="width:500px">
-      <div class="modal-head"><span id="approvalTitle">确认操作</span><button id="approvalClose" type="button">×</button></div>
+      <div class="modal-head"><span id="approvalTitle">确认操作</span><button id="approvalClose" type="button" aria-label="关闭操作确认">×</button></div>
       <div class="approval-body">
         <p>知微准备执行会改变本机或外部状态的操作。批准只对下面这一笔调用生效。</p>
         <div class="approval-tool">
@@ -2871,9 +3195,9 @@
       </div>
     </div>
   </div>
-  <div id="capmodal">
+  <div id="capmodal" role="dialog" aria-modal="true" aria-labelledby="capTitle">
     <div class="modal-box" style="width:860px">
-      <div class="modal-head">🧩 能力与常规任务 <button id="capclose">×</button></div>
+      <div class="modal-head"><span id="capTitle">开发控制台</span><button id="capclose" type="button" aria-label="关闭开发控制台">×</button></div>
       <div class="cap-panel">
         <div class="cap-note">这里管理 <span class="cap-owner-name">知微</span> 承载的 Skills、固定任务和交付物。其他角色可以在聊天里请求 <span class="cap-owner-name">知微</span> 调用能力，但能力配置统一收在这里。</div>
         <section class="cap-card cap-full" aria-labelledby="agentOpsTitle">
@@ -3037,6 +3361,7 @@
             <button id="shotbtn" title="截屏" data-icon="scissors"></button>
             <button id="imgbtn" title="发图片（识图）" data-icon="image"></button>
             <input type="file" id="imgfile" accept="image/*" style="display:none" />
+            <button id="composerTool" type="button" title="翻译、语音转写和文字润色" aria-label="打开小工具"><span data-icon="wrench" aria-hidden="true"></span><span>小工具</span></button>
           </div>
         <button id="send">发送</button>
       </div>
@@ -3069,7 +3394,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const HK_DAYS = [1, 2, 3, 4, 5];
 const ICONS = {
   "message-circle": '<path d="M21 15a4 4 0 0 1-4 4H8l-5 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>',
-  boxes: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/>',
+  boxes: '<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/>',
   monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/>',
   menu: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
@@ -3082,6 +3407,15 @@ const ICONS = {
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/><path d="M8 22h8"/>',
   scissors: '<circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.6 8.6 19 19"/><path d="M8.6 15.4 19 5"/>',
   image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-4.5-4.5L5 19"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/>',
+  wrench: '<path d="M14.5 6.5a4 4 0 0 0-5 5L4 17a2.1 2.1 0 0 0 3 3l5.5-5.5a4 4 0 0 0 5-5l-2.3 2.3-3-3 2.3-2.3Z"/>',
+  brain: '<path d="M9.5 5a3 3 0 0 0-5 2.2A3.5 3.5 0 0 0 5.2 14a3 3 0 0 0 4.3 4.5V5ZM14.5 5a3 3 0 0 1 5 2.2 3.5 3.5 0 0 1-.7 6.8 3 3 0 0 1-4.3 4.5V5Z"/><path d="M7 9.5h2.5M14.5 9.5H17M7.5 14h2M14.5 14h2"/>',
+  file: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h4M9.5 12h5M9.5 16h5"/>',
+  download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   square: '<rect x="8" y="8" width="8" height="8" rx="1"/>',
   loader: '<path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.9 4.9 2.8 2.8"/><path d="m16.3 16.3 2.8 2.8"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.9 19.1 2.8-2.8"/><path d="m16.3 7.7 2.8-2.8"/>',
@@ -3097,6 +3431,54 @@ function hydrateIcons(root = document) {
   root.querySelectorAll("[data-icon]").forEach((el) => setIcon(el, el.dataset.icon));
 }
 hydrateIcons();
+
+const dialogFocusReturn = new WeakMap();
+function openDialogs() {
+  return [...document.querySelectorAll('[role="dialog"].show')].sort((a, b) => Number(getComputedStyle(a).zIndex || 0) - Number(getComputedStyle(b).zIndex || 0));
+}
+function topDialog() {
+  const dialogs = openDialogs();
+  return dialogs[dialogs.length - 1] || null;
+}
+function dialogFocusable(dialog) {
+  return [...dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter((node) => !node.hidden && node.getClientRects().length > 0);
+}
+const dialogObserver = new MutationObserver((mutations) => {
+  mutations.forEach((mutation) => {
+    const dialog = mutation.target;
+    if (!(dialog instanceof HTMLElement) || dialog.getAttribute("role") !== "dialog") return;
+    if (dialog.classList.contains("show")) {
+      if (!dialogFocusReturn.has(dialog)) dialogFocusReturn.set(dialog, document.activeElement);
+      requestAnimationFrame(() => {
+        const preferred = dialog.querySelector('[autofocus], input:not([type="hidden"]), textarea, select, button');
+        if (preferred instanceof HTMLElement && !dialog.contains(document.activeElement)) preferred.focus();
+      });
+    } else {
+      const previous = dialogFocusReturn.get(dialog);
+      dialogFocusReturn.delete(dialog);
+      if (previous instanceof HTMLElement && document.contains(previous)) requestAnimationFrame(() => previous.focus());
+    }
+  });
+});
+document.querySelectorAll('[role="dialog"]').forEach((dialog) => dialogObserver.observe(dialog, { attributes:true, attributeFilter:["class"] }));
+document.addEventListener("keydown", (event) => {
+  const dialog = topDialog();
+  if (!dialog) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    const close = dialog.querySelector('button[aria-label^="关闭"]');
+    if (close instanceof HTMLButtonElement) close.click();
+    else dialog.classList.remove("show");
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = dialogFocusable(dialog);
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
 const AV = {
   feifei: {
     e: "F", g: "linear-gradient(135deg,#ff9ecb,#ec4899)",
@@ -3338,7 +3720,11 @@ function applyDeveloperMode() {
   const enabled = isDeveloperMode();
   document.body.classList.toggle("developer-mode", enabled);
   const btn = $("#sm-devtoggle");
-  if (btn) btn.textContent = "开发者模式：" + (enabled ? "开启" : "关闭");
+  if (btn) {
+    btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+    const status = btn.querySelector("small");
+    if (status) status.textContent = enabled ? "当前已开启" : "当前已关闭";
+  }
 }
 function toggleDeveloperMode() {
   try { localStorage.setItem(DEV_MODE_KEY, isDeveloperMode() ? "0" : "1"); } catch {}
@@ -3529,10 +3915,10 @@ function renderHistoryModal() {
   }
   list.innerHTML = rows.slice(0, 300).map((row) => {
     const text = row.text || (row.entry.voice ? "[语音]" : "");
-    return '<div class="history-row" data-key="' + esc(row.key) + '" data-index="' + esc(String(row.index)) + '">'
-      + '<div class="history-meta"><span>' + esc(historyTime(row.entry.ts)) + '</span><span>' + esc(row.meta.name) + '</span><span class="history-speaker">' + esc(row.speaker) + '</span></div>'
-      + '<div class="history-text">' + esc(text) + '</div>'
-      + '</div>';
+    return '<button type="button" class="history-row" data-key="' + esc(row.key) + '" data-index="' + esc(String(row.index)) + '">'
+      + '<span class="history-meta"><span>' + esc(historyTime(row.entry.ts)) + '</span><span>' + esc(row.meta.name) + '</span><span class="history-speaker">' + esc(row.speaker) + '</span></span>'
+      + '<span class="history-text">' + esc(text) + '</span>'
+      + '</button>';
   }).join("");
   list.querySelectorAll(".history-row").forEach((row) => {
     row.onclick = () => {
@@ -3668,17 +4054,24 @@ function addablePersonas() {
 
 function renderContacts() {
   const c = $("#contacts"); c.innerHTML = "";
-  for (const p of visiblePersonas()) c.appendChild(contactEl("persona", p.id, p.name, p.tag || ""));
+  const query = String($("#contactSearch")?.value || "").trim().toLowerCase();
+  for (const p of visiblePersonas()) {
+    if (query && !(p.name + " " + (p.tag || "")).toLowerCase().includes(query)) continue;
+    c.appendChild(contactEl("persona", p.id, p.name, p.tag || ""));
+  }
   for (const g of state.groups) {
     const names = g.members.map((id) => (state.personas.find((p) => p.id === id) || {}).name || id).join("、");
     const title = g.name || names;
     const sub = g.name ? ("群聊 · " + names) : ("群聊 · " + g.members.length + " 人");
+    if (query && !(title + " " + names).toLowerCase().includes(query)) continue;
     c.appendChild(contactEl("group", g.id, title, sub));
   }
+  if (!c.children.length) c.innerHTML = '<div class="contact-search-empty" role="status">没有找到匹配的联系人或群聊</div>';
 }
 
 function contactEl(kind, id, name, sub) {
-  const el = document.createElement("div");
+  const el = document.createElement("button");
+  el.type = "button";
   el.className = "contact" + (state.target && state.target.kind === kind && state.target.id === id ? " active" : "");
   el.dataset.kind = kind;
   el.dataset.id = id;
@@ -4319,8 +4712,17 @@ async function transcribeWav(wavBlob, onProgress, maxSeconds, onChunk) {
 }
 
 function switchToolTab(name) {
-  document.querySelectorAll(".tool-tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.toolTab === name));
-  document.querySelectorAll(".tool-page").forEach((page) => page.classList.toggle("active", page.id === "tool-" + name));
+  document.querySelectorAll(".tool-tab").forEach((btn) => {
+    const active = btn.dataset.toolTab === name;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+    btn.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll(".tool-page").forEach((page) => {
+    const active = page.id === "tool-" + name;
+    page.classList.toggle("active", active);
+    page.hidden = !active;
+  });
 }
 function openToolModal() {
   switchToolTab(getToolSettings().defaultTab);
@@ -4629,13 +5031,20 @@ function openGroupModal(mode = "auto") {
     row.className = "grow";
     const checked = editing && editing.members.includes(p.id) ? " checked" : "";
     row.innerHTML = '<input type="checkbox" value="' + p.id + '"' + checked + '><span class="avatar" style="width:30px;height:30px;font-size:13px">' + faceHtml("persona", p.id) + "</span><span>" + esc(p.name) + "</span>";
+    row.querySelector("input").onchange = updateGroupAction;
     box.appendChild(row);
   }
+  updateGroupAction();
   $("#groupmodal").classList.add("show");
+}
+function updateGroupAction() {
+  const count = $("#groupmembers").querySelectorAll("input:checked").length;
+  $("#groupok").disabled = count < 1;
+  $("#groupstatus").textContent = count ? `已选择 ${count} 位成员` : "请选择至少一位成员";
 }
 async function saveGroup() {
   const ids = [...$("#groupmembers").querySelectorAll("input:checked")].map((c) => c.value);
-  if (ids.length < 1) { alert("至少选一个成员"); return; }
+  if (ids.length < 1) { updateGroupAction(); $("#groupstatus").textContent = "至少选择一位成员后才能保存"; return; }
   const id = groupEditingId || ("grp_" + Date.now().toString(36) + "_" + ids.slice().sort().join("_"));
   const name = $("#groupname").value.trim();
   const result = await api("/api/group", { id, name, members: ids });
@@ -4714,7 +5123,8 @@ async function openPersonaModal(personaId) {
   else if (locked) addPersona(personaFull.find((p) => p.id === personaId));
   else personaFull.forEach(addPersona);
   sel.onchange = () => fillPersona(sel.value);
-  sel.style.display = locked ? "none" : "";
+  const selectorField = sel.closest("label");
+  if (selectorField) selectorField.style.display = locked ? "none" : "grid";
   const value = personaId === "me" ? "me" : (personaId ? "persona:" + personaId : sel.value);
   if (value) fillPersona(value);
   $("#personamodal").classList.add("show");
@@ -4844,20 +5254,26 @@ function fillPersona(value) {
   $("#personasel").value = value;
   const target = selectedPersonaTarget();
   const isMe = target && target.owner === "me";
-  $("#personaname").style.display = isMe ? "none" : "";
-  $("#personaverb").closest("label").style.display = isMe ? "none" : "flex";
-  $("#personatext").style.display = isMe ? "none" : "";
+  $("#personaNameField").style.display = isMe ? "none" : "grid";
+  $("#personaVerbField").style.display = isMe ? "none" : "grid";
+  $("#personaAdvanced").style.display = isMe ? "none" : "block";
+  $("#personaAdvanced").open = false;
+  $("#personaRestore").hidden = isMe;
+  $("#personasave").textContent = isMe ? "保存头像" : "保存并生效";
   if (isMe) {
     $("#personaTitle").textContent = "我的头像";
     $("#personaname").value = "";
     $("#personatext").value = "";
   } else if (target && target.persona) {
     const p = target.persona;
-    $("#personaTitle").textContent = p.name + " · 角色属性";
+    $("#personaTitle").textContent = p.name + " · 角色设置";
     $("#personaname").value = p.name;
     $("#personatext").value = p.persona;
     $("#personaverb").value = p.verbosity || "normal";
   }
+  $("#personaname").dataset.original = $("#personaname").value;
+  $("#personatext").dataset.original = $("#personatext").value;
+  $("#personaverb").dataset.original = $("#personaverb").value;
   updateAvatarPreview(target);
 }
 async function savePersona() {
@@ -4876,6 +5292,9 @@ async function savePersona() {
     const r = await api("/api/persona", { id: p.id, name, persona, verbosity });
     if (r.error) { alert("保存失败：" + r.error); return; }
     p.name = name; p.persona = persona; p.verbosity = verbosity;
+    $("#personaname").dataset.original = name;
+    $("#personatext").dataset.original = persona;
+    $("#personaverb").dataset.original = verbosity;
     const opt = Array.from($("#personasel").options).find((item) => item.value === "persona:" + p.id);
     if (opt) opt.textContent = name;
   }
@@ -4893,6 +5312,15 @@ async function savePersona() {
   }
 }
 $("#personasave").onclick = savePersona;
+$("#personaRestore").onclick = () => {
+  $("#personaname").value = $("#personaname").dataset.original || "";
+  $("#personatext").value = $("#personatext").dataset.original || "";
+  $("#personaverb").value = $("#personaverb").dataset.original || "normal";
+  pendingAvatarData = "";
+  pendingAvatarClear = false;
+  $("#personaAvatarFile").value = "";
+  updateAvatarPreview(selectedPersonaTarget());
+};
 $("#personaAvatarFile").onchange = () => {
   const file = $("#personaAvatarFile").files && $("#personaAvatarFile").files[0];
   const target = selectedPersonaTarget();
@@ -6103,9 +6531,8 @@ async function deleteSkill(id, name) {
   capState = data.snapshot || capState;
   renderCapabilityLists();
 }
-async function openCapabilityPanel() {
-  await refreshCapabilities();
-  $("#capmodal").classList.add("show");
+function openCapabilityPanel() {
+  window.location.href = "/capabilities";
 }
 async function pollCapabilityTasks() {
   if (capPollBusy) return;
@@ -6154,14 +6581,75 @@ startAgentEventStream();
 setInterval(() => { if ($("#capmodal").classList.contains("show")) refreshAgentOps(); }, 3000);
 
 // 底部「设置」弹窗：聚合所有功能入口
-async function refreshLLMStatus() {
-  const el = $("#llmstatus");
+let modelConnectionState = null;
+function modelPreset(id) {
+  return (modelConnectionState?.providers || []).find((item) => item.id === id) || null;
+}
+function renderModelConnectionStatus(state, hydrateForm = false) {
+  modelConnectionState = state;
+  const summary = $("#sm-model-summary");
+  const current = $("#modelCurrent");
+  const offline = $("#modelOffline");
+  if (summary) summary.textContent = state.live ? `${state.providerName} · ${state.model}` : "当前离线，可连接任意模型服务";
+  if (current) {
+    current.classList.toggle("live", Boolean(state.live));
+    current.innerHTML = '<span class="model-current-dot" aria-hidden="true"></span><span><b>'
+      + esc(state.live ? `${state.providerName} · ${state.model}` : "离线模式")
+      + '</b><small>'
+      + esc(state.live ? "连接有效，模型可用于对话和任务" : "基础功能仍可使用，连接模型后可获得完整体验")
+      + '</small></span>';
+  }
+  if (offline) offline.disabled = !state.live;
+  if (!hydrateForm) return;
+  const providerSelect = $("#modelProvider");
+  providerSelect.innerHTML = (state.providers || []).map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("");
+  providerSelect.value = state.provider || "zhipu";
+  const preset = modelPreset(providerSelect.value) || modelPreset("zhipu");
+  $("#modelName").value = state.model || preset?.model || "";
+  $("#modelBaseUrl").value = state.baseUrl || preset?.baseUrl || "";
+  $("#modelProtocol").value = state.protocol || preset?.protocol || "openai-compatible";
+  $("#modelKey").value = "";
+  updateModelFormHints();
+  $("#llmstatus").className = "";
+  $("#llmstatus").textContent = "";
+}
+function updateModelFormHints() {
+  const providerId = $("#modelProvider").value;
+  const preset = modelPreset(providerId);
+  const sameProvider = modelConnectionState?.provider === providerId;
+  $("#modelProtocol").disabled = providerId !== "custom";
+  $("#modelKey").placeholder = preset?.keyRequired ? `粘贴 ${preset.name} API Key` : "本机服务通常无需填写";
+  $("#modelKeyHint").textContent = sameProvider && modelConnectionState?.hasKey
+    ? "已保存密钥；留空会继续使用原密钥。新密钥会替换旧密钥。"
+    : "密钥会使用当前 Windows 用户加密，仅保存在本机。";
+  $("#modelNote").textContent = preset?.note || "保存前会先测试连接，不会保存无法使用的配置。";
+}
+function applyModelPreset(providerId) {
+  const preset = modelPreset(providerId);
+  if (!preset) return;
+  $("#modelName").value = preset.model;
+  $("#modelBaseUrl").value = preset.baseUrl;
+  $("#modelProtocol").value = preset.protocol;
+  $("#modelKey").value = "";
+  updateModelFormHints();
+}
+async function refreshLLMStatus(hydrateForm = false) {
   try {
     const s = await api("/api/llm");
-    const saved = s.savedKey ? " · 已保存" : "";
-    el.textContent = (s.live ? "● 已连接：" : "○ 离线兜底：") + s.label + saved;
-    el.style.color = s.live ? "var(--accent)" : "var(--muted)";
-  } catch { el.textContent = "状态获取失败"; }
+    renderModelConnectionStatus(s, hydrateForm);
+    return s;
+  } catch {
+    $("#sm-model-summary").textContent = "连接状态读取失败";
+    if (hydrateForm) $("#llmstatus").textContent = "连接状态读取失败，请稍后重试。";
+    return null;
+  }
+}
+async function openModelModal() {
+  $("#settingsmenu").classList.remove("show");
+  $("#modelmodal").classList.add("show");
+  $("#llmstatus").className = "";
+  $("#llmstatus").textContent = "正在读取连接状态…";
+  await refreshLLMStatus(true);
 }
 let sourceState = null;
 function splitSourceLines(value) {
@@ -6270,20 +6758,58 @@ function openSourceModal() {
   $("#sourcemodal").classList.add("show");
   refreshSources();
 }
-$("#llmkeysave").onclick = async () => {
-  const btn = $("#llmkeysave"), inp = $("#llmkeyinput");
-  const key = inp.value.trim();
-  btn.disabled = true; const old = btn.textContent; btn.textContent = "切换中…";
-  $("#llmstatus").textContent = "正在重载记忆引擎…";
+$("#modelForm").onsubmit = async (event) => {
+  event.preventDefault();
+  const btn = $("#modelSave");
+  btn.disabled = true;
+  btn.textContent = "正在测试…";
+  $("#llmstatus").className = "";
+  $("#llmstatus").textContent = "正在验证地址、密钥和模型…";
   try {
-    await api("/api/llm-key", { key });
-    inp.value = "";
-    await refreshLLMStatus();
-    await loadState();   // 刷新顶部在线指示
-  } catch (error) { $("#llmstatus").textContent = "切换失败：" + (error && error.message ? error.message : "检查 key 是否有效"); }
-  finally { btn.disabled = false; btn.textContent = old; }
+    const state = await api("/api/llm-config", {
+      provider: $("#modelProvider").value,
+      protocol: $("#modelProtocol").value,
+      baseUrl: $("#modelBaseUrl").value.trim(),
+      model: $("#modelName").value.trim(),
+      key: $("#modelKey").value.trim()
+    });
+    renderModelConnectionStatus(state, true);
+    $("#llmstatus").className = "success";
+    $("#llmstatus").textContent = "连接成功，配置已保存在本机。";
+    await loadState();
+  } catch (error) {
+    $("#llmstatus").className = "error";
+    $("#llmstatus").textContent = "连接失败：" + (error && error.message ? error.message : "请检查配置");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "测试并保存";
+  }
 };
-$("#settingsbtn").onclick = () => { applyDeveloperMode(); $("#settingsmenu").classList.add("show"); refreshLLMStatus(); };
+$("#modelOffline").onclick = async () => {
+  $("#modelOffline").disabled = true;
+  $("#llmstatus").className = "";
+  $("#llmstatus").textContent = "正在切换到离线模式…";
+  try {
+    const state = await api("/api/llm-config", { offline: true });
+    renderModelConnectionStatus(state, true);
+    $("#llmstatus").className = "success";
+    $("#llmstatus").textContent = "已切换到离线模式。";
+    await loadState();
+  } catch (error) {
+    $("#llmstatus").className = "error";
+    $("#llmstatus").textContent = "切换失败：" + (error && error.message ? error.message : "请稍后重试");
+    $("#modelOffline").disabled = false;
+  }
+};
+$("#modelProvider").onchange = () => applyModelPreset($("#modelProvider").value);
+$("#modelclose").onclick = () => $("#modelmodal").classList.remove("show");
+$("#modelmodal").onclick = (event) => { if (event.target.id === "modelmodal") $("#modelmodal").classList.remove("show"); };
+function openSettingsMenu() {
+  applyDeveloperMode();
+  $("#settingsmenu").classList.add("show");
+  refreshLLMStatus();
+}
+$("#settingsbtn").onclick = openSettingsMenu;
 $("#smclose").onclick = () => $("#settingsmenu").classList.remove("show");
 $("#settingsmenu").onclick = (e) => { if (e.target.id === "settingsmenu") $("#settingsmenu").classList.remove("show"); };
 $("#sm-devtoggle").onclick = toggleDeveloperMode;
@@ -6345,6 +6871,17 @@ $("#toolclose").onclick = () => $("#toolmodal").classList.remove("show");
 $("#toolmodal").onclick = (e) => { if (e.target.id === "toolmodal") $("#toolmodal").classList.remove("show"); };
 document.querySelectorAll(".tool-tab").forEach((btn) => {
   btn.onclick = () => switchToolTab(btn.dataset.toolTab || "translate");
+  btn.onkeydown = (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = [...document.querySelectorAll(".tool-tab")];
+    const index = tabs.indexOf(btn);
+    const next = event.key === "Home" ? tabs[0]
+      : event.key === "End" ? tabs[tabs.length - 1]
+      : tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+    switchToolTab(next.dataset.toolTab || "translate");
+    next.focus();
+  };
 });
 $("#toolTranslatePaste").onclick = async () => {
   try { $("#toolTranslateSource").value = await readClipboardText(); $("#toolTranslateStatus").textContent = "已读取剪贴板。"; }
@@ -6357,6 +6894,10 @@ $("#toolTranslateCopy").onclick = async () => {
 };
 $("#toolTranslateToChat").onclick = () => putToolTextToChat($("#toolTranslateResult").textContent || "");
 $("#toolSpeechRun").onclick = runToolSpeechFile;
+$("#toolSpeechFile").onchange = () => {
+  const file = $("#toolSpeechFile").files && $("#toolSpeechFile").files[0];
+  $("#toolSpeechFileName").textContent = file ? file.name : "尚未选择文件";
+};
 $("#toolSpeechRecord").onclick = toggleToolRecording;
 $("#toolSpeechCopy").onclick = async () => {
   try { await writeClipboardText($("#toolSpeechText").value || ""); $("#toolSpeechStatus").textContent = "已复制。"; }
@@ -6373,14 +6914,17 @@ $("#toolPolishCopy").onclick = async () => {
   catch (error) { $("#toolPolishStatus").textContent = error && error.message ? error.message : "复制失败。"; }
 };
 $("#toolPolishToChat").onclick = () => putToolTextToChat($("#toolPolishResult").textContent || "");
-// 三级页面叠在设置菜单之上（不关二级）：关掉三级即回到设置，不会一并退到主界面。
-function smRun(fn) { fn(); }
+function smRun(fn) {
+  $("#settingsmenu").classList.remove("show");
+  fn();
+}
 $("#quickGroup").onclick = (event) => {
   event.stopPropagation();
   setQuickCreateMenu(!$("#quickCreateMenu").classList.contains("show"));
 };
 $("#quickAddRole").onclick = () => { setQuickCreateMenu(false); openContactModal(); };
 $("#quickAddGroup").onclick = () => { setQuickCreateMenu(false); openGroupModal("new"); };
+$("#contactSearch").addEventListener("input", renderContacts);
 document.addEventListener("click", (event) => {
   if (!$("#wechatSearch").contains(event.target)) setQuickCreateMenu(false);
 });
@@ -6390,10 +6934,11 @@ document.addEventListener("keydown", (event) => {
   if ($("#contactmodal").classList.contains("show")) $("#contactmodal").classList.remove("show");
 });
 $("#railCap").onclick = openCapabilityPanel;
-$("#railDesktop").onclick = openToolModal;
+$("#composerTool").onclick = openToolModal;
 $("#railUserAvatar").onclick = () => openPersonaModal("me");
 $("#sm-group").onclick = () => smRun(openGroupModal);
 $("#sm-avatar").onclick = () => smRun(() => openPersonaModal("me"));
+$("#sm-model").onclick = openModelModal;
 $("#sm-sources").onclick = () => smRun(openSourceModal);
 $("#sm-toolsettings").onclick = () => smRun(openToolSettings);
 $("#sm-persona").onclick = () => smRun(openPersonaModal);
@@ -6412,6 +6957,12 @@ $("#onboardName").addEventListener("keydown", (e) => {
 applyDeveloperMode();
 refreshToolSettings().catch(() => {});
 loadState();
+if (location.hash === "#settings") {
+  setTimeout(() => {
+    openSettingsMenu();
+    history.replaceState(null, "", location.pathname + location.search);
+  }, 0);
+}
 pollCapabilityTasks();
 setInterval(pollCapabilityTasks, 60000);
 </script>

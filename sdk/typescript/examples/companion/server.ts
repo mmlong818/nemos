@@ -36,13 +36,22 @@ import {
 } from "../../src/index.js";
 import { CompanionEngine, personaNamespace } from "./engine.js";
 import { PERSONAS, RELATIONSHIPS, DEFAULT_RELATIONSHIP } from "./personas.js";
-import { resolveLLM, type ResolvedLLM } from "./llm.js";
+import { resolveLLM, searchWeb, validateCompanionModelConnection, type ResolvedLLM } from "./llm.js";
+import {
+  COMPANION_MODEL_PROVIDER_PRESETS,
+  defaultCompanionModelConnection,
+  normalizeCompanionModelConnection,
+  publicModelConnection,
+  type CompanionModelConnection,
+  type CompanionModelProvider,
+  type CompanionModelProtocol,
+} from "./model-connection.js";
 import { COMPANION_MEMORY_FEATURES } from "./memory-config.js";
 import {
   aggregateCompanionCosts,
   estimateCompanionModelCost,
 } from "./model-pricing.js";
-import { CapabilityRuntime, type CapabilityNotification, type CapabilityStreamCb } from "./capabilities.js";
+import { CapabilityRuntime, type ArtifactFormat, type CapabilityNotification, type CapabilityStreamCb } from "./capabilities.js";
 import { createDefaultCapabilityToolRegistry } from "./capability-tools.js";
 import { createCompanionAgentToolProvider } from "./companion-agent-tools.js";
 import {
@@ -153,12 +162,12 @@ function backupSummary(): { dir: string; count: number; latest: string | null } 
   }
 }
 
-loadSavedLLMKey();
+let modelConnection = loadSavedLLMConnection();
 loadSavedXToken();
 let userProfile = loadUserProfile();
 
 // llm / mem / engine 可在运行时随 LLM key 变更而重建（见 rebuildLLM）。key 用当前 Windows 用户 DPAPI 加密保存。
-let llm = resolveLLM();
+let llm = resolveLLM(modelConnection);
 let mem = makeMem();
 let engine = makeEngine();
 const agentRunStore = new FileAgentRunStore(AGENT_RUNS_FILE);
@@ -222,17 +231,22 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
   hasLiveSearch: () => llm.live,
   hasVision: () => !!llm.vision,
   hasVoice: () => !!llm.tts || !!llm.asr,
+  runLiveSearch: async (query, signal) => {
+    const key = process.env.ZHIPU_API_KEY;
+    if (!key) throw new Error("联网搜索尚未配置");
+    return searchWeb(key, query, signal);
+  },
 });
 const capabilities = new CapabilityRuntime({
   dataDir: DATA_DIR,
   personas: () => engine.listPersonas().map((p) => ({ id: p.id, name: p.name, tag: p.tag })),
   toolRegistry: capabilityTools,
-  notify: async (personaId, text, signal, runtimeLimits, runId) => {
-    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId });
+  notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode) => {
+    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
-  notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId) => {
-    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId });
+  notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId, memoryMode) => {
+    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
 });
@@ -327,6 +341,8 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       format: normalizeAgentJobFormat(job.payload.format),
       trigger: "agent-job",
       runId: `agent-job/${job.id}`,
+      memoryMode: job.payload.memoryMode === "off" ? "off" : job.payload.memoryMode === "preferences" ? "preferences" : "default",
+      onProgress: (message, percent) => context.checkpoint(message, percent),
     }, context.signal);
     context.checkpoint("产物已保存", 100, { artifactId: notification.artifact.id });
     return {
@@ -555,8 +571,8 @@ function agentCostForRunPrefix(runIdPrefix: string) {
   });
   return aggregateCompanionCosts(estimates, runs.length - estimates.length);
 }
-function normalizeAgentJobFormat(value: unknown): "md" | "html" | "txt" | "json" | "doc" {
-  return value === "html" || value === "txt" || value === "json" || value === "doc" ? value : "md";
+function normalizeAgentJobFormat(value: unknown): ArtifactFormat {
+  return value === "html" || value === "txt" || value === "json" || value === "doc" || value === "pptx" ? value : "md";
 }
 
 function makeMem(): Nemos {
@@ -591,18 +607,20 @@ function wireAgentTools(target: ResolvedLLM): void {
   target.configureAgentAuthorizer((input) => agentApprovalStore.authorize(input));
 }
 
-// 运行时切换 LLM key：重新解析 provider，复用同一 DB 重建 mem/engine，再套回已持久化的状态。
-async function rebuildLLM(key: string | undefined): Promise<void> {
-  const k = (key ?? "").trim();
-  if (k) {
-    saveSavedLLMKey(k);
-    process.env.ZHIPU_API_KEY = k;
+// 运行时切换模型连接：复用同一数据库重建记忆和对话引擎。
+async function rebuildLLM(next: CompanionModelConnection | undefined): Promise<void> {
+  if (next) {
+    modelConnection = normalizeCompanionModelConnection(next);
+    saveSavedLLMConnection(modelConnection);
+    if (modelConnection.provider === "zhipu") process.env.ZHIPU_API_KEY = modelConnection.apiKey;
+    else delete process.env.ZHIPU_API_KEY;
   } else {
     clearSavedLLMKey();
     delete process.env.ZHIPU_API_KEY;
+    modelConnection = undefined;
   }
   const old = mem;
-  llm = resolveLLM();
+  llm = resolveLLM(modelConnection);
   wireAgentTools(llm);
   mem = makeMem();
   engine = makeEngine();
@@ -634,23 +652,55 @@ function unprotectSecret(cipher: string): string {
   );
 }
 
-function loadSavedLLMKey(): void {
-  if (process.env.ZHIPU_API_KEY || !existsSync(LLM_KEY_FILE)) return;
+type SavedLLMConnectionFile = {
+  version?: number;
+  encryption?: string;
+  provider?: string;
+  protocol?: CompanionModelProtocol;
+  baseUrl?: string;
+  model?: string;
+  cipher?: string;
+};
+
+function loadSavedLLMConnection(): CompanionModelConnection | undefined {
+  const environmentKey = process.env.ZHIPU_API_KEY?.trim();
+  if (environmentKey) {
+    const connection = defaultCompanionModelConnection("zhipu", environmentKey);
+    connection.model = process.env.ZHIPU_MODEL || connection.model;
+    return connection;
+  }
+  if (!existsSync(LLM_KEY_FILE)) return undefined;
   try {
-    const saved = JSON.parse(readFileSync(LLM_KEY_FILE, "utf8")) as { provider?: string; cipher?: string };
+    const saved = JSON.parse(readFileSync(LLM_KEY_FILE, "utf8")) as SavedLLMConnectionFile;
+    if (saved.version === 2 && saved.provider) {
+      const apiKey = saved.cipher ? unprotectSecret(saved.cipher).trim() : "";
+      return normalizeCompanionModelConnection({
+        provider: saved.provider as CompanionModelProvider,
+        protocol: saved.protocol,
+        baseUrl: saved.baseUrl,
+        model: saved.model,
+        apiKey,
+      });
+    }
+    // 兼容旧版仅保存智谱 Key 的文件，成功读取后会在下次保存时自动升级结构。
     if (saved.provider === "windows-dpapi" && saved.cipher) {
       const key = unprotectSecret(saved.cipher).trim();
-      if (key) process.env.ZHIPU_API_KEY = key;
+      if (key) return defaultCompanionModelConnection("zhipu", key);
     }
-  } catch { /* 保存的 key 读不出来就按离线启动 */ }
+  } catch { /* 保存的连接读不出来就按离线启动 */ }
+  return undefined;
 }
 
-function saveSavedLLMKey(key: string): void {
-  const cipher = protectSecret(key);
+function saveSavedLLMConnection(connection: CompanionModelConnection): void {
   writeFileSync(LLM_KEY_FILE, JSON.stringify({
-    provider: "windows-dpapi",
+    version: 2,
+    encryption: "windows-dpapi",
+    provider: connection.provider,
+    protocol: connection.protocol,
+    baseUrl: connection.baseUrl,
+    model: connection.model,
     savedAt: new Date().toISOString(),
-    cipher,
+    ...(connection.apiKey ? { cipher: protectSecret(connection.apiKey) } : {}),
   }, null, 2));
 }
 
@@ -660,6 +710,28 @@ function clearSavedLLMKey(): void {
 
 function savedLLMKeyExists(): boolean {
   return existsSync(LLM_KEY_FILE);
+}
+
+function modelConnectionStatus(): Record<string, unknown> {
+  const connection = publicModelConnection(modelConnection);
+  const isZhipu = connection.provider === "zhipu";
+  const isOpenAI = connection.provider === "openai"
+    && connection.baseUrl === "https://api.openai.com/v1";
+  return {
+    live: llm.live,
+    label: llm.label,
+    ...connection,
+    savedConnection: savedLLMKeyExists(),
+    savedKey: savedLLMKeyExists() && connection.hasKey,
+    supports: {
+      tools: llm.live,
+      vectorMemory: isZhipu || isOpenAI,
+      webSearch: isZhipu,
+      vision: isZhipu,
+      speech: isZhipu,
+    },
+    providers: COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => ({ ...preset })),
+  };
 }
 
 type ToolSettings = {
@@ -881,32 +953,6 @@ async function zhipuToolChat(apiKey: string, model: string, system: string, user
   }
   const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content?.trim() || "";
-}
-
-async function validateZhipuLLMKey(apiKey: string): Promise<{ model: string }> {
-  const key = apiKey.trim();
-  if (!key) throw new Error("Key 为空。");
-  const model = process.env.ZHIPU_MODEL || "glm-5.2";
-  const resp = await fetch(TOOL_ZHIPU_CHAT_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: "你是连通性测试接口，只回复 OK。" },
-        { role: "user", content: "ping" },
-      ],
-      temperature: 0,
-      max_tokens: 8,
-      thinking: { type: "disabled" },
-    }),
-  });
-  if (!resp.ok) {
-    throw new Error(`智谱 Key 验证失败（${model} HTTP ${resp.status}）：${(await resp.text()).slice(0, 240)}`);
-  }
-  const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  if (!data.choices?.[0]?.message) throw new Error(`智谱 Key 验证失败（${model}）：接口没有返回有效回复。`);
-  return { model };
 }
 
 async function zhipuToolAsr(apiKey: string, audio: Buffer, filename: string, mime: string, model: string): Promise<string> {
@@ -2321,7 +2367,7 @@ function selectCapabilityId(personaId: string, text: string): string {
     ?? inferred;
 }
 
-function autoLearnFromWork(personaId: string, text: string, capabilityId: string, format: "md" | "html" | "txt" | "json" | "doc"): void {
+function autoLearnFromWork(personaId: string, text: string, capabilityId: string, format: ArtifactFormat): void {
   if (capabilityId === "ocr-extraction" || capabilityId === IMAGE_PROMPT_CAPABILITY_ID) return;
   const spec = inferLearnedAbilitySpec(text, capabilityId);
   capabilities.learnFromWork({
@@ -2329,7 +2375,7 @@ function autoLearnFromWork(personaId: string, text: string, capabilityId: string
     name: spec.name,
     description: spec.description,
     goal: text,
-    defaultFormat: format,
+    defaultFormat: format === "pptx" ? "html" : format,
     learnedKey: spec.key,
   });
 }
@@ -2370,6 +2416,12 @@ function slugForLearnedAbility(text: string): string {
 function inferCapabilityId(text: string): string {
   if (hasImagePromptIntent(text)) return IMAGE_PROMPT_CAPABILITY_ID;
   if (hasOcrIntent(text)) return "ocr-extraction";
+  if (/(生成|创建|新增|沉淀|锻造).{0,8}(能力|技能)|把.{0,20}做成.{0,6}(能力|技能)|ability builder|skill builder/i.test(text)) return "ability-builder";
+  if (/(PPT|pptx|幻灯片|演示文稿|路演稿|汇报演示|课件)/i.test(text)) return "presentation-builder";
+  if (/(产品设计|界面设计|交互设计|用户流程|信息架构|产品原型|页面原型)/i.test(text)) return "product-design";
+  if (/(商务推进|合作推进|销售策略|客户异议|谈判边界|成交策略|BD 方案)/i.test(text)) return "business-deal";
+  if (/(市场机会|机会模拟|市场模拟|赛道机会|情景模拟|需求情景|竞争情景)/i.test(text)) return "market-opportunity";
+  if (/(思考工作台|梳理复杂问题|假设地图|反方观点|低成本验证|头脑风暴)/i.test(text)) return "thinking-workbench";
   if (/(文档转换|格式转换|转成|转换成|转为|转markdown|转md|转html|转json|转word|转pdf|docx|pdf|markdown|格式整理)/i.test(text)) return "document-conversion";
   if (/(会议纪要|会议记录|会议总结|会议整理|会议转写|行动项|待办项|纪要|minutes|meeting notes|action items)/i.test(text)) return "meeting-minutes";
   if (/(群里进展|群聊进展|群进展|跟踪.*群|群.*跟踪|项目进展|进度跟踪|进展看板|同步进展|status update|progress tracking|progress board)/i.test(text)) return "group-progress-tracker";
@@ -2384,8 +2436,9 @@ function inferCapabilityId(text: string): string {
   if (/(\u6587\u6863|Word|word|\u8d77\u8349|\u6b63\u5f0f\u7a3f)/.test(text)) return "document-draft";
   return "research-brief";
 }
-function inferArtifactFormat(text: string): "md" | "html" | "txt" | "json" | "doc" {
+function inferArtifactFormat(text: string): ArtifactFormat {
   if (hasImagePromptIntent(text)) return "md";
+  if (/(PPT|pptx|幻灯片|演示文稿|路演稿|课件)/i.test(text)) return "pptx";
   if (/(HTML|html|网页|页面)/.test(text)) return "html";
   if (/(JSON|json)/.test(text)) return "json";
   if (/(会议纪要|会议记录|文档|Word|word|正式稿|docx|PDF|pdf)/.test(text)) return "doc";
@@ -2444,6 +2497,10 @@ const server = createServer(async (req, res) => {
       send(res, 200, readFileSync(join(WEB_DIR, "index.html"), "utf-8"), "text/html");
       return;
     }
+    if (req.method === "GET" && (url === "/capabilities" || url === "/capabilities.html")) {
+      send(res, 200, readFileSync(join(WEB_DIR, "capabilities.html"), "utf-8"), "text/html");
+      return;
+    }
     if (req.method === "GET" && sendWebAsset(res, url)) {
       return;
     }
@@ -2494,7 +2551,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && url === "/api/llm") {
-      send(res, 200, { live: llm.live, label: llm.label, hasKey: !!process.env.ZHIPU_API_KEY, savedKey: savedLLMKeyExists() });
+      send(res, 200, modelConnectionStatus());
       return;
     }
     if (req.method === "GET" && url === "/api/tool-settings") {
@@ -2673,9 +2730,10 @@ const server = createServer(async (req, res) => {
         personaId?: string;
         capabilityId?: string;
         instruction?: string;
-        format?: "md" | "html" | "txt" | "json" | "doc";
+        format?: ArtifactFormat;
         idempotencyKey?: string;
         timeoutMs?: number;
+        memoryMode?: "default" | "preferences" | "off";
       };
       if (body.kind === "capability-task" && !body.taskId) {
         send(res, 400, { error: "missing taskId" });
@@ -2701,6 +2759,7 @@ const server = createServer(async (req, res) => {
           format: body.format,
           instructionChars: body.instruction?.length ?? 0,
           timeoutMs: body.timeoutMs,
+          memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
           idempotencyKeyProvided: Boolean(body.idempotencyKey),
         },
         metadata: body.personaId ? { personaId: body.personaId } : undefined,
@@ -2714,6 +2773,7 @@ const server = createServer(async (req, res) => {
                 capabilityId: body.capabilityId,
                 instruction: body.instruction,
                 format: body.format,
+                memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
               },
           metadata: { userId: USER },
           deliveryRequired: true,
@@ -2737,7 +2797,7 @@ const server = createServer(async (req, res) => {
           dependsOn?: string[];
           personaId?: string;
           capabilityId?: string;
-          format?: "md" | "html" | "txt" | "json" | "doc";
+          format?: ArtifactFormat;
         }>;
         idempotencyKey?: string;
         timeoutMs?: number;
@@ -3235,7 +3295,7 @@ const server = createServer(async (req, res) => {
         id?: string;
         name?: string;
         description?: string;
-        defaultFormat?: "md" | "html" | "txt" | "json" | "doc";
+        defaultFormat?: ArtifactFormat;
         prompt?: string;
       };
       if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
@@ -3308,7 +3368,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/capabilities/intake") {
-      const b = (await readBody(req)) as { request?: string; format?: "md" | "html" | "txt" | "json" | "doc"; persist?: boolean };
+      const b = (await readBody(req)) as { request?: string; format?: ArtifactFormat; persist?: boolean };
       if (!b.request || !b.request.trim()) {
         send(res, 400, { error: "missing request" });
         return;
@@ -3356,7 +3416,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/capabilities/ability") {
-      const b = (await readBody(req)) as { personaId: string; name: string; description?: string; goal: string; defaultFormat?: "md" | "html" | "txt" | "json" | "doc" };
+      const b = (await readBody(req)) as { personaId: string; name: string; description?: string; goal: string; defaultFormat?: ArtifactFormat };
       const action = await agentUserActions.execute({
         name: "capability_ability_create",
         description: "创建用户在能力管理页填写的新能力",
@@ -3382,7 +3442,7 @@ const server = createServer(async (req, res) => {
         sourceText?: string;
         sourcePath?: string;
         sourceUrl?: string;
-        defaultFormat?: "md" | "html" | "txt" | "json" | "doc";
+        defaultFormat?: ArtifactFormat;
       };
       const personaId = b.personaId || "zhiwei";
       const sourceUrl = b.sourceUrl || (/^https?:\/\//i.test((b.sourcePath || "").trim()) ? (b.sourcePath || "").trim() : undefined);
@@ -3424,7 +3484,7 @@ const server = createServer(async (req, res) => {
         personaId: string;
         capabilityId: string;
         instruction: string;
-        format?: "md" | "html" | "txt" | "json" | "doc";
+        format?: ArtifactFormat;
         schedule?: { mode?: "manual" | "daily" | "turns"; time?: string; timezone?: string; days?: number[]; everyTurns?: number };
         enabled?: boolean;
       };
@@ -3485,7 +3545,7 @@ const server = createServer(async (req, res) => {
         personaId?: string;
         capabilityId?: string;
         instruction?: string;
-        format?: "md" | "html" | "txt" | "json" | "doc";
+        format?: ArtifactFormat;
       };
       if (!b.personaId || !b.capabilityId || !b.instruction) {
         send(res, 400, { error: "missing personaId, capabilityId, or instruction" });
@@ -3600,21 +3660,63 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, reminders: action.value.reminders, auditRunId: action.runId });
       return;
     }
+    if (req.method === "POST" && url === "/api/llm-config") {
+      const b = (await readBody(req)) as {
+        provider?: CompanionModelProvider;
+        protocol?: CompanionModelProtocol;
+        baseUrl?: string;
+        model?: string;
+        key?: string;
+        offline?: boolean;
+      };
+      try {
+        const provider = b.provider ?? modelConnection?.provider ?? "zhipu";
+        const key = String(b.key ?? "").trim()
+          || (modelConnection?.provider === provider ? modelConnection.apiKey : "");
+        const next = b.offline
+          ? undefined
+          : normalizeCompanionModelConnection({
+              provider,
+              protocol: b.protocol,
+              baseUrl: b.baseUrl,
+              model: b.model,
+              apiKey: key,
+            });
+        const action = await agentUserActions.execute({
+          name: "llm_connection_update",
+          description: next ? `验证并保存 ${next.provider} 模型连接` : "切换到离线模式",
+          arguments: next
+            ? { provider: next.provider, protocol: next.protocol, baseUrl: next.baseUrl, model: next.model, keyUpdated: Boolean(b.key) }
+            : { offline: true },
+          execute: async () => {
+            if (next) await validateCompanionModelConnection(next);
+            await rebuildLLM(next);
+            return modelConnectionStatus();
+          },
+          summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider, model: value.model }),
+        });
+        send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
+      } catch (e) {
+        send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+      return;
+    }
     if (req.method === "POST" && url === "/api/llm-key") {
-      // 运行时设置 / 清除 LLM key。非空 key 会用当前 Windows 用户 DPAPI 加密保存；空 key = 清除保存并切回离线兜底。
+      // 兼容旧客户端：该入口仍按智谱连接处理。
       const b = (await readBody(req)) as { key?: string };
       const key = String(b.key ?? "").trim();
       try {
         const action = await agentUserActions.execute({
           name: "llm_key_update",
-          description: key ? "验证并保存用户提交的智谱 Key" : "清除用户保存的智谱 Key",
+          description: key ? "验证并保存用户提交的智谱 Key" : "清除用户保存的模型连接",
           arguments: { configured: Boolean(key) },
           execute: async () => {
-            if (key) await validateZhipuLLMKey(key);
-            await rebuildLLM(key || undefined);
-            return { live: llm.live, label: llm.label, hasKey: !!process.env.ZHIPU_API_KEY, savedKey: savedLLMKeyExists() };
+            const next = key ? defaultCompanionModelConnection("zhipu", key) : undefined;
+            if (next) await validateCompanionModelConnection(next);
+            await rebuildLLM(next);
+            return modelConnectionStatus();
           },
-          summarizeResult: (value) => ({ ok: true, live: value.live, savedKey: value.savedKey }),
+          summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider }),
         });
         send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       } catch (e) {

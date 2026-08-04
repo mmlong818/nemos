@@ -21,7 +21,7 @@ test("due task discovery is read-only and produces a stable occurrence key", asy
     const task = runtime.createTask({
       title: "每日测试",
       personaId: "zhiwei",
-      capabilityId: "research-brief",
+      capabilityId: "decision-brief",
       instruction: "生成测试简报",
       format: "md",
       enabled: true,
@@ -59,7 +59,7 @@ test("turn-based due discovery uses the persisted turn counter", () => {
     const task = runtime.createTask({
       title: "轮次测试",
       personaId: "zhiwei",
-      capabilityId: "research-brief",
+      capabilityId: "decision-brief",
       instruction: "每两轮总结一次",
       format: "md",
       enabled: true,

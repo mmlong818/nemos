@@ -231,6 +231,10 @@ test("Companion extension API closes the install, trust, and provider lifecycle"
     assert.equal(finalList.data.extensions.some((item: any) => item.manifest.id === executable.id), false);
   } finally {
     await stopCompanion(child);
-    rmSync(home, { recursive: true, force: true });
+    try {
+      rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 });
+    } catch {
+      // Windows may keep a just-stopped extension child handle alive until this test process exits.
+    }
   }
 });

@@ -37,3 +37,20 @@ test("capability AgentTool adapter returns structured registry output", async ()
   assert.match(result.content, /Source verification status|Source connector guidance/);
   assert.equal(typeof result.data, "object");
 });
+
+test("联网搜索工具有真实执行器并返回结构化来源", async () => {
+  const live = createDefaultCapabilityToolRegistry(".", {
+    hasLiveSearch: () => true,
+    hasVision: () => false,
+    hasVoice: () => false,
+    runLiveSearch: async (query) => [{
+      title: "官方说明",
+      content: `关于 ${query} 的一手资料`,
+      url: "https://example.com/source",
+    }],
+  });
+  const result = await live.run("web.search", { query: "测试问题" });
+  assert.equal(result.ok, true);
+  assert.match(result.text, /官方说明/);
+  assert.deepEqual((result.data as { query: string }).query, "测试问题");
+});
