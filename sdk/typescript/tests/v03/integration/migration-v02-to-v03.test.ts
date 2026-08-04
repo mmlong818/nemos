@@ -89,7 +89,7 @@ test("v0.2 SQLite 加载 v0.3 SDK 自动 ALTER + ingest_queue 新建", async () 
     const mem = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makePerspectiveMockLLMConfig(),
-      features: { doubleCheck: false },
+      features: { doubleCheck: false, autoLinking: false },
       worker: { manualWorker: true },
     });
 
@@ -112,19 +112,19 @@ test("v0.2 SQLite 加载 v0.3 SDK 自动 ALTER + ingest_queue 新建", async () 
     // ingest_queue 表已建：background ingest 入队不报错
     const handle = await mem.forUser("alice").ingest("background bg", { background: true });
     assert.equal(handle.status, "queued");
-    mem.close();
+    await mem.close();
 
     // 二次打开：migration 幂等
     const mem2 = new Nemos({
       storage: { type: "sqlite", path: dbPath },
       llm: makePerspectiveMockLLMConfig(),
-      features: { doubleCheck: false },
+      features: { doubleCheck: false, autoLinking: false },
       worker: { manualWorker: true },
     });
     const all2 = await mem2.forUser("alice").listByLayer("archival");
     assert.ok(all2.length >= 3, "二次开仍可读全部记录");
-    mem2.close();
+    await mem2.close();
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });

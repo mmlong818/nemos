@@ -8,7 +8,7 @@
 import type { Storage } from "./storage.js";
 import type { EmbeddingProvider, LogLevel, Memory } from "./types.js";
 import { LAYERS } from "./types.js";
-import { newId } from "./utils/id.js";
+import { newId, nowIso } from "./utils/id.js";
 
 export interface PreparedDerived {
   memory: Memory;
@@ -30,6 +30,10 @@ export async function prepareDerived(
 ): Promise<PreparedDerived[]> {
   const prepared: PreparedDerived[] = [];
   for (const d of derived) {
+    d.generation = d.generation ?? 1;
+    if (d.generation > 2) {
+      throw new Error(`[nemos] automatic generation limit exceeded: ${d.generation}`);
+    }
     if (!LAYERS.includes(d.layer)) {
       log("warn", `忽略未知 layer: ${d.layer}`);
       continue;
@@ -84,6 +88,13 @@ export function writePreparedDerived(
   const persisted: Memory[] = [];
   for (const p of prepared) {
     storage.insert(tenantId, userId, p.memory);
+    const provenanceAt = nowIso();
+    if (p.memory.archival_ref && p.memory.archival_ref !== p.memory.id) {
+      storage.insertProvenanceEdge({ tenant_id: tenantId, user_id: userId, source_id: p.memory.archival_ref, derived_id: p.memory.id, relation: "extracted_from", created_at: provenanceAt });
+    }
+    for (const sourceId of p.memory.consolidated_from ?? []) {
+      storage.insertProvenanceEdge({ tenant_id: tenantId, user_id: userId, source_id: sourceId, derived_id: p.memory.id, relation: "consolidated_from", created_at: provenanceAt });
+    }
     if (p.vec && p.modelId) {
       storage.insertEmbedding(tenantId, userId, p.memory.layer, p.memory.id, p.vec, p.modelId);
       p.memory.embedding_model_id = p.modelId;

@@ -1,15 +1,17 @@
 // nemos.ts — Nemos class（顶层入口，管 storage + llm + embedding + worker）
 //
-// 公开类，朋友 `new Nemos(config)` 拿到实例。
+// 公开类，调用方 `new Nemos(config)` 拿到实例。
 
 import { makeEmbeddingProvider } from "./embedding.js";
 import type { EmbeddingProvider } from "./types.js";
 import { makeProvider } from "./llm.js";
 import { makeStorage, type Storage } from "./storage.js";
 import { NemosWorker } from "./queue.js";
-import { persistDerivedList } from "./persist-derived.js";
+import { LifecycleOrchestrator } from "./lifecycle.js";
+import { RecallTraceStore } from "./recall.js";
 import type {
   IngestStatusInfo,
+  LifecycleStatusInfo,
   LLMProvider,
   LogLevel,
   NemosConfig,
@@ -43,6 +45,8 @@ export class Nemos {
   private readonly log: (level: LogLevel, msg: string, meta?: Record<string, unknown>) => void;
   /** v0.3：后台 worker。任何模式下都构造（队列状态查询需要）。 */
   private readonly worker: NemosWorker;
+  private readonly lifecycle: LifecycleOrchestrator;
+  private readonly recallTraces = new RecallTraceStore();
 
   constructor(config: NemosConfig) {
     if (config.storage.type === "remote") {
@@ -79,6 +83,16 @@ export class Nemos {
         }
       });
 
+    this.lifecycle = new LifecycleOrchestrator(
+      this.storage,
+      this.llm,
+      this.embedding,
+      this.log,
+      {
+        autoLinking: this.config.features?.autoLinking !== false,
+        crossScopeLink: this.config.features?.crossScopeLink !== false,
+      },
+    );
     // 构造 worker（共享 storage/llm/embedding）
     // 注意：构造立即跑 resetStaleAnalyzing 触碰 ingest_queue 表
     this.worker = new NemosWorker(
@@ -87,16 +101,8 @@ export class Nemos {
         llm: this.llm,
         embedding: this.embedding,
         log: this.log,
-        persistDerived: async (tenantId, userId, derived) => {
-          return persistDerivedList(
-            this.storage,
-            this.embedding,
-            this.log,
-            tenantId,
-            userId,
-            derived,
-          );
-        },
+        lifecycle: this.lifecycle,
+
       },
       this.config,
     );
@@ -140,12 +146,18 @@ export class Nemos {
       this.config,
       this.log,
       this.worker,
+      this.lifecycle,
+      this.recallTraces,
     );
   }
 
+  /** 查询一个原始事件当前经过了哪些生命周期阶段。 */
+  getLifecycleStatus(eventId: string): LifecycleStatusInfo | null {
+    return this.lifecycle.status(eventId);
+  }
   /**
    * Power-user 接口：暴露底层组件给高级用户做组合。
-   * 大部分朋友不需要它。
+   * 大部分调用方不需要它。
    */
   raw(): { storage: Storage; llm: LLMProvider; embedding: EmbeddingProvider | null } {
     return { storage: this.storage, llm: this.llm, embedding: this.embedding };

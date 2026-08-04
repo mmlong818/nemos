@@ -2,33 +2,44 @@
 
 **中文** | [English](README.en.md)
 
-> 一款AI聊天服务 App —— 通讯录里住着会**真正记得你**的 AI 好友们。
+> 一个本机优先的 AI 工作与陪伴客户端：角色会长期记得你，也能调用工具、执行任务并交付结果。
 
 ---
 
 ## 为什么做它
 
-你跟 AI 聊了一晚上，告诉它你的喜好、你的近况、你在烦什么。第二天再打开，它把你忘得一干二净，你又成了陌生人。市面上的 AI 聊天 App 大多如此——换个 session 就重置。
+普通聊天机器人往往在一次问答后就结束：它不真正理解你的长期偏好，也无法可靠地把一个任务持续推进到可下载的交付物。
 
-Nemos 想做的，是几个**会跨时间记得你**的 AI 角色：你说过的事、你的偏好、你最近的状态，它都记得；你改了口，它也会跟着更新。
+Nemos 把两件事合在一起：底层是可独立使用的长期记忆引擎，上层是 Nemos Companion 客户端与 Agent Runtime。角色不仅会跨时间记住你的偏好、状态和修正，还能读取网页和图片、处理语音与文档、调用已授权的 Skills / MCP 工具，并把后台任务的结果送回聊天。
 
-聊天方式也不止打字：也可以发**语音**（自动转写），也可以**语音通话** —— 连续的语音对话，就像对面是一个活生生的人。
+数据、记忆、任务记录和交付物默认保存在本机；普通用户只需配置一个智谱 Key 即可开始使用。
 
-让这件事真正成立的，是底层一套独立的记忆系统。—— **Nemos**
-
----
-
-**陪伴是外壳，记忆才是内核**
+**陪伴是入口，记忆与执行能力才是内核。**
 
 ## 通讯录里有谁
 
-目前内置 5 个角色，性格、声音各不同：
+默认联系人保留少量高频角色，其余角色可通过搜索栏右侧的「+」按需添加，也可以像微信一样创建群聊：
 
-- **菲菲** 🎨 朋友——25 岁自由插画师，温暖细腻的"理性浪漫主义者"，养了只橘猫。先共情、再给空间，不催不说教。
-- **阿哲** ☕ 朋友——30 岁产品顾问，理性、话短、问题导向，不灌鸡汤的"搭子"；帮你停下内耗、把事做完。
-- **月白** 📋 个人助理——沉稳利落，帮你梳理任务、起草文字、联网查资料、识图读图、记 deadline 并到点提醒。
-- **团子** 🍡 不明生物——圆滚滚奶乎乎，天真热乎，靠"转圈圈 / 瘪成扁麻薯"表达情绪，无条件陪着你。
-- **灵灵** 🐾 灵宠——巴掌大的小毛球，几乎不说话，靠"咕噜～（蹭蹭你）"这样的拟声和小动作陪你。
+- **知微**：默认个人助理，也是能力、任务与交付的统一调度者。
+- **菲菲、团子**：偏日常交流与陪伴。
+- **阿哲、灵灵**：可选联系人，分别偏现实判断与安静陪伴。
+- **马斯克、乔布斯、查理·芒格、苏格拉底**：用不同思维方式拆解问题。
+- **贝索斯及更多专业顾问**：覆盖战略、产品、工程、设计、测试、市场与商业分析，可单聊，也可加入专家群。
+
+用户头像和每个角色的名字、头像、人设、声音均可单独修改并持久保存。群聊支持“@角色名”精确点名；被点名的角色及时回复，其他角色不会抢答。角色负责判断与建议，涉及搜索、OCR、文档、任务或外部工具时由知微统一执行和交付。
+
+---
+
+## Nemos Companion 能做什么
+
+- **自然交互**：文字、图片、截图、语音消息和语音通话；聊天气泡支持 Markdown、HTML 与文件下载。
+- **内容处理**：网页读取、图片理解、OCR、长音频转写、会议纪要、文章润色和文档转换。
+- **真实交付**：把调研、整理和分析结果保存为 Markdown、HTML 等文件，并在聊天中直接查看或下载。
+- **持续任务**：按时间或轮次运行资料收集、简报和跟踪任务；运行、重试、取消与交付状态都可恢复。
+- **能力扩展**：安装、启停、升级和卸载 Skill；通过 MCP 接入外部工具。第三方扩展受权限、审批、凭证代理和沙箱约束。
+- **受控专家协作**：知微可按需邀请 2—4 位专家并行分析，在固定预算内复核、汇总后把最终结果交回当前聊天。
+
+详细实现与安全边界见 [Agent Runtime 设计](sdk/typescript/examples/companion/docs/agent-runtime-design.md) 和 [能力操作系统设计](sdk/typescript/examples/companion/docs/capability-os-design.md)。
 
 ---
 
@@ -93,27 +104,30 @@ Nemos 想做的，是几个**会跨时间记得你**的 AI 角色：你说过的
 
 ## 角色是你的，做自己的版本吧
 
-角色不写死：
-
-- **网页里直接改**——「⚙️ 设置 → 角色设置」改名字、性格、话量，即时生效并保存。角色的背景事实存在它自己的记忆库里，也会随交流自然演变（说了新的会更新，旧的矛盾会失效）。
-- **代码里自定义**——角色定义在 [`examples/companion/personas.ts`](sdk/typescript/examples/companion/personas.ts)，加角色、改人设、调模型都行。
+角色不写死。客户端内可修改自己的头像，也可单独编辑每个角色的名字、头像、人设、语言风格和声音；头像支持裁剪并自动缩放，修改会保存在本机。开发者可在 [personas.ts](sdk/typescript/examples/companion/personas.ts) 中增加角色或调整默认定义。
 
 ---
 
 ## 跑起来
 
-```bash
+开发模式：
+
+~~~bash
 cd sdk/typescript
 npm install
-npx tsx examples/companion/server.ts        # 打开 http://localhost:8787
-```
+npm run companion
+~~~
 
-无 key 也能开（离线兜底，可看界面与记忆拓扑）。要真实多人格对话，填一个智谱 key——**在网页「⚙️ 设置」里直接填即可，运行时切换、不必重启**；或用环境变量启动：
+然后打开 http://localhost:8787。无 Key 时可以查看界面；真实对话与内置 AI 能力需要在客户端设置中填写一个智谱 Key，不必重启。
 
-```bash
-# PowerShell:  $env:ZHIPU_API_KEY="<你的key>"; npx tsx examples/companion/server.ts
-# bash:        ZHIPU_API_KEY=<你的key> npx tsx examples/companion/server.ts
-```
+Windows 独立客户端：
+
+~~~powershell
+cd sdk\typescript
+powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-NemosCompanion.ps1
+~~~
+
+构建完成后直接运行 examples\companion\client\dist\portable\Nemos Companion\Nemos Companion.exe。Start Nemos Companion.cmd 只是兼容入口，不是必需步骤。
 
 ---
 
@@ -132,7 +146,9 @@ const context = await user.getRelevantContext("帮我设计一个界面")
 
 | 文档 | 内容 |
 |---|---|
-| [`sdk/typescript/README.md`](sdk/typescript/README.md) | SDK 接入与 API |
+| [sdk/typescript/README.md](sdk/typescript/README.md) | SDK 接入与 API |
+| [sdk/typescript/examples/companion/README.md](sdk/typescript/examples/companion/README.md) | Companion 使用、配置与打包 |
+| [Agent Runtime 设计](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Agent Runtime 架构、实现状态与验收依据 |
 | [`docs/architecture-overview.md`](docs/architecture-overview.md) | 系统设计与五层记忆模型 |
 | [`rfcs/`](rfcs/) | 重大设计决策 |
 | [`bench/README.md`](bench/README.md) | MnemoBench 记忆维护基准（可复现） |

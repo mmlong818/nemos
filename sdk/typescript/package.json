@@ -1,13 +1,13 @@
 {
   "name": "@nemos/sdk",
-  "version": "0.4.0",
-  "description": "Embeddable memory system for AI — structured, persistent, portable; domain routing, contradiction invalidation, anti-self-pollution. Noncommercial (PolyForm).",
+  "version": "0.7.5-alpha.17",
+  "description": "Application-agnostic, local-first memory engine for AI systems with provenance, temporal facts, lifecycle reconciliation, and controllable recall.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "nemos founding team",
-  "homepage": "https://github.com/nemos-org/nemos",
+  "homepage": "https://github.com/mmlong818/nemos",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nemos-org/nemos.git",
+    "url": "https://github.com/mmlong818/nemos.git",
     "directory": "sdk/typescript"
   },
   "keywords": [
@@ -30,18 +30,23 @@
     "CHANGELOG.md"
   ],
   "scripts": {
+    "companion": "tsx examples/companion/server.ts",
+    "companion:cli": "tsx examples/companion/chat-cli.ts",
     "build": "tsc",
-    "test": "tsx --test tests/unit/*.test.ts tests/integration/*.test.ts tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts tests/v06/integration/*.test.ts",
+    "test": "tsx --test tests/unit/*.test.ts tests/integration/*.test.ts tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts tests/v06/integration/*.test.ts tests/v07/integration/*.test.ts",
     "test:unit": "tsx --test tests/unit/*.test.ts tests/v02/unit/*.test.ts tests/v03/unit/*.test.ts tests/v04/unit/*.test.ts tests/v05/unit/*.test.ts",
     "test:v02": "tsx --test tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts",
     "test:v03": "tsx --test tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts",
     "test:v04": "tsx --test tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts",
     "test:v05": "tsx --test tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts",
     "test:v06": "tsx --test tests/v06/integration/*.test.ts",
-    "prepublishOnly": "npm run build"
+    "test:v07": "tsx --test tests/v07/integration/*.test.ts",
+    "prepublishOnly": "npm run build",
+    "check": "npm run build && npm test"
   },
   "dependencies": {
-    "better-sqlite3": "^11.0.0"
+    "@modelcontextprotocol/client": "^2.0.0",
+    "better-sqlite3": "^12.10.0"
   },
   "optionalDependencies": {
     "sqlite-vec": "^0.1.0"
@@ -51,16 +56,22 @@
     "openai": "*"
   },
   "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": { "optional": true },
-    "openai": { "optional": true }
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "tsx": "^4.7.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^20.10.0",
-    "@types/better-sqlite3": "^7.6.0"
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "private": true
 }

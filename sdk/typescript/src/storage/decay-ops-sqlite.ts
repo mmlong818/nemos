@@ -158,6 +158,23 @@ export function listRecentEpisodic(
   return rows.map(rowToMemory);
 }
 
+export function listEpisodicByEventSeq(
+  db: Database.Database,
+  tenantId: string,
+  userId: string,
+  spaceId: string,
+  afterSeq: number,
+  upToSeq: number,
+): Memory[] {
+  const rows = db.prepare(
+    `SELECT e.* FROM episodic e
+     JOIN nemos_event_metadata event ON event.event_id = COALESCE(e.archival_ref, e.id)
+     WHERE e.tenant_id=? AND e.user_id=?
+       AND event.space_id=? AND event.event_seq>? AND event.event_seq<=?
+     ORDER BY event.event_seq DESC, e.created_at DESC`,
+  ).all(tenantId, userId, spaceId, afterSeq, upToSeq) as RowMemory[];
+  return rows.map(rowToMemory);
+}
 export function listPersonalSemantic(
   db: Database.Database,
   tenantId: string,
