@@ -13,13 +13,19 @@ import type { IngestResult, LLMProvider } from "../types.js";
 import { chunkContent } from "../utils/chunking.js";
 import type { AnalyzeOptions } from "./options.js";
 import { analyzeChunked } from "./chunked.js";
+import { AnalyzeJsonParseError } from "./json-parse.js";
 import { analyzeMultiPerspective } from "./multi-perspective.js";
 import { analyzeOnce, analyzeWithVerification } from "./single-pass.js";
+import { appendStructuredFacts } from "./structured-facts.js";
+
+const ADAPTIVE_CHUNK_MIN_CHARS = 256;
+const ADAPTIVE_CHUNK_MAX_ATTEMPTS = 4;
 
 export type { AnalyzeOptions } from "./options.js";
 export { analyzeOnce, analyzeWithVerification } from "./single-pass.js";
 export { analyzeMultiPerspective } from "./multi-perspective.js";
 export { analyzeChunked } from "./chunked.js";
+export { appendStructuredFacts, extractMarkdownTableFacts } from "./structured-facts.js";
 export { buildArchival, buildDerived, buildDerivedMultiPerspective, applyExclude } from "./build-memory.js";
 export {
   parseAnalyzeJson,
@@ -59,15 +65,66 @@ export async function analyze(
   const chunks = chunkContent(trimmed, { maxChars, overlap });
   const useChunking = chunks.length > 1;
 
-  if (useChunking) {
-    return analyzeChunked(trimmed, chunks, scope, llm, originAgent, options);
+  let result: IngestResult;
+  try {
+    if (useChunking) {
+      result = await analyzeChunked(trimmed, chunks, scope, llm, originAgent, options);
+    } else if (options.perspectives && options.perspectives.length > 0) {
+      result = await analyzeMultiPerspective(trimmed, scope, llm, originAgent, options);
+    } else if (options.doubleCheck) {
+      result = await analyzeWithVerification(trimmed, scope, llm, originAgent, options);
+    } else {
+      result = await analyzeOnce(trimmed, scope, llm, originAgent, options);
+    }
+  } catch (error) {
+    if (!(error instanceof AnalyzeJsonParseError)) throw error;
+    result = await analyzeWithAdaptiveChunks(
+      trimmed,
+      scope,
+      llm,
+      originAgent,
+      options,
+      maxChars,
+      overlap,
+      error,
+    );
+  }
+  return appendStructuredFacts(result, trimmed, scope, originAgent, profile);
+}
+
+async function analyzeWithAdaptiveChunks(
+  content: string,
+  scope: string,
+  llm: LLMProvider,
+  originAgent: string | undefined,
+  options: AnalyzeOptions,
+  configuredMaxChars: number,
+  overlap: number,
+  initialError: AnalyzeJsonParseError,
+): Promise<IngestResult> {
+  let lastError = initialError;
+  let maxChars = Math.max(
+    ADAPTIVE_CHUNK_MIN_CHARS,
+    Math.min(Math.floor(configuredMaxChars / 2), Math.floor(content.length / 2)),
+  );
+
+  for (let attempt = 0; attempt < ADAPTIVE_CHUNK_MAX_ATTEMPTS; attempt += 1) {
+    const chunks = chunkContent(content, {
+      maxChars,
+      overlap: Math.min(overlap, Math.floor(maxChars / 4)),
+    });
+    if (chunks.length <= 1) break;
+
+    try {
+      return await analyzeChunked(content, chunks, scope, llm, originAgent, options);
+    } catch (error) {
+      if (!(error instanceof AnalyzeJsonParseError)) throw error;
+      lastError = error;
+    }
+
+    if (maxChars === ADAPTIVE_CHUNK_MIN_CHARS) break;
+    maxChars = Math.max(ADAPTIVE_CHUNK_MIN_CHARS, Math.floor(maxChars / 2));
   }
 
-  if (options.perspectives && options.perspectives.length > 0) {
-    return analyzeMultiPerspective(trimmed, scope, llm, originAgent, options);
-  }
-  if (options.doubleCheck) {
-    return analyzeWithVerification(trimmed, scope, llm, originAgent, options);
-  }
-  return analyzeOnce(trimmed, scope, llm, originAgent, options);
+  throw lastError;
 }

@@ -3,7 +3,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chunkContent } from "../../../src/utils/chunking.js";
+import { analyze } from "../../../src/analyzer/index.js";
 import { Nemos } from "../../../src/index.js";
+import type { LLMProvider } from "../../../src/types.js";
 import { makeMockLLMConfig, resetMockCount, getMockCallCount } from "../../helpers.js";
 
 test("短内容不切（≤ maxChars 单元素数组）", () => {
@@ -48,7 +50,7 @@ test("chunking 触发时自动关 doubleCheck（RFC 0002 决议 C）", async () 
   const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
-    features: { doubleCheck: true }, // 配置开了；但 chunking 路径应该跳过
+    features: { doubleCheck: true, autoLinking: false }, // 配置开了；但 chunking 路径应该跳过
   });
   const u = mem.forUser("u1");
   // 用 chunking.maxChars 配小一点强制切多段
@@ -61,4 +63,32 @@ test("chunking 触发时自动关 doubleCheck（RFC 0002 决议 C）", async () 
   assert.ok(calls >= 2, `应该至少调 2 次 LLM（每段 1 次），实际 ${calls}`);
   assert.ok(calls <= 6, `chunking 路径不应触发双 pass + check，调用次数应远小于 3N+1，实际 ${calls}`);
   mem.close();
+});
+
+test("truncated analyzer JSON retries with smaller chunks and preserves source", async () => {
+  const content = `${"first fact. ".repeat(260)}\n\n${"second fact. ".repeat(260)}`;
+  const calls: number[] = [];
+  const llm: LLMProvider = {
+    name: "adaptive-chunk-test",
+    chat: async (_system, user) => {
+      const inputLength = user.length;
+      calls.push(inputLength);
+      if (inputLength > 5000) {
+        return '{"archival":{},"derived":[';
+      }
+      return JSON.stringify({
+        archival: {},
+        derived: [{ layer: "episodic", content: `chunk:${inputLength}` }],
+      });
+    },
+  };
+
+  const result = await analyze(content, "user:test", llm, undefined, {
+    profile: { name: "test", chunking: { maxChars: 8000, overlap: 100 } },
+  });
+
+  assert.equal(result.archival.content, content.trim());
+  assert.ok(calls[0] > 5000);
+  assert.ok(calls.slice(1).every((length) => length <= 5000));
+  assert.ok(result.derived.length >= 2);
 });

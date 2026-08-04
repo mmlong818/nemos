@@ -7,11 +7,10 @@
 // - 失败重试 backoff 1s / 4s / 16s（attempts 1/2/3）；超出 → 'failed'
 // - 无第三方依赖：只用 setTimeout/Promise/SQLite
 //
-// 单线程串行处理（v0.3 不做并行）；若朋友需要 throughput，可起多个 Nemos
+// 单线程串行处理（v0.3 不做并行）；若调用方需要 throughput，可起多个 Nemos
 // 实例指向同一 DB（SQLite 的写锁保证安全；后续 v0.4 可加 row-level claim）。
 
 import { analyze } from "./analyzer.js";
-import { extractEntities } from "./entity.js";
 import { resolveScenario } from "./prompts.js";
 import { resolveDecayConfig, runDecayScan, type DecayConfig } from "./decay.js";
 import {
@@ -33,21 +32,14 @@ import {
 } from "./types.js";
 import type { IngestQueueRow, Storage } from "./storage.js";
 import { newId, nowIso } from "./utils/id.js";
+import type { LifecycleOrchestrator } from "./lifecycle.js";
 
 export interface WorkerDeps {
   storage: Storage;
   llm: LLMProvider;
   embedding: EmbeddingProvider | null;
   log: (level: LogLevel, msg: string, meta?: Record<string, unknown>) => void;
-  /**
-   * 把 derived 写入 storage + embedding。复用 UserMemory.ingest 的硬约束兜底
-   * 已被抽到 derived-guard.ts，避免重复实现。
-   */
-  persistDerived(
-    tenantId: string,
-    userId: string,
-    derived: Memory[],
-  ): Promise<Memory[]>;
+  lifecycle: LifecycleOrchestrator;
 }
 
 export interface EnqueueInput {
@@ -81,13 +73,12 @@ export class NemosWorker {
   private readonly inFlight = new Set<Promise<unknown>>();
   /** 同进程内 derived 完成回调（测试 / API polling 友好）。 */
   private readonly waiters = new Map<string, Array<() => void>>();
+  private readonly reflectInFlight = new Map<string, Promise<ReflectResult>>();
 
   // v0.4：decay / reflect 配置 + 调度
   private readonly decayConfig: DecayConfig;
   private readonly reflectConfig: ReflectConfig;
   private lastDecayScanMs = 0;
-  /** 每个 user 上次 reflect 完成时累积 episodic 数（自动触发判定）。 */
-  private readonly reflectBaseline = new Map<string, number>();
 
   constructor(deps: WorkerDeps, config: NemosConfig) {
     this.deps = deps;
@@ -143,50 +134,97 @@ export class NemosWorker {
     }
   }
 
-  /** v0.4：朋友手动跑一次 reflect（不入 ingest 队列；直接执行）。 */
+  runAutomaticReflectFor(tenantId: string, userId: string, defaultScope: string): Promise<ReflectResult> {
+    if (this.stopped) return Promise.reject(new Error("[nemos] worker 已停止，拒绝新的 reflect"));
+    return this.scheduleReflect(tenantId, userId, defaultScope, true);
+  }
+  /** 手动 reflect 保留显式失效能力；自动 reflect 先以 shadow mode 运行。 */
   runReflectFor(tenantId: string, userId: string, defaultScope: string): Promise<ReflectResult> {
-    if (this.stopped) {
-      return Promise.reject(new Error("[nemos] worker 已停止，拒绝新的 reflect"));
+    if (this.stopped) return Promise.reject(new Error("[nemos] worker 已停止，拒绝新的 reflect"));
+    return this.scheduleReflect(tenantId, userId, defaultScope, false);
+  }
+
+  private scheduleReflect(tenantId: string, userId: string, scope: string, automatic: boolean): Promise<ReflectResult> {
+    const key = JSON.stringify([tenantId, userId, scope]);
+    const existing = this.reflectInFlight.get(key);
+    if (existing) return existing;
+    const running = this.track(this.doRunReflect(tenantId, userId, scope, automatic));
+    this.reflectInFlight.set(key, running);
+    const clear = () => this.reflectInFlight.delete(key);
+    running.then(clear, clear);
+    return running;
+  }
+
+  private async doRunReflect(
+    tenantId: string,
+    userId: string,
+    defaultScope: string,
+    automatic: boolean,
+  ): Promise<ReflectResult> {
+    const state = this.deps.storage.getReflectionState(tenantId, userId, defaultScope);
+    const targetEventSeq = this.deps.storage.getLatestEventSeq(tenantId, userId, defaultScope);
+    const owner = `reflect_${process.pid}_${newId("archival")}`;
+    const now = nowIso();
+    const leaseUntil = new Date(Date.now() + 60_000).toISOString();
+    if (!this.deps.storage.tryAcquireReflectionLease(tenantId, userId, defaultScope, owner, leaseUntil, now)) {
+      return { episodicConsumed: 0, anchorCount: 0, derived: [], skippedReason: "lease-held" };
     }
-    return this.track(this.doRunReflect(tenantId, userId, defaultScope));
+    try {
+      const result = await runReflect(
+        this.deps.storage,
+        this.deps.llm,
+        this.deps.embedding,
+        this.deps.log,
+        this.reflectConfig,
+        {
+          tenantId,
+          userId,
+          defaultScope,
+          afterEventSeq: automatic ? state.last_event_seq : undefined,
+          upToEventSeq: automatic ? targetEventSeq : undefined,
+          domainsEnabled: this.features.features?.domains?.enabled === true,
+          prospectiveEnabled: this.features.features?.prospective?.enabled === true,
+          invalidationEnabled: automatic ? false : this.features.features?.invalidation?.enabled === true,
+          invalidationDetector: this.features.features?.invalidation?.detector,
+          invalidationTopN: this.features.features?.invalidation?.candidateTopN,
+          invalidationMinCosine: this.features.features?.invalidation?.minCosine,
+        },
+      );
+      this.deps.storage.updateReflectionState({
+        ...state,
+        last_event_seq: targetEventSeq,
+        last_run_at: nowIso(),
+        lease_owner: null,
+        lease_until: null,
+        last_error: null,
+      });
+      return result;
+    } catch (error) {
+      this.deps.storage.updateReflectionState({
+        ...state,
+        lease_owner: null,
+        lease_until: null,
+        last_error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
 
-  private async doRunReflect(tenantId: string, userId: string, defaultScope: string): Promise<ReflectResult> {
-    return runReflect(
-      this.deps.storage,
-      this.deps.llm,
-      this.deps.embedding,
-      this.deps.log,
-      this.reflectConfig,
-      {
-        tenantId,
-        userId,
-        defaultScope,
-        domainsEnabled: this.features.features?.domains?.enabled === true,
-        prospectiveEnabled: this.features.features?.prospective?.enabled === true,
-        invalidationEnabled: this.features.features?.invalidation?.enabled === true,
-        invalidationDetector: this.features.features?.invalidation?.detector,
-        invalidationTopN: this.features.features?.invalidation?.candidateTopN,
-        invalidationMinCosine: this.features.features?.invalidation?.minCosine,
-      },
-    );
-  }
-
-  /** v0.4：朋友手动跑一次 decay scan。 */
+  /** v0.4：调用方手动跑一次 decay scan。 */
   runDecayScanNow(nowMs?: number): { scanned: number; cooled: number } {
     return runDecayScan(this.deps.storage, this.decayConfig, this.deps.log, nowMs);
   }
 
-  /** v0.4：累积阈值判定 → 自动跑 reflect。已超阈值才跑；跑完更新 baseline。 */
+  /** 持久化 event_seq 游标判定自动 reflect，进程重启不会重复消费旧批次。 */
   async maybeAutoReflect(tenantId: string, userId: string, defaultScope: string): Promise<ReflectResult | null> {
     if (this.stopped || !this.reflectConfig.enabled) return null;
-    const key = `${tenantId}|${userId}`;
-    const total = this.deps.storage.countEpisodicSinceLastReflect(tenantId, userId, null);
-    const baseline = this.reflectBaseline.get(key) ?? 0;
-    if (total - baseline < this.reflectConfig.autoTriggerThreshold) return null;
-    const r = await this.runReflectFor(tenantId, userId, defaultScope);
-    this.reflectBaseline.set(key, total);
-    return r;
+    const key = JSON.stringify([tenantId, userId, defaultScope]);
+    const running = this.reflectInFlight.get(key);
+    if (running) await running;
+    const state = this.deps.storage.getReflectionState(tenantId, userId, defaultScope);
+    const latest = this.deps.storage.getLatestEventSeq(tenantId, userId, defaultScope);
+    if (latest - state.last_event_seq < this.reflectConfig.autoTriggerThreshold) return null;
+    return this.scheduleReflect(tenantId, userId, defaultScope, true);
   }
 
   /** 启动 auto-poll（manualWorker 模式下不会启；pollIntervalMs<=0 也不启）。 */
@@ -222,7 +260,7 @@ export class NemosWorker {
   enqueue(input: EnqueueInput): IngestHandle {
     const id = `iq_${newId("archival").slice(5)}`; // 借用 randomUUID
     const now = nowIso();
-    const row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count"> = {
+    const row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count" | "next_attempt_at"> = {
       id,
       tenant_id: input.tenantId,
       user_id: input.userId,
@@ -320,7 +358,7 @@ export class NemosWorker {
 
   /**
    * 跑一次 tick：取一个 queued 任务跑一次。无任务则 no-op。
-   * 朋友在 manualWorker 模式下也可手动调（serverless 场景）。
+   * 调用方在 manualWorker 模式下也可手动调（serverless 场景）。
    */
   async runTick(): Promise<void> {
     if (this.stopped) return;
@@ -368,6 +406,14 @@ export class NemosWorker {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.deps.log("warn", "[nemos worker] 任务失败", { id: row.id, attempts, err: msg });
+      const lifecycle = this.deps.lifecycle.status(row.archival_id);
+      const completedStages = new Set(
+        lifecycle?.stages.filter((stage) => stage.status === "completed").map((stage) => stage.stage),
+      );
+      const failedStage = !completedStages.has("extract")
+        ? "extract"
+        : (!completedStages.has("persist") ? "persist" : "link");
+      this.deps.lifecycle.markFailure(row.archival_id, failedStage, e);
 
       if (attempts >= this.maxAttempts) {
         this.deps.storage.updateQueueStatus(row.id, {
@@ -378,17 +424,12 @@ export class NemosWorker {
         this.notifyDone(row.id);
         return;
       }
-      // 重试：标回 queued + backoff（用 setTimeout 推迟，不阻塞当前 tick）
+      const wait = BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)] ?? 16000;
       this.deps.storage.updateQueueStatus(row.id, {
         status: "queued",
         last_error: msg,
+        next_attempt_at: new Date(Date.now() + wait).toISOString(),
       });
-      const wait = BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)] ?? 16000;
-      const t = setTimeout(() => {
-        // backoff 到了：worker 下个 tick 会自然拉起这条；这里仅做一个 "标记" 用日志
-        this.deps.log("debug", "[nemos worker] 重试可用", { id: row.id });
-      }, wait);
-      if (typeof t.unref === "function") t.unref();
     }
   }
 
@@ -410,111 +451,34 @@ export class NemosWorker {
    * 返回写入的 derived 条数。
    */
   private async runJob(row: IngestQueueRow): Promise<number> {
-    const scenarioRaw = row.scenario_json
-      ? (JSON.parse(row.scenario_json) as string | ScenarioProfile)
-      : undefined;
-    const profile = resolveScenario(scenarioRaw);
-    const perspectives = row.perspectives_json
-      ? (JSON.parse(row.perspectives_json) as Perspective[])
-      : undefined;
-
-    // 走 analyzer，但仅取 derived（archival 已落地，不重写）
-    const result = await analyze(row.content, row.scope, this.deps.llm, row.origin_agent ?? undefined, {
-      profile,
-      contentDate: row.content_date ?? undefined,
-      doubleCheck:
-        (perspectives && perspectives.length > 0)
-          ? false
-          : (this.features.features?.doubleCheck !== false),
-      perspectives,
-    });
-
-    // 强制把 derived 的 archival_ref 指回真正持久化的 archival id
-    const fixed = result.derived.map((d) => ({ ...d, archival_ref: row.archival_id }));
-
-    // 持久化 derived
-    const persisted = await this.deps.persistDerived(row.tenant_id, row.user_id, fixed);
-
-    // entity 抽取 + linking（默认开；features.autoLinking=false 时关）
-    const autoLinking = this.features.features?.autoLinking !== false;
-    if (autoLinking) {
-      await this.linkMemories(row, persisted);
+    const cached = this.deps.lifecycle.loadExtraction(row.archival_id);
+    let derived: Memory[];
+    if (cached) {
+      derived = cached;
+    } else {
+      const scenarioRaw = row.scenario_json
+        ? (JSON.parse(row.scenario_json) as string | ScenarioProfile)
+        : undefined;
+      const profile = resolveScenario(scenarioRaw);
+      const perspectives = row.perspectives_json
+        ? (JSON.parse(row.perspectives_json) as Perspective[])
+        : undefined;
+      const result = await analyze(row.content, row.scope, this.deps.llm, row.origin_agent ?? undefined, {
+        profile,
+        contentDate: row.content_date ?? undefined,
+        doubleCheck: perspectives?.length ? false : this.features.features?.doubleCheck !== false,
+        perspectives,
+      });
+      derived = result.derived.map((memory) => ({ ...memory, archival_ref: row.archival_id, generation: 1 }));
+      this.deps.lifecycle.recordExtraction(row.archival_id, derived);
     }
-    return persisted.length;
-  }
-
-  private async linkMemories(row: IngestQueueRow, persisted: Memory[]): Promise<void> {
-    // 收集所有候选 memory（archival + derived），对每条抽 entity 写回 storage
-    // 然后做跨 memory entity 匹配
-    const archival = this.deps.storage.findById(row.tenant_id, row.user_id, row.archival_id);
-    if (!archival) return;
-    const all: Memory[] = [archival, ...persisted];
-
-    // 抽 entity（archival 只抽一次，靠 extractEntities 内置 cache 帮忙）
-    for (const m of all) {
-      try {
-        const ents = await extractEntities(m.content, this.deps.llm);
-        if (ents.length > 0) {
-          this.deps.storage.updateEntities(row.tenant_id, row.user_id, m.layer, m.id, ents);
-          m.entities = ents;
-        }
-      } catch (e) {
-        this.deps.log("warn", "[nemos worker] entity 抽取失败（不阻塞）", {
-          id: m.id,
-          err: e instanceof Error ? e.message : String(e),
-        });
-      }
+    const result = await this.deps.lifecycle.processDerived(row.tenant_id, row.user_id, row.archival_id, derived);
+    this.deps.lifecycle.markScheduled(row.archival_id, { background: true });
+    if (result.hasConflict && this.features.features?.reflect?.enabled) {
+      void this.runAutomaticReflectFor(row.tenant_id, row.user_id, row.scope);
+    } else {
+      void this.maybeAutoReflect(row.tenant_id, row.user_id, row.scope);
     }
-
-    const crossScope = this.features.features?.crossScopeLink !== false;
-
-    // 对每条 memory，按 entity 找跨 memory 匹配；top-5 双向 link
-    for (const m of all) {
-      if (!m.entities || m.entities.length === 0) continue;
-      const matches = new Map<string, Memory>();
-      for (const e of m.entities) {
-        const found = this.deps.storage.findByEntity(row.tenant_id, row.user_id, e, {
-          topK: 10,
-          excludeId: m.id,
-          scope: crossScope ? undefined : m.scope,
-        });
-        for (const f of found) {
-          if (f.id === m.id) continue;
-          matches.set(f.id, f);
-          if (matches.size >= 10) break;
-        }
-        if (matches.size >= 10) break;
-      }
-      // 取前 5
-      const top = Array.from(matches.values()).slice(0, 5);
-      if (top.length === 0) continue;
-
-      // 写自己的 related
-      const myRelated = new Set<string>(m.related ?? []);
-      for (const t of top) myRelated.add(t.id);
-      this.deps.storage.updateRelated(
-        row.tenant_id,
-        row.user_id,
-        m.layer,
-        m.id,
-        Array.from(myRelated),
-      );
-      m.related = Array.from(myRelated);
-
-      // 反向写：把 m.id 加到 top 各自的 related
-      for (const t of top) {
-        const tRelated = new Set<string>(t.related ?? []);
-        if (tRelated.has(m.id)) continue;
-        tRelated.add(m.id);
-        this.deps.storage.updateRelated(
-          row.tenant_id,
-          row.user_id,
-          t.layer,
-          t.id,
-          Array.from(tRelated),
-        );
-      }
-    }
+    return result.persisted.length;
   }
 }
-

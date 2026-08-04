@@ -60,9 +60,11 @@ export function buildArchival(
     access_count: 0,
     stability: 1.0,
     schema_version: SCHEMA_VERSION,
+    generation: 0,
   };
   if (contentDate) m.event_at = contentDate;
   if (profile?.privacy?.sensitive) m.sensitive = true;
+  if (profile?.utteranceMode) m.utterance_mode = profile.utteranceMode;
   if (profile?.name) m.scenario = profile.name;
   return m;
 }
@@ -130,11 +132,21 @@ export function buildDerived(
     access_count: 0,
     stability: 1.0,
     schema_version: SCHEMA_VERSION,
+    generation: 1,
     archival_ref: archivalId,
   };
 
   // v0.2 字段
   if (raw.event_at && isValidIsoLike(raw.event_at)) m.event_at = raw.event_at;
+  if (raw.valid_from && isValidIsoLike(raw.valid_from)) m.valid_at = raw.valid_from;
+  if (typeof raw.subject === "string") m.subject_id = raw.subject;
+  if (typeof raw.predicate === "string") m.predicate = raw.predicate;
+  if (raw.object !== undefined) m.object_json = raw.object;
+  if (raw.context_dimensions && typeof raw.context_dimensions === "object") m.context_dimensions = raw.context_dimensions;
+  if (raw.utterance_mode) m.utterance_mode = raw.utterance_mode;
+  if (profile?.utteranceMode) m.utterance_mode = profile.utteranceMode;
+  if (raw.specificity) m.specificity = raw.specificity;
+  if (typeof raw.trust_tier === "number") m.trust_tier = raw.trust_tier;
   // sensitive：profile.privacy.sensitive=true → 强制全标；否则尊重 LLM 输出
   const sensitive = profile?.privacy?.sensitive === true ? true : raw.sensitive === true;
   if (sensitive) m.sensitive = true;

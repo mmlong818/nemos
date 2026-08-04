@@ -11,9 +11,19 @@
 import Database from "better-sqlite3";
 import {
   LAYERS,
+  type ClaimIndexEntry,
+  type EventMetadata,
   type IngestStatus,
   type Layer,
+  LIFECYCLE_ALGORITHM_VERSION,
+  type LifecycleStage,
+  type LifecycleStageRecord,
   type Memory,
+  type MemoryOperation,
+  type ProvenanceEdge,
+  type IdentityOperation,
+  type ReflectionState,
+  type RecallTimeRange,
 } from "../types.js";
 import type { DecayCandidate, IngestQueueRow, SearchFilter, Storage } from "./types.js";
 import { applyMigrations, tryLoadSqliteVec } from "./schema.js";
@@ -25,8 +35,11 @@ import {
   type RowMemory,
 } from "./row-mapper.js";
 import { float32ToBuffer } from "../utils/vector.js";
+import { ensureMemoryQualityMetadata } from "../salience.js";
 import * as queueOps from "./queue-ops-sqlite.js";
 import * as decayOps from "./decay-ops-sqlite.js";
+import * as lifecycleOps from "./lifecycle-ops-sqlite.js";
+import * as claimOps from "./claim-ops-sqlite.js";
 import * as domainOps from "./domain-ops-sqlite.js";
 import * as prospectiveOps from "./prospective-ops-sqlite.js";
 import type {
@@ -63,6 +76,7 @@ export class SqliteStorage implements Storage {
 
   /** insert 的三条语句（主表 + FTS + entity FTS）必须原子：崩溃中途会留下"写入成功但搜索不到"的半套数据。 */
   private insertInner(tenantId: string, userId: string, m: Memory): Memory {
+    ensureMemoryQualityMetadata(m);
     const table = m.layer;
     // archival 自动 protected=true（hard rule：archival 永不衰减）
     const archivalProtected = m.layer === "archival" || m.archival_protected === true ? 1 : 0;
@@ -74,23 +88,33 @@ export class SqliteStorage implements Storage {
       INSERT INTO ${table} (
         id, tenant_id, user_id, layer, type, scope, content,
         source_json, arousal_json, surprise_json, ownership_json,
-        created_at, last_accessed, access_count, stability, schema_version,
+        created_at, last_accessed, access_count, stability, schema_version, generation,
         archival_ref, related_json, corrects_json, corrected_by_json,
         supersedes, wrong_scope, wrong_behavior, embedding_model_id,
         event_at, sensitive, scenario, entities_json,
         difficulty, retrievability, last_decay_at, archival_protected,
         cold, cold_at, consolidated_from_json, consolidated_at,
-        valid_at, invalid_at, expired_at, belief_state
+        valid_at, invalid_at, expired_at, belief_state,
+        data_subject_ids_json, subject_id, subject_resolution, predicate,
+        context_dimensions_json, object_json, canonical_object_hash,
+        claim_key, claim_key_version, normalizer_version, trust_tier,
+        utterance_mode, specificity, source_event_ids_json, legacy_unstructured,
+        salience_json, evidence_coverage, evidence_count
       ) VALUES (
         @id, @tenant_id, @user_id, @layer, @type, @scope, @content,
         @source_json, @arousal_json, @surprise_json, @ownership_json,
-        @created_at, @last_accessed, @access_count, @stability, @schema_version,
+        @created_at, @last_accessed, @access_count, @stability, @schema_version, @generation,
         @archival_ref, @related_json, @corrects_json, @corrected_by_json,
         @supersedes, @wrong_scope, @wrong_behavior, @embedding_model_id,
         @event_at, @sensitive, @scenario, @entities_json,
         @difficulty, @retrievability, @last_decay_at, @archival_protected,
         @cold, @cold_at, @consolidated_from_json, @consolidated_at,
-        @valid_at, @invalid_at, @expired_at, @belief_state
+        @valid_at, @invalid_at, @expired_at, @belief_state,
+        @data_subject_ids_json, @subject_id, @subject_resolution, @predicate,
+        @context_dimensions_json, @object_json, @canonical_object_hash,
+        @claim_key, @claim_key_version, @normalizer_version, @trust_tier,
+        @utterance_mode, @specificity, @source_event_ids_json, @legacy_unstructured,
+        @salience_json, @evidence_coverage, @evidence_count
       )
     `);
     stmt.run({
@@ -110,6 +134,7 @@ export class SqliteStorage implements Storage {
       access_count: m.access_count,
       stability: m.stability,
       schema_version: m.schema_version,
+      generation: m.generation ?? (m.layer === "archival" ? 0 : 1),
       archival_ref: m.archival_ref ?? null,
       related_json: m.related ? JSON.stringify(m.related) : null,
       corrects_json: m.corrects ? JSON.stringify(m.corrects) : null,
@@ -137,6 +162,24 @@ export class SqliteStorage implements Storage {
       invalid_at: m.invalid_at ?? null,
       expired_at: m.expired_at ?? null,
       belief_state: m.belief_state ?? "active",
+      data_subject_ids_json: m.data_subject_ids ? JSON.stringify(m.data_subject_ids) : null,
+      subject_id: m.subject_id ?? null,
+      subject_resolution: m.subject_resolution ?? null,
+      predicate: m.predicate ?? null,
+      context_dimensions_json: m.context_dimensions ? JSON.stringify(m.context_dimensions) : null,
+      object_json: m.object_json !== undefined ? JSON.stringify(m.object_json) : null,
+      canonical_object_hash: m.canonical_object_hash ?? null,
+      claim_key: m.claim_key ?? null,
+      claim_key_version: m.claim_key_version ?? null,
+      normalizer_version: m.normalizer_version ?? null,
+      trust_tier: m.trust_tier ?? null,
+      utterance_mode: m.utterance_mode ?? null,
+      specificity: m.specificity ?? null,
+      source_event_ids_json: m.source_event_ids ? JSON.stringify(m.source_event_ids) : null,
+      legacy_unstructured: m.legacy_unstructured ? 1 : 0,
+      salience_json: m.salience ? JSON.stringify(m.salience) : null,
+      evidence_coverage: m.evidence_coverage ?? null,
+      evidence_count: m.evidence_count ?? 0,
     });
 
     // 同步写 FTS
@@ -327,6 +370,47 @@ export class SqliteStorage implements Storage {
     return out;
   }
 
+  searchByTime(
+    tenantId: string,
+    userId: string,
+    range: RecallTimeRange,
+    layers: Layer[],
+    scope: string | string[] | undefined,
+    topK: number,
+    filter: SearchFilter = {},
+  ): Memory[] {
+    const matches: Array<{ memory: Memory; timestamp: string }> = [];
+    const timeExpr = "COALESCE(event_at, valid_at, created_at)";
+    for (const layer of layers) {
+      let sql = `SELECT * FROM ${layer} WHERE tenant_id = ? AND user_id = ?`;
+      const params: unknown[] = [tenantId, userId];
+      sql = this.appendScopeFilter(sql, params, scope);
+      if (filter.sensitiveOnly) {
+        sql += " AND sensitive = 1";
+      } else if (!filter.includeSensitive) {
+        sql += " AND sensitive = 0";
+      }
+      if (!filter.includeCold) sql += " AND cold = 0";
+      if (!filter.includeInvalidated) sql += " AND belief_state = 'active'";
+      if (range.from) {
+        sql += ` AND ${timeExpr} >= ?`;
+        params.push(range.from);
+      }
+      if (range.to) {
+        sql += ` AND ${timeExpr} <= ?`;
+        params.push(range.to);
+      }
+      sql += ` ORDER BY ${timeExpr} DESC LIMIT ?`;
+      params.push(topK);
+      const rows = this.db.prepare(sql).all(...params) as RowMemory[];
+      for (const row of rows) {
+        const memory = rowToMemory(row);
+        matches.push({ memory, timestamp: memory.event_at ?? memory.valid_at ?? memory.created_at });
+      }
+    }
+    matches.sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+    return matches.slice(0, topK).map((item) => item.memory);
+  }
   /** scope 条件拼接（两条扫描路径共用）。 */
   private appendScopeFilter(
     sql: string,
@@ -434,6 +518,8 @@ export class SqliteStorage implements Storage {
       this.db
         .prepare(`DELETE FROM nemos_entities_fts WHERE record_id = ? AND layer = ?`)
         .run(id, layer);
+      this.db.prepare(`DELETE FROM nemos_claim_index WHERE tenant_id=? AND user_id=? AND memory_id=?`).run(tenantId, userId, id);
+      this.db.prepare(`DELETE FROM nemos_provenance_edges WHERE tenant_id=? AND user_id=? AND (source_id=? OR derived_id=?)`).run(tenantId, userId, id, id);
     });
   }
 
@@ -453,6 +539,12 @@ export class SqliteStorage implements Storage {
     id: string,
     entities: string[],
   ): void {
+    if (layer === "archival") {
+      const row = this.db.prepare(`SELECT scope FROM archival WHERE id=? AND tenant_id=? AND user_id=?`)
+        .get(id, tenantId, userId) as { scope?: string } | undefined;
+      if (row?.scope !== undefined) this.upsertEntityFts(tenantId, userId, layer, id, row.scope, entities);
+      return;
+    }
     const json = entities.length > 0 ? JSON.stringify(entities) : null;
     const r = this.db
       .prepare(
@@ -522,10 +614,37 @@ export class SqliteStorage implements Storage {
     return out;
   }
 
+  ensureEventMetadata(input: Omit<EventMetadata, "event_seq">): EventMetadata {
+    return this.transaction(() => lifecycleOps.ensureEventMetadata(this.db, input));
+  }
+  getEventMetadata(eventId: string): EventMetadata | null {
+    return lifecycleOps.getEventMetadata(this.db, eventId);
+  }
+  getLatestEventSeq(tenantId: string, userId: string, spaceId: string): number {
+    return lifecycleOps.getLatestEventSeq(this.db, tenantId, userId, spaceId);
+  }
+  upsertLifecycleStage(record: LifecycleStageRecord): void {
+    lifecycleOps.upsertLifecycleStage(this.db, record);
+  }
+  getLifecycleStage(eventId: string, stage: LifecycleStage, algorithmVersion: string): LifecycleStageRecord | null {
+    return lifecycleOps.getLifecycleStage(this.db, eventId, stage, algorithmVersion);
+  }
+  listLifecycleStages(eventId: string): LifecycleStageRecord[] {
+    return lifecycleOps.listLifecycleStages(this.db, eventId);
+  }
+  getReflectionState(tenantId: string, userId: string, spaceId: string): ReflectionState {
+    return lifecycleOps.getReflectionState(this.db, tenantId, userId, spaceId, LIFECYCLE_ALGORITHM_VERSION);
+  }
+  tryAcquireReflectionLease(tenantId: string, userId: string, spaceId: string, owner: string, leaseUntil: string, now: string): boolean {
+    return lifecycleOps.tryAcquireReflectionLease(this.db, tenantId, userId, spaceId, owner, leaseUntil, now, LIFECYCLE_ALGORITHM_VERSION);
+  }
+  updateReflectionState(state: ReflectionState): void {
+    lifecycleOps.updateReflectionState(this.db, state);
+  }
   // ============ Queue 操作（委托给 queueOps 模块） ============
 
   enqueueIngest(
-    row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count">,
+    row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count" | "next_attempt_at">,
   ): IngestQueueRow {
     return queueOps.enqueueIngest(this.db, row);
   }
@@ -534,8 +653,8 @@ export class SqliteStorage implements Storage {
     return queueOps.getQueueRow(this.db, id);
   }
 
-  takeNextQueued(): IngestQueueRow | null {
-    return queueOps.takeNextQueued(this.db);
+  takeNextQueued(now?: string): IngestQueueRow | null {
+    return queueOps.takeNextQueued(this.db, now);
   }
 
   updateQueueStatus(
@@ -546,6 +665,7 @@ export class SqliteStorage implements Storage {
       last_error?: string | null;
       completed_at?: string | null;
       derived_count?: number | null;
+      next_attempt_at?: string;
     },
   ): void {
     queueOps.updateQueueStatus(this.db, id, patch);
@@ -559,6 +679,47 @@ export class SqliteStorage implements Storage {
     return queueOps.listPendingByUser(this.db, tenantId, userId);
   }
 
+  // ============ v0.7.1：claim / provenance / identity ============
+  listClaimEntries(tenantId: string, userId: string, spaceId: string, claimKey: string): ClaimIndexEntry[] {
+    return claimOps.listClaimEntries(this.db, tenantId, userId, spaceId, claimKey);
+  }
+  upsertClaimEntry(entry: ClaimIndexEntry): void { claimOps.upsertClaimEntry(this.db, entry); }
+  updateMemoryBeliefState(
+    tenantId: string,
+    userId: string,
+    layer: Layer,
+    id: string,
+    state: Memory["belief_state"],
+    opts?: { invalidAt?: string; expiredAt?: string; correctedBy?: string; supersedes?: string },
+  ): void { claimOps.updateMemoryBeliefState(this.db, tenantId, userId, layer, id, state, opts); }
+  addMemorySourceEvent(tenantId: string, userId: string, layer: Layer, id: string, sourceEventId: string): void {
+    claimOps.addMemorySourceEvent(this.db, tenantId, userId, layer, id, sourceEventId);
+  }
+  rekeyMemoryClaim(tenantId: string, userId: string, layer: Layer, id: string, claimKey: string): void {
+    claimOps.rekeyMemoryClaim(this.db, tenantId, userId, layer, id, claimKey);
+  }
+  recordClaimKeyAlias(oldClaimKey: string, canonicalClaimKey: string, operationId: string, createdAt: string): void {
+    claimOps.recordClaimKeyAlias(this.db, oldClaimKey, canonicalClaimKey, operationId, createdAt);
+  }
+  resolveCanonicalClaimKey(claimKey: string): string { return claimOps.resolveCanonicalClaimKey(this.db, claimKey); }
+  insertMemoryOperation(operation: MemoryOperation): void { claimOps.insertMemoryOperation(this.db, operation); }
+  listMemoryOperations(tenantId: string, userId: string, claimKey?: string): MemoryOperation[] {
+    return claimOps.listMemoryOperations(this.db, tenantId, userId, claimKey);
+  }
+  insertProvenanceEdge(edge: ProvenanceEdge): void { claimOps.insertProvenanceEdge(this.db, edge); }
+  listProvenanceFrom(tenantId: string, userId: string, sourceId: string): ProvenanceEdge[] {
+    return claimOps.listProvenanceFrom(this.db, tenantId, userId, sourceId);
+  }
+  listProvenanceTo(tenantId: string, userId: string, derivedId: string): ProvenanceEdge[] {
+    return claimOps.listProvenanceTo(this.db, tenantId, userId, derivedId);
+  }
+  resolveCanonicalSubject(tenantId: string, userId: string, spaceId: string, subjectId: string): string {
+    return claimOps.resolveCanonicalSubject(this.db, tenantId, userId, spaceId, subjectId);
+  }
+  applyIdentityOperation(operation: IdentityOperation): void { claimOps.applyIdentityOperation(this.db, operation); }
+  getIdentityOperation(tenantId: string, userId: string, operationId: string): IdentityOperation | null {
+    return claimOps.getIdentityOperation(this.db, tenantId, userId, operationId);
+  }
   // ============ v0.4：decay / reflect 支持（委托给 decayOps） ============
 
   touchAccess(tenantId: string, userId: string, layer: Layer, id: string, nextStability: number): void {
@@ -592,7 +753,9 @@ export class SqliteStorage implements Storage {
   listRecentEpisodic(tenantId: string, userId: string, limit: number): Memory[] {
     return decayOps.listRecentEpisodic(this.db, tenantId, userId, limit);
   }
-  listPersonalSemantic(tenantId: string, userId: string): Memory[] {
+  listEpisodicByEventSeq(tenantId: string, userId: string, spaceId: string, afterSeq: number, upToSeq: number): Memory[] {
+    return decayOps.listEpisodicByEventSeq(this.db, tenantId, userId, spaceId, afterSeq, upToSeq);
+  }  listPersonalSemantic(tenantId: string, userId: string): Memory[] {
     return decayOps.listPersonalSemantic(this.db, tenantId, userId);
   }
 
@@ -640,6 +803,8 @@ export class SqliteStorage implements Storage {
         tenantId,
         userId,
       );
+    this.db.prepare(`UPDATE nemos_claim_index SET status='invalidated',updated_at=?
+      WHERE tenant_id=? AND user_id=? AND memory_id=?`).run(opts.invalidAt, tenantId, userId, id);
   }
 
   stats(tenantId: string, userId: string): {

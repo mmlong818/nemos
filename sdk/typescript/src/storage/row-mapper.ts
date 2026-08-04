@@ -9,6 +9,7 @@ import {
   type MemorySource,
   type MemorySurprise,
 } from "../types.js";
+import { ensureMemoryQualityMetadata } from "../salience.js";
 
 export interface RowMemory {
   id: string;
@@ -25,6 +26,7 @@ export interface RowMemory {
   access_count: number;
   stability: number;
   schema_version: string;
+  generation: number;
   archival_ref: string | null;
   related_json: string | null;
   corrects_json: string | null;
@@ -49,6 +51,24 @@ export interface RowMemory {
   invalid_at: string | null;
   expired_at: string | null;
   belief_state: string | null;
+  data_subject_ids_json: string | null;
+  subject_id: string | null;
+  subject_resolution: string | null;
+  predicate: string | null;
+  context_dimensions_json: string | null;
+  object_json: string | null;
+  canonical_object_hash: string | null;
+  claim_key: string | null;
+  claim_key_version: number | null;
+  normalizer_version: number | null;
+  trust_tier: number | null;
+  utterance_mode: string | null;
+  specificity: string | null;
+  source_event_ids_json: string | null;
+  legacy_unstructured: number | null;
+  salience_json: string | null;
+  evidence_coverage: string | null;
+  evidence_count: number | null;
 }
 
 export function rowToMemory(row: RowMemory): Memory {
@@ -67,6 +87,7 @@ export function rowToMemory(row: RowMemory): Memory {
     access_count: row.access_count,
     stability: row.stability,
     schema_version: row.schema_version || SCHEMA_VERSION,
+    generation: row.layer === "archival" ? 0 : (row.generation ?? 1),
   };
   if (row.event_at) m.event_at = row.event_at;
   if (row.sensitive) m.sensitive = true;
@@ -114,7 +135,31 @@ export function rowToMemory(row: RowMemory): Memory {
   if (row.belief_state && row.belief_state !== "active") {
     m.belief_state = row.belief_state as Memory["belief_state"];
   }
-  return m;
+  if (row.data_subject_ids_json) m.data_subject_ids = parseJsonArray(row.data_subject_ids_json);
+  if (row.subject_id) m.subject_id = row.subject_id;
+  if (row.subject_resolution) m.subject_resolution = row.subject_resolution as Memory["subject_resolution"];
+  if (row.predicate) m.predicate = row.predicate;
+  if (row.context_dimensions_json) m.context_dimensions = parseJsonObject(row.context_dimensions_json);
+  if (row.object_json) {
+    try { m.object_json = JSON.parse(row.object_json) as unknown; } catch { /* ignore malformed */ }
+  }
+  if (row.canonical_object_hash) m.canonical_object_hash = row.canonical_object_hash;
+  if (row.claim_key) m.claim_key = row.claim_key;
+  if (typeof row.claim_key_version === "number") m.claim_key_version = row.claim_key_version;
+  if (typeof row.normalizer_version === "number") m.normalizer_version = row.normalizer_version;
+  if (typeof row.trust_tier === "number") m.trust_tier = row.trust_tier;
+  if (row.utterance_mode) m.utterance_mode = row.utterance_mode as Memory["utterance_mode"];
+  if (row.specificity) m.specificity = row.specificity as Memory["specificity"];
+  if (row.source_event_ids_json) m.source_event_ids = parseJsonArray(row.source_event_ids_json);
+  if (row.legacy_unstructured) m.legacy_unstructured = true;
+  if (row.salience_json) {
+    try { m.salience = JSON.parse(row.salience_json) as Memory["salience"]; } catch { /* recompute below */ }
+  }
+  if (row.evidence_coverage) {
+    m.evidence_coverage = row.evidence_coverage as Memory["evidence_coverage"];
+  }
+  if (typeof row.evidence_count === "number") m.evidence_count = row.evidence_count;
+  return ensureMemoryQualityMetadata(m);
 }
 
 export function bufferToFloat32(buf: Buffer): Float32Array {
@@ -151,4 +196,22 @@ export function sanitizeFtsQuery(q: string): string {
     .map((t) => `"${t}"`);
   if (tokens.length === 0) return "";
   return tokens.join(" OR ");
+}
+function parseJsonArray(raw: string): string[] {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject(raw: string): Record<string, string> {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (!value || Array.isArray(value) || typeof value !== "object") return {};
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+  } catch {
+    return {};
+  }
 }

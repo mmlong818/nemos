@@ -53,6 +53,7 @@ export type Extractor =
   | "asr"
   | "llm_summary"
   | "llm_inference"
+  | "deterministic_normalizer"
   | "agent_observation"
   | "sensor";
 
@@ -103,7 +104,114 @@ export interface MemoryOwnership {
  * v0.6（RFC 0007）：一条记忆「不再活跃」的成因。undefined 等价 'active'。
  * 物化字段，单一真相源是事件流（RFC 0007 §3，后续接入）；此处仅为热路径索引缓存。
  */
-export type BeliefState = "active" | "invalidated" | "superseded" | "corrected";
+export type BeliefState =
+  | "active"
+  | "invalidated"
+  | "superseded"
+  | "corrected"
+  | "disputed"
+  | "stale"
+  | "hidden";
+
+export type UtteranceMode =
+  | "literal"
+  | "roleplay"
+  | "hypothetical"
+  | "quoted"
+  | "joke"
+  | "uncertain";
+
+export type Specificity = "global" | "contextual" | "temporary";
+
+export type EvidenceCoverageState =
+  | "unverified"
+  | "direct"
+  | "supported"
+  | "corroborated";
+
+export interface MemorySalience {
+  score: number;
+  signals: string[];
+  algorithm_version: number;
+  computed_at: string;
+}
+export type SubjectResolution = "resolved" | "provisional" | "ambiguous";
+export type PredicateValueType = "string" | "string_set" | "entity" | "entity_set";
+
+export interface PredicateDefinition {
+  id: string;
+  aliases: string[];
+  value_type: PredicateValueType;
+  single_valued: boolean;
+  context_dimensions: string[];
+  subject_kinds: Array<"user" | "agent" | "contact">;
+  temporal_rule: "current" | "historical" | "timeless";
+  normalization: "text" | "entity_ref" | "set";
+}
+
+export type MemoryOperationKind =
+  | "ADD"
+  | "CONFIRM"
+  | "SUPERSEDE"
+  | "INVALIDATE"
+  | "DISPUTE"
+  | "RESOLVE_DISPUTE"
+  | "MERGE"
+  | "IGNORE";
+
+export interface MemoryOperation {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  space_id: string;
+  claim_key: string | null;
+  kind: MemoryOperationKind;
+  subject_memory_ids: string[];
+  source_event_id: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface ProvenanceEdge {
+  tenant_id: string;
+  user_id: string;
+  source_id: string;
+  derived_id: string;
+  relation: "extracted_from" | "consolidated_from" | "corrected_from";
+  created_at: string;
+}
+
+export interface ClaimIndexEntry {
+  tenant_id: string;
+  user_id: string;
+  space_id: string;
+  claim_key: string;
+  memory_id: string;
+  layer: Layer;
+  canonical_object_hash: string;
+  event_seq: number;
+  valid_from: string | null;
+  trust_tier: number;
+  status: BeliefState;
+  updated_at: string;
+}
+export interface IdentityOperation {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  space_id: string;
+  kind: "MERGE" | "SPLIT";
+  subject_ids: string[];
+  canonical_subject_id: string;
+  reverses_operation_id?: string;
+  created_at: string;
+}
+
+export interface CorrectionInput {
+  content: string;
+  object?: unknown;
+  valid_from?: string;
+}
 
 /**
  * 单条 memory 记录。同时覆盖 5 层；type-specific 字段标 optional。
@@ -130,6 +238,31 @@ export interface Memory {
   /** 简化版稳定性，spec 0.1 用 FSRS 完整模型，这里只是粗粒度浮点 */
   stability: number;
   schema_version: string;
+  /** v0.7：原始事件=0，直接抽取=1，反思产物=2；自动派生不得超过 2。 */
+  generation?: number;
+
+  // v0.7.1：事实身份、规范化值与来源
+  data_subject_ids?: string[];
+  subject_id?: string;
+  subject_resolution?: SubjectResolution;
+  predicate?: string;
+  context_dimensions?: Record<string, string>;
+  object_json?: unknown;
+  canonical_object_hash?: string;
+  claim_key?: string;
+  claim_key_version?: number;
+  normalizer_version?: number;
+  trust_tier?: number;
+  utterance_mode?: UtteranceMode;
+  specificity?: Specificity;
+  source_event_ids?: string[];
+  legacy_unstructured?: boolean;
+
+  /** 持久化的长期显著性，用于稳定准入并解释保留原因。 */
+  salience?: MemorySalience;
+  /** 原始或派生记忆获得了多少独立来源支持。 */
+  evidence_coverage?: EvidenceCoverageState;
+  evidence_count?: number;
 
   /** spec day-1 必锁字段：派生 record 指回 archival */
   archival_ref?: string;
@@ -240,6 +373,9 @@ export interface Memory {
 export interface ScenarioProfile {
   /** 内置 profile 不必填；自定义建议填以便审计追溯。 */
   name?: string;
+
+  /** 调用方已知的表达语境；用于阻止角色扮演/假设被升级成事实。 */
+  utteranceMode?: UtteranceMode;
 
   /** 层级与信号加权（prompt 引导，非 hard 排序）。 */
   emphasis?: {
@@ -360,7 +496,7 @@ export interface WorkerConfig {
   enabled?: boolean;
   /** 轮询间隔（ms）。默认 1000。 */
   pollIntervalMs?: number;
-  /** 是否启用：朋友显式 manualWorker=true 时关 auto loop。 */
+  /** 是否启用：调用方显式 manualWorker=true 时关 auto loop。 */
   manualWorker?: boolean;
   /** 最大重试次数（含首次），默认 3。 */
   maxAttempts?: number;
@@ -394,6 +530,16 @@ export interface WriteMemoryInput {
   corrects?: string[];
   wrong_scope?: "always" | "context-specific";
   wrong_behavior?: string;
+  subject?: string;
+  predicate?: string;
+  object?: unknown;
+  contextDimensions?: Record<string, string>;
+  validFrom?: string;
+  trustTier?: number;
+  utteranceMode?: UtteranceMode;
+  specificity?: Specificity;
+  eventAt?: string;
+  sensitive?: boolean;
 }
 
 export interface SearchOptions {
@@ -435,10 +581,119 @@ export interface SearchOptions {
   includeInvalidated?: boolean;
 }
 
+export type RecallIntent =
+  | "current_fact"
+  | "historical_fact"
+  | "episode"
+  | "procedure"
+  | "general";
+
+export type RecallChannel =
+  | "claim"
+  | "evidence"
+  | "fts"
+  | "embedding"
+  | "entity"
+  | "time"
+  | "related"
+  | "recent"
+  | "domain";
+
+export interface RecallTimeRange {
+  from?: string;
+  to?: string;
+}
+
+export interface QueryPlan {
+  algorithm_version: string;
+  query: string;
+  intent: RecallIntent;
+  layers: Layer[];
+  scopes: string[];
+  subject_ids: string[];
+  predicates: string[];
+  claim_keys: string[];
+  entity_terms: string[];
+  time_range?: RecallTimeRange;
+  include_sensitive: boolean;
+  include_historical: boolean;
+  include_recent: boolean;
+  include_related: boolean;
+  include_evidence: boolean;
+  max_candidates_per_channel: number;
+  max_results: number;
+  max_tokens: number;
+}
+
+export interface RecallOptions extends SearchOptions {
+  subjectIds?: string[];
+  predicates?: string[];
+  claimKeys?: string[];
+  entities?: string[];
+  timeRange?: RecallTimeRange;
+  includeHistorical?: boolean;
+  includeRelated?: boolean;
+  /** Use immutable user events as a bounded fallback when derived memories are insufficient. */
+  includeEvidence?: boolean;
+  maxCandidatesPerChannel?: number;
+  maxResults?: number;
+  maxTokens?: number;
+  minScore?: number;
+  /** Deterministic clock override for tests and replay. */
+  now?: string;
+}
+
+export interface RecallReason {
+  channel: RecallChannel;
+  rank: number;
+  contribution: number;
+}
+
+export interface RecallItem {
+  memory: Memory;
+  /** Query-focused projection used for packet budgeting and prompt context. */
+  excerpt?: string;
+  score: number;
+  reasons: RecallReason[];
+}
+
+export interface RecallChannelTrace {
+  channel: RecallChannel;
+  candidate_count: number;
+  elapsed_ms: number;
+  error?: string;
+}
+
+export interface RecallRejection {
+  memory_id: string;
+  reason: string;
+}
+
+export interface RecallTrace {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  query: string;
+  plan: QueryPlan;
+  channels: RecallChannelTrace[];
+  rejected: RecallRejection[];
+  selected_memory_ids: string[];
+  elapsed_ms: number;
+  created_at: string;
+}
+
+export interface MemoryPacket {
+  trace_id: string;
+  query_plan: QueryPlan;
+  items: RecallItem[];
+  estimated_tokens: number;
+  reliable: boolean;
+  refusal_reason?: "empty_query" | "no_reliable_memory";
+}
 /** v0.4：getRelevantContext 输出格式。 */
 export type ContextFormat = "flat" | "tiered" | "narrative";
 
-export interface ContextOptions extends SearchOptions {
+export interface ContextOptions extends RecallOptions {
   /** 默认 true：返回拼好的 markdown */
   asMarkdown?: boolean;
   /** 粗略 token 限制（按 char/4 估算） */
@@ -758,7 +1013,57 @@ export interface NemosConfig {
   logger?: (level: LogLevel, msg: string, meta?: Record<string, unknown>) => void;
 }
 
-export const SCHEMA_VERSION = "0.6";
+export const LIFECYCLE_ALGORITHM_VERSION = "0.7.1-alpha.1";
+export const RECALL_ALGORITHM_VERSION = "0.7.5-alpha.17";
+
+export type LifecycleStage = "append" | "extract" | "persist" | "link" | "schedule" | "complete";
+export type LifecycleStageStatus = "running" | "completed" | "skipped" | "failed";
+
+export interface EventMetadata {
+  event_id: string;
+  tenant_id: string;
+  user_id: string;
+  space_id: string;
+  event_seq: number;
+  generation: number;
+  source_event_ids: string[];
+  created_at: string;
+}
+
+export interface LifecycleStageRecord {
+  event_id: string;
+  stage: LifecycleStage;
+  algorithm_version: string;
+  idempotency_key: string;
+  status: LifecycleStageStatus;
+  generation: number;
+  metadata_json: string | null;
+  started_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  last_error: string | null;
+}
+
+export interface ReflectionState {
+  tenant_id: string;
+  user_id: string;
+  space_id: string;
+  last_event_seq: number;
+  last_run_at: string | null;
+  algorithm_version: string;
+  lease_owner: string | null;
+  lease_until: string | null;
+  last_error: string | null;
+}
+
+export interface LifecycleStatusInfo {
+  event: EventMetadata;
+  stages: LifecycleStageRecord[];
+  completed: boolean;
+  failed: boolean;
+}
+
+export const SCHEMA_VERSION = "0.7";
 /** v0.5 schema 字符串常量。 */
 export const SCHEMA_VERSION_V05 = "0.5";
 /** v0.4 schema 字符串常量。 */

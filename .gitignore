@@ -2,6 +2,26 @@
 node_modules/
 dist/
 *.tgz
+bin/
+obj/
+.vs/
+.cache/
+tmp/
+output/
+
+# Local packaged desktop client artifacts
+sdk/typescript/examples/companion/client/dist/
+sdk/typescript/examples/companion/client/vendor/
+sdk/typescript/examples/companion/client/**/*.user
+
+# Local secrets and private runtime settings
+.env
+.env.*
+*.dpapi.json
+*.key
+*.pem
+*.p12
+*.pfx
 
 # SQLite runtime files
 *.db
@@ -16,6 +36,9 @@ sdk/typescript/companion-rel.json
 sdk/typescript/companion-personas.json
 sdk/typescript/companion-familiarity.json
 sdk/typescript/companion-groups.json
+sdk/typescript/companion-capabilities.json
+sdk/typescript/companion-tasks.json
+sdk/typescript/companion-tool-settings.json
 
 # IDE / OS
 .DS_Store

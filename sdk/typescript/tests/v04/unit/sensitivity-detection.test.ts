@@ -23,7 +23,7 @@ test("v0.4: 非 diary profile 的 system prompt 含 sensitivity 检测引导", a
         });
       },
     },
-    features: { doubleCheck: false },
+    features: { doubleCheck: false, autoLinking: false },
   });
   await mem.forUser("alice").ingest("普通内容");
   assert.ok(capturedSystem.length > 0);
@@ -49,7 +49,7 @@ test("v0.4: diary profile 不重复拼 sensitivity guidance（避免冗余）", 
         });
       },
     },
-    features: { doubleCheck: false },
+    features: { doubleCheck: false, autoLinking: false },
   });
   await mem.forUser("alice").ingest("今天的反思", { scenario: "diary" });
   assert.ok(capturedSystem.length > 0);
@@ -63,7 +63,7 @@ test("v0.4: 含敏感关键词的内容 → memory.sensitive=true 写库", async
   const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeSensitivityAwareMockLLMConfig(),
-    features: { doubleCheck: false },
+    features: { doubleCheck: false, autoLinking: false },
   });
   const u = mem.forUser("alice");
   await u.ingest("用户提到健康话题。他在工作上很专注。");
@@ -82,7 +82,7 @@ test("v0.4: search 默认不返 sensitive；includeSensitive:true 可见", async
   const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeSensitivityAwareMockLLMConfig(),
-    features: { doubleCheck: false },
+    features: { doubleCheck: false, autoLinking: false },
   });
   const u = mem.forUser("alice");
   await u.ingest("用户提到健康话题");
@@ -105,7 +105,7 @@ test("v0.4: sensitiveOnly:true 只返 sensitive 集合", async () => {
   const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeSensitivityAwareMockLLMConfig(),
-    features: { doubleCheck: false },
+    features: { doubleCheck: false, autoLinking: false },
   });
   const u = mem.forUser("alice");
   await u.ingest("用户提到健康话题");

@@ -3,13 +3,23 @@
 import {
   GLOBAL_DOMAIN_ID,
   LAYERS,
+  type ClaimIndexEntry,
   type Domain,
+  type EventMetadata,
   type DomainAffinity,
   type IngestStatus,
   type Layer,
+  LIFECYCLE_ALGORITHM_VERSION,
+  type LifecycleStage,
+  type LifecycleStageRecord,
   type Memory,
   type MemoryDomain,
+  type MemoryOperation,
+  type ProvenanceEdge,
+  type IdentityOperation,
   type Prospective,
+  type RecallTimeRange,
+  type ReflectionState,
 } from "../types.js";
 import type {
   DecayCandidate,
@@ -20,6 +30,7 @@ import type {
 } from "./types.js";
 import { cosineSimLocal } from "./row-mapper.js";
 import { nowIso } from "../utils/id.js";
+import { ensureMemoryQualityMetadata } from "../salience.js";
 
 export class InMemoryStorage implements Storage {
   private readonly data = new Map<string, Memory>(); // key: tenant|user|layer|id
@@ -27,7 +38,16 @@ export class InMemoryStorage implements Storage {
     string,
     { vec: Float32Array; modelId: string; layer: Layer; scope: string }
   >();
-  // v0.3：队列内存表
+  private readonly eventMetadata = new Map<string, EventMetadata>();
+  private readonly eventSequences = new Map<string, number>();
+  private readonly lifecycleStages = new Map<string, LifecycleStageRecord>();
+  private readonly reflectionStates = new Map<string, ReflectionState>();
+  private readonly claims = new Map<string, ClaimIndexEntry>();
+  private readonly operations = new Map<string, MemoryOperation>();
+  private readonly provenance = new Map<string, ProvenanceEdge>();
+  private readonly identities = new Map<string, string>();
+  private readonly identityOperations = new Map<string, IdentityOperation>();
+  private readonly claimAliases = new Map<string, string>();  // v0.3：队列内存表
   private readonly queue = new Map<string, IngestQueueRow>();
   // v0.5：领域轴 + 前瞻
   private readonly domains = new Map<string, Domain>(); // key: t|u|id
@@ -45,6 +65,7 @@ export class InMemoryStorage implements Storage {
   }
 
   insert(tenantId: string, userId: string, m: Memory): Memory {
+    ensureMemoryQualityMetadata(m);
     // archival 自动 protected（hard rule）
     if (m.layer === "archival") {
       m.archival_protected = true;
@@ -187,12 +208,47 @@ export class InMemoryStorage implements Storage {
     return out;
   }
 
+  searchByTime(
+    tenantId: string,
+    userId: string,
+    range: RecallTimeRange,
+    layers: Layer[],
+    scope: string | string[] | undefined,
+    topK: number,
+    filter: SearchFilter = {},
+  ): Memory[] {
+    const scopeSet = Array.isArray(scope) && scope.length > 0 ? new Set(scope) : null;
+    const singleScope = typeof scope === "string" ? scope : undefined;
+    const matches: Array<{ memory: Memory; timestamp: string }> = [];
+    for (const layer of layers) {
+      for (const memory of this.list(tenantId, userId, layer, { limit: 100000 })) {
+        if (scopeSet && !scopeSet.has(memory.scope)) continue;
+        if (singleScope && memory.scope !== singleScope) continue;
+        if (filter.sensitiveOnly && !memory.sensitive) continue;
+        if (!filter.sensitiveOnly && !filter.includeSensitive && memory.sensitive) continue;
+        if (!filter.includeCold && memory.cold) continue;
+        if (!filter.includeInvalidated && memory.belief_state && memory.belief_state !== "active") continue;
+        const timestamp = memory.event_at ?? memory.valid_at ?? memory.created_at;
+        if (range.from && timestamp < range.from) continue;
+        if (range.to && timestamp > range.to) continue;
+        matches.push({ memory, timestamp });
+      }
+    }
+    matches.sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+    return matches.slice(0, topK).map((item) => item.memory);
+  }
   delete(tenantId: string, userId: string, layer: Layer, id: string): void {
     if (layer === "archival") {
       throw new Error("[nemos] archival 不允许直接 delete（spec I3）");
     }
     this.data.delete(this.key(tenantId, userId, layer, id));
     this.embeddings.delete(`${tenantId}|${userId}|${layer}|${id}`);
+    for (const [key, entry] of this.claims) {
+      if (entry.tenant_id === tenantId && entry.user_id === userId && entry.memory_id === id) this.claims.delete(key);
+    }
+    for (const [key, edge] of this.provenance) {
+      if (edge.tenant_id === tenantId && edge.user_id === userId && (edge.source_id === id || edge.derived_id === id)) this.provenance.delete(key);
+    }
   }
 
   stats(tenantId: string, userId: string): {
@@ -220,6 +276,145 @@ export class InMemoryStorage implements Storage {
     return { total, by_layer: byLayer, by_scope: byScope };
   }
 
+  ensureEventMetadata(input: Omit<EventMetadata, "event_seq">): EventMetadata {
+    const existing = this.eventMetadata.get(input.event_id);
+    if (existing) return existing;
+    const sequenceKey = `${input.tenant_id}|${input.user_id}|${input.space_id}`;
+    const event_seq = (this.eventSequences.get(sequenceKey) ?? 0) + 1;
+    this.eventSequences.set(sequenceKey, event_seq);
+    const event = { ...input, event_seq };
+    this.eventMetadata.set(input.event_id, event);
+    return event;
+  }
+  getEventMetadata(eventId: string): EventMetadata | null {
+    return this.eventMetadata.get(eventId) ?? null;
+  }
+  getLatestEventSeq(tenantId: string, userId: string, spaceId: string): number {
+    return this.eventSequences.get(`${tenantId}|${userId}|${spaceId}`) ?? 0;
+  }
+  upsertLifecycleStage(record: LifecycleStageRecord): void {
+    this.lifecycleStages.set(`${record.event_id}|${record.stage}|${record.algorithm_version}`, { ...record });
+  }
+  getLifecycleStage(eventId: string, stage: LifecycleStage, algorithmVersion: string): LifecycleStageRecord | null {
+    return this.lifecycleStages.get(`${eventId}|${stage}|${algorithmVersion}`) ?? null;
+  }
+  listLifecycleStages(eventId: string): LifecycleStageRecord[] {
+    return [...this.lifecycleStages.values()].filter((row) => row.event_id === eventId);
+  }
+  getReflectionState(tenantId: string, userId: string, spaceId: string): ReflectionState {
+    const key = `${tenantId}|${userId}|${spaceId}`;
+    return this.reflectionStates.get(key) ?? {
+      tenant_id: tenantId, user_id: userId, space_id: spaceId, last_event_seq: 0,
+      last_run_at: null, algorithm_version: LIFECYCLE_ALGORITHM_VERSION,
+      lease_owner: null, lease_until: null, last_error: null,
+    };
+  }
+  tryAcquireReflectionLease(tenantId: string, userId: string, spaceId: string, owner: string, leaseUntil: string, now: string): boolean {
+    const state = this.getReflectionState(tenantId, userId, spaceId);
+    if (state.lease_owner && state.lease_until && state.lease_until > now && state.lease_owner !== owner) return false;
+    this.updateReflectionState({ ...state, lease_owner: owner, lease_until: leaseUntil });
+    return true;
+  }
+  updateReflectionState(state: ReflectionState): void {
+    this.reflectionStates.set(`${state.tenant_id}|${state.user_id}|${state.space_id}`, { ...state });
+  }
+  // v0.7.1 事实收敛 -----------------------------------------------------------
+  listClaimEntries(tenantId: string, userId: string, spaceId: string, claimKey: string): ClaimIndexEntry[] {
+    const canonical = this.resolveCanonicalClaimKey(claimKey);
+    const prefix = `${tenantId}|${userId}|${spaceId}|${canonical}|`;
+    return [...this.claims.entries()].filter(([key]) => key.startsWith(prefix)).map(([, value]) => ({ ...value }));
+  }
+  upsertClaimEntry(entry: ClaimIndexEntry): void {
+    this.claims.set(`${entry.tenant_id}|${entry.user_id}|${entry.space_id}|${entry.claim_key}|${entry.memory_id}`, { ...entry });
+  }
+  updateMemoryBeliefState(
+    tenantId: string,
+    userId: string,
+    layer: Layer,
+    id: string,
+    state: Memory["belief_state"],
+    opts: { invalidAt?: string; expiredAt?: string; correctedBy?: string; supersedes?: string } = {},
+  ): void {
+    if (layer === "archival") return;
+    const memory = this.data.get(this.key(tenantId, userId, layer, id));
+    if (!memory) return;
+    if (state && state !== "active") memory.belief_state = state;
+    else delete memory.belief_state;
+    if (opts.invalidAt) memory.invalid_at = opts.invalidAt;
+    if (opts.expiredAt) memory.expired_at = opts.expiredAt;
+    if (opts.supersedes) memory.supersedes = opts.supersedes;
+    if (opts.correctedBy) memory.corrected_by = [...new Set([...(memory.corrected_by ?? []), opts.correctedBy])];
+    for (const entry of this.claims.values()) {
+      if (entry.tenant_id === tenantId && entry.user_id === userId && entry.memory_id === id) {
+        entry.status = state ?? "active";
+        entry.updated_at = nowIso();
+      }
+    }
+  }
+  addMemorySourceEvent(tenantId: string, userId: string, layer: Layer, id: string, sourceEventId: string): void {
+    const memory = this.data.get(this.key(tenantId, userId, layer, id));
+    if (!memory || layer === "archival") return;
+    memory.source_event_ids = [...new Set([...(memory.source_event_ids ?? []), sourceEventId])];
+    ensureMemoryQualityMetadata(memory);
+  }
+  rekeyMemoryClaim(tenantId: string, userId: string, layer: Layer, id: string, claimKey: string): void {
+    const memory = this.data.get(this.key(tenantId, userId, layer, id));
+    if (!memory || !memory.claim_key) return;
+    const oldEntries = [...this.claims.entries()].filter(([, entry]) => entry.tenant_id === tenantId && entry.user_id === userId && entry.memory_id === id);
+    for (const [key, entry] of oldEntries) {
+      this.claims.delete(key);
+      memory.claim_key = claimKey;
+      this.upsertClaimEntry({ ...entry, claim_key: claimKey, updated_at: nowIso() });
+    }
+  }  recordClaimKeyAlias(oldClaimKey: string, canonicalClaimKey: string, _operationId: string, _createdAt: string): void {
+    this.claimAliases.set(oldClaimKey, canonicalClaimKey);
+  }
+  resolveCanonicalClaimKey(claimKey: string): string {
+    let current = claimKey;
+    const visited = new Set<string>();
+    while (this.claimAliases.has(current) && !visited.has(current)) {
+      visited.add(current);
+      current = this.claimAliases.get(current)!;
+    }
+    return current;
+  }  insertMemoryOperation(operation: MemoryOperation): void {
+    if (!this.operations.has(operation.id)) this.operations.set(operation.id, { ...operation, subject_memory_ids: [...operation.subject_memory_ids] });
+  }
+  listMemoryOperations(tenantId: string, userId: string, claimKey?: string): MemoryOperation[] {
+    return [...this.operations.values()]
+      .filter((item) => item.tenant_id === tenantId && item.user_id === userId && (!claimKey || item.claim_key === claimKey))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+  insertProvenanceEdge(edge: ProvenanceEdge): void {
+    const key = `${edge.tenant_id}|${edge.user_id}|${edge.source_id}|${edge.derived_id}|${edge.relation}`;
+    if (!this.provenance.has(key)) this.provenance.set(key, { ...edge });
+  }
+  listProvenanceFrom(tenantId: string, userId: string, sourceId: string): ProvenanceEdge[] {
+    return [...this.provenance.values()].filter((edge) => edge.tenant_id === tenantId && edge.user_id === userId && edge.source_id === sourceId);
+  }
+  listProvenanceTo(tenantId: string, userId: string, derivedId: string): ProvenanceEdge[] {
+    return [...this.provenance.values()].filter((edge) => edge.tenant_id === tenantId && edge.user_id === userId && edge.derived_id === derivedId);
+  }
+  resolveCanonicalSubject(tenantId: string, userId: string, spaceId: string, subjectId: string): string {
+    return this.identities.get(`${tenantId}|${userId}|${spaceId}|${subjectId}`) ?? subjectId;
+  }
+  applyIdentityOperation(operation: IdentityOperation): void {
+    this.identityOperations.set(operation.id, { ...operation, subject_ids: [...operation.subject_ids] });
+    if (operation.kind === "MERGE") {
+      for (const subjectId of operation.subject_ids) {
+        this.identities.set(`${operation.tenant_id}|${operation.user_id}|${operation.space_id}|${subjectId}`, operation.canonical_subject_id);
+      }
+      return;
+    }
+    const reversed = operation.reverses_operation_id ? this.identityOperations.get(operation.reverses_operation_id) : null;
+    for (const subjectId of reversed?.subject_ids ?? operation.subject_ids) {
+      this.identities.delete(`${operation.tenant_id}|${operation.user_id}|${operation.space_id}|${subjectId}`);
+    }
+  }
+  getIdentityOperation(tenantId: string, userId: string, operationId: string): IdentityOperation | null {
+    const operation = this.identityOperations.get(operationId);
+    return operation && operation.tenant_id === tenantId && operation.user_id === userId ? { ...operation, subject_ids: [...operation.subject_ids] } : null;
+  }
   // v0.3 新增 ----------------------------------------------------------------
   findById(tenantId: string, userId: string, id: string): Memory | null {
     for (const layer of LAYERS) {
@@ -279,13 +474,14 @@ export class InMemoryStorage implements Storage {
   }
 
   enqueueIngest(
-    row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count">,
+    row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count" | "next_attempt_at">,
   ): IngestQueueRow {
     const full: IngestQueueRow = {
       ...row,
       updated_at: row.created_at,
       completed_at: null,
       derived_count: null,
+      next_attempt_at: row.created_at,
     };
     this.queue.set(row.id, full);
     return full;
@@ -295,12 +491,12 @@ export class InMemoryStorage implements Storage {
     return this.queue.get(id) ?? null;
   }
 
-  takeNextQueued(): IngestQueueRow | null {
+  takeNextQueued(readyAt = new Date().toISOString()): IngestQueueRow | null {
     const arr: IngestQueueRow[] = [];
     for (const r of this.queue.values()) {
-      if (r.status === "queued") arr.push(r);
+      if (r.status === "queued" && r.next_attempt_at <= readyAt) arr.push(r);
     }
-    arr.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    arr.sort((a, b) => a.next_attempt_at.localeCompare(b.next_attempt_at) || a.created_at.localeCompare(b.created_at));
     const next = arr[0] ?? null;
     if (next) {
       // 与 SQLite 实现对齐：出队即原子认领（标 analyzing）
@@ -318,6 +514,7 @@ export class InMemoryStorage implements Storage {
       last_error?: string | null;
       completed_at?: string | null;
       derived_count?: number | null;
+      next_attempt_at?: string;
     },
   ): void {
     const r = this.queue.get(id);
@@ -327,6 +524,7 @@ export class InMemoryStorage implements Storage {
     if (patch.last_error !== undefined) r.last_error = patch.last_error;
     if (patch.completed_at !== undefined) r.completed_at = patch.completed_at;
     if (patch.derived_count !== undefined) r.derived_count = patch.derived_count;
+    if (patch.next_attempt_at !== undefined) r.next_attempt_at = patch.next_attempt_at;
     r.updated_at = new Date().toISOString();
   }
 
@@ -338,6 +536,7 @@ export class InMemoryStorage implements Storage {
         if (cutoff && r.updated_at >= cutoff) continue;
         r.status = "queued";
         r.updated_at = new Date().toISOString();
+        r.next_attempt_at = r.updated_at;
         n++;
       }
     }
@@ -352,7 +551,7 @@ export class InMemoryStorage implements Storage {
         arr.push(r);
       }
     }
-    arr.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    arr.sort((a, b) => a.next_attempt_at.localeCompare(b.next_attempt_at) || a.created_at.localeCompare(b.created_at));
     return arr;
   }
 
@@ -482,6 +681,19 @@ export class InMemoryStorage implements Storage {
     return this.list(tenantId, userId, "episodic", { limit });
   }
 
+  listEpisodicByEventSeq(
+    tenantId: string,
+    userId: string,
+    spaceId: string,
+    afterSeq: number,
+    upToSeq: number,
+  ): Memory[] {
+    return this.list(tenantId, userId, "episodic", { limit: 100000 })
+      .map((memory) => ({ memory, event: this.eventMetadata.get(memory.archival_ref ?? memory.id) }))
+      .filter(({ event }) => event?.space_id === spaceId && event.event_seq > afterSeq && event.event_seq <= upToSeq)
+      .sort((a, b) => b.event!.event_seq - a.event!.event_seq)
+      .map(({ memory }) => memory);
+  }
   listPersonalSemantic(tenantId: string, userId: string): Memory[] {
     return this.list(tenantId, userId, "personal_semantic", { limit: 200 });
   }
@@ -504,6 +716,12 @@ export class InMemoryStorage implements Storage {
       const cb = new Set(m.corrected_by ?? []);
       cb.add(opts.correctedBy);
       m.corrected_by = Array.from(cb);
+    }
+    for (const entry of this.claims.values()) {
+      if (entry.tenant_id === tenantId && entry.user_id === userId && entry.memory_id === id) {
+        entry.status = "invalidated";
+        entry.updated_at = nowIso();
+      }
     }
   }
 

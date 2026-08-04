@@ -3,14 +3,23 @@
 // 这是公开类型来源。SqliteStorage / InMemoryStorage 都实现 Storage 接口。
 
 import type {
+  ClaimIndexEntry,
   Domain,
   DomainAffinity,
+  EventMetadata,
   IngestStatus,
   Layer,
+  LifecycleStage,
+  LifecycleStageRecord,
   Memory,
   MemoryDomain,
+  MemoryOperation,
+  ProvenanceEdge,
+  IdentityOperation,
+  ReflectionState,
   Prospective,
   ProspectivePrediction,
+  RecallTimeRange,
 } from "../types.js";
 
 /** v0.5：前瞻条目可变字段（reflect 修正 / 命中更新）。 */
@@ -44,6 +53,7 @@ export interface IngestQueueRow {
   updated_at: string;
   completed_at: string | null;
   derived_count: number | null;
+  next_attempt_at: string;
 }
 
 export interface SearchFilter {
@@ -122,6 +132,15 @@ export interface Storage {
     topK: number,
     filter?: SearchFilter,
   ): Array<{ memory: Memory; score: number }>;
+  searchByTime(
+    tenantId: string,
+    userId: string,
+    range: RecallTimeRange,
+    layers: Layer[],
+    scope: string | string[] | undefined,
+    topK: number,
+    filter?: SearchFilter,
+  ): Memory[];
   delete(tenantId: string, userId: string, layer: Layer, id: string): void;
   stats(tenantId: string, userId: string): {
     total: number;
@@ -129,6 +148,39 @@ export interface Storage {
     by_scope: Record<string, number>;
   };
 
+  // v0.7 生命周期 --------------------------------------------------------------
+  ensureEventMetadata(input: Omit<EventMetadata, "event_seq">): EventMetadata;
+  getEventMetadata(eventId: string): EventMetadata | null;
+  getLatestEventSeq(tenantId: string, userId: string, spaceId: string): number;
+  upsertLifecycleStage(record: LifecycleStageRecord): void;
+  getLifecycleStage(eventId: string, stage: LifecycleStage, algorithmVersion: string): LifecycleStageRecord | null;
+  listLifecycleStages(eventId: string): LifecycleStageRecord[];
+  getReflectionState(tenantId: string, userId: string, spaceId: string): ReflectionState;
+  tryAcquireReflectionLease(tenantId: string, userId: string, spaceId: string, owner: string, leaseUntil: string, now: string): boolean;
+  updateReflectionState(state: ReflectionState): void;
+  // v0.7.1 事实收敛 -----------------------------------------------------------
+  listClaimEntries(tenantId: string, userId: string, spaceId: string, claimKey: string): ClaimIndexEntry[];
+  upsertClaimEntry(entry: ClaimIndexEntry): void;
+  updateMemoryBeliefState(
+    tenantId: string,
+    userId: string,
+    layer: Layer,
+    id: string,
+    state: Memory["belief_state"],
+    opts?: { invalidAt?: string; expiredAt?: string; correctedBy?: string; supersedes?: string },
+  ): void;
+  addMemorySourceEvent(tenantId: string, userId: string, layer: Layer, id: string, sourceEventId: string): void;
+  rekeyMemoryClaim(tenantId: string, userId: string, layer: Layer, id: string, claimKey: string): void;
+  recordClaimKeyAlias(oldClaimKey: string, canonicalClaimKey: string, operationId: string, createdAt: string): void;
+  resolveCanonicalClaimKey(claimKey: string): string;
+  insertMemoryOperation(operation: MemoryOperation): void;
+  listMemoryOperations(tenantId: string, userId: string, claimKey?: string): MemoryOperation[];
+  insertProvenanceEdge(edge: ProvenanceEdge): void;
+  listProvenanceFrom(tenantId: string, userId: string, sourceId: string): ProvenanceEdge[];
+  listProvenanceTo(tenantId: string, userId: string, derivedId: string): ProvenanceEdge[];
+  resolveCanonicalSubject(tenantId: string, userId: string, spaceId: string, subjectId: string): string;
+  applyIdentityOperation(operation: IdentityOperation): void;
+  getIdentityOperation(tenantId: string, userId: string, operationId: string): IdentityOperation | null;
   // v0.3 新增 ----------------------------------------------------------------
   /** 更新 memory.entities（worker 抽完写回）。 */
   updateEntities(
@@ -155,10 +207,10 @@ export interface Storage {
   ): Memory[];
 
   // 队列
-  enqueueIngest(row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count">): IngestQueueRow;
+  enqueueIngest(row: Omit<IngestQueueRow, "updated_at" | "completed_at" | "derived_count" | "next_attempt_at">): IngestQueueRow;
   getQueueRow(id: string): IngestQueueRow | null;
   /** 原子认领下一个 status='queued' 的任务（按 created_at 升序）：返回前已标为 analyzing。 */
-  takeNextQueued(): IngestQueueRow | null;
+  takeNextQueued(nowIso?: string): IngestQueueRow | null;
   updateQueueStatus(
     id: string,
     patch: {
@@ -167,6 +219,7 @@ export interface Storage {
       last_error?: string | null;
       completed_at?: string | null;
       derived_count?: number | null;
+      next_attempt_at?: string;
     },
   ): void;
   /** 启动时把 'analyzing' 重置为 'queued'（崩溃恢复）。leaseMs>0 时仅重置 updated_at 早于租约窗口的行（多实例共库）。 */
@@ -219,6 +272,8 @@ export interface Storage {
   countEpisodicSinceLastReflect(tenantId: string, userId: string, sinceIso: string | null): number;
   /** 取 user 最近 N 条 episodic（按 created_at 倒序）。 */
   listRecentEpisodic(tenantId: string, userId: string, limit: number): Memory[];
+  /** v0.7：按原始事件序号读取确定反思区间。 */
+  listEpisodicByEventSeq(tenantId: string, userId: string, spaceId: string, afterSeq: number, upToSeq: number): Memory[];
   /** 取 user 当前所有 personal_semantic（作为 reflect anchor）。 */
   listPersonalSemantic(tenantId: string, userId: string): Memory[];
 

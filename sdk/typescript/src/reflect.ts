@@ -179,6 +179,8 @@ export interface ReflectInput {
   userId: string;
   defaultScope: string;
   recentLimit?: number;
+  afterEventSeq?: number;
+  upToEventSeq?: number;
   /** v0.5：开启领域演化（birth/split/merge/sleep）。默认 false。 */
   domainsEnabled?: boolean;
   /** v0.5：开启前瞻预测-验证闭环。默认 false。 */
@@ -203,6 +205,7 @@ export interface ReflectResult {
   prospectiveVerified?: number;
   /** v0.6：本轮被矛盾失效的旧 personal_semantic 条数（invalidationEnabled 时）。 */
   invalidated?: number;
+  skippedReason?: "lease-held";
 }
 
 export async function runReflect(
@@ -214,7 +217,16 @@ export async function runReflect(
   input: ReflectInput,
 ): Promise<ReflectResult> {
   const limit = input.recentLimit ?? config.autoTriggerThreshold;
-  const episodic = storage.listRecentEpisodic(input.tenantId, input.userId, limit);
+  const hasEventRange = input.afterEventSeq !== undefined && input.upToEventSeq !== undefined;
+  const episodic = hasEventRange
+    ? storage.listEpisodicByEventSeq(
+        input.tenantId,
+        input.userId,
+        input.defaultScope,
+        input.afterEventSeq!,
+        input.upToEventSeq!,
+      )
+    : storage.listRecentEpisodic(input.tenantId, input.userId, limit);
 
   const detector = input.invalidationDetector ?? "semantic";
   const useSemantic = detector === "semantic" && embedding != null;
@@ -582,8 +594,11 @@ function buildReflectDerived(
     access_count: 0,
     stability: 1.0,
     schema_version: SCHEMA_VERSION,
+    generation: 2,
     consolidated_from: fromIds,
     consolidated_at: now,
+    source_event_ids: [...fromIds],
+    legacy_unstructured: layer === "personal_semantic" ? true : undefined,
   };
   // 清理 source 中的 undefined（避免 JSON.stringify 留下空字段）
   if (memory.source.perspectives_conflict === undefined) {

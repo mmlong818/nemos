@@ -5,6 +5,7 @@
 
 import type Database from "better-sqlite3";
 import { LAYERS } from "../types.js";
+import { listPredicates } from "../claims.js";
 
 export const COMMON_COLS = `
   id              TEXT PRIMARY KEY,
@@ -23,6 +24,7 @@ export const COMMON_COLS = `
   access_count    INTEGER NOT NULL DEFAULT 0,
   stability       REAL NOT NULL DEFAULT 1.0,
   schema_version  TEXT NOT NULL,
+  generation      INTEGER NOT NULL DEFAULT 1,
   archival_ref    TEXT,
   related_json    TEXT,
   corrects_json   TEXT,
@@ -46,7 +48,25 @@ export const COMMON_COLS = `
   valid_at        TEXT,
   invalid_at      TEXT,
   expired_at      TEXT,
-  belief_state    TEXT NOT NULL DEFAULT 'active'
+  belief_state    TEXT NOT NULL DEFAULT 'active',
+  data_subject_ids_json TEXT,
+  subject_id      TEXT,
+  subject_resolution TEXT,
+  predicate       TEXT,
+  context_dimensions_json TEXT,
+  object_json     TEXT,
+  canonical_object_hash TEXT,
+  claim_key       TEXT,
+  claim_key_version INTEGER,
+  normalizer_version INTEGER,
+  trust_tier      INTEGER,
+  utterance_mode  TEXT,
+  specificity     TEXT,
+  source_event_ids_json TEXT,
+  legacy_unstructured INTEGER NOT NULL DEFAULT 0,
+  salience_json TEXT,
+  evidence_coverage TEXT,
+  evidence_count INTEGER NOT NULL DEFAULT 0
 `;
 
 // v0.2 新增列（用于 migration v0.1 → v0.2）
@@ -94,6 +114,34 @@ const V06_NEW_COLUMNS: Array<{ name: string; ddl: string }> = [
     name: "belief_state",
     ddl: "ALTER TABLE %TABLE% ADD COLUMN belief_state TEXT NOT NULL DEFAULT 'active'",
   },
+];
+
+const V07_NEW_COLUMNS: Array<{ name: string; ddl: string }> = [
+  { name: "generation", ddl: "ALTER TABLE %TABLE% ADD COLUMN generation INTEGER NOT NULL DEFAULT 1" },
+];
+
+const V071_NEW_COLUMNS: Array<{ name: string; ddl: string }> = [
+  { name: "data_subject_ids_json", ddl: "ALTER TABLE %TABLE% ADD COLUMN data_subject_ids_json TEXT" },
+  { name: "subject_id", ddl: "ALTER TABLE %TABLE% ADD COLUMN subject_id TEXT" },
+  { name: "subject_resolution", ddl: "ALTER TABLE %TABLE% ADD COLUMN subject_resolution TEXT" },
+  { name: "predicate", ddl: "ALTER TABLE %TABLE% ADD COLUMN predicate TEXT" },
+  { name: "context_dimensions_json", ddl: "ALTER TABLE %TABLE% ADD COLUMN context_dimensions_json TEXT" },
+  { name: "object_json", ddl: "ALTER TABLE %TABLE% ADD COLUMN object_json TEXT" },
+  { name: "canonical_object_hash", ddl: "ALTER TABLE %TABLE% ADD COLUMN canonical_object_hash TEXT" },
+  { name: "claim_key", ddl: "ALTER TABLE %TABLE% ADD COLUMN claim_key TEXT" },
+  { name: "claim_key_version", ddl: "ALTER TABLE %TABLE% ADD COLUMN claim_key_version INTEGER" },
+  { name: "normalizer_version", ddl: "ALTER TABLE %TABLE% ADD COLUMN normalizer_version INTEGER" },
+  { name: "trust_tier", ddl: "ALTER TABLE %TABLE% ADD COLUMN trust_tier INTEGER" },
+  { name: "utterance_mode", ddl: "ALTER TABLE %TABLE% ADD COLUMN utterance_mode TEXT" },
+  { name: "specificity", ddl: "ALTER TABLE %TABLE% ADD COLUMN specificity TEXT" },
+  { name: "source_event_ids_json", ddl: "ALTER TABLE %TABLE% ADD COLUMN source_event_ids_json TEXT" },
+  { name: "legacy_unstructured", ddl: "ALTER TABLE %TABLE% ADD COLUMN legacy_unstructured INTEGER NOT NULL DEFAULT 0" },
+];
+
+const V074_NEW_COLUMNS: Array<{ name: string; ddl: string }> = [
+  { name: "salience_json", ddl: "ALTER TABLE %TABLE% ADD COLUMN salience_json TEXT" },
+  { name: "evidence_coverage", ddl: "ALTER TABLE %TABLE% ADD COLUMN evidence_coverage TEXT" },
+  { name: "evidence_count", ddl: "ALTER TABLE %TABLE% ADD COLUMN evidence_count INTEGER NOT NULL DEFAULT 0" },
 ];
 
 const INDEX_DDL = (table: string): string => `
@@ -164,6 +212,19 @@ export function applyMigrations(db: Database.Database): void {
         db.exec(col.ddl.replace("%TABLE%", layer));
       }
     }
+    for (const col of V07_NEW_COLUMNS) {
+      if (!existing.has(col.name)) db.exec(col.ddl.replace("%TABLE%", layer));
+    }
+    for (const col of V071_NEW_COLUMNS) {
+      if (!existing.has(col.name)) db.exec(col.ddl.replace("%TABLE%", layer));
+    }
+    for (const col of V074_NEW_COLUMNS) {
+      if (!existing.has(col.name)) db.exec(col.ddl.replace("%TABLE%", layer));
+    }
+    if (layer === "personal_semantic") {
+      db.exec(`UPDATE personal_semantic SET legacy_unstructured=1 WHERE claim_key IS NULL;`);
+    }
+    // 旧 archival 的物理默认值可能为 1；读取层固定解释为 generation=0，避免触发 immutable UPDATE。
     // archival 表中已存在的旧 row 需补 archival_protected=1（一次性 backfill，幂等）
     if (layer === "archival") {
       db.exec(`UPDATE archival SET archival_protected = 1 WHERE archival_protected = 0;`);
@@ -210,9 +271,15 @@ export function applyMigrations(db: Database.Database): void {
     db.exec(
       `CREATE INDEX IF NOT EXISTS idx_belief_${layer} ON ${layer}(tenant_id, user_id, belief_state);`,
     );
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_claim_${layer} ON ${layer}(tenant_id, user_id, scope, claim_key, belief_state);`,
+    );
     // v0.6：双时间 as-of 条件索引（仅非空，省空间）
     db.exec(
       `CREATE INDEX IF NOT EXISTS idx_valid_at_${layer} ON ${layer}(valid_at) WHERE valid_at IS NOT NULL;`,
+    );
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_recall_time_${layer} ON ${layer}(tenant_id, user_id, scope, COALESCE(event_at, valid_at, created_at) DESC);`,
     );
     db.exec(
       `CREATE INDEX IF NOT EXISTS idx_invalid_at_${layer} ON ${layer}(invalid_at) WHERE invalid_at IS NOT NULL;`,
@@ -286,12 +353,139 @@ export function applyMigrations(db: Database.Database): void {
       created_at        TEXT NOT NULL,
       updated_at        TEXT NOT NULL,
       completed_at      TEXT,
-      derived_count     INTEGER
+      derived_count     INTEGER,
+      next_attempt_at   TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_iq_status ON ingest_queue(status, created_at);
     CREATE INDEX IF NOT EXISTS idx_iq_tu ON ingest_queue(tenant_id, user_id, status);
   `);
 
+  const queueColumns = new Set(
+    (db.prepare(`PRAGMA table_info(ingest_queue)`).all() as Array<{ name: string }>).map((r) => r.name),
+  );
+  if (!queueColumns.has("next_attempt_at")) {
+    db.exec(`ALTER TABLE ingest_queue ADD COLUMN next_attempt_at TEXT`);
+    db.exec(`UPDATE ingest_queue SET next_attempt_at = created_at WHERE next_attempt_at IS NULL;`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_iq_ready ON ingest_queue(status, next_attempt_at, created_at);`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS nemos_space_sequences (
+      tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, space_id TEXT NOT NULL,
+      last_event_seq INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (tenant_id,user_id,space_id)
+    );
+    CREATE TABLE IF NOT EXISTS nemos_event_metadata (
+      event_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      space_id TEXT NOT NULL, event_seq INTEGER NOT NULL, generation INTEGER NOT NULL DEFAULT 0,
+      source_event_ids_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL,
+      UNIQUE (tenant_id,user_id,space_id,event_seq)
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_space_seq
+      ON nemos_event_metadata(tenant_id,user_id,space_id,event_seq);
+    CREATE TABLE IF NOT EXISTS nemos_lifecycle_stages (
+      event_id TEXT NOT NULL, stage TEXT NOT NULL, algorithm_version TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL, status TEXT NOT NULL, generation INTEGER NOT NULL,
+      metadata_json TEXT, started_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      completed_at TEXT, last_error TEXT,
+      PRIMARY KEY (event_id,stage,algorithm_version)
+    );
+    CREATE TABLE IF NOT EXISTS nemos_reflection_state (
+      tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, space_id TEXT NOT NULL,
+      last_event_seq INTEGER NOT NULL DEFAULT 0, last_run_at TEXT,
+      algorithm_version TEXT NOT NULL, lease_owner TEXT, lease_until TEXT, last_error TEXT,
+      PRIMARY KEY (tenant_id,user_id,space_id)
+    );
+    CREATE TABLE IF NOT EXISTS nemos_claim_index (
+      tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, space_id TEXT NOT NULL,
+      claim_key TEXT NOT NULL, memory_id TEXT NOT NULL, layer TEXT NOT NULL,
+      canonical_object_hash TEXT NOT NULL, event_seq INTEGER NOT NULL,
+      valid_from TEXT, trust_tier INTEGER NOT NULL, status TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (tenant_id,user_id,memory_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_claim_index_key
+      ON nemos_claim_index(tenant_id,user_id,space_id,claim_key,status,event_seq);
+    CREATE TABLE IF NOT EXISTS nemos_memory_operations (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      space_id TEXT NOT NULL, claim_key TEXT, kind TEXT NOT NULL,
+      subject_memory_ids_json TEXT NOT NULL, source_event_id TEXT NOT NULL,
+      reason TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_operations_claim
+      ON nemos_memory_operations(tenant_id,user_id,space_id,claim_key,created_at);
+    CREATE TABLE IF NOT EXISTS nemos_provenance_edges (
+      tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, source_id TEXT NOT NULL,
+      derived_id TEXT NOT NULL, relation TEXT NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY (tenant_id,user_id,source_id,derived_id,relation)
+    );
+    CREATE INDEX IF NOT EXISTS idx_provenance_derived
+      ON nemos_provenance_edges(tenant_id,user_id,derived_id);
+    CREATE TABLE IF NOT EXISTS nemos_identities (
+      tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, space_id TEXT NOT NULL,
+      subject_id TEXT NOT NULL, canonical_subject_id TEXT NOT NULL,
+      status TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY (tenant_id,user_id,space_id,subject_id)
+    );
+    CREATE TABLE IF NOT EXISTS nemos_identity_operations (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      space_id TEXT NOT NULL, kind TEXT NOT NULL, subject_ids_json TEXT NOT NULL,
+      canonical_subject_id TEXT NOT NULL, reverses_operation_id TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS nemos_predicates (
+      id TEXT PRIMARY KEY, definition_json TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS nemos_predicate_aliases (
+      alias TEXT PRIMARY KEY, predicate_id TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS nemos_claim_key_aliases (
+      old_claim_key TEXT PRIMARY KEY, canonical_claim_key TEXT NOT NULL,
+      operation_id TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+  `);
+  const predicateUpsert = db.prepare(`INSERT INTO nemos_predicates(id,definition_json,updated_at)
+    VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET definition_json=excluded.definition_json,updated_at=excluded.updated_at`);
+  const aliasUpsert = db.prepare(`INSERT INTO nemos_predicate_aliases(alias,predicate_id)
+    VALUES (?,?) ON CONFLICT(alias) DO UPDATE SET predicate_id=excluded.predicate_id`);
+  const registryUpdatedAt = new Date().toISOString();
+  for (const predicate of listPredicates()) {
+    predicateUpsert.run(predicate.id, JSON.stringify(predicate), registryUpdatedAt);
+    aliasUpsert.run(predicate.id, predicate.id);
+    for (const alias of predicate.aliases) aliasUpsert.run(alias.normalize("NFC").trim().toLowerCase(), predicate.id);
+  }
+  const counters = new Map<string, { tenantId: string; userId: string; spaceId: string; seq: number }>();
+  const existingMax = db.prepare(`SELECT tenant_id,user_id,space_id,MAX(event_seq) AS seq
+    FROM nemos_event_metadata GROUP BY tenant_id,user_id,space_id`).all() as Array<{
+      tenant_id: string; user_id: string; space_id: string; seq: number;
+    }>;
+  for (const row of existingMax) {
+    const key = JSON.stringify([row.tenant_id, row.user_id, row.space_id]);
+    counters.set(key, { tenantId: row.tenant_id, userId: row.user_id, spaceId: row.space_id, seq: row.seq });
+  }
+  const archivalRows = db.prepare(`SELECT id,tenant_id,user_id,scope,created_at FROM archival
+    WHERE id NOT IN (SELECT event_id FROM nemos_event_metadata) ORDER BY created_at,id`).all() as Array<{
+      id: string; tenant_id: string; user_id: string; scope: string; created_at: string;
+    }>;
+  const insertEvent = db.prepare(`INSERT OR IGNORE INTO nemos_event_metadata
+    (event_id,tenant_id,user_id,space_id,event_seq,generation,source_event_ids_json,created_at)
+    VALUES (?,?,?,?,?,0,?,?)`);
+  for (const row of archivalRows) {
+    const key = JSON.stringify([row.tenant_id, row.user_id, row.scope]);
+    const current = counters.get(key) ?? {
+      tenantId: row.tenant_id, userId: row.user_id, spaceId: row.scope, seq: 0,
+    };
+    current.seq += 1;
+    counters.set(key, current);
+    insertEvent.run(row.id, row.tenant_id, row.user_id, row.scope, current.seq, JSON.stringify([row.id]), row.created_at);
+  }
+  const upsertSequence = db.prepare(`INSERT INTO nemos_space_sequences
+    (tenant_id,user_id,space_id,last_event_seq) VALUES (?,?,?,?)
+    ON CONFLICT(tenant_id,user_id,space_id) DO UPDATE SET
+      last_event_seq=MAX(last_event_seq,excluded.last_event_seq)`);
+  for (const counter of counters.values()) {
+    upsertSequence.run(counter.tenantId, counter.userId, counter.spaceId, counter.seq);
+  }
   // v0.3：entity FTS 表（每条 memory 的 entities 拼字符串入 FTS）
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS nemos_entities_fts USING fts5(

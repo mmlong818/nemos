@@ -10,7 +10,7 @@ test("doubleCheck: true 触发 3 次 LLM 调用（pass A + pass B + check）", a
   const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
-    features: { doubleCheck: true },
+    features: { doubleCheck: true, autoLinking: false },
   });
   const u = mem.forUser("u1");
   await u.ingest("我每天写代码。我喜欢 TypeScript。");
@@ -22,7 +22,7 @@ test("doubleCheck 后 derived 带 confidence 字段", async () => {
   const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
-    features: { doubleCheck: true },
+    features: { doubleCheck: true, autoLinking: false },
   });
   const u = mem.forUser("u1");
   const r = await u.ingest("我每天写代码。我喜欢 TypeScript。");
@@ -38,7 +38,7 @@ test("confidenceMin='high' 过滤 search 结果", async () => {
   const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
-    features: { doubleCheck: true },
+    features: { doubleCheck: true, autoLinking: false },
   });
   const u = mem.forUser("u1");
   await u.ingest("我每天写代码。我喜欢 TypeScript。");
@@ -58,7 +58,7 @@ test("doubleCheck: false 只调 1 次 LLM", async () => {
   const mem = new Nemos({
     storage: { type: "memory" },
     llm: makeMockLLMConfig(),
-    features: { doubleCheck: false },
+    features: { doubleCheck: false, autoLinking: false },
   });
   const u = mem.forUser("u1");
   await u.ingest("一段不需要校验的内容");

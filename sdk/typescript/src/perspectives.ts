@@ -20,7 +20,7 @@ import type { Perspective } from "./types.js";
 // 默认启用的视角组合
 // ============================================================================
 
-/** v0.3 默认开启的三视角；朋友可在 features.perspectives 覆盖。 */
+/** v0.3 默认开启的三视角；调用方可在 features.perspectives 覆盖。 */
 export const DEFAULT_PERSPECTIVES: Perspective[] = [
   "fact",
   "method",

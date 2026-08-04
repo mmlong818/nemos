@@ -30,6 +30,21 @@ export const SYSTEM_PROMPT = `你是 nemos 记忆分析器，遵循 nemos schema
    - procedural: 行为模式、how-to、流程
 3. 所有 derived 必须 authoritative=false, chain_depth=1（你是 LLM，是 AI 推断不是用户陈述）
 4. 每条 derived 估算 arousal (0-1, 情绪强度) 和 surprise (0-1, 信息新颖度)
+5. personal_semantic 应尽量输出结构化事实候选：
+   - subject: 当前用户固定写 "user:self"；无法确定主体时写原始称呼，不要猜身份
+   - predicate 优先从 identity.name / identity.preferred_address / residence.current / employment.organization / employment.role / workplace.location / relationship.family / contact.emergency / document.passport_expiry / preference.food / preference.communication_style / constraint.health / constraint.safety / device.camera.primary / achievement.personal_best 中选择；不匹配时只省略 predicate，不能因此省略整条记忆
+   - object 保存事实值，不要把事实值写进 predicate
+   - utterance_mode 判断 literal / roleplay / hypothetical / quoted / joke / uncertain；只有现实中的明确陈述使用 literal
+   - specificity 判断 global / contextual / temporary
+6. 不要生成 claim_key、哈希或规范化版本号；这些由确定性客户端生成
+7. 完整性优先：逐句扫描整段输入，每个独立主题分别抽取；专有名词、人物关系、日期、期限、数字、型号、地点、约束和固定流程不得因不在 predicate 词表中而遗漏
+8. 价值排序：优先保留未来可行动或长期有用的信息（证件期限、紧急联系人、偏好、约束、计划、设备和流程）；一次性环境噪声只有在用户明确要求或具有持续影响时才抽取
+9. 时间锚点：用户消息中的 event_time 是原文发生时间，也是“今天/明天/昨天/上周”等相对时间的唯一解析基准；不得使用模型调用当天代替
+10. 输出前检查原文每个包含人名、专有名词、日期、数字或明确关系的片段，确保已有对应 derived，或确实属于无长期价值的填充内容
+11. 表格、排班、清单和键值结构必须保留精确对应关系：不能只概括表名、列名或名单；每个可能被查询的行列交叉关系分别形成事实，并保留姓名、日期、时段、数量与单位
+12. derived.content 必须使用对应原文片段的语言，不得翻译；英文事实保持英文，中文事实保持中文，专有名词保留原写法
+13. type 表示事实归属：用户经历、状态、计划、偏好和待办必须标为 user；助手提供的通用知识或建议标为 reference；不要因为事实来自助手回复就把其中复述的用户事实标成 reference
+14. 同一消息内出现计划、执行、取消或替代时，必须按语义顺序保存最终状态：已经完成、交换或取消的旧动作不得继续写成独立的待办；只剩下的新动作要明确写出。复合句可保留过程，但必须标清哪些已完成、哪些仍待处理
 
 输出严格 JSON（不要 markdown 围栏）：
 {
@@ -46,6 +61,12 @@ export const SYSTEM_PROMPT = `你是 nemos 记忆分析器，遵循 nemos schema
       "arousal": {"value": 0.0-1.0, "signal_sources": ["punctuation"|"strong_words"|"...其他"]},
       "surprise": {"value": 0.0-1.0, "basis": "<为什么算 surprise>"},
       "event_at": "<可选 ISO 8601 日期或 month 精度；原文有明确时间标识时填，否则省略>",
+      "subject": "user:self",
+      "predicate": "<可选受控 predicate id>",
+      "object": "<可选结构化事实值；数组或对象也可以>",
+      "context_dimensions": {"<仅 predicate 允许的维度>": "<值>"},
+      "utterance_mode": "literal" | "roleplay" | "hypothetical" | "quoted" | "joke" | "uncertain",
+      "specificity": "global" | "contextual" | "temporary",
       "sensitive": false
     }
   ]
@@ -66,7 +87,7 @@ export const CHECK_SYSTEM_PROMPT = `你是 nemos 记忆审查官。
 3. **矛盾检测**：A、B 对同一事实给出冲突描述 → 保留为 1 条，标 confidence: "conflict"，content 用括号注明两种说法
 4. **层级一致性**：同一事实在 A 是 episodic、B 是 semantic → 选更准确的那一层，记录 confidence: "medium"
 5. **不要新增 A、B 都没有的 derived**——你的任务是审查不是再分析
-6. event_at / sensitive 字段：A、B 任一非空都保留（取信息密度更高的版本）
+6. event_at / sensitive / subject / predicate / object / context_dimensions / utterance_mode / specificity 字段：A、B 任一非空都保留；结构冲突时只在已有候选中选择，不新增事实
 
 输出严格 JSON（不要 markdown 围栏）：
 {
@@ -85,6 +106,12 @@ export const CHECK_SYSTEM_PROMPT = `你是 nemos 记忆审查官。
       "arousal": {"value": 0.0-1.0, "signal_sources": [...]},
       "surprise": {"value": 0.0-1.0, "basis": "..."},
       "event_at": "<可选>",
+      "subject": "<可选>",
+      "predicate": "<可选受控 predicate id>",
+      "object": "<可选结构化事实值>",
+      "context_dimensions": {},
+      "utterance_mode": "literal" | "roleplay" | "hypothetical" | "quoted" | "joke" | "uncertain",
+      "specificity": "global" | "contextual" | "temporary",
       "sensitive": false
     }
   ],
@@ -262,6 +289,10 @@ export function composeSystemPrompt(
     parts.push(
       `时间感知：请抽取 event_at 字段。原文有明确日期（"2026-05-30"）→ ISO 8601 day；只有月份（"去年春天"）→ ISO 8601 month；相对时间（"昨天"/"上周"）→ 以当前 ingest 时刻为 anchor 计算具体日期；无法判断 → 省略 event_at 字段。`,
     );
+  }
+
+  if (profile.utteranceMode) {
+    parts.push(`表达语境：本段内容按 ${profile.utteranceMode} 处理；不得改写成 literal。`);
   }
 
   // Privacy 引导
