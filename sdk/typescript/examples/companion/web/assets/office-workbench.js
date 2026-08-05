@@ -1,0 +1,709 @@
+"use strict";
+
+const STORAGE_KEY = "clownfish-office-workbench-v1";
+const MAX_STORED_DOCUMENTS = 6;
+const MAX_VERSIONS = 8;
+const JOB_POLL_INTERVAL = 1400;
+
+const ICON_PATHS = {
+  ...window.ClownfishIcons.paths,
+};
+
+function iconSvg(name) {
+  return window.ClownfishIcons.render(name, { paths: ICON_PATHS });
+}
+
+function hydrateIcons() {
+  document.querySelectorAll("[data-app-icon]").forEach((node) => {
+    const holder = node.querySelector("span");
+    if (holder) holder.innerHTML = iconSvg(node.dataset.appIcon);
+  });
+  document.querySelectorAll("[data-office-icon]").forEach((node) => {
+    const icon = iconSvg(node.dataset.officeIcon);
+    if (node.matches("button, label")) node.insertAdjacentHTML("afterbegin", icon);
+    else node.innerHTML = icon;
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
+}
+
+function uid(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function now() {
+  return new Date().toISOString();
+}
+
+function displayDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function formatLabel(kind) {
+  return ({ docx: "DOCX", pptx: "PPTX", xlsx: "XLSX", pdf: "PDF" })[kind] || "文稿";
+}
+
+function kindTitle(kind, index) {
+  if (kind === "pptx" || kind === "pdf") return `第 ${index + 1} 页`;
+  if (kind === "xlsx") return `工作表 ${index + 1}`;
+  return `段落 ${index + 1}`;
+}
+
+function safeBlock(block, index, kind) {
+  return {
+    id: String(block?.id || uid("block")),
+    title: String(block?.title || kindTitle(kind, index)).slice(0, 120),
+    text: String(block?.text || "").slice(0, 120000),
+  };
+}
+
+function safeProcessing(value) {
+  if (!value || typeof value !== "object" || !value.jobId) return null;
+  return {
+    jobId: String(value.jobId),
+    request: String(value.request || "").slice(0, 2000),
+    capabilityId: String(value.capabilityId || "document-draft").slice(0, 80),
+    format: ["doc", "pptx", "html", "pdf"].includes(value.format) ? value.format : "doc",
+    startedAt: String(value.startedAt || now()),
+    status: ["queued", "running", "succeeded", "failed", "cancelled"].includes(value.status) ? value.status : "queued",
+    artifactId: value.artifactId ? String(value.artifactId) : "",
+    artifactFormat: value.artifactFormat ? String(value.artifactFormat) : "",
+    summary: value.summary ? String(value.summary).slice(0, 2000) : "",
+  };
+}
+
+function safeDocument(item) {
+  const kind = ["docx", "pptx", "xlsx", "pdf"].includes(item?.kind) ? item.kind : "docx";
+  const blocks = Array.isArray(item?.blocks) && item.blocks.length
+    ? item.blocks.slice(0, 300).map((block, index) => safeBlock(block, index, kind))
+    : [safeBlock(null, 0, kind)];
+  const versions = Array.isArray(item?.versions) ? item.versions.slice(0, MAX_VERSIONS).map((version) => ({
+    id: String(version?.id || uid("version")),
+    name: String(version?.name || "保存的版本").slice(0, 80),
+    createdAt: String(version?.createdAt || now()),
+    blocks: Array.isArray(version?.blocks) ? version.blocks.slice(0, 300).map((block, index) => safeBlock(block, index, kind)) : [],
+  })) : [];
+  return {
+    id: String(item?.id || uid("document")),
+    name: String(item?.name || "未命名文稿").slice(0, 120),
+    kind,
+    sourceSize: Math.max(0, Number(item?.sourceSize || 0)),
+    createdAt: String(item?.createdAt || now()),
+    updatedAt: String(item?.updatedAt || now()),
+    sourceStored: Boolean(item?.sourceStored),
+    processing: safeProcessing(item?.processing),
+    blocks,
+    versions,
+  };
+}
+
+function loadState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const documents = Array.isArray(parsed?.documents) ? parsed.documents.map(safeDocument) : [];
+    const selectedId = documents.some((document) => document.id === parsed?.selectedId) ? parsed.selectedId : documents[0]?.id || null;
+    return { documents, selectedId, saveTimer: 0 };
+  } catch {
+    return { documents: [], selectedId: null, saveTimer: 0 };
+  }
+}
+
+const state = loadState();
+state.view = currentDocument()?.sourceSize ? "source" : "edit";
+let toastTimer = 0;
+let jobPollTimer = 0;
+let selectedCapabilityId = "document-draft";
+
+function currentDocument() {
+  return state.documents.find((document) => document.id === state.selectedId) || null;
+}
+
+function setSaveState(text, saving = false) {
+  const node = document.querySelector("#saveState");
+  node.textContent = text;
+  node.classList.toggle("is-saving", saving);
+}
+
+function persistState(message = "已保存到本机") {
+  const selected = currentDocument();
+  if (selected) selected.updatedAt = now();
+  state.documents.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+  const removedDocuments = state.documents.slice(MAX_STORED_DOCUMENTS);
+  state.documents = state.documents.slice(0, MAX_STORED_DOCUMENTS);
+  removedDocuments.forEach((item) => void window.ClownfishOfficeSource.remove(item.id).catch(() => {}));
+  try {
+    writeStoredState();
+    setSaveState(message);
+  } catch {
+    setSaveState("本机空间不足");
+    showToast("本机存储空间不足，请先导出草稿", true);
+  }
+  renderRecentFiles();
+}
+
+function writeStoredState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ documents: state.documents, selectedId: state.selectedId }));
+}
+
+function scheduleSave() {
+  setSaveState("正在保存…", true);
+  window.clearTimeout(state.saveTimer);
+  state.saveTimer = window.setTimeout(() => persistState(), 420);
+}
+
+function showToast(message, error = false) {
+  const node = document.querySelector("#officeToast");
+  node.textContent = message;
+  node.classList.toggle("is-error", error);
+  node.classList.add("is-visible");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => node.classList.remove("is-visible"), 3200);
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `请求失败（${response.status}）`);
+  return body;
+}
+
+function textToBlocks(text, kind) {
+  const normalized = String(text || "").replace(/\r/g, "").trim();
+  const sectionPattern = /^##\s+(.+)$/gm;
+  const matches = [...normalized.matchAll(sectionPattern)];
+  if (matches.length) {
+    return matches.map((match, index) => {
+      const start = (match.index || 0) + match[0].length;
+      const end = matches[index + 1]?.index ?? normalized.length;
+      return safeBlock({ id: `block-${index + 1}`, title: match[1].trim(), text: normalized.slice(start, end).trim() }, index, kind);
+    });
+  }
+  const parts = normalized.split(/\n\s*\n+/).map((part) => part.trim()).filter(Boolean);
+  return (parts.length ? parts : [""]).slice(0, 300).map((part, index) => safeBlock({
+    id: `block-${index + 1}`,
+    title: kindTitle(kind, index),
+    text: part,
+  }, index, kind));
+}
+
+function renderRecentFiles() {
+  const root = document.querySelector("#recentFiles");
+  if (!state.documents.length) {
+    root.innerHTML = '<div class="empty-recent">打开过的文件会出现在这里，关闭页面后也能继续。</div>';
+    return;
+  }
+  root.innerHTML = state.documents.map((document) => `
+    <button class="file-row${document.id === state.selectedId ? " is-current" : ""}" type="button" data-document-id="${escapeHtml(document.id)}">
+      <span class="file-row-icon" aria-hidden="true">${iconSvg("file")}</span>
+      <span class="file-row-copy"><strong>${escapeHtml(document.name)}</strong><small>${formatLabel(document.kind)} · ${displayDate(document.updatedAt)}</small></span>
+    </button>`).join("");
+  root.querySelectorAll("[data-document-id]").forEach((button) => button.addEventListener("click", () => {
+    state.selectedId = button.dataset.documentId;
+    state.view = currentDocument()?.sourceSize ? "source" : "edit";
+    persistState("已打开本机工作副本");
+    render();
+    closeFilePanel();
+  }));
+}
+
+function autoResize(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.max(44, Math.min(520, textarea.scrollHeight))}px`;
+}
+
+function renderBlocks(current) {
+  const root = window.document.querySelector("#blockList");
+  root.innerHTML = current.blocks.map((block, index) => `
+    <article class="content-block" data-block-id="${escapeHtml(block.id)}">
+      <span class="block-index" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>
+      <label class="sr-only" for="block-title-${index}">内容块标题</label>
+      <input class="block-title" id="block-title-${index}" data-field="title" maxlength="120" value="${escapeHtml(block.title)}">
+      <label class="sr-only" for="block-text-${index}">内容</label>
+      <textarea class="block-text" id="block-text-${index}" data-field="text" maxlength="120000" placeholder="在这里输入内容…">${escapeHtml(block.text)}</textarea>
+    </article>`).join("");
+  root.querySelectorAll(".block-text").forEach(autoResize);
+}
+
+function renderVersions(current) {
+  const root = window.document.querySelector("#versionList");
+  document.querySelector("#versionCount").textContent = `${current?.versions.length || 0} 个`;
+  if (!current || !current.versions.length) {
+    root.innerHTML = '<p class="version-empty">保存版本后，可以比较变化或恢复到之前的内容。</p>';
+    return;
+  }
+  root.innerHTML = current.versions.map((version) => `
+    <div class="version-row">
+      <span class="version-row-copy"><strong>${escapeHtml(version.name)}</strong><small>${displayDate(version.createdAt)}</small></span>
+      <button type="button" data-compare-version="${escapeHtml(version.id)}">比较</button>
+      <button type="button" data-restore-version="${escapeHtml(version.id)}">恢复</button>
+    </div>`).join("");
+}
+
+function setDocumentView(view) {
+  const current = currentDocument();
+  const hasResult = Boolean(current?.processing);
+  if (!["source", "edit", "result"].includes(view)) view = current?.sourceSize ? "source" : "edit";
+  if (view === "result" && !hasResult) view = current?.sourceSize ? "source" : "edit";
+  state.view = view;
+  document.querySelectorAll("[data-document-view]").forEach((button) => {
+    const selected = button.dataset.documentView === view;
+    button.classList.toggle("is-current", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+  document.querySelector("#sourcePreview").hidden = view !== "source";
+  document.querySelector("#documentSurface").hidden = view !== "edit";
+  document.querySelector("#processingResult").hidden = view !== "result";
+  if (view === "source" && current) window.ClownfishOfficeSource.render(document.querySelector("#sourcePreview"), current);
+}
+
+function processingArtifact(job, processing) {
+  return job?.result?.data?.artifact || (processing?.artifactId ? {
+    id: processing.artifactId,
+    format: processing.artifactFormat,
+    summary: processing.summary,
+  } : null);
+}
+
+function latestJobCheckpoint(job) {
+  return Array.isArray(job?.checkpoints) ? job.checkpoints[job.checkpoints.length - 1] || null : null;
+}
+
+function renderProcessingState(current, job = null) {
+  const processing = current?.processing || null;
+  const resultTab = document.querySelector("#resultViewTab");
+  const run = document.querySelector("#assistantRun");
+  const startButton = document.querySelector("#startOfficeTask");
+  resultTab.hidden = !processing;
+  run.hidden = !processing;
+  if (!processing) {
+    startButton.disabled = !current;
+    startButton.textContent = "开始处理";
+    if (state.view === "result") setDocumentView(current?.sourceSize ? "source" : "edit");
+    return;
+  }
+
+  const status = job?.status || processing.status;
+  const checkpoint = latestJobCheckpoint(job);
+  const progress = Math.max(3, Math.min(100, Number(checkpoint?.progress ?? (status === "succeeded" ? 100 : status === "running" ? 18 : 3))));
+  const statusText = {
+    queued: "正在等待开始",
+    running: checkpoint?.status || "小丑鱼正在处理",
+    succeeded: "处理完成",
+    failed: job?.error?.message || job?.error || "处理失败",
+    cancelled: "处理已取消",
+  }[status] || "正在处理";
+  const active = status === "queued" || status === "running";
+  startButton.disabled = active || !current;
+  startButton.textContent = active ? "正在处理…" : "再次处理";
+  document.querySelector("#assistantRunTitle").textContent = active ? "正在处理当前文件" : status === "succeeded" ? "结果已经生成" : "本次处理未完成";
+  document.querySelector("#assistantRunText").textContent = statusText;
+  document.querySelector("#assistantRunProgress").style.width = `${progress}%`;
+  document.querySelector("#cancelOfficeTask").hidden = !active;
+
+  document.querySelector("#processingResultTitle").textContent = status === "succeeded" ? "处理完成" : statusText;
+  document.querySelector("#processingResultText").textContent = active
+    ? "你可以留在当前页面，完成后结果会自动出现。"
+    : status === "succeeded" ? "结果已经保存在本机，可以继续查看或下载。" : "可以修改要求后再次处理。";
+  document.querySelector("#processingResultProgress").style.width = `${progress}%`;
+  const artifact = processingArtifact(job, processing);
+  const frame = document.querySelector("#processingResultFrame");
+  const empty = document.querySelector("#processingResultEmpty");
+  const actions = document.querySelector("#processingResultActions");
+  if (status === "succeeded" && artifact?.id) {
+    const previewUrl = `/api/capabilities/artifact/preview?id=${encodeURIComponent(artifact.id)}`;
+    if (!frame.src.endsWith(previewUrl)) frame.src = previewUrl;
+    frame.hidden = false;
+    empty.hidden = true;
+    actions.hidden = false;
+    document.querySelector("#openProcessingResult").href = previewUrl;
+    document.querySelector("#downloadProcessingResult").href = `/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}&download=1`;
+  } else {
+    frame.hidden = true;
+    frame.removeAttribute("src");
+    empty.hidden = false;
+    actions.hidden = true;
+  }
+}
+
+function render() {
+  renderRecentFiles();
+  const current = currentDocument();
+  document.querySelector("#editorEmpty").hidden = Boolean(current);
+  document.querySelector("#editorWorkspace").hidden = !current;
+  document.querySelector("#startOfficeTask").disabled = !current;
+  if (!current) {
+    renderVersions(null);
+    document.querySelector("#diffPanel").hidden = true;
+    renderProcessingState(null);
+    return;
+  }
+  document.querySelector("#formatBadge").textContent = formatLabel(current.kind);
+  document.querySelector("#documentName").value = current.name;
+  const size = current.sourceSize ? ` · ${Math.max(1, Math.round(current.sourceSize / 1024))} KB` : "";
+  document.querySelector("#documentMeta").textContent = `本机工作副本${size} · 原文件未改动`;
+  document.querySelector("#sourceState").textContent = current.sourceStored ? "原文件保留在本机" : current.sourceSize ? "重新打开可恢复原始版式" : "空白文稿";
+  renderBlocks(current);
+  renderVersions(current);
+  if (current.processing && ["queued", "running", "succeeded"].includes(current.processing.status)) state.view = "result";
+  setDocumentView(state.view);
+  renderProcessingState(current);
+  if (current.processing) void refreshOfficeJob(current.processing.jobId);
+}
+
+function createBlankDocument() {
+  const createdAt = now();
+  const document = safeDocument({
+    id: uid("document"),
+    name: "未命名文稿",
+    kind: "docx",
+    sourceSize: 0,
+    createdAt,
+    updatedAt: createdAt,
+    sourceStored: false,
+    blocks: [{ id: uid("block"), title: "正文", text: "" }],
+    versions: [],
+  });
+  state.documents.unshift(document);
+  state.selectedId = document.id;
+  state.view = "edit";
+  persistState("空白文稿已建立");
+  render();
+  document.querySelector("#documentName").focus();
+  showToast("空白文稿已建立，内容会自动保存在本机");
+}
+
+async function fileToBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+async function importFile(file) {
+  if (!file) return;
+  if (!/\.(docx|pptx|xlsx|pdf)$/i.test(file.name)) return showToast("支持 Word、PowerPoint、Excel 和 PDF 文件", true);
+  if (file.size > 8 * 1024 * 1024) return showToast("办公文件不能超过 8 MB", true);
+  setSaveState("正在读取文件…", true);
+  try {
+    const response = await api("/api/files/extract", {
+      method: "POST",
+      body: JSON.stringify({ name: file.name, dataBase64: await fileToBase64(file) }),
+    });
+    const extraction = response.extraction;
+    const createdAt = now();
+    const document = safeDocument({
+      id: uid("document"),
+      name: file.name.replace(/\.(docx|pptx|xlsx|pdf)$/i, ""),
+      kind: extraction.kind,
+      sourceSize: file.size,
+      createdAt,
+      updatedAt: createdAt,
+      sourceStored: false,
+      blocks: textToBlocks(extraction.text, extraction.kind),
+      versions: [],
+    });
+    try {
+      document.sourceStored = await window.ClownfishOfficeSource.save(document.id, file);
+    } catch {
+      document.sourceStored = false;
+    }
+    const replaced = state.documents.filter((item) => item.name === document.name && item.kind === document.kind);
+    state.documents = state.documents.filter((item) => !(item.name === document.name && item.kind === document.kind));
+    replaced.forEach((item) => void window.ClownfishOfficeSource.remove(item.id).catch(() => {}));
+    state.documents.unshift(document);
+    state.selectedId = document.id;
+    state.view = "source";
+    persistState(extraction.truncated ? "已读取可处理的前半部分" : "文件已读取");
+    render();
+    showToast(extraction.truncated ? "文件较长，已保留原文件和可处理的前半部分" : document.sourceStored ? "文件已打开，原始版本保留在本机" : "文件已打开，工作副本不会覆盖原文件");
+  } catch (error) {
+    setSaveState("读取失败");
+    showToast(error instanceof Error ? error.message : "文件读取失败", true);
+  }
+}
+
+function addBlock() {
+  const current = currentDocument();
+  if (!current) return;
+  current.blocks.push(safeBlock({ id: uid("block"), title: kindTitle(current.kind, current.blocks.length), text: "" }, current.blocks.length, current.kind));
+  scheduleSave();
+  renderBlocks(current);
+  const textareas = document.querySelectorAll(".block-text");
+  textareas[textareas.length - 1]?.focus();
+}
+
+function saveVersion() {
+  const current = currentDocument();
+  if (!current) return;
+  const createdAt = now();
+  current.versions.unshift({
+    id: uid("version"),
+    name: `版本 ${current.versions.length + 1}`,
+    createdAt,
+    blocks: current.blocks.map((block) => ({ ...block })),
+  });
+  current.versions = current.versions.slice(0, MAX_VERSIONS);
+  persistState("版本已保存");
+  renderVersions(current);
+  showToast("已保存一个可恢复的本机版本");
+}
+
+function compareVersion(versionId) {
+  const current = currentDocument();
+  const version = current?.versions.find((item) => item.id === versionId);
+  if (!current || !version) return;
+  const baseline = new Map(version.blocks.map((block) => [block.id, block]));
+  const active = new Map(current.blocks.map((block) => [block.id, block]));
+  let added = 0;
+  let changed = 0;
+  let removed = 0;
+  for (const [id, block] of active) {
+    const previous = baseline.get(id);
+    if (!previous) added += 1;
+    else if (previous.title !== block.title || previous.text !== block.text) changed += 1;
+  }
+  for (const id of baseline.keys()) if (!active.has(id)) removed += 1;
+  document.querySelector("#diffTitle").textContent = `与「${version.name}」比较`;
+  document.querySelector("#diffSummary").innerHTML = `
+    <div class="diff-stat">
+      <span><strong>${added}</strong><small>新增</small></span>
+      <span><strong>${changed}</strong><small>修改</small></span>
+      <span><strong>${removed}</strong><small>移除</small></span>
+    </div>`;
+  document.querySelector("#diffPanel").hidden = false;
+}
+
+function restoreVersion(versionId) {
+  const current = currentDocument();
+  const version = current?.versions.find((item) => item.id === versionId);
+  if (!current || !version) return;
+  if (!window.confirm(`恢复到「${version.name}」？当前工作副本仍会自动保存，但未单独保存的版本不会保留。`)) return;
+  current.blocks = version.blocks.map((block, index) => safeBlock({ ...block }, index, current.kind));
+  persistState("版本已恢复");
+  render();
+  showToast("版本已恢复");
+}
+
+function documentMarkdown(current) {
+  return current.blocks.map((block) => `## ${block.title}\n\n${block.text}`).join("\n\n").trim();
+}
+
+async function exportDraft() {
+  const current = currentDocument();
+  if (!current) return;
+  const format = document.querySelector("#exportFormat").value;
+  setSaveState("正在生成文件…", true);
+  try {
+    const response = await fetch("/api/files/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: current.name || "办公文稿",
+        format,
+        blocks: current.blocks.map(({ title, text }) => ({ title, text })),
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "导出失败（" + response.status + "）");
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = (current.name || "办公文稿") + "." + format;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const warnings = decodeURIComponent(response.headers.get("X-Clownfish-Warnings") || "");
+    setSaveState("文件已生成");
+    showToast(warnings || "已导出为 " + format.toUpperCase(), Boolean(warnings));
+  } catch (error) {
+    setSaveState("导出失败");
+    showToast(error instanceof Error ? error.message : "导出失败", true);
+  }
+}
+
+function capabilityForRequest(request, format) {
+  if (format === "pptx") return "presentation-builder";
+  if (/(会议|纪要|行动项|负责人|截止时间)/i.test(request)) return "meeting-minutes";
+  if (/(研究|调研|来源|核验|行业)/i.test(request)) return "research-brief";
+  if (/(分析|比较|异常|结论|决策|风险)/i.test(request)) return "decision-brief";
+  if (format === "html") return selectedCapabilityId === "decision-brief" ? "decision-brief" : "html-report";
+  return "document-draft";
+}
+
+function scheduleOfficeJobPoll(jobId, delay = JOB_POLL_INTERVAL) {
+  window.clearTimeout(jobPollTimer);
+  jobPollTimer = window.setTimeout(() => void refreshOfficeJob(jobId), delay);
+}
+
+async function refreshOfficeJob(jobId) {
+  const current = currentDocument();
+  if (!current?.processing || current.processing.jobId !== jobId) return;
+  try {
+    const response = await api(`/api/agent/job?id=${encodeURIComponent(jobId)}`);
+    const job = response.job;
+    if (!job || currentDocument()?.processing?.jobId !== jobId) return;
+    const previousStatus = current.processing.status;
+    const artifact = processingArtifact(job, current.processing);
+    current.processing.status = job.status;
+    current.processing.summary = String(job.result?.summary || artifact?.summary || current.processing.summary || "").slice(0, 2000);
+    if (artifact?.id) {
+      current.processing.artifactId = artifact.id;
+      current.processing.artifactFormat = artifact.format || "";
+    }
+    writeStoredState();
+    renderProcessingState(current, job);
+    if (job.status === "queued" || job.status === "running") {
+      scheduleOfficeJobPoll(jobId);
+      return;
+    }
+    window.clearTimeout(jobPollTimer);
+    if (previousStatus !== job.status) {
+      if (job.status === "succeeded") showToast("处理完成，结果已经显示在当前页面");
+      else if (job.status === "failed") showToast(job.error?.message || job.error || "处理失败，可以修改要求后重试", true);
+      else if (job.status === "cancelled") showToast("处理已取消");
+    }
+  } catch {
+    document.querySelector("#assistantRunText").textContent = "连接暂时中断，正在重试…";
+    scheduleOfficeJobPoll(jobId, 2600);
+  }
+}
+
+async function startOfficeTask() {
+  const current = currentDocument();
+  if (!current) return showToast("先打开一个文件", true);
+  const request = document.querySelector("#assistantPrompt").value.trim();
+  if (!request) return showToast("先写下希望小丑鱼怎么处理", true);
+  if (current.processing && ["queued", "running"].includes(current.processing.status)) return showToast("当前文件正在处理中");
+  const format = document.querySelector("#assistantFormat").value;
+  const capabilityId = capabilityForRequest(request, format);
+  const text = documentMarkdown(current);
+  const button = document.querySelector("#startOfficeTask");
+  button.disabled = true;
+  button.textContent = "正在开始…";
+  try {
+    const response = await api("/api/agent/job", {
+      method: "POST",
+      body: JSON.stringify({
+        kind: "capability-adhoc",
+        title: request.slice(0, 60),
+        personaId: "clownfish",
+        capabilityId,
+        instruction: `${request}\n\n请基于下面的当前工作副本完成任务。保留事实、数字和明确约束；无法确认的内容标记为待核验。不要覆盖原文件。\n\n--- ${current.name}（${formatLabel(current.kind)} 工作副本）---\n${text}`,
+        format,
+        memoryMode: "preferences",
+        idempotencyKey: `office-${current.id}-${crypto.randomUUID()}`,
+      }),
+    });
+    const job = response.job;
+    if (!job?.id) throw new Error("任务没有成功建立");
+    current.processing = safeProcessing({
+      jobId: job.id,
+      request,
+      capabilityId,
+      format,
+      startedAt: now(),
+      status: job.status || "queued",
+    });
+    writeStoredState();
+    state.view = "result";
+    setDocumentView("result");
+    renderProcessingState(current, job);
+    scheduleOfficeJobPoll(job.id, 500);
+    showToast("已经开始处理，结果会直接显示在这里");
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "开始处理";
+    showToast(error instanceof Error ? error.message : "任务未能开始", true);
+  }
+}
+
+async function cancelOfficeTask() {
+  const current = currentDocument();
+  const jobId = current?.processing?.jobId;
+  if (!jobId || !["queued", "running"].includes(current.processing.status)) return;
+  try {
+    await api("/api/agent/job/cancel", { method: "POST", body: JSON.stringify({ id: jobId }) });
+    scheduleOfficeJobPoll(jobId, 100);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "无法取消处理", true);
+  }
+}
+
+function closeFilePanel() {
+  document.querySelector("#filePanel").classList.remove("is-open");
+}
+
+function openFilePanel() {
+  document.querySelector("#filePanel").classList.add("is-open");
+}
+
+function bindEvents() {
+  document.querySelector("#newDocument").addEventListener("click", createBlankDocument);
+  document.querySelector("#newDocumentEmpty").addEventListener("click", createBlankDocument);
+  document.querySelector("#officeFileInput").addEventListener("change", async (event) => {
+    await importFile(event.target.files?.[0]);
+    event.target.value = "";
+  });
+  document.querySelector("#documentName").addEventListener("input", (event) => {
+    const current = currentDocument();
+    if (!current) return;
+    current.name = event.target.value.slice(0, 120);
+    scheduleSave();
+  });
+  document.querySelector("#blockList").addEventListener("input", (event) => {
+    const row = event.target.closest("[data-block-id]");
+    const current = currentDocument();
+    const block = current?.blocks.find((item) => item.id === row?.dataset.blockId);
+    if (!block || !event.target.dataset.field) return;
+    block[event.target.dataset.field] = event.target.value;
+    if (event.target.matches("textarea")) autoResize(event.target);
+    scheduleSave();
+  });
+  document.querySelector("#addBlock").addEventListener("click", addBlock);
+  document.querySelector("#saveVersion").addEventListener("click", saveVersion);
+  document.querySelector("#exportDraft").addEventListener("click", exportDraft);
+  document.querySelector("#startOfficeTask").addEventListener("click", startOfficeTask);
+  document.querySelector("#cancelOfficeTask").addEventListener("click", cancelOfficeTask);
+  document.querySelectorAll("[data-document-view]").forEach((button) => button.addEventListener("click", () => setDocumentView(button.dataset.documentView)));
+  document.querySelector("#versionList").addEventListener("click", (event) => {
+    const compare = event.target.closest("[data-compare-version]");
+    const restore = event.target.closest("[data-restore-version]");
+    if (compare) compareVersion(compare.dataset.compareVersion);
+    if (restore) restoreVersion(restore.dataset.restoreVersion);
+  });
+  document.querySelector("#closeDiff").addEventListener("click", () => { document.querySelector("#diffPanel").hidden = true; });
+  document.querySelectorAll("[data-prompt]").forEach((button) => button.addEventListener("click", () => {
+    selectedCapabilityId = button.dataset.capability || "document-draft";
+    document.querySelector("#assistantPrompt").value = button.dataset.prompt;
+    document.querySelector("#assistantFormat").value = button.dataset.format || "doc";
+    document.querySelectorAll("[data-prompt]").forEach((item) => item.classList.toggle("is-selected", item === button));
+    document.querySelector("#assistantPrompt").focus();
+  }));
+  document.querySelector("#assistantFormat").addEventListener("change", (event) => {
+    selectedCapabilityId = event.target.value === "pptx" ? "presentation-builder" : event.target.value === "html" ? "html-report" : "document-draft";
+    document.querySelectorAll("[data-prompt]").forEach((item) => item.classList.remove("is-selected"));
+  });
+  document.querySelector("#toggleFiles").addEventListener("click", openFilePanel);
+  document.querySelector("#closeFiles").addEventListener("click", closeFilePanel);
+  document.querySelector("#filePanelBackdrop").addEventListener("click", closeFilePanel);
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeFilePanel();
+  });
+  window.addEventListener("resize", () => { if (window.innerWidth > 720) closeFilePanel(); });
+  window.addEventListener("beforeunload", () => {
+    window.clearTimeout(jobPollTimer);
+    window.ClownfishOfficeSource.release();
+  });
+}
+
+hydrateIcons();
+bindEvents();
+render();

@@ -9,7 +9,7 @@ interface ModelPrice {
 
 export const COMPANION_PRICING_DATE = "2026-08-02";
 
-// Nemos Companion currently executes Agent runs through BigModel China.
+// 小丑鱼 currently executes Agent runs through BigModel China.
 // Tiered models use the highest published text-token tier to avoid understating cost.
 const MODEL_PRICES: readonly ModelPrice[] = [
   price(/^glm-5\.2(?:\[1m\])?$/i, "CNY", 8, 28),

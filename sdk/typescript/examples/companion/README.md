@@ -1,6 +1,6 @@
-# Nemos Companion 示例客户端
+# 小丑鱼桌面客户端
 
-这是 Nemos 的本机桌面客户端示例，也可以作为独立产品使用。
+这是小丑鱼的本机桌面客户端，也可以直接作为独立产品使用。
 
 当前版本：`0.2.19`
 
@@ -9,27 +9,29 @@
 便携版解压后运行：
 
 ```text
-Nemos Companion.exe
+小丑鱼.exe
 ```
 
 或：
 
 ```text
-Start Nemos Companion.cmd
+启动小丑鱼.cmd
 ```
 
 客户端会自动启动本机服务，并打开内置 WebView 界面。默认服务端口是 `8787`。
 
 ## 用户只需要配置什么
 
-普通用户只需要在「设置」里填写一个智谱 Key。填写后会加密保存在当前 Windows 用户下，重启后仍然生效。
+在「设置 → 模型连接」中选择模型服务商、填写模型名称和 API Key。客户端会先测试连接，再将配置加密保存在当前 Windows 用户下，重启后仍然生效。
 
-其他模型、ASR、私域源、X、开发者参数都应放在开发者模式里。
+界面内置智谱 GLM、OpenAI、Anthropic Claude、DeepSeek、通义千问、MiniMax 与自定义服务预设，并支持 OpenAI 兼容和 Anthropic 兼容协议。识图、联网搜索、语音和记忆向量是否可用，取决于所选服务与模型。
+
+无 Key 时仍可浏览界面和使用本地功能；ASR、私域来源、X 与开发者参数放在对应设置或开发者模式中。
 
 ## 主要能力
 
 - 微信式单聊和群聊
-- 专家顾问角色：贝索斯、沃纳、诺曼、杜阿尔特、库珀、DHH、巴赫、海托华、汤普森、坎贝尔、高汀、罗斯、保罗·格雷厄姆等，可独立单聊，也会自动进入「Nemos 顾问团」；群聊默认由知微统一承载，@ 某位专家时该专家单独回复
+- 专家顾问角色：可行性顾问、产品顾问、决策顾问、思考教练、长期战略顾问、系统架构师、用户体验顾问、界面设计师、交互设计师、精简开发顾问、质量测试师、发布运维师、产业分析师、定价财务顾问、品牌定位顾问、销售增长顾问、创业验证顾问等，可独立单聊，也会自动进入「小丑鱼专家组」；群聊默认由小丑鱼统一承载，@ 某位专家时该专家单独回复
 - 角色改名、人设修改、头像修改
 - 用户自己的头像修改
 - 首次启动称呼设置
@@ -40,7 +42,10 @@ Start Nemos Companion.cmd
 - 语音输入和语音通话
 - 聊天导出 HTML
 - 交付物在聊天气泡里查看和下载
-- 能力与任务管理
+- 对话中的目标可直接交给能力页，角色和任务要求会自动带入；运行状态与结果会回到原对话
+- 对话树支持独立对话、分支、自动备份回退，以及每段对话单独设置模型、思考深度和工具范围
+- 独立「工作」页集中管理任务、结果、运行记录和记忆偏好
+- 12 项内置能力与任务管理：PPT、正式文档、深度研究、港股资料简报、复杂问题梳理、产品设计、会议纪要、网页报告、方案比较、商务推进、市场机会模拟和新能力生成
 - Skills URL 安装、本机安装与复用
 - 预装 Skills 会在新机器首次启动时自动注册到本机能力层
 - 已安装 Skill 会参与聊天里的自动能力选择；外部新增 Skills 需要用户手动安装或导入
@@ -48,7 +53,9 @@ Start Nemos Companion.cmd
 - 长任务持久排队、实时进度、可取消和受保护重试，完成后由角色交付
 - Skill、MCP 与 Agent App 统一清单、按需加载和权限边界
 - 受控多 Agent 编排：独立会话、预算、产物引用和失败隔离
-- Markdown、HTML、JSON、文本、文档草稿输出
+- 办公文件工作台：读取 DOCX、PPTX、XLSX、PDF，保存工作副本、版本比较与恢复，不覆盖原文件
+- 真实导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown；PPT 内容过密时返回版面复核提示
+- 港股资料适配器：本机关注列表、港交所官方公告、带时间戳的第三方行情快照；只读且不执行交易
 - 微信私域资料导入和 X 来源连接框架
 
 ## 数据目录
@@ -56,22 +63,22 @@ Start Nemos Companion.cmd
 默认数据目录：
 
 ```text
-~/.nemos-companion
+~/.clownfish
 ```
 
 可用环境变量覆盖：
 
 ```powershell
-$env:NEMOS_COMPANION_HOME="D:\your-data-dir"
+$env:CLOWNFISH_HOME="D:\your-data-dir"
 ```
 
 关键文件：
 
 ```text
 companion.db                 本机记忆数据库
-llm-key.dpapi.json           加密保存的智谱 Key
+llm-key.dpapi.json           加密保存的模型服务、模型名称和 API Key
 tool-settings.dpapi.json     工具配置
-capabilities\                能力、任务、Skills 和交付物
+capabilities\                能力、任务、Skills、市场关注列表和交付物
 agent-runs.json              脱敏后的 Agent 运行与事件记录
 agent-jobs.json              可恢复的后台任务队列
 agent-extensions.json        Skill、MCP 与 Agent App 扩展注册表
@@ -98,13 +105,13 @@ http://localhost:8787
 在 `sdk/typescript` 目录执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-NemosCompanion.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-Clownfish.ps1
 ```
 
 构建输出：
 
 ```text
-examples\companion\client\dist\portable\Nemos Companion
+examples\companion\client\dist\portable\小丑鱼
 ```
 
 ## 打包 zip
@@ -112,10 +119,10 @@ examples\companion\client\dist\portable\Nemos Companion
 可以直接压缩便携目录，也可以从已部署目录打包：
 
 ```powershell
-Compress-Archive -LiteralPath "examples\companion\client\dist\portable\Nemos Companion" -DestinationPath "Nemos Companion 0.2.19.zip" -Force
+Compress-Archive -LiteralPath "examples\companion\client\dist\portable\小丑鱼" -DestinationPath "小丑鱼 0.2.19.zip" -Force
 ```
 
-分享前确认压缩包内不包含 `~/.nemos-companion` 数据目录。
+分享前确认压缩包内不包含 `~/.clownfish` 数据目录。旧版数据目录会自动沿用，不会丢失历史数据。
 
 ## 验证
 
@@ -129,7 +136,10 @@ npm run build
 ```text
 GET http://127.0.0.1:8787/api/version
 GET http://127.0.0.1:8787/api/llm
+GET http://127.0.0.1:8787/api/llm-config
 GET http://127.0.0.1:8787/api/capabilities/tools
+GET http://127.0.0.1:8787/api/market/watchlist
+POST http://127.0.0.1:8787/api/market/snapshot
 ```
 
 ## 更新约定

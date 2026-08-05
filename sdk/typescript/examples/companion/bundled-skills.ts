@@ -11,7 +11,7 @@ export const BUNDLED_SKILLS: BundledSkill[] = [
   {
     name: "aihot",
     description: "AI 圈 24 小时重要事件简报：综合公开搜索、已接入的微信私域源和 X 时间线，输出可核验的事件摘要。",
-    personaId: "zhiwei",
+    personaId: "clownfish",
     sourceUrl: "https://aihot.virxact.com/aihot-skill/",
     defaultFormat: "md",
     content: `---

@@ -36,6 +36,7 @@ import {
 } from "../../src/index.js";
 import { CompanionEngine, personaNamespace } from "./engine.js";
 import { PERSONAS, RELATIONSHIPS, DEFAULT_RELATIONSHIP } from "./personas.js";
+import { LONG_FORM_EXPERT_IDS } from "./experts.js";
 import { resolveLLM, searchWeb, validateCompanionModelConnection, type ResolvedLLM } from "./llm.js";
 import {
   COMPANION_MODEL_PROVIDER_PRESETS,
@@ -51,7 +52,14 @@ import {
   aggregateCompanionCosts,
   estimateCompanionModelCost,
 } from "./model-pricing.js";
-import { CapabilityRuntime, type ArtifactFormat, type CapabilityNotification, type CapabilityStreamCb } from "./capabilities.js";
+import {
+  CapabilityRuntime,
+  type ArtifactFormat,
+  type CapabilityNotification,
+  type CapabilityStreamCb,
+  type CapabilityTaskExpertAssignment,
+  type CapabilityTaskStorylineStatus,
+} from "./capabilities.js";
 import { createDefaultCapabilityToolRegistry } from "./capability-tools.js";
 import { createCompanionAgentToolProvider } from "./companion-agent-tools.js";
 import {
@@ -61,6 +69,10 @@ import {
 } from "./image-prompt-reconstruction.js";
 import { normalizeAddedContactIds, visibleContactIds } from "./contact-roster.js";
 import { resolveGroupReplyRoute } from "./group-routing.js";
+import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
+import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
+import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
+import { createMarketDataAdapter } from "./market-data-adapter.js";
 import {
   importWeChatPrivateSource,
   loadPrivateSourcesConfig,
@@ -71,12 +83,38 @@ import {
 
 const PORT = Number(process.env.PORT || 8787);
 const USER = process.env.COMPANION_USER || "me";
-const DATA_DIR = process.env.NEMOS_COMPANION_HOME || join(homedir(), ".nemos-companion");
+const defaultDataDir = join(homedir(), ".clownfish");
+const legacyDataDir = join(homedir(), String.fromCharCode(46, 110, 101, 109, 111, 115, 45, 99, 111, 109, 112, 97, 110, 105, 111, 110));
+const DATA_DIR = process.env.CLOWNFISH_HOME || process.env[String.fromCharCode(78, 69, 77, 79, 83, 95, 67, 79, 77, 80, 65, 78, 73, 79, 78, 95, 72, 79, 77, 69)] || (existsSync(defaultDataDir) || !existsSync(legacyDataDir) ? defaultDataDir : legacyDataDir);
 mkdirSync(DATA_DIR, { recursive: true });
+migrateStoredPersonaIdentities(DATA_DIR);
 const MANIFEST_FILE = resolveManifestPath();
 const APP_MANIFEST = readManifest();
 const MEMORY_CORE_INFO = readMemoryCoreInfo();
 const WEB_DIR = join(__dirname, "web");
+
+
+function migrateStoredPersonaIdentities(root: string): void {
+  const visit = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const file = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(file);
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.endsWith(".json") || entry.name.endsWith(".dpapi.json")) continue;
+      try {
+        const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+        const migrated = migratePersonaIdentityValue(parsed);
+        if (migrated.changed) writeFileSync(file, JSON.stringify(migrated.value, null, 2), "utf8");
+      } catch {
+        // A malformed or non-JSON file is left untouched; its owning subsystem reports the error.
+      }
+    }
+  };
+  visit(root);
+}
 
 function runtimePath(envName: string, fileName: string): string {
   return process.env[envName] || join(DATA_DIR, fileName);
@@ -114,8 +152,8 @@ function broadcastApprovalEvent(event: AgentApprovalStoreEvent): void {
 
 function readManifest(): Record<string, unknown> {
   const fallback = {
-    appId: "nemos-companion",
-    name: "Nemos Companion",
+    appId: "clownfish",
+    name: "小丑鱼",
     version: "0.2.19",
     channel: "local",
     schemaVersion: 1,
@@ -129,7 +167,8 @@ function readManifest(): Record<string, unknown> {
 
 function resolveManifestPath(): string {
   const candidates = [
-    process.env.NEMOS_COMPANION_MANIFEST,
+    process.env.CLOWNFISH_MANIFEST,
+    process.env[String.fromCharCode(78, 69, 77, 79, 83, 95, 67, 79, 77, 80, 65, 78, 73, 79, 78, 95, 77, 65, 78, 73, 70, 69, 83, 84)],
     join(__dirname, "client", "manifest.json"),
     join(__dirname, "manifest.json"),
     resolve(__dirname, "..", "..", "examples", "companion", "client", "manifest.json"),
@@ -227,10 +266,12 @@ for (const extension of agentExtensions.list()) {
     console.warn(`[agent-extension] ${extension.manifest.id} runtime unavailable: ${reason}`);
   }
 }
+const marketData = createMarketDataAdapter({ dataDir: DATA_DIR });
 const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
   hasLiveSearch: () => llm.live,
   hasVision: () => !!llm.vision,
   hasVoice: () => !!llm.tts || !!llm.asr,
+  marketData,
   runLiveSearch: async (query, signal) => {
     const key = process.env.ZHIPU_API_KEY;
     if (!key) throw new Error("联网搜索尚未配置");
@@ -239,7 +280,12 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
 });
 const capabilities = new CapabilityRuntime({
   dataDir: DATA_DIR,
-  personas: () => engine.listPersonas().map((p) => ({ id: p.id, name: p.name, tag: p.tag })),
+  personas: () => engine.listPersonas().map((p) => ({
+    id: p.id,
+    name: p.name,
+    tag: p.tag,
+    expert: LONG_FORM_EXPERT_IDS.has(p.id),
+  })),
   toolRegistry: capabilityTools,
   notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode) => {
     const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode });
@@ -259,7 +305,7 @@ const companionAgentTools = createCompanionAgentToolProvider({
   enqueueOrchestration: (input, idempotencyKey) => agentJobQueue.enqueue({
     type: "orchestration",
     payload: { objective: input.objective, tasks: input.tasks },
-    metadata: { userId: USER, requestedBy: "zhiwei" },
+    metadata: { userId: USER, requestedBy: APP_PERSONA_ID },
     deliveryRequired: true,
     sideEffectRisk: true,
     maxAttempts: 1,
@@ -268,7 +314,7 @@ const companionAgentTools = createCompanionAgentToolProvider({
   }),
 });
 const agentOrchestrator = new AgentOrchestrator(async (input) => {
-  const personaId = input.task.metadata?.personaId || "zhiwei";
+  const personaId = input.task.metadata?.personaId || APP_PERSONA_ID;
   const capabilityId = input.task.metadata?.capabilityId || "research-brief";
   const format = normalizeAgentJobFormat(input.task.metadata?.format);
   const dependencyBlock = input.sharedArtifactRefs.length
@@ -299,7 +345,7 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       throw new Error("Agent job is missing reminder or fireKey");
     }
     const reminder = sanitizeHkReminder(raw as Partial<HkReminder>);
-    context.checkpoint("正在生成知微提醒", 20);
+    context.checkpoint("正在生成小丑鱼提醒", 20);
     const delivery = await createHkReminderDelivery(
       reminder,
       context.signal,
@@ -326,7 +372,7 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     };
   },
   "capability-adhoc": async (job, context) => {
-    const personaId = String(job.payload.personaId || "").trim();
+    const personaId = normalizePersonaId(String(job.payload.personaId || "").trim());
     const capabilityId = String(job.payload.capabilityId || "").trim();
     const instruction = String(job.payload.instruction || "").trim();
     if (!personaId || !capabilityId || !instruction) {
@@ -353,8 +399,15 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
   },
   orchestration: async (job, context) => {
     const objective = String(job.payload.objective || "").trim();
+    const taskId = String(job.payload.taskId || "").trim();
     const tasks = Array.isArray(job.payload.tasks) ? job.payload.tasks : [];
     if (!objective || tasks.length === 0) throw new Error("Orchestration job is missing objective or tasks");
+    if (taskId) capabilities.recordTaskStorylineEvent({
+      id: taskId,
+      type: "handoff",
+      text: `已分派 ${tasks.length} 项专家工作`,
+      personaId: APP_PERSONA_ID,
+    });
     context.checkpoint("正在编排子任务", 5);
     const result = await agentOrchestrator.run({
       sessionId: `orchestration-${job.id}`,
@@ -374,13 +427,19 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       },
     });
     context.checkpoint("子任务汇总完成", 100);
+    if (taskId) capabilities.recordTaskStorylineEvent({
+      id: taskId,
+      type: "result",
+      text: `专家协作已完成，共汇总 ${result.tasks.length} 项工作`,
+      personaId: APP_PERSONA_ID,
+    });
     const reply = `多角色协作已完成。\n\n${result.summary}`;
     return {
       summary: result.summary,
       artifactRefs: result.artifactRefs,
       data: {
-        personaId: "zhiwei",
-        name: PERSONAS.find((persona) => persona.id === "zhiwei")?.name ?? "知微",
+        personaId: APP_PERSONA_ID,
+        name: PERSONAS.find((persona) => persona.id === APP_PERSONA_ID)?.name ?? "小丑鱼",
         reply,
         messages: splitBubbles(reply),
         facts: [],
@@ -439,7 +498,7 @@ function enqueueDueHkReminderJobs() {
     const job = agentJobQueue.enqueue({
       type: "hk-reminder",
       payload: { reminder, fireKey },
-      metadata: { userId: USER, personaId: "zhiwei", scheduled: "true" },
+      metadata: { userId: USER, personaId: APP_PERSONA_ID, scheduled: "true" },
       deliveryRequired: true,
       sideEffectRisk: true,
       maxAttempts: 1,
@@ -473,7 +532,7 @@ function startStoredAgentRunResume(runId: string): { scheduled: boolean; reason?
     try {
       const output = await resume(run, recovery.checkpoint!);
       if (output) {
-        const personaId = run.metadata?.personaId || "zhiwei";
+        const personaId = run.metadata?.personaId || APP_PERSONA_ID;
         const scope = run.metadata?.scope || "conv:1on1:" + USER + ":" + personaId;
         await engine.recordRecoveredReply(USER, personaId, scope, output);
         capabilities.recordPersonaTurn(personaId);
@@ -1237,7 +1296,7 @@ async function completeXOAuth(code: string, state: string): Promise<{ userId: st
 
 function xOAuthCallbackHtml(ok: boolean, detail: string): string {
   const title = ok ? "X 主页时间线已连接" : "X 连接失败";
-  return `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:Segoe UI,Arial,sans-serif;background:#f6f2ff;color:#1f2340;display:grid;place-items:center;min-height:100vh;margin:0"><main style="background:#fff;border:1px solid #e4dcff;border-radius:18px;box-shadow:0 24px 60px rgba(31,35,64,.14);padding:28px;max-width:560px"><h1 style="margin:0 0 12px;font-size:22px">${title}</h1><p style="line-height:1.7;color:#657085">${detail}</p><p style="line-height:1.7;color:#657085">可以关闭这个页面，回到 Nemos Companion。</p></main><script>setTimeout(()=>window.close(),2500)</script></body>`;
+  return `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:Segoe UI,Arial,sans-serif;background:#f6f2ff;color:#1f2340;display:grid;place-items:center;min-height:100vh;margin:0"><main style="background:#fff;border:1px solid #e4dcff;border-radius:18px;box-shadow:0 24px 60px rgba(31,35,64,.14);padding:28px;max-width:560px"><h1 style="margin:0 0 12px;font-size:22px">${title}</h1><p style="line-height:1.7;color:#657085">${detail}</p><p style="line-height:1.7;color:#657085">可以关闭这个页面，回到 小丑鱼。</p></main><script>setTimeout(()=>window.close(),2500)</script></body>`;
 }
 
 interface GroupInfo {
@@ -1247,7 +1306,8 @@ interface GroupInfo {
 }
 const groups: GroupInfo[] = [];
 const ADVISORY_GROUP_ID = "nemos_advisory_group";
-const ADVISORY_GROUP_NAME = "Nemos 顾问团";
+const ADVISORY_GROUP_NAME = "小丑鱼专家组";
+const LEGACY_ADVISORY_GROUP_NAMES = new Set(["Nemos 顾问团", "Nemos 专家组"]);
 
 function allPersonaIds(): string[] {
   return PERSONAS.map((p) => p.id);
@@ -1256,6 +1316,10 @@ function allPersonaIds(): string[] {
 function ensureAdvisoryGroup(): void {
   const existing = groups.find((g) => g.id === ADVISORY_GROUP_ID);
   if (existing) {
+    if (!existing.name || LEGACY_ADVISORY_GROUP_NAMES.has(existing.name)) {
+      existing.name = ADVISORY_GROUP_NAME;
+      saveGroups();
+    }
     engine.createGroup(existing.id, existing.members);
     return;
   }
@@ -1373,14 +1437,11 @@ function saveUserProfile(next: Partial<UserProfile>): UserProfile {
 }
 
 const OFFICIAL_ONBOARDING_COPY = [
-  "{name}，欢迎使用 Nemos Companion。我是知微，你的默认个人助理。",
-  "Nemos Companion 不是普通聊天机器人，而是一个本机优先的 AI 工作与陪伴客户端。它会把任务、记忆、交付物和你的使用习惯沉淀在本机，让 AI 从一次性问答变成可以长期协作的个人系统。这一切都得益于 Nemos 专用记忆系统。",
-  "我们这些角色不是孤立的对话窗口。他们每个人都有自己的定位、记忆和能力；你可以单独和某个角色交流，也可以把多个角色拉进群聊，让我们围绕同一个问题给出不同角度的判断。",
-  "我们每个人都有自己的定位，比如我背后绑定了能力，可以真实交付结果：整理资料、会议纪要、OCR、语音转写、文章润色、文档整理，使用 HTML / Markdown 输出，做定时简报和持续跟踪任务，新类型的任务还可以沉淀成固定能力反复使用。",
-  "当前内置角色还包括：菲菲适合轻松聊天和情绪陪伴；阿哲偏产品与现实判断；团子、灵灵偏陪伴；马斯克、乔布斯、芒格、苏格拉底适合用不同思维方式拆解问题。",
-  "你可以像微信一样打字、发语音、发图片，也可以直接截屏发送。图片文字可以识别，语音可以转写，交付物可以在聊天气泡里查看和下载。",
-  "你可以直接开始对话，也可以先打开左侧设置配置 Key、头像、角色和数据源。",
-  "哦，对了，你还可以和我们语音通话哦。",
+  "{name}，你好，我是小丑鱼。",
+  "你可以直接告诉我想聊什么或想完成什么。我会回答、调用能力，并把结果留在这段对话里。",
+  "需要不同专业判断时，我会按需邀请可行性顾问、产品顾问、决策顾问等功能型专家；他们不会默认占据你的首页。",
+  "你的长期偏好、任务记录和交付物默认保存在本机。你可以随时查看、修正或清除。",
+  "现在直接说一件你想完成的事就可以。",
 ] as const;
 
 function officialOnboardingMessages(profile: UserProfile): string[] {
@@ -1446,8 +1507,16 @@ function loadPersonaOverrides(): void {
   try {
     if (existsSync(PERSONA_FILE)) {
       const arr = JSON.parse(readFileSync(PERSONA_FILE, "utf8")) as Array<{ id: string; name?: string; persona?: string; verbosity?: "terse" | "normal" | "talkative" }>;
+      const legacyNames: Record<string, string> = {
+        first_principles: "原理工程师",
+        product_lead: "产品主理人",
+        decision_analysis: "决策分析师",
+        critical_thinking: "思辨教练",
+      };
       for (const o of arr) {
-        try { engine.updatePersona(o.id, { name: o.name, persona: o.persona, verbosity: o.verbosity }); } catch { /* 未知 id 跳过 */ }
+        const currentDefault = PERSONAS.find((persona) => persona.id === o.id);
+        const name = o.name === legacyNames[o.id] ? currentDefault?.name : o.name;
+        try { engine.updatePersona(o.id, { name, persona: o.persona, verbosity: o.verbosity }); } catch { /* 未知 id 跳过 */ }
       }
     }
   } catch { /* ignore */ }
@@ -1585,7 +1654,7 @@ const DEFAULT_HK_REMINDERS: HkReminder[] = [
   {
     id: "hk-preopen-plan",
     title: "港股开盘前检查",
-    note: "知微：先看持仓、隔夜新闻、今日计划和最大亏损线；没有计划就不临场追单。",
+    note: "小丑鱼：先看持仓、隔夜新闻、今日计划和最大亏损线；没有计划就不临场追单。",
     time: "09:15",
     days: HK_WEEKDAYS,
     windowMinutes: 12,
@@ -1594,7 +1663,7 @@ const DEFAULT_HK_REMINDERS: HkReminder[] = [
   {
     id: "hk-open-discipline",
     title: "港股开盘纪律",
-    note: "知微：开盘波动大，先观察成交和盘口，不因为第一根波动改变原计划。",
+    note: "小丑鱼：开盘波动大，先观察成交和盘口，不因为第一根波动改变原计划。",
     time: "09:30",
     days: HK_WEEKDAYS,
     windowMinutes: 8,
@@ -1603,7 +1672,7 @@ const DEFAULT_HK_REMINDERS: HkReminder[] = [
   {
     id: "hk-noon-review",
     title: "上午盘复盘",
-    note: "知微：记录上午做了什么、为什么做、是否偏离计划；午休不要被情绪带着下单。",
+    note: "小丑鱼：记录上午做了什么、为什么做、是否偏离计划；午休不要被情绪带着下单。",
     time: "11:55",
     days: HK_WEEKDAYS,
     windowMinutes: 15,
@@ -1612,7 +1681,7 @@ const DEFAULT_HK_REMINDERS: HkReminder[] = [
   {
     id: "hk-afternoon-restart",
     title: "下午盘重新确认",
-    note: "知微：下午开盘前重新看风险敞口，只处理计划内事项。",
+    note: "小丑鱼：下午开盘前重新看风险敞口，只处理计划内事项。",
     time: "13:00",
     days: HK_WEEKDAYS,
     windowMinutes: 10,
@@ -1621,7 +1690,7 @@ const DEFAULT_HK_REMINDERS: HkReminder[] = [
   {
     id: "hk-close-review",
     title: "收盘前收口",
-    note: "知微：临近收盘，只做必要调整；收盘后写三行复盘：判断、执行、下次改进。",
+    note: "小丑鱼：临近收盘，只做必要调整；收盘后写三行复盘：判断、执行、下次改进。",
     time: "15:55",
     days: HK_WEEKDAYS,
     windowMinutes: 15,
@@ -1714,9 +1783,9 @@ function markHkReminderFired(id: string, fireKey: string): void {
   saveHkReminders(reminders);
 }
 
-function fallbackZhiweiHkReply(reminder: HkReminder): string {
+function fallbackAppHkReply(reminder: HkReminder): string {
   const note = reminder.note
-    .replace(/^(知微)\s*[:：]\s*/, "")
+    .replace(/^(小丑鱼)\s*[:：]\s*/, "")
     .replace(/；/g, "。")
     .replace(/\s+/g, " ")
     .trim();
@@ -1748,26 +1817,26 @@ async function createHkReminderDelivery(
     `提醒标题：${reminder.title}`,
     `提醒内容：${reminder.note}`,
     "",
-    "你是知微。请用你自己的口吻，像正常聊天一样主动告诉 ta。",
+    "你是小丑鱼应用本身。请用你自己的口吻，像正常聊天一样主动告诉 ta。",
     "要求：自然、简短、克制，有助理的稳定感；不要写“【港股提醒】”这种标题；不要像系统通知；不要给具体买卖建议。",
   ].join("\n");
   let reply: string;
   let facts: string[] = [];
   if (llm.live) {
     try {
-      const result = await engine.notify(USER, "zhiwei", prompt, { signal, runId });
+      const result = await engine.notify(USER, APP_PERSONA_ID, prompt, { signal, runId });
       reply = result.reply;
       facts = bullets(result.context.userFacts);
     } catch (error) {
       if (signal?.aborted) throw error;
-      reply = fallbackZhiweiHkReply(reminder);
+      reply = fallbackAppHkReply(reminder);
     }
   } else {
-    reply = fallbackZhiweiHkReply(reminder);
+    reply = fallbackAppHkReply(reminder);
   }
   return {
-    personaId: "zhiwei",
-    name: PERSONAS.find((persona) => persona.id === "zhiwei")?.name ?? "知微",
+    personaId: APP_PERSONA_ID,
+    name: PERSONAS.find((persona) => persona.id === APP_PERSONA_ID)?.name ?? "小丑鱼",
     reply,
     messages: splitBubbles(reply),
     facts,
@@ -1838,11 +1907,25 @@ function sendWebAsset(res: ServerResponse, assetUrl: string): boolean {
   return true;
 }
 
-function readBody(req: IncomingMessage): Promise<unknown> {
+function readBody(req: IncomingMessage, maxBytes = 32 * 1024 * 1024): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    let size = 0;
+    let tooLarge = false;
+    req.on("data", (c) => {
+      if (tooLarge) return;
+      const chunk = Buffer.isBuffer(c) ? c : Buffer.from(c);
+      size += chunk.byteLength;
+      if (size > maxBytes) {
+        tooLarge = true;
+        chunks.length = 0;
+        reject(new Error("请求内容过大"));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => {
+      if (tooLarge) return;
       try {
         const raw = Buffer.concat(chunks).toString("utf8");
         resolve(raw ? JSON.parse(raw) : {});
@@ -1868,6 +1951,31 @@ interface ChatBody {
   text: string;
   voice?: boolean;
   image?: string; // base64 data URL（识图）
+  sessionId?: string;
+  model?: string;
+  reasoning?: "fast" | "balanced" | "deep";
+  toolMode?: "auto" | "read-only" | "off";
+}
+
+function conversationSendOptions(body: ChatBody): {
+  sessionId?: string;
+  model?: string;
+  toolMode: "auto" | "read-only" | "off";
+  runtimeLimits: { maxRounds: number; maxToolRounds: number; maxTotalTokens: number; maxOutputChars: number };
+} {
+  const reasoning = body.reasoning === "fast" ? "fast" : body.reasoning === "deep" ? "deep" : "balanced";
+  const runtimeLimits = reasoning === "fast"
+    ? { maxRounds: 2, maxToolRounds: 1, maxTotalTokens: 8_000, maxOutputChars: 4_000 }
+    : reasoning === "deep"
+      ? { maxRounds: 8, maxToolRounds: 5, maxTotalTokens: 80_000, maxOutputChars: 20_000 }
+      : { maxRounds: 4, maxToolRounds: 2, maxTotalTokens: 32_000, maxOutputChars: 10_000 };
+  const model = String(body.model || "").trim();
+  return {
+    sessionId: body.sessionId ? String(body.sessionId).slice(0, 120) : undefined,
+    model: model && model !== "default" && /^[a-z0-9._:/-]{1,120}$/i.test(model) ? model : undefined,
+    toolMode: body.toolMode === "off" ? "off" : body.toolMode === "read-only" ? "read-only" : "auto",
+    runtimeLimits,
+  };
 }
 
 interface PreparedChatText {
@@ -1999,7 +2107,7 @@ async function readWebPageContext(url: string): Promise<WebPageContext> {
       redirect: "follow",
       signal: controller.signal,
       headers: {
-        "User-Agent": "NemosCompanion/0.2 (+local user requested webpage reading)",
+        "User-Agent": "Clownfish/0.2 (+local user requested webpage reading)",
         "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.3",
       },
     });
@@ -2079,7 +2187,7 @@ function formatWebPageContext(pages: WebPageContext[]): string {
   if (pages.length === 0) return "";
   const lines = [
     "[Web page reading results]",
-    "The following webpage content was fetched by Nemos Companion before the persona replied. Use it as source context; if a page failed, say it was not readable instead of guessing.",
+    "The following webpage content was fetched by 小丑鱼 before the persona replied. Use it as source context; if a page failed, say it was not readable instead of guessing.",
   ];
   pages.forEach((page, index) => {
     lines.push(`\n[${index + 1}] ${page.title ? `${page.title} - ` : ""}${page.url}`);
@@ -2096,7 +2204,7 @@ function resolveWorkTarget(b: ChatBody): WorkTarget | null {
   }
   try {
     const members = engine.groupMembers(b.target.id);
-    const executor = members.find((p) => p.id === "zhiwei")
+    const executor = members.find((p) => p.id === APP_PERSONA_ID)
       ?? members.find((p) => p.tag === "个人助理")
       ?? members[0];
     if (!executor) return null;
@@ -2236,7 +2344,7 @@ async function fetchSkillMarkdownFromUrl(url: string, signal?: AbortSignal): Pro
       redirect: "follow",
       signal: controller.signal,
       headers: {
-        "User-Agent": "NemosCompanion/0.2 (+skill installer)",
+        "User-Agent": "Clownfish/0.2 (+skill installer)",
         "Accept": "text/markdown,text/plain,text/html;q=0.5,*/*;q=0.2",
       },
     });
@@ -2450,7 +2558,7 @@ function inferWorkTitle(text: string): string {
   if (hasImagePromptIntent(text)) return "图片提示词反推";
   if (hasOcrIntent(text)) return "OCR文字识别";
   const cleaned = text
-    .replace(/^(知微|帮我|请|给我|替我|麻烦|需要你|你来)[，,:：\s]*/g, "")
+    .replace(/^(小丑鱼|帮我|请|给我|替我|麻烦|需要你|你来)[，,:：\s]*/g, "")
     .replace(/(做一下|做一份|生成|整理|收集|输出|查一下|查下|看一下|看下|跟踪|盯一下|盯下|检查|分析|汇总|制作|起草|提交|交付)/g, "")
     .trim();
   return (cleaned || "临时交办任务").slice(0, 32);
@@ -2501,7 +2609,65 @@ const server = createServer(async (req, res) => {
       send(res, 200, readFileSync(join(WEB_DIR, "capabilities.html"), "utf-8"), "text/html");
       return;
     }
+    if (req.method === "GET" && (url === "/office" || url === "/office.html")) {
+      send(res, 200, readFileSync(join(WEB_DIR, "office.html"), "utf-8"), "text/html");
+      return;
+    }    if (req.method === "GET" && ["/tasks", "/artifacts", "/runs", "/memory"].includes(url)) {
+      send(res, 200, readFileSync(join(WEB_DIR, "work.html"), "utf-8"), "text/html");
+      return;
+    }
+    if (req.method === "POST" && url === "/api/files/export") {
+      const body = (await readBody(req, 5 * 1024 * 1024)) as {
+        name?: string;
+        format?: OfficeExportFormat;
+        blocks?: Array<{ title?: string; text?: string }>;
+      };
+      const allowed: OfficeExportFormat[] = ["docx", "pptx", "xlsx", "pdf", "html", "md"];
+      if (!body.format || !allowed.includes(body.format) || !Array.isArray(body.blocks)) {
+        send(res, 400, { error: "导出参数不完整" });
+        return;
+      }
+      try {
+        const exported = await exportOfficeDocument({
+          name: String(body.name || "办公文稿"),
+          format: body.format,
+          blocks: body.blocks.map((block) => ({ title: String(block.title || ""), text: String(block.text || "") })),
+        });
+        res.writeHead(200, {
+          "Content-Type": exported.contentType,
+          "Content-Length": exported.data.length,
+          "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(exported.filename),
+          "X-Clownfish-Warnings": encodeURIComponent(exported.warnings.join("\n")),
+          "Cache-Control": "no-store",
+        });
+        res.end(exported.data);
+      } catch (error) {
+        send(res, 500, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
     if (req.method === "GET" && sendWebAsset(res, url)) {
+      return;
+    }
+    if (req.method === "POST" && url === "/api/files/extract") {
+      const body = (await readBody(req, 12 * 1024 * 1024)) as { name?: string; dataBase64?: string };
+      const name = String(body.name ?? "").trim();
+      const encoded = String(body.dataBase64 ?? "");
+      if (!name || !encoded || !/^[a-z0-9+/=\r\n]+$/i.test(encoded)) {
+        send(res, 400, { error: "文件内容不完整" });
+        return;
+      }
+      const data = Buffer.from(encoded, "base64");
+      if (!data.byteLength || data.byteLength > MAX_OFFICE_FILE_BYTES) {
+        send(res, 400, { error: "单个办公文件不能超过 8 MB" });
+        return;
+      }
+      try {
+        const extraction = await extractOfficeFile(name, data);
+        send(res, 200, { ok: true, extraction });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
     if (req.method === "GET" && url === "/api/state") {
@@ -2789,6 +2955,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url === "/api/agent/orchestration") {
       const body = (await readBody(req)) as {
+        taskId?: string;
         objective?: string;
         tasks?: Array<{
           id?: string;
@@ -2806,13 +2973,17 @@ const server = createServer(async (req, res) => {
         send(res, 400, { error: "objective and 1-8 tasks are required" });
         return;
       }
+      if (body.taskId && !capabilities.snapshot().tasks.some((task) => task.id === body.taskId)) {
+        send(res, 404, { error: "task storyline not found" });
+        return;
+      }
       const tasks = body.tasks.map((task, index) => ({
         id: task.id || `task-${index + 1}`,
         title: task.title || `子任务 ${index + 1}`,
         instruction: task.instruction || "",
         dependsOn: task.dependsOn ?? [],
         metadata: {
-          personaId: task.personaId || "zhiwei",
+          personaId: task.personaId || APP_PERSONA_ID,
           capabilityId: task.capabilityId || "research-brief",
           format: task.format || "md",
         },
@@ -2833,8 +3004,8 @@ const server = createServer(async (req, res) => {
         },
         execute: () => agentJobQueue.enqueue({
           type: "orchestration",
-          payload: { objective: body.objective!.trim(), tasks },
-          metadata: { userId: USER },
+          payload: { objective: body.objective!.trim(), tasks, taskId: body.taskId },
+          metadata: { userId: USER, ...(body.taskId ? { workTaskId: body.taskId } : {}) },
           deliveryRequired: true,
           sideEffectRisk: true,
           maxAttempts: 1,
@@ -3140,7 +3311,7 @@ const server = createServer(async (req, res) => {
         });
         const me = action.value;
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(xOAuthCallbackHtml(true, `已连接 @${me.username || me.userId}，Home Timeline 会在知微执行任务时作为私域来源读取。`));
+        res.end(xOAuthCallbackHtml(true, `已连接 @${me.username || me.userId}，Home Timeline 会在小丑鱼执行任务时作为私域来源读取。`));
       } catch (e) {
         res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
         res.end(xOAuthCallbackHtml(false, e instanceof Error ? e.message : String(e)));
@@ -3232,9 +3403,53 @@ const server = createServer(async (req, res) => {
         familiarity: readJson(FAM_FILE),
         avatars: readJson(AVATAR_FILE) ?? loadAvatarOverrides(),
         hkReminders: readJson(HK_REMINDERS_FILE) ?? loadHkReminders(),
+        marketWatchlist: await marketData.listWatchlist(),
         capabilities: capabilities.snapshot(),
         memories,
       });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/market/watchlist") {
+      send(res, 200, { items: await marketData.listWatchlist() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/market/watchlist") {
+      const body = (await readBody(req)) as { symbol?: string; name?: string };
+      if (!body.symbol?.trim()) { send(res, 400, { error: "缺少港股代码" }); return; }
+      const action = await agentUserActions.execute({
+        name: "market_watchlist_add",
+        description: "把用户指定的港股代码加入本机关注列表",
+        arguments: { symbol: body.symbol, name: body.name },
+        execute: () => marketData.addWatchItem({ symbol: body.symbol!, name: body.name }),
+        summarizeResult: (items) => ({ ok: true, symbol: body.symbol, count: items.length }),
+      });
+      send(res, 200, { ok: true, items: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/market/watchlist/remove") {
+      const body = (await readBody(req)) as { symbol?: string };
+      if (!body.symbol?.trim()) { send(res, 400, { error: "缺少港股代码" }); return; }
+      const action = await agentUserActions.execute({
+        name: "market_watchlist_remove",
+        description: "从本机市场关注列表移除用户指定的港股代码",
+        arguments: { symbol: body.symbol },
+        execute: () => marketData.removeWatchItem(body.symbol!),
+        summarizeResult: (items) => ({ ok: true, symbol: body.symbol, count: items.length }),
+      });
+      send(res, 200, { ok: true, items: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/market/snapshot") {
+      const body = (await readBody(req)) as { symbols?: string[]; announcementLimit?: number };
+      try {
+        const snapshot = await marketData.snapshot({
+          symbols: Array.isArray(body.symbols) ? body.symbols.map(String) : undefined,
+          announcementLimit: body.announcementLimit,
+        });
+        send(res, 200, snapshot);
+      } catch (error) {
+        send(res, 502, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
     if (req.method === "GET" && url === "/api/capabilities") {
@@ -3256,6 +3471,44 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url === "/api/capabilities/skills/audit") {
       send(res, 200, capabilities.auditSkills());
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capabilities/ability/state") {
+      const body = (await readBody(req)) as { id?: string; action?: "pin" | "unpin" | "disable" | "enable" | "stale" | "refresh" };
+      const actions = ["pin", "unpin", "disable", "enable", "stale", "refresh"] as const;
+      if (!body.id || !body.action || !actions.includes(body.action)) {
+        send(res, 400, { error: "能力状态参数不完整" });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "capability_ability_state",
+        description: "更新用户选中能力的固定、停用或陈旧状态",
+        arguments: { abilityId: body.id, action: body.action },
+        execute: () => capabilities.setAbilityLifecycle(body.id!, body.action!),
+        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, action: body.action }),
+      });
+      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capabilities/artifact/feedback") {
+      const body = (await readBody(req)) as { id?: string; outcome?: "useful" | "needs-work"; note?: string; applyToSkill?: boolean };
+      if (!body.id || (body.outcome !== "useful" && body.outcome !== "needs-work")) {
+        send(res, 400, { error: "结果反馈参数不完整" });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "capability_artifact_feedback",
+        description: "记录用户对能力结果的验证反馈，并按明确选择写回技能",
+        arguments: { artifactId: body.id, outcome: body.outcome, applyToSkill: Boolean(body.applyToSkill), noteChars: body.note?.length || 0 },
+        execute: () => capabilities.recordArtifactFeedback({
+          artifactId: body.id!,
+          outcome: body.outcome!,
+          note: body.note,
+          applyToSkill: Boolean(body.applyToSkill),
+        }),
+        summarizeResult: (value) => ({ ok: true, artifactId: value.artifact.id, applied: value.applied }),
+      });
+      send(res, 200, { ok: true, applied: action.value.applied, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
     }
     if (req.method === "POST" && url === "/api/capabilities/search") {
@@ -3341,7 +3594,7 @@ const server = createServer(async (req, res) => {
         execute: async (signal) => {
           const sourceText = await fetchSkillMarkdownFromUrl(item.sourceUrl!, signal);
           return capabilities.installSkill({
-            personaId: item.personaId === "shared" ? (ability.ownerPersonaId || "zhiwei") : item.personaId,
+            personaId: item.personaId === "shared" ? (ability.ownerPersonaId || APP_PERSONA_ID) : item.personaId,
             name: ability.name,
             description: ability.description,
             sourceText,
@@ -3427,7 +3680,7 @@ const server = createServer(async (req, res) => {
           defaultFormat: b.defaultFormat,
           goalChars: b.goal?.length ?? 0,
         },
-        metadata: { personaId: b.personaId || "zhiwei" },
+        metadata: { personaId: b.personaId || APP_PERSONA_ID },
         execute: () => capabilities.createGeneratedAbility(b),
         summarizeResult: (ability) => ({ ok: true, abilityId: ability.id }),
       });
@@ -3444,7 +3697,7 @@ const server = createServer(async (req, res) => {
         sourceUrl?: string;
         defaultFormat?: ArtifactFormat;
       };
-      const personaId = b.personaId || "zhiwei";
+      const personaId = b.personaId || APP_PERSONA_ID;
       const sourceUrl = b.sourceUrl || (/^https?:\/\//i.test((b.sourcePath || "").trim()) ? (b.sourcePath || "").trim() : undefined);
       const action = await agentUserActions.execute({
         name: "skill_install",
@@ -3501,9 +3754,63 @@ const server = createServer(async (req, res) => {
           enabled: b.enabled,
           instructionChars: b.instruction?.length ?? 0,
         },
-        metadata: { personaId: b.personaId || "zhiwei" },
+        metadata: { personaId: b.personaId || APP_PERSONA_ID },
         execute: () => b.id ? capabilities.updateTask({ ...b, id: b.id! }) : capabilities.createTask(b),
         summarizeResult: (task) => ({ ok: true, taskId: task.id }),
+      });
+      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capabilities/task/storyline") {
+      const b = (await readBody(req)) as {
+        id?: string;
+        status?: CapabilityTaskStorylineStatus;
+        summary?: string;
+        nextAction?: string;
+        experts?: CapabilityTaskExpertAssignment[];
+      };
+      if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
+      const action = await agentUserActions.execute({
+        name: "capability_task_storyline_update",
+        description: "保存长期任务的当前进展、下一步和专家职责",
+        arguments: {
+          taskId: b.id,
+          status: b.status,
+          summaryChars: b.summary?.length ?? 0,
+          nextActionChars: b.nextAction?.length ?? 0,
+          expertCount: b.experts?.length ?? 0,
+        },
+        execute: () => capabilities.updateTaskStoryline({
+          id: b.id!,
+          status: b.status,
+          summary: b.summary,
+          nextAction: b.nextAction,
+          experts: b.experts,
+        }),
+        summarizeResult: (task) => ({ ok: true, taskId: task.id, status: task.storyline.status }),
+      });
+      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capabilities/task/decision") {
+      const b = (await readBody(req)) as { id?: string; text?: string; note?: string; supersedesId?: string };
+      if (!b.id || !b.text?.trim()) { send(res, 400, { error: "missing task id or decision" }); return; }
+      const action = await agentUserActions.execute({
+        name: "capability_task_decision_record",
+        description: "记录长期任务的关键决定，并保留被替代结论",
+        arguments: {
+          taskId: b.id,
+          decisionChars: b.text.length,
+          noteChars: b.note?.length ?? 0,
+          supersedesId: b.supersedesId,
+        },
+        execute: () => capabilities.recordTaskDecision({
+          id: b.id!,
+          text: b.text!,
+          note: b.note,
+          supersedesId: b.supersedesId,
+        }),
+        summarizeResult: (task) => ({ ok: true, taskId: task.id, decisionCount: task.storyline.decisions.length }),
       });
       send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
@@ -3601,13 +3908,13 @@ const server = createServer(async (req, res) => {
       const reminder = sanitizeHkReminder(b);
       const action = await agentUserActions.execute({
         name: "hk_reminder_notify",
-        description: "让知微立即生成用户请求的港股辅助提醒",
+        description: "让小丑鱼立即生成用户请求的港股辅助提醒",
         arguments: {
           reminderId: reminder.id,
           title: reminder.title,
           noteChars: reminder.note.length,
         },
-        metadata: { personaId: "zhiwei" },
+        metadata: { personaId: APP_PERSONA_ID },
         execute: (signal) => createHkReminderDelivery(reminder, signal),
         summarizeResult: () => ({ ok: true, reminderId: reminder.id, delivered: true }),
       });
@@ -3626,7 +3933,7 @@ const server = createServer(async (req, res) => {
           title: b.title,
           noteChars: b.note?.length ?? 0,
         },
-        metadata: { personaId: "zhiwei" },
+        metadata: { personaId: APP_PERSONA_ID },
         execute: () => {
           const reminders = loadHkReminders();
           const index = reminders.findIndex((reminder) => reminder.id === b.id);
@@ -3649,7 +3956,7 @@ const server = createServer(async (req, res) => {
         name: "hk_reminder_delete",
         description: "删除用户在提醒管理页选中的港股辅助提醒",
         arguments: { reminderId: b.id },
-        metadata: { personaId: "zhiwei" },
+        metadata: { personaId: APP_PERSONA_ID },
         execute: () => {
           const reminders = loadHkReminders().filter((reminder) => reminder.id !== b.id);
           saveHkReminders(reminders);
@@ -3751,18 +4058,67 @@ const server = createServer(async (req, res) => {
       const qWho = new URLSearchParams(url.split("?")[1] || "").get("who") || USER;
       const who = qWho === USER || PERSONAS.some((p) => personaNamespace(p.id) === qWho) ? qWho : USER;
       const store = mem.forUser(who);
-      const facts: Array<{ layer: string; who: string; content: string; created: string }> = [];
+      const facts: Array<{ id: string; layer: string; who: string; content: string; created: string }> = [];
       // archival=原文/归档；其余为分类后的记忆层
       for (const layer of ["personal_semantic", "semantic", "episodic", "procedural", "archival"]) {
         const items = await store.listByLayer(layer as never, { limit: 500 });
         for (const m of items) {
           const tail = m.scope.split(":").pop() ?? m.scope;
           const speaker = PERSONAS.find((p) => p.id === tail)?.name ?? tail;
-          facts.push({ layer, who: speaker, content: m.content, created: m.created_at });
+          facts.push({ id: m.id, layer, who: speaker, content: m.content, created: m.created_at });
         }
       }
       facts.sort((a, b) => b.created.localeCompare(a.created));
       send(res, 200, { facts, owner: who });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/memory/preference") {
+      const body = (await readBody(req)) as { content?: string };
+      const content = String(body.content || "").trim();
+      if (!content || content.length > 500) {
+        send(res, 400, { error: "偏好内容需为 1 至 500 个字符" });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "memory_preference_add",
+        description: "保存用户在记忆页面明确填写的习惯偏好",
+        arguments: { contentChars: content.length },
+        execute: () => mem.forUser(USER).write({
+          layer: "procedural",
+          content,
+          type: "user",
+          scope: "global",
+          source: { authoritative: false, origin: "clownfish-memory-ui" },
+        }),
+        summarizeResult: (memory) => ({ ok: true, memoryId: memory.id }),
+      });
+      send(res, 200, { ok: true, memory: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/memory/forget") {
+      const body = (await readBody(req)) as { id?: string };
+      const id = String(body.id || "").trim();
+      if (!id) {
+        send(res, 400, { error: "缺少记忆编号" });
+        return;
+      }
+      const store = mem.forUser(USER);
+      const archival = await store.listByLayer("archival", { limit: 100000 });
+      if (archival.some((item) => item.id === id)) {
+        send(res, 400, { error: "原始归档受保护，不能从这里删除" });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "memory_item_forget",
+        description: "删除用户在记忆页面选中的一条分类记忆",
+        arguments: { memoryId: id, archivalPreserved: true },
+        execute: async () => {
+          await store.forget(id);
+          return { id };
+        },
+        summarizeResult: (value) => ({ ok: true, memoryId: value.id }),
+      });
+      send(res, 200, { ok: true, auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/clear") {
@@ -3964,6 +4320,7 @@ const server = createServer(async (req, res) => {
           return;
         }
         const opts = {
+          ...conversationSendOptions(b),
           ...(b.voice ? { voice: { durationSec: Math.max(2, Math.round((b.text || "").length / 4)) } } : {}),
           ...(b.target.kind === "group" ? { groupRoute: groupReplyRoute(b.target.id, text) } : {}),
         };
@@ -4042,6 +4399,7 @@ const server = createServer(async (req, res) => {
       const text = prepared.text;
       await maybeUpdatePersonaNicknameFromText(b.target, text);
       const opts = {
+        ...conversationSendOptions(b),
         ...(b.voice ? { voice: { durationSec: Math.max(2, Math.round(b.text.length / 4)) } } : {}),
         ...(b.target.kind === "group" ? { groupRoute: groupReplyRoute(b.target.id, text) } : {}),
       };

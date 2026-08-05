@@ -93,7 +93,7 @@ test("task and artifact tools never return another persona's records", async () 
   assert.doesNotMatch(artifactResult.content, /其他人的报告/);
 });
 
-test("only zhiwei receives the approved write tool for saving recurring work", async () => {
+test("only clownfish receives the approved write tool for saving recurring work", async () => {
   const created: Array<Record<string, unknown>> = [];
   const capabilities = {
     snapshot: () => ({
@@ -114,9 +114,9 @@ test("only zhiwei receives the approved write tool for saving recurring work", a
     memory: () => ({} as Nemos),
     capabilities: () => capabilities as unknown as CapabilityRuntime,
   });
-  const zhiweiContext = { ...context, personaId: "zhiwei" };
-  const zhiweiTools = await provider("把每天的 AI 新闻收集保存为常规任务", zhiweiContext);
-  const writeTool = zhiweiTools.find((tool) => tool.definition.name === "capability_task_create");
+  const appContext = { ...context, personaId: "clownfish" };
+  const appTools = await provider("把每天的 AI 新闻收集保存为常规任务", appContext);
+  const writeTool = appTools.find((tool) => tool.definition.name === "capability_task_create");
 
   assert.equal(writeTool?.definition.effect, "write");
   assert.equal(
@@ -141,7 +141,7 @@ test("only zhiwei receives the approved write tool for saving recurring work", a
 
   assert.equal(result.isError, undefined);
   assert.equal(created.length, 2);
-  assert.equal(created[0]?.personaId, "zhiwei");
+  assert.equal(created[0]?.personaId, "clownfish");
   assert.deepEqual(created[1]?.schedule, {
     mode: "daily",
     time: "09:30",
@@ -149,7 +149,7 @@ test("only zhiwei receives the approved write tool for saving recurring work", a
     days: [1, 2, 3, 4, 5, 6, 7],
   });
 });
-test("only Zhiwei can install a Skill and the write happens after tool execution", async () => {
+test("only Clownfish can install a Skill and the write happens after tool execution", async () => {
   const installed: Array<Record<string, unknown>> = [];
   const fetched: string[] = [];
   const capabilities = {
@@ -160,7 +160,7 @@ test("only Zhiwei can install a Skill and the write happens after tool execution
       skillAudit: {
         items: [{
           abilityId: "skill-1",
-          skillFile: "C:\\data\\skills\\zhiwei\\news\\SKILL.md",
+          skillFile: "C:\\data\\skills\\clownfish\\news\\SKILL.md",
         }],
       },
     }),
@@ -183,8 +183,8 @@ test("only Zhiwei can install a Skill and the write happens after tool execution
       return "# AI News\n\nCollect current AI news.";
     },
   });
-  const zhiweiContext = { ...context, personaId: "zhiwei" };
-  const tools = await provider("帮我安装这个 skill：https://example.test/SKILL.md", zhiweiContext);
+  const appContext = { ...context, personaId: "clownfish" };
+  const tools = await provider("帮我安装这个 skill：https://example.test/SKILL.md", appContext);
   const installTool = tools.find((tool) => tool.definition.name === "skill_install");
 
   assert.equal(installTool?.definition.effect, "write");
@@ -206,12 +206,12 @@ test("only Zhiwei can install a Skill and the write happens after tool execution
   assert.equal(result.isError, undefined);
   assert.deepEqual(fetched, ["https://example.test/SKILL.md"]);
   assert.equal(installed.length, 1);
-  assert.equal(installed[0]?.personaId, "zhiwei");
+  assert.equal(installed[0]?.personaId, "clownfish");
   assert.match(String(installed[0]?.sourceText), /Collect current AI news/);
   assert.match(result.content, /SKILL\.md/);
 });
 
-test("Zhiwei can delegate bounded expert work and always adds a final review task", async () => {
+test("Clownfish can delegate bounded expert work and always adds a final review task", async () => {
   const queued: Array<{ input: unknown; idempotencyKey: string }> = [];
   const capabilities = {
     snapshot: () => ({
@@ -224,22 +224,22 @@ test("Zhiwei can delegate bounded expert work and always adds a final review tas
     memory: () => ({} as Nemos),
     capabilities: () => capabilities as unknown as CapabilityRuntime,
     listPersonas: () => [
-      { id: "zhiwei", name: "知微" },
-      { id: "musk", name: "马斯克" },
-      { id: "munger", name: "芒格" },
+      { id: "clownfish", name: "小丑鱼" },
+      { id: "first_principles", name: "原理工程师" },
+      { id: "decision_analysis", name: "决策分析师" },
     ],
     enqueueOrchestration: (input, idempotencyKey) => {
       queued.push({ input, idempotencyKey });
       return { id: "job-1", status: "queued" };
     },
   });
-  const zhiweiContext = { ...context, personaId: "zhiwei" };
-  const tools = await provider("让马斯克和芒格分别分析并交叉复核这个方案", zhiweiContext);
+  const appContext = { ...context, personaId: "clownfish" };
+  const tools = await provider("让原理工程师和决策分析师分别分析并交叉复核这个方案", appContext);
   const delegationTool = tools.find((tool) => tool.definition.name === "agent_delegation_create");
 
   assert.equal(delegationTool?.definition.effect, "write");
   assert.equal(
-    (await provider("让马斯克和芒格分别分析并交叉复核这个方案", context))
+    (await provider("让原理工程师和决策分析师分别分析并交叉复核这个方案", context))
       .some((tool) => tool.definition.name === "agent_delegation_create"),
     false,
   );
@@ -248,13 +248,13 @@ test("Zhiwei can delegate bounded expert work and always adds a final review tas
     objective: "判断新产品方案是否值得推进",
     assignments: [
       {
-        personaId: "musk",
+        personaId: "first_principles",
         title: "第一性原理分析",
         instruction: "从技术可行性和规模化角度分析。",
         format: "md",
       },
       {
-        personaId: "munger",
+        personaId: "decision_analysis",
         title: "风险与反向思考",
         instruction: "从机会成本和失败模式角度分析。",
         format: "md",
@@ -279,7 +279,7 @@ test("Zhiwei can delegate bounded expert work and always adds a final review tas
   };
   assert.equal(plan.tasks.length, 3);
   assert.deepEqual(plan.tasks[2]?.dependsOn, ["delegate-1", "delegate-2"]);
-  assert.equal(plan.tasks[2]?.metadata.personaId, "zhiwei");
+  assert.equal(plan.tasks[2]?.metadata.personaId, "clownfish");
   assert.equal(plan.tasks[2]?.metadata.role, "reviewer");
   assert.deepEqual(plan.tasks[0]?.budget, {
     maxRounds: 4,
@@ -303,8 +303,8 @@ test("delegation refuses plans that do not use distinct expert personas", async 
     memory: () => ({} as Nemos),
     capabilities: () => capabilities as unknown as CapabilityRuntime,
     listPersonas: () => [
-      { id: "zhiwei", name: "知微" },
-      { id: "musk", name: "马斯克" },
+      { id: "clownfish", name: "小丑鱼" },
+      { id: "first_principles", name: "原理工程师" },
     ],
     enqueueOrchestration: () => {
       enqueued = true;
@@ -313,14 +313,14 @@ test("delegation refuses plans that do not use distinct expert personas", async 
   });
   const tool = (await provider(
     "请多位专家分工分析",
-    { ...context, personaId: "zhiwei" },
+    { ...context, personaId: "clownfish" },
   )).find((item) => item.definition.name === "agent_delegation_create");
 
   const result = await tool!.execute({
     objective: "分析方案",
     assignments: [
-      { personaId: "musk", title: "角度一", instruction: "分析技术", format: "md" },
-      { personaId: "musk", title: "角度二", instruction: "分析商业", format: "md" },
+      { personaId: "first_principles", title: "角度一", instruction: "分析技术", format: "md" },
+      { personaId: "first_principles", title: "角度二", instruction: "分析商业", format: "md" },
     ],
   }, {
     runId: "duplicate-persona",

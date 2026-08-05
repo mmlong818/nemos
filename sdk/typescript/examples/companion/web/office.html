@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="/assets/brand/clownfish-mark.svg">
+  <title>办公文件 · 小丑鱼</title>
+  <link rel="stylesheet" href="/assets/capability-center.css">
+  <link rel="stylesheet" href="/assets/office-workbench.css">
+  <link rel="stylesheet" href="/assets/app-navigation-labels.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail" aria-label="主导航">
+      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
+      <nav class="rail-nav">
+        <a href="/" title="聊天" aria-label="聊天" data-app-icon="message"><span aria-hidden="true"></span><small>聊天</small></a>
+        <a href="/capabilities" title="能力" aria-label="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></a>
+        <a class="is-current" href="/office" title="办公文件" aria-label="办公文件" aria-current="page" data-app-icon="file"><span aria-hidden="true"></span><small>文件</small></a>
+        <a href="/tasks" title="工作" aria-label="工作" data-app-icon="work"><span aria-hidden="true"></span><small>工作</small></a>
+      </nav>
+      <a class="rail-secondary" href="/#settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
+    </aside>
+
+    <main class="office-main">
+      <header class="office-topbar">
+        <div class="office-title">
+          <button class="topbar-icon" id="toggleFiles" type="button" aria-label="显示文件列表" data-office-icon="panel"></button>
+          <span>办公文件</span>
+        </div>
+        <div class="save-state" id="saveState" role="status" aria-live="polite">本机自动保存</div>
+      </header>
+
+      <div class="office-layout">
+        <aside class="file-panel" id="filePanel" aria-label="最近文件">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">工作区</p>
+              <h1>最近文件</h1>
+            </div>
+            <button class="panel-close" id="closeFiles" type="button" aria-label="关闭文件列表">×</button>
+          </div>
+          <p class="panel-note">不用新建项目。打开文件就能继续上次的处理。</p>
+          <div class="file-panel-actions" aria-label="文件操作">
+            <button class="toolbar-button" id="newDocument" type="button" data-office-icon="plus">新建文件</button>
+            <label class="toolbar-button primary" for="officeFileInput" data-office-icon="upload">打开文件
+              <input id="officeFileInput" type="file" accept=".docx,.pptx,.xlsx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf">
+            </label>
+          </div>
+          <div class="recent-files" id="recentFiles"></div>
+          <div class="local-note">
+            <span data-office-icon="shield" aria-hidden="true"></span>
+            <p><strong>内容留在本机</strong><small>这里只保存工作副本和版本记录，原文件不会被覆盖。</small></p>
+          </div>
+        </aside>
+        <button class="file-panel-backdrop" id="filePanelBackdrop" type="button" aria-label="关闭文件列表" tabindex="-1"></button>
+
+        <section class="editor-pane" aria-label="文件编辑区">
+          <div class="editor-empty" id="editorEmpty">
+            <div class="empty-mark" data-office-icon="file" aria-hidden="true"></div>
+            <p class="section-label">从一个文件开始</p>
+            <h1>打开文件，直接处理内容</h1>
+            <p>支持 Word、PowerPoint、Excel 和 PDF。小丑鱼会先读取结构，再让你按段落、页面或工作表检查。</p>
+            <div class="empty-actions">
+              <label class="toolbar-button primary large" for="officeFileInput">打开办公文件</label>
+              <button class="toolbar-button large" id="newDocumentEmpty" type="button">从空白文稿开始</button>
+            </div>
+            <small>原文件始终保留；这里编辑的是本机工作副本。</small>
+          </div>
+
+          <div class="editor-workspace" id="editorWorkspace" hidden>
+            <header class="document-header">
+              <div class="document-name">
+                <span class="format-badge" id="formatBadge">DOCX</span>
+                <div>
+                  <input id="documentName" maxlength="120" aria-label="文件名称">
+                  <p id="documentMeta">本机工作副本</p>
+                </div>
+              </div>
+              <div class="document-actions">
+                <button class="toolbar-button" id="saveVersion" type="button" data-office-icon="bookmark">保存版本</button>
+                <label class="export-choice"><span class="sr-only">导出格式</span><select id="exportFormat" aria-label="导出格式"><option value="docx">Word</option><option value="pdf">PDF</option><option value="pptx">PowerPoint</option><option value="xlsx">Excel</option><option value="html">网页</option><option value="md">Markdown</option></select></label>
+                <button class="toolbar-button" id="exportDraft" type="button" data-office-icon="download">导出</button>
+              </div>
+            </header>
+
+            <div class="document-view-bar" role="tablist" aria-label="文件视图">
+              <button class="is-current" type="button" role="tab" aria-selected="true" data-document-view="source">原文件</button>
+              <button type="button" role="tab" aria-selected="false" data-document-view="edit">可编辑内容</button>
+              <button type="button" role="tab" aria-selected="false" data-document-view="result" id="resultViewTab" hidden>处理结果</button>
+              <span id="sourceState">原文件保留在本机</span>
+            </div>
+
+            <div class="source-preview" id="sourcePreview" role="tabpanel" aria-label="原文件预览"></div>
+
+            <div class="document-surface" id="documentSurface" role="tabpanel" aria-label="可编辑内容" hidden>
+              <div class="surface-ruler" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="block-list" id="blockList"></div>
+              <button class="add-block" id="addBlock" type="button" data-office-icon="plus">添加内容块</button>
+            </div>
+
+            <section class="processing-result" id="processingResult" role="tabpanel" aria-label="处理结果" hidden>
+              <div class="processing-result-empty" id="processingResultEmpty">
+                <span data-office-icon="spark" aria-hidden="true"></span>
+                <p class="section-label">小丑鱼正在处理</p>
+                <h2 id="processingResultTitle">正在准备文件</h2>
+                <p id="processingResultText">结果会直接显示在这里，不会离开文件页面。</p>
+                <div class="processing-result-progress" aria-label="处理进度"><span id="processingResultProgress"></span></div>
+              </div>
+              <iframe id="processingResultFrame" title="小丑鱼处理结果" hidden></iframe>
+              <footer class="processing-result-actions" id="processingResultActions" hidden>
+                <a id="openProcessingResult" target="_blank" rel="noopener">单独打开</a>
+                <a id="downloadProcessingResult" download>下载结果</a>
+              </footer>
+            </section>
+          </div>
+        </section>
+
+        <aside class="assistant-panel" aria-label="小丑鱼处理与版本">
+          <section class="assistant-card">
+            <div class="assistant-heading">
+              <img src="/assets/brand/clownfish-mark.svg" alt="">
+              <div><p class="section-label">交给小丑鱼</p><h2>下一步怎么处理？</h2></div>
+            </div>
+            <p class="assistant-copy">小丑鱼会带上当前工作副本，并让你确认结果形式后开始。</p>
+            <div class="quick-prompts" aria-label="常用处理">
+              <button type="button" data-prompt="整理成结构清楚的正式文档" data-capability="document-draft" data-format="doc">整理成正式文档</button>
+              <button type="button" data-prompt="提炼重点并做成适合汇报的演示文稿" data-capability="presentation-builder" data-format="pptx">做成汇报 PPT</button>
+              <button type="button" data-prompt="分析内容中的数据、异常和关键结论" data-capability="decision-brief" data-format="html">分析数据与结论</button>
+            </div>
+            <label for="assistantPrompt">具体要求</label>
+            <textarea id="assistantPrompt" rows="5" maxlength="2000" placeholder="例如：保留原有数据，压缩成 8 页管理层汇报…"></textarea>
+            <label class="assistant-format" for="assistantFormat"><span>结果形式</span><select id="assistantFormat"><option value="doc">Word 文档</option><option value="pptx">PowerPoint</option><option value="html">网页报告</option><option value="pdf">PDF</option></select></label>
+            <button class="send-to-capability" id="startOfficeTask" type="button">开始处理</button>
+            <div class="assistant-run" id="assistantRun" role="status" aria-live="polite" hidden>
+              <div><strong id="assistantRunTitle">正在处理</strong><button id="cancelOfficeTask" type="button">取消</button></div>
+              <p id="assistantRunText">正在准备文件…</p>
+              <div class="assistant-run-progress"><span id="assistantRunProgress"></span></div>
+            </div>
+            <p class="memory-note"><span data-office-icon="spark" aria-hidden="true"></span>会轻量参考你的文笔、排版和格式偏好。</p>
+          </section>
+
+          <details class="version-card">
+            <summary class="version-heading">
+              <div><p class="section-label">版本</p><h2>修改记录</h2></div>
+              <span class="version-heading-meta"><span id="versionCount">0 个</span><span class="version-chevron" data-office-icon="chevron-down" aria-hidden="true"></span></span>
+            </summary>
+            <div class="version-list" id="versionList"></div>
+            <div class="diff-panel" id="diffPanel" hidden>
+              <div class="diff-heading"><strong id="diffTitle">版本比较</strong><button id="closeDiff" type="button" aria-label="关闭版本比较">×</button></div>
+              <div id="diffSummary"></div>
+            </div>
+          </details>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="officeToast" role="status" aria-live="polite"></div>
+  <script src="/assets/app-icons.js"></script>
+  <script src="/assets/office-source-preview.js"></script>
+  <script src="/assets/office-workbench.js"></script>
+</body>
+</html>

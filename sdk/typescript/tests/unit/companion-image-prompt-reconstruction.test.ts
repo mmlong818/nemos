@@ -69,7 +69,7 @@ test("运行时自动修复不合格结果并保存 Markdown 产物", async (t) 
   let calls = 0;
   const runtime = new CapabilityRuntime({
     dataDir,
-    personas: () => [{ id: "zhiwei", name: "知微" }],
+    personas: () => [{ id: "clownfish", name: "小丑鱼" }],
     notify: async () => {
       calls += 1;
       return {
@@ -81,7 +81,7 @@ test("运行时自动修复不合格结果并保存 Markdown 产物", async (t) 
 
   const notification = await runtime.runAdHocTask({
     title: "图片提示词反推",
-    personaId: "zhiwei",
+    personaId: "clownfish",
     capabilityId: "image-prompt-reconstruction",
     instruction: "反推提示词。图片观察：一位短发人物站在窗边，柔和侧光。",
     format: "md",
