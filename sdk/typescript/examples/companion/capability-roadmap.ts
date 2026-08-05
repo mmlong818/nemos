@@ -1,4 +1,4 @@
-export type RoadmapStatus = "done" | "doing" | "next" | "later";
+export type RoadmapStatus = "done" | "doing" | "next" | "later" | "excluded";
 
 export interface RoadmapItem {
   id: string;
@@ -40,7 +40,7 @@ const PHASES: RoadmapPhase[] = [
     goal: "让角色拥有可扩展、可审查、可复用的后台能力，而不是一组固定功能。",
     items: [
       { id: "tool-registry", title: "后台工具注册表", outcome: "能力层知道有哪些工具、是否可用、适合什么任务。", status: "done" },
-      { id: "source-connectors", title: "来源连接器框架", outcome: "动车、航班、酒店、餐馆、港股等任务先匹配可靠来源类型。", status: "done" },
+      { id: "source-connectors", title: "来源连接器框架", outcome: "港股使用真实只读资料源；出行和餐旅请求只返回可靠来源类型与核验边界。", status: "done" },
       { id: "skill-files", title: "自学能力写成技能文件", outcome: "生成/自学能力会落盘为 SKILL.md，并记录使用数据。", status: "done" },
       { id: "roadmap-maintained", title: "开发路线可维护", outcome: "设计文档和路线图接口使用同一组可核验状态；客户端不展示无意义的百分比卡片。", status: "done" },
     ],
@@ -62,9 +62,9 @@ const PHASES: RoadmapPhase[] = [
     title: "真实信息源",
     goal: "从通用搜索升级为可验证的结构化来源。",
     items: [
-      { id: "market-adapter", title: "港股/市场资料适配器", outcome: "真实读取公告、行情快照、关注列表和盘前/盘后模板；当前只有通用搜索与来源核验框架。", status: "doing" },
-      { id: "travel-adapter", title: "动车/航班来源适配器", outcome: "通过真实来源查询路线、日期、班次、价格、余票或航班状态。", status: "next" },
-      { id: "hotel-restaurant-adapter", title: "酒店/餐馆来源适配器", outcome: "通过真实平台、商家或地图来源核验房态、营业时间、菜单、电话和预订入口。", status: "next" },
+      { id: "market-adapter", title: "港股/市场资料适配器", outcome: "真实读取本机关注列表、港交所官方公告和带时间戳的第三方行情快照，支持盘前/盘后简报。", status: "done" },
+      { id: "travel-adapter", title: "动车/航班来源适配器", outcome: "产品明确不接入实时查询与预订适配器；遇到相关请求只说明核验边界。", status: "excluded" },
+      { id: "hotel-restaurant-adapter", title: "酒店/餐馆来源适配器", outcome: "产品明确不接入实时查询与预订适配器；不把它列为后续缺口。", status: "excluded" },
       { id: "source-verification-ui", title: "来源可信度展示", outcome: "产物里直接显示已确认、待核验和不可确认的内容。", status: "done" },
     ],
   },
@@ -87,8 +87,8 @@ const PHASES: RoadmapPhase[] = [
     items: [
       { id: "skill-curator", title: "技能审查和归档", outcome: "长期不用、重复或低质量技能会被标记或归档。", status: "done" },
       { id: "session-artifact-search", title: "会话和产物检索", outcome: "角色能找回以前做过的报告、来源和结论。", status: "done" },
-      { id: "skill-pinning", title: "技能固定与状态维护", outcome: "技能支持固定、停用、陈旧提醒和归档，并保留可审查的状态变化。", status: "next" },
-      { id: "skill-improvement-loop", title: "使用后改进技能", outcome: "任务完成后只把经过验证的成功流程和失败边界写回技能。", status: "next" },
+      { id: "skill-pinning", title: "技能固定与状态维护", outcome: "技能支持固定、停用、陈旧提醒和归档，并保留可审查的状态变化。", status: "done" },
+      { id: "skill-improvement-loop", title: "使用后改进技能", outcome: "结果页收集可用/需改进证据；只有用户确认后才把成功流程或失败边界写回技能。", status: "done" },
     ],
   },
   {
@@ -110,10 +110,10 @@ const PHASES: RoadmapPhase[] = [
 ];
 
 export function buildCapabilityRoadmap(): CapabilityRoadmap {
-  const total = PHASES.reduce((sum, phase) => sum + phase.items.length, 0);
+  const total = PHASES.reduce((sum, phase) => sum + phase.items.filter((item) => item.status !== "excluded").length, 0);
   const completed = PHASES.reduce((sum, phase) => sum + phase.items.filter((item) => item.status === "done").length, 0);
   return {
-    updatedAt: "2026-08-04T00:00:00.000+08:00",
+    updatedAt: "2026-08-05T00:00:00.000+08:00",
     completed,
     total,
     percent: total ? Math.round((completed / total) * 100) : 0,

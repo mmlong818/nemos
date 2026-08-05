@@ -40,9 +40,11 @@ export function buildSourceVerificationReport(instruction: string): SourceVerifi
     const needsManual = connector.sourceTypes.includes("manual-verification");
     const status: SourceVerificationStatus = connector.id === "source-discovery"
       ? "source-discovery-needed"
-      : needsManual
-        ? "manual-check-needed"
-        : "adapter-needed";
+      : connector.id === "market-briefing"
+        ? "live-adapter-ready"
+        : needsManual
+          ? "manual-check-needed"
+          : "adapter-needed";
     return {
       id: connector.id,
       label: connector.label,

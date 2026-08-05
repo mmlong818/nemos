@@ -36,7 +36,7 @@ const CONNECTORS: SourceConnector[] = [
       "Use official railway inventory or clearly mark live seats/prices as unverified.",
       "Record query time, route, date, train number, duration, and transfer assumptions.",
     ],
-    nextIntegration: "Add a rail adapter with route/date normalization and official-result parsing.",
+    nextIntegration: "Realtime rail adapters are outside product scope; return verification boundaries and official entry points only.",
     terms: ["train", "rail", "ticket", "fare", "seat", "schedule", "12306", "火车", "高铁", "动车", "列车", "车次", "余票", "票价"],
   },
   {
@@ -50,7 +50,7 @@ const CONNECTORS: SourceConnector[] = [
       "Prefer airline or airport data for schedules and status.",
       "Treat OTA snippets as leads unless the result includes live query time and fare conditions.",
     ],
-    nextIntegration: "Add a flight adapter for route/date search, airline pages, and flight-status verification.",
+    nextIntegration: "Realtime flight adapters are outside product scope; return verification boundaries and official entry points only.",
     terms: ["flight", "airline", "airport", "fare", "ticket", "delay", "航班", "机票", "机场", "航空", "起飞", "到达", "延误"],
   },
   {
@@ -64,7 +64,7 @@ const CONNECTORS: SourceConnector[] = [
       "Separate stable facts such as location and facilities from live facts such as room status and total price.",
       "Include platform, query time, cancellation terms, and whether direct confirmation is still needed.",
     ],
-    nextIntegration: "Add hotel adapters for booking platforms, map reviews, and official-site confirmation.",
+    nextIntegration: "Realtime hotel adapters are outside product scope; return verification boundaries and direct-confirmation entry points only.",
     terms: ["hotel", "stay", "booking", "room", "availability", "酒店", "民宿", "订房", "房态", "入住", "退房", "位置", "评分"],
   },
   {
@@ -78,21 +78,21 @@ const CONNECTORS: SourceConnector[] = [
       "Distinguish review popularity from actual availability.",
       "For booking decisions, include phone/official account/booking entry and a verification status.",
     ],
-    nextIntegration: "Add restaurant adapters for map search, review ranking, and booking/phone confirmation workflow.",
+    nextIntegration: "Realtime restaurant adapters are outside product scope; return verification boundaries and direct-confirmation entry points only.",
     terms: ["restaurant", "food", "menu", "booking", "reservation", "餐厅", "餐馆", "饭店", "菜单", "营业时间", "排队", "订座", "电话"],
   },
   {
     id: "market-briefing",
     label: "Market and securities briefings",
     domains: ["market", "stocks", "finance", "risk"],
-    sourceTypes: ["official-live", "official-static", "platform-live", "general-web"],
-    accessNeeds: ["Exchange disclosures, company announcements, financial data provider, news source", "Ticker list, market, time window, risk rules"],
+    sourceTypes: ["official-static", "platform-live", "general-web"],
+    accessNeeds: ["HKEX official disclosure search", "Timestamped third-party quote snapshot", "Ticker list, time window, and risk rules"],
     realtimeRisk: "Quotes, turnover, holdings, and breaking news are time-sensitive and may be delayed by provider.",
     evidenceRules: [
       "Use exchange/company disclosures for official facts.",
       "Label quote delay, data provider, timestamp, and whether it is advice or only a briefing.",
     ],
-    nextIntegration: "Add market adapters for exchange announcements, watched tickers, price snapshots, and briefing templates.",
+    nextIntegration: "Implemented: local watchlist, HKEX official announcements, timestamped quote snapshots, and briefing templates.",
     terms: ["stock", "market", "quote", "earnings", "filing", "HKEX", "港股", "股票", "行情", "公告", "财报", "研报", "复盘", "风险"],
   },
   {

@@ -23,7 +23,7 @@ function writeInput(signal = new AbortController().signal, runId = "approval-run
       inputSchema: { type: "object" },
       effect: "write",
     },
-    metadata: { userId: "user-a", personaId: "zhiwei" },
+    metadata: { userId: "user-a", personaId: "clownfish" },
     signal,
   };
 }
@@ -71,7 +71,7 @@ test("pauses a write tool until its durable approval is allowed once", async () 
       sessionId: "approval-session",
       systemPrompt: "system",
       prompt: "save it",
-      metadata: { userId: "user-a", personaId: "zhiwei" },
+      metadata: { userId: "user-a", personaId: "clownfish" },
     });
 
     const approvalId = await waitForPending(store);

@@ -111,7 +111,7 @@ function contractFor(id: NativeCapabilityId): string {
     case "research-brief":
       return "结构：{kind,title,summary,data:{question,plan:string[],sources:[{id,title,url,publisher,tier:1|2|3|4,score:0-100,checkedAt,claims:string[]}],findings:[{claim,evidenceIds:string[],confidence:0-1,status:\"confirmed\"|\"partial\"|\"unverified\"}],conclusion,limitations:string[],nextSteps:string[]}}。至少 3 个研究步骤；有联网资料时至少 2 个来源；每条已确认结论必须引用 evidenceIds。";
     case "presentation-builder":
-      return "结构：{kind,title,summary,data:{audience,purpose,theme:\"sand\"|\"ink\"|\"forest\",slides:[{title,keyMessage,layout:\"title\"|\"statement\"|\"two-column\"|\"timeline\"|\"comparison\"|\"closing\",bullets:string[],speakerNotes}]}}。slides 为 3-30 页，每页只表达一个主观点。";
+      return "结构：{kind,title,summary,data:{audience,purpose,theme:\"sand\"|\"ink\"|\"forest\",slides:[{title,keyMessage,layout:\"title\"|\"statement\"|\"two-column\"|\"timeline\"|\"comparison\"|\"chart\"|\"visual\"|\"closing\",bullets:string[],imageData?:\"data:image/...\",speakerNotes}]}}。slides 为 3-30 页，每页只表达一个主观点。";
     case "thinking-workbench":
       return "结构：{kind,title,summary,data:{problem,facts:string[],assumptions:[{text,risk}],contradictions:string[],options:[{name,upside,downside,signal}],experiments:[{name,method,cost,successSignal}],nextActions:string[]}}。至少 2 个选项和 1 个低成本验证。";
     case "product-design":

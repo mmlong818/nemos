@@ -25,9 +25,9 @@ test("live task chat forwards the requested long-output token budget", async () 
     const reply = await llm.chat("system", "produce a local task result", undefined, 6000, {
       sessionId: "budget-test",
       userId: "me",
-      personaId: "zhiwei",
+      personaId: "clownfish",
       instruction: "produce a local task result",
-      scope: "conv:me:zhiwei",
+      scope: "conv:me:clownfish",
       memoryScopes: [],
       mode: "task",
     });

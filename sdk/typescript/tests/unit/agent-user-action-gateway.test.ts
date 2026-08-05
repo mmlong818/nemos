@@ -22,7 +22,7 @@ test("explicit user actions use the audited write-tool gateway without a second 
     name: "capability_task_delete",
     description: "Delete a task selected in the local client",
     arguments: { taskId: "task-1" },
-    metadata: { personaId: "zhiwei" },
+    metadata: { personaId: "clownfish" },
     execute: async () => {
       executions++;
       return { deletedId: "task-1" };

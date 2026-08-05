@@ -1,11 +1,11 @@
 export const DEFAULT_CONTACT_IDS = [
-  "zhiwei",
+  "clownfish",
   "feifei",
   "tuanzi",
-  "musk",
-  "jobs",
-  "munger",
-  "socrates",
+  "first_principles",
+  "product_lead",
+  "decision_analysis",
+  "critical_thinking",
 ] as const;
 
 export function normalizeAddedContactIds(allPersonaIds: string[], candidateIds: unknown): string[] {

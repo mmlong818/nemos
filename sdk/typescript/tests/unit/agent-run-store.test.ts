@@ -113,7 +113,7 @@ test("replays the append-only event log and exposes a safe restart checkpoint", 
       sessionId: "restart-safe",
       systemPrompt: "system",
       prompt: "create it",
-      metadata: { personaId: "zhiwei", mode: "chat" },
+      metadata: { personaId: "clownfish", mode: "chat" },
     };
     const checkpoint = {
       phase: "after_model" as const,

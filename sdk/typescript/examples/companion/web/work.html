@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="/assets/brand/clownfish-mark.svg">
+  <title>工作 · 小丑鱼</title>
+  <link rel="stylesheet" href="/assets/work-center.css">
+  <link rel="stylesheet" href="/assets/work-storyline.css">
+  <link rel="stylesheet" href="/assets/work-stability.css">
+  <link rel="stylesheet" href="/assets/app-navigation-labels.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail" aria-label="主导航">
+      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
+      <nav>
+        <a href="/" title="聊天" aria-label="聊天" data-app-icon="message"><span aria-hidden="true"></span><small>聊天</small></a>
+        <a href="/capabilities" title="能力" aria-label="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></a>
+        <a href="/office" title="办公文件" aria-label="办公文件" data-app-icon="file"><span aria-hidden="true"></span><small>文件</small></a>
+        <a class="is-current" href="/tasks" title="工作" aria-label="工作" aria-current="page" data-app-icon="work"><span aria-hidden="true"></span><small>工作</small></a>
+      </nav>
+      <a class="rail-settings" href="/#settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <a class="wordmark" href="/tasks">工作</a>
+        <nav class="tabs" aria-label="工作页面">
+          <a href="/tasks" data-view="tasks">任务</a>
+          <a href="/artifacts" data-view="artifacts">结果</a>
+          <a href="/runs" data-view="runs">运行</a>
+          <a href="/memory" data-view="memory">记忆</a>
+        </nav>
+        <a class="back" href="/">返回聊天</a>
+      </header>
+
+      <section class="page-head">
+        <p class="eyebrow" id="pageEyebrow">持续工作</p>
+        <h1 id="pageTitle">任务</h1>
+        <p id="pageDescription">把需要重复执行的事情留在这里。</p>
+      </section>
+
+      <section class="content" id="content" aria-live="polite">
+        <div class="loading">正在读取本机数据…</div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="taskDialog">
+    <form class="dialog-card" id="taskForm">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="关闭">×</button>
+      <p class="eyebrow">重复任务</p>
+      <h2 id="taskDialogTitle">新建任务</h2>
+      <input id="taskId" type="hidden">
+      <label>任务名称<input id="taskTitle" maxlength="60" required placeholder="例如：每周经营复盘"></label>
+      <label>具体要求<textarea id="taskInstruction" rows="5" maxlength="2000" required placeholder="说清要处理什么、交付给谁、最重要的标准"></textarea></label>
+      <div class="form-row">
+        <label>使用能力<select id="taskCapability"></select></label>
+        <label>结果形式<select id="taskFormat"><option value="html">网页</option><option value="doc">Word</option><option value="pptx">PowerPoint</option><option value="md">文稿</option><option value="json">数据</option><option value="txt">纯文本</option></select></label>
+      </div>
+      <div class="form-row">
+        <label>执行方式<select id="taskSchedule"><option value="manual">手动</option><option value="daily">每天</option><option value="turns">每隔几轮对话</option></select></label>
+        <label id="scheduleDetail">时间<input id="taskTime" type="time" value="09:00"></label>
+      </div>
+      <button class="primary" type="submit">保存任务</button>
+    </form>
+  </dialog>
+
+  <dialog id="storyDialog">
+    <div class="dialog-card storyline-dialog-card">
+      <button class="dialog-close" type="button" data-close-story aria-label="关闭">×</button>
+      <header class="storyline-dialog-head">
+        <p class="eyebrow">任务脉络</p>
+        <h2 id="storyTitle">任务</h2>
+        <p>只保留当前判断、下一步和协作记录，不把内部协作变成群聊。</p>
+      </header>
+
+      <div class="storyline-layout">
+        <div class="storyline-main">
+          <form id="storyForm" class="story-form">
+            <input id="storyTaskId" type="hidden">
+            <div class="form-row">
+              <label>当前状态
+                <select id="storyStatus">
+                  <option value="active">推进中</option>
+                  <option value="waiting">等待中</option>
+                  <option value="paused">已暂停</option>
+                  <option value="completed">已完成</option>
+                </select>
+              </label>
+              <label>下一步
+                <input id="storyNextAction" maxlength="400" required placeholder="写下一个明确动作…">
+              </label>
+            </div>
+            <label>当前进展
+              <textarea id="storySummary" rows="4" maxlength="800" required placeholder="现在做到哪里、卡在哪里、什么已经确认…"></textarea>
+            </label>
+
+            <fieldset class="expert-fieldset">
+              <legend>专家职责</legend>
+              <p>小丑鱼仍是唯一对话入口；这里只说明谁负责判断什么。</p>
+              <div id="expertAssignments" class="expert-assignments"></div>
+              <button id="addExpertAssignment" type="button">添加专家</button>
+            </fieldset>
+            <button class="primary" type="submit">保存任务脉络</button>
+          </form>
+
+          <section class="story-section" aria-labelledby="decisionHeading">
+            <div class="story-section-head"><h3 id="decisionHeading">关键决定</h3><span>旧结论不会消失</span></div>
+            <div id="decisionList" class="decision-list"></div>
+            <form id="decisionForm" class="decision-form">
+              <label>新决定<input id="decisionText" maxlength="280" required placeholder="例如：先完成本地版，再接入云端服务…"></label>
+              <label>依据或边界<textarea id="decisionNote" rows="2" maxlength="800" placeholder="为什么这样决定，什么条件下需要重看…"></textarea></label>
+              <div class="decision-actions">
+                <label>替代旧决定<select id="decisionSupersedes"><option value="">不替代</option></select></label>
+                <button type="submit">记录决定</button>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <aside class="storyline-aside" aria-labelledby="activityHeading">
+          <div class="story-section-head"><h3 id="activityHeading">协作进度</h3><span id="activityStatus">最近更新</span></div>
+          <ol id="storyActivity" class="story-activity"></ol>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/app-icons.js" defer></script>
+  <script src="/assets/work-center.js" defer></script>
+</body>
+</html>

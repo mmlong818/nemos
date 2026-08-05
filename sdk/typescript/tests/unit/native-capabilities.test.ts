@@ -88,7 +88,7 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
   try {
     const runtime = new CapabilityRuntime({
       dataDir: dir,
-      personas: () => [{ id: "zhiwei", name: "知微" }],
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
       notify: async () => ({ reply: JSON.stringify(current), facts: [] }),
     });
     const expectedFormats: Record<string, ArtifactFormat> = {
@@ -97,7 +97,7 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
     };
     for (const [capabilityId, format] of Object.entries(expectedFormats)) {
       current = payloads[capabilityId]!;
-      const result = await runtime.runAdHocTask({ title: capabilityId, personaId: "zhiwei", capabilityId, instruction: "完成测试任务", format });
+      const result = await runtime.runAdHocTask({ title: capabilityId, personaId: "clownfish", capabilityId, instruction: "完成测试任务", format });
       assert.equal(result.artifact.format, format);
       assert.ok(existsSync(result.artifact.file));
       assert.ok(statSync(result.artifact.file).size > 100);
@@ -106,7 +106,7 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
         assert.ok(result.artifact.previewFile && existsSync(result.artifact.previewFile));
       } else {
         const html = readFileSync(result.artifact.file, "utf8");
-        assert.match(html, /Nemos 能力结果/);
+        assert.match(html, /小丑鱼能力结果/);
         assert.doesNotMatch(html, /github\.com|source_url|upstream_repository/i);
       }
     }
