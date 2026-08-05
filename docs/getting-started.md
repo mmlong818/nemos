@@ -64,11 +64,9 @@ await nemos.close();
 
 集成方必须自己处理登录和授权。不要直接使用客户端提交的 userId。
 
-## 文档状态
+## 继续阅读
 
-- **sdk/typescript/README.md** 描述当前公开 API；
-- **sdk/typescript/docs/nemos-memory-v0.7-design.md** 描述 v0.7 生命周期和边界；
-- **spec/** 是早期协议草案；
-- **rfcs/** 是设计决策记录。
-
-遇到文档冲突时，以当前类型定义、测试和 SDK README 为准。
+- [小丑鱼使用说明](../sdk/typescript/examples/companion/README.md)
+- [TypeScript SDK](../sdk/typescript/README.md)
+- [架构总览](architecture-overview.md)
+- [集成指南](integration-guide.md)

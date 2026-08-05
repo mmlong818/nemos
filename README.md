@@ -30,7 +30,7 @@
 
 ![小丑鱼能力页](docs/assets/readme/clownfish-capabilities.jpg)
 
-当前公开的 12 项能力：
+内置能力覆盖以下常见任务：
 
 - 做 PPT
 - 写正式文档
@@ -45,7 +45,7 @@
 - 模拟市场机会
 - 生成新能力
 
-不同能力可以交付 PPTX、DOCX、PDF、XLSX、HTML、Markdown 或结构化数据。动车、航班、酒店和餐馆的实时查询不在当前产品范围内。
+不同能力可以交付 PPTX、DOCX、PDF、XLSX、HTML、Markdown 或结构化数据。
 
 ## 文件：原文件、工作副本和结果不分家
 
@@ -70,7 +70,7 @@
 - 用户可在工作页明确添加习惯，也可忘记单条分类记忆；
 - 原始归档不会被“忘记”或“清理分类记忆”误删。
 
-文笔、排版和格式偏好只作为补充，当前任务的明确要求始终优先。当前版本尚未提供“查看本次具体应用了哪几条偏好”或“仅本次忽略某一条偏好”的细粒度控制。
+文笔、排版和格式偏好只作为补充，当前任务的明确要求始终优先。
 
 ![小丑鱼记忆页](docs/assets/readme/clownfish-memory.jpg)
 
@@ -91,7 +91,7 @@ Windows 下，密钥使用当前用户的 DPAPI 加密并保存在本机；接�
 - 记忆数据库、任务、运行记录、文件工作副本和交付物默认位于 **~/.clownfish**。
 - 调用已配置的模型时，当前请求及必要上下文会发送给该模型服务商；打开联网来源时会访问相应公开服务。
 - 本机日志和运行记录会脱敏常见凭证字段，但仍不应把密钥或私人配置写入任务正文。
-- 开发者模式可以导出本机备份；分享备份或便携包前，应确认其中不包含用户数据目录。
+- 导出或分享备份与便携包前，应确认其中不包含用户数据目录。
 
 ## 本地运行
 
@@ -142,11 +142,9 @@ const context = await memory.getRelevantContext("起草一份方案");
 | [小丑鱼使用说明](sdk/typescript/examples/companion/README.md) | 启动、数据目录、桌面构建和接口 |
 | [TypeScript SDK](sdk/typescript/README.md) | 当前可用的记忆 API |
 | [记忆架构](docs/architecture-overview.md) | 已实现结构与边界 |
-| [Agent Runtime](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | 任务、工具、权限与恢复 |
-| [能力地图](sdk/typescript/examples/companion/docs/clownfish-capability-map.md) | 用户能力与内部执行映射 |
+| [运行架构](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | 任务、工具、权限与恢复 |
 | [路线图](ROADMAP.md) | 当前版本和后续重点 |
-| [项目资料状态](docs/document-status.md) | 每份文档的当前、研究快照或归档属性 |
-| [历史规范草案](spec/) · [RFC](rfcs/) | 设计记录，不等同于当前已实现接口 |
+| [文档导航](docs/README.md) | 使用、集成、架构与研究资料入口 |
 
 ## 许可
 

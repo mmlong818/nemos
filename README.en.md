@@ -30,9 +30,9 @@ Selection opens the task form immediately, without an extra preparation step. Jo
 
 ![Clownfish capabilities](docs/assets/readme/clownfish-capabilities.jpg)
 
-The 12 public capabilities are presentation creation, formal documents, deep research, Hong Kong market briefs, complex-problem framing, product interface design, meeting minutes, web reports, option comparison, business development, market opportunity simulation, and new-capability generation.
+Built-in capabilities cover presentation creation, formal documents, deep research, Hong Kong market briefs, complex-problem framing, product interface design, meeting minutes, web reports, option comparison, business development, market opportunity simulation, and new-capability generation.
 
-Outputs include PPTX, DOCX, PDF, XLSX, HTML, Markdown, and structured data. Live train, flight, hotel, and restaurant lookup is outside the current product scope.
+Outputs include PPTX, DOCX, PDF, XLSX, HTML, Markdown, and structured data.
 
 ## Files: original, working copy, and result stay together
 
@@ -57,7 +57,7 @@ Clownfish uses the Nemos Memory SDK in this repository. The application currentl
 - Lets users add an explicit habit and forget an individual categorized memory;
 - Preserves archival records when categorized memories are forgotten or cleared.
 
-Writing, layout, and format preferences supplement the current request; they do not replace it. The current release does not yet show exactly which preference records were applied or allow one preference to be ignored for a single run.
+Writing, layout, and format preferences supplement the current request; they do not replace it.
 
 ![Clownfish memory](docs/assets/readme/clownfish-memory.jpg)
 
@@ -78,7 +78,7 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 - Memory, tasks, runs, working copies, and artifacts are stored under **~/.clownfish** by default.
 - When a configured model is called, the request and required context are sent to that provider. Network source features contact their corresponding public services when used.
 - Logs and run records redact common credential fields, but secrets should never be placed in task text.
-- Developer mode can export a local backup. Check that user data is excluded before sharing a backup or portable package.
+- Before exporting or sharing a backup or portable package, check that it does not contain a user data directory.
 
 ## Run locally
 
@@ -129,11 +129,9 @@ const context = await memory.getRelevantContext("Draft a proposal");
 | [Clownfish guide](sdk/typescript/examples/companion/README.md) | Startup, data directory, desktop build, and endpoints |
 | [TypeScript SDK](sdk/typescript/README.en.md) | Current memory APIs |
 | [Memory architecture](docs/architecture-overview.md) | Implemented structure and boundaries |
-| [Agent Runtime](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Tasks, tools, permissions, and recovery |
-| [Capability map](sdk/typescript/examples/companion/docs/clownfish-capability-map.md) | User capabilities and execution mapping |
+| [Runtime architecture](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Tasks, tools, permissions, and recovery |
 | [Roadmap](ROADMAP.md) | Current versions and next priorities |
-| [Document status](docs/document-status.md) | Current, research-snapshot, and archived material |
-| [Historical specification drafts](spec/) · [RFCs](rfcs/) | Design records, not current implementation contracts |
+| [Documentation guide](docs/README.en.md) | Product, integration, architecture, and research documents |
 
 ## License
 
