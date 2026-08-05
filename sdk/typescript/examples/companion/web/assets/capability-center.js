@@ -7,6 +7,7 @@ const CATALOG = [
   { id: "marketBrief", backendId: "market-briefing", name: "查港股资料", icon: "trend", summary: "读取公告、行情快照并整理盘前盘后简报", description: "按股票代码读取港交所官方公告和带查询时间的第三方行情快照；明确延迟、来源和待核验项，不提供交易指令。", use: "自选股、公告核验、盘前盘后复盘", deliverable: "带来源与时间戳的市场资料简报", format: "html", detail: "读取关注代码、官方公告、行情快照和风险边界" },
   { id: "thinking", backendId: "thinking-workbench", name: "梳理复杂问题", icon: "lightbulb", summary: "把模糊问题变成可操作的思考工作台", description: "分开事实、假设、矛盾和未知，保留多个选项，形成可以勾选和补充的验证计划。", use: "问题拆解、创意探索、复盘", deliverable: "可交互思考工作台", format: "html", featured: true, detail: "梳理问题、假设、选择和验证办法" },
   { id: "product", backendId: "product-design", name: "设计产品界面", icon: "layout", summary: "从用户任务形成页面和交互方案", description: "先理清真实用户路径，再产出信息结构、关键界面、交互说明和验收要点。", use: "新功能、界面改版、产品方案", deliverable: "产品设计说明", format: "html", featured: true, detail: "形成用户流程、页面结构与设计说明" },
+  { id: "developer", backendId: "project-development", name: "开发项目", icon: "code", summary: "读取本地项目、修改代码并运行验证", description: "使用独立开发执行器，在你指定的项目文件夹内真实读取、修改和验证代码。", use: "开发功能、修复问题、项目检查", deliverable: "项目修改与验证报告", format: "md", featured: true, detail: "读取项目规则、实施修改并运行受控检查" },
   { id: "meeting", backendId: "meeting-minutes", name: "整理会议纪要", icon: "checklist", summary: "从记录中提炼结论和行动项", description: "把会议文字整理成摘要、决定、责任人、截止时间、风险和未决问题。", use: "会议记录、访谈、讨论复盘", deliverable: "纪要与行动表", format: "doc", featured: true, detail: "提炼决定、行动项与未决问题" },
   { id: "web", backendId: "html-report", name: "做网页报告", icon: "globe", summary: "把内容制作成独立网页", description: "生成不依赖外部服务、可直接在浏览器打开的单页内容。", use: "报告、说明页、互动展示", deliverable: "独立 HTML 网页", format: "html", detail: "制作可直接打开的独立网页" },
   { id: "decision", backendId: "decision-brief", name: "比较方案", icon: "scale", summary: "比较证据、风险与行动条件", description: "把零散信息整理成可判断的选择，说明收益、代价、风险和什么时候应该改变决定。", use: "选型、取舍、优先级判断", deliverable: "决策简报", format: "md", detail: "比较方案、风险和行动条件" },
@@ -29,6 +30,7 @@ const ICON_PATHS = {
   handshake: '<path d="m4 8 4-3 4 2 4-2 4 3-4 7-4 2-4-2-4-7Z"/><path d="m8 9 3 3a2 2 0 0 0 3 0l1-1M8 15l2-2M16 15l-2-2"/>',
   trend: '<path d="M4 18V6M4 18h16"/><path d="m7 14 4-4 3 2 5-6"/><path d="M15.5 6H19v3.5"/>',
   branch: '<circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="18" cy="17" r="2"/><path d="M6 7v5a5 5 0 0 0 5 5h5M8 7h8M11 7v5a5 5 0 0 0 5 5"/>',
+  code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5M14 4l-4 16"/>',
   ...window.ClownfishIcons.paths,
 };
 
@@ -51,6 +53,7 @@ const MATCH_RULES = [
   ["presentation", /PPT|演示|汇报|路演|幻灯|提案|课件/i],
   ["meeting", /会议|纪要|访谈|录音|讨论记录/i],
   ["product", /产品|界面|交互|原型|用户体验|功能设计/i],
+  ["developer", /开发|写代码|改代码|修复.{0,6}(问题|bug)|项目检查|构建|测试/i],
   ["business", /商务|合作|销售|客户|谈判|成交|跟进/i],
   ["marketBrief", /港股|股票|行情|公告|财报|盘前|盘后|自选|持仓|HKEX/i],
   ["market", /市场|赛道|机会|定位|竞品|增长/i],
@@ -69,6 +72,7 @@ const EXAMPLE_PROMPTS = {
   marketBrief: "例如：整理 02513.HK 最近公告和行情变化，标明来源、时间与风险",
   thinking: "例如：帮我梳理是否应该进入这个市场，分开事实、假设和待验证问题",
   product: "例如：重新设计新用户首页，减少认知负担并给出关键交互说明",
+  developer: "例如：修复页面切换抖动，检查根因，完成修改并运行相关测试",
   meeting: "例如：把会议记录整理成结论、行动项、负责人和截止时间",
   web: "例如：把这份报告做成可直接打开的单页网页",
   decision: "例如：比较三个方案的收益、代价、风险和改变决定的条件",
@@ -84,6 +88,7 @@ const ICON_TONES = {
   marketBrief: "#356b8c",
   thinking: "#a36a1f",
   product: "#9a476b",
+  developer: "#546b8b",
   meeting: "#4c765e",
   web: "#3c7873",
   decision: "#765f92",
@@ -125,7 +130,13 @@ const state = {
   memoryCount: 0,
   pollTimer: 0,
   handoffApplied: false,
+  handoffContext: "",
+  handoffSummary: "",
+  handoffMessageCount: 0,
+  returnConversationKey: "",
   returnUrl: "/",
+  parentJobId: "",
+  handoffChain: [],
 };
 
 function escapeHtml(value) {
@@ -161,6 +172,7 @@ function availability(item) {
 }
 
 function supportedFormats(item) {
+  if (item.id === "developer") return ["md"];
   if (item.id === "presentation") return ["pptx", "pdf", "html", "json", "md"];
   if (["research", "marketBrief", "thinking", "product", "business", "market", "ability"].includes(item.id)) return ["html", "pdf", "doc", "json", "md"];
   if (item.id === "web") return ["html", "pdf", "md", "json"];
@@ -212,13 +224,14 @@ function renderExecutionState() {
   const status = availability(item);
   const button = $("#startTask");
   const hasInstruction = Boolean($("#goalInput").value.trim() || $("#instructionInput").value.trim());
-  button.disabled = !status.ready || !hasInstruction;
-  button.textContent = !status.ready ? status.action : hasInstruction ? "开始执行" : "先填写任务要求";
+  const hasWorkspace = item.id !== "developer" || Boolean($("#workspaceInput").value.trim());
+  button.disabled = !status.ready || !hasInstruction || !hasWorkspace;
+  button.textContent = !status.ready ? status.action : !hasInstruction ? "先填写任务要求" : !hasWorkspace ? "先填写项目文件夹" : "开始执行";
   $(".run-note").textContent = !status.ready
     ? "请先在设置中配置模型；任务不会用离线回声生成假结果。"
-    : hasInstruction
+    : hasInstruction && hasWorkspace
       ? "任务会在后台继续；离开此页后，可在“进行中”查看。"
-      : "填写任务要求后即可开始。";
+      : item.id === "developer" && !hasWorkspace ? "填写要处理的本地项目文件夹。" : "填写任务要求后即可开始。";
 }
 
 function selectCapability(id) {
@@ -247,6 +260,7 @@ function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
   $("#launchTitle").textContent = item.name;
   $("#launchSummary").textContent = item.summary;
   $("#instructionInput").placeholder = EXAMPLE_PROMPTS[item.id] || "说清楚要完成什么，也可以补充受众、重点、语气或格式";
+  $("#developerFields").hidden = item.id !== "developer";
   renderFormatOptions(item);
   $("#formatSelect").value = item.format;
   $("#launchPanel").hidden = false;
@@ -334,6 +348,10 @@ function saveDraft() {
     personaId: $("#personaSelect").value,
     memoryMode: $("#memoryToggle").checked ? "preferences" : "off",
     materials: state.materials,
+    workspacePath: $("#workspaceInput").value,
+    accessMode: $("#accessModeSelect").value,
+    parentJobId: state.parentJobId,
+    handoffChain: state.handoffChain,
     updatedAt: new Date().toISOString(),
   };
   localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -372,6 +390,10 @@ function restoreLast() {
   $("#goalInput").value = draft.goal || "";
   $("#instructionInput").value = draft.instruction || "";
   $("#memoryToggle").checked = draft.memoryMode !== "off";
+  $("#workspaceInput").value = draft.workspacePath || "";
+  $("#accessModeSelect").value = draft.accessMode === "inspect" ? "inspect" : "develop";
+  state.parentJobId = String(draft.parentJobId || "");
+  state.handoffChain = Array.isArray(draft.handoffChain) ? draft.handoffChain.slice(0, 12) : [];
   renderCatalog();
   renderMaterials();
   openCapability();
@@ -383,7 +405,15 @@ function resetDraft() {
   localStorage.removeItem(DRAFT_KEY);
   $("#goalInput").value = "";
   $("#instructionInput").value = "";
+  $("#workspaceInput").value = "";
+  $("#accessModeSelect").value = "develop";
   state.materials = [];
+  state.handoffContext = "";
+  state.handoffSummary = "";
+  state.handoffMessageCount = 0;
+  state.returnConversationKey = "";
+  state.parentJobId = "";
+  state.handoffChain = [];
   renderMaterials();
   $("#launchPanel").hidden = true;
   $(".start-wrap").classList.remove("is-launching");
@@ -396,10 +426,17 @@ async function startTask() {
   const details = $("#instructionInput").value.trim();
   const instruction = details || goal;
   if (!instruction) return showToast("先写下想完成的事情", true);
+  if (item.id === "developer" && !$("#workspaceInput").value.trim()) return showToast("先填写项目文件夹", true);
   if (!isAvailable(item)) return showToast(availability(item).action, true);
   const button = $("#startTask");
   button.disabled = true;
   button.textContent = "正在加入任务…";
+  const summaryContext = state.handoffSummary
+    ? "\n\n【对话提要】\n" + state.handoffSummary
+    : "";
+  const conversationContext = state.handoffContext
+    ? "\n\n【完整对话原文】\n以下内容是原始依据。提要与原文冲突时以原文为准；请继承其中已经确认的目标、限制、判断和材料，不要要求用户重复说明。\n--- 对话开始 ---\n" + state.handoffContext + "\n--- 对话结束 ---"
+    : "";
   const materials = state.materials.length ? `\n\n用户提供的材料：\n--- ${state.materials[0].name} ---\n${state.materials[0].text}` : "";
   try {
     const response = await api("/api/agent/job", {
@@ -409,7 +446,12 @@ async function startTask() {
         title: (goal || instruction).slice(0, 60),
         personaId: $("#personaSelect").value || "clownfish",
         capabilityId: item.backendId,
-        instruction: `${instruction}${materials}`,
+        instruction: `${instruction}${summaryContext}${conversationContext}${materials}`,
+        conversationKey: state.returnConversationKey,
+        workspacePath: item.id === "developer" ? $("#workspaceInput").value.trim() : "",
+        accessMode: item.id === "developer" && $("#accessModeSelect").value === "inspect" ? "inspect" : "develop",
+        parentJobId: state.parentJobId,
+        handoffChain: [...state.handoffChain, item.backendId].slice(-12),
         format: $("#formatSelect").value,
         memoryMode: $("#memoryToggle").checked ? "preferences" : "off",
         idempotencyKey: `capability-center-${crypto.randomUUID()}`,
@@ -508,10 +550,43 @@ function renderHistory() {
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
       <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p></div>
-      <div class="task-actions">${job.status === "succeeded" ? `<a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${open}<button type="button" data-reuse-job="${escapeHtml(job.id)}">再次使用</button></div>
+      <div class="task-actions">${job.status === "succeeded" ? `<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${open}<button type="button" data-reuse-job="${escapeHtml(job.id)}">再次使用</button></div>
     </article>`;
   }).join("");
   $$('[data-reuse-job]').forEach((button) => button.addEventListener("click", () => reuseJob(button.dataset.reuseJob)));
+  $$('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
+}
+
+async function handoffJob(id) {
+  const job = state.jobs.find((item) => item.id === id);
+  const artifact = artifactFromJob(job || {});
+  if (!job || job.status !== "succeeded" || !artifact) return showToast("这个任务还没有可交接的结果", true);
+  try {
+    const context = await api(`/api/capabilities/artifact/context?id=${encodeURIComponent(artifact.id)}`);
+    const sourceCapability = jobCapability(job);
+    const text = String(context.text || artifact.summary || "").slice(0, 160000);
+    state.parentJobId = job.id;
+    state.handoffChain = [...(Array.isArray(job.payload?.handoffChain) ? job.payload.handoffChain : []), sourceCapability.backendId].slice(-12);
+    state.materials = [{ name: `${jobTitle(job)}-上一步结果.md`, size: new Blob([text]).size, text, kind: "handoff" }];
+    state.handoffSummary = `上一步由「${sourceCapability.name}」完成。请选择下一项能力，并说明要继续完成什么。`;
+    state.handoffContext = "";
+    $("#goalInput").value = "";
+    $("#instructionInput").value = "";
+    $("#launchPanel").hidden = true;
+    $(".start-wrap").classList.remove("is-launching");
+    $("#chatContext").hidden = false;
+    $("#chatContextTitle").textContent = `继续处理「${jobTitle(job)}」`;
+    $("#chatContextText").textContent = "上一步的完整结果和提要已经带入；选择下一项能力后会一并交接。";
+    $("#chatContextReturn").textContent = "查看上一步结果";
+    $("#chatContextReturn").href = `/api/capabilities/artifact/preview?id=${encodeURIComponent(artifact.id)}`;
+    renderMaterials();
+    saveDraft();
+    openView("start");
+    $("#goalInput").focus({ preventScroll: true });
+    showToast("上一步结果已带入，请选择下一项能力");
+  } catch (error) {
+    showToast(error.message || "结果交接失败", true);
+  }
 }
 
 function reuseJob(id) {
@@ -617,6 +692,32 @@ function configureReturnLinks() {
   });
 }
 
+function loadHandoffConversation(handoff, chatName) {
+  const key = String(handoff.conversationKey || "");
+  let messages = [];
+  try {
+    const trees = JSON.parse(localStorage.getItem("clownfish-conversation-trees-v1") || "{}");
+    const tree = trees[key];
+    if (tree && tree.nodes && tree.nodes[tree.activeId] && Array.isArray(tree.nodes[tree.activeId].messages)) {
+      messages = tree.nodes[tree.activeId].messages;
+    }
+  } catch {}
+  if (!messages.length) {
+    try {
+      const logs = JSON.parse(localStorage.getItem("companion_logs") || "{}");
+      if (Array.isArray(logs[key])) messages = logs[key];
+    } catch {}
+  }
+  if (!messages.length && Array.isArray(handoff.conversation)) messages = handoff.conversation;
+  return messages.filter((entry) => entry && typeof entry.text === "string" && entry.text.trim()).map((entry) => {
+    const persona = entry.pid ? state.personas.find((item) => item.id === entry.pid) : null;
+    return {
+      speaker: String(entry.speaker || (entry.side === "me" || entry.side === "user" ? "用户" : entry.who || persona?.name || chatName)).slice(0, 60),
+      text: entry.text,
+    };
+  });
+}
+
 function applyChatHandoff() {
   if (state.handoffApplied) return;
   state.handoffApplied = true;
@@ -625,6 +726,13 @@ function applyChatHandoff() {
   const goal = String(handoff.goal || "").trim().slice(0, 2000);
   const personaId = String(handoff.personaId || "");
   const chatName = String(handoff.chatName || "当前对话").slice(0, 40);
+  const incomingConversation = loadHandoffConversation(handoff, chatName);
+  state.handoffContext = incomingConversation.map((entry) => `${entry.speaker}：${entry.text}`).join("\n\n");
+  state.handoffSummary = String(handoff.summary || goal).trim();
+  state.handoffMessageCount = incomingConversation.length;
+  state.returnConversationKey = /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(handoff.conversationKey || ""))
+    ? String(handoff.conversationKey)
+    : "";
   const fromOffice = handoff.source === "office";
   const incomingMaterials = Array.isArray(handoff.materials)
     ? handoff.materials.filter((item) => item && typeof item.name === "string" && typeof item.text === "string" && item.text.trim()).slice(0, 1).map((item) => ({
@@ -638,7 +746,9 @@ function applyChatHandoff() {
   $("#chatContextTitle").textContent = `从「${chatName}」继续`;
   $("#chatContextText").textContent = fromOffice
     ? "工作副本已经带过来，确认能力和结果形式后即可开始。"
-    : goal ? "目标已经带过来，确认做法后即可开始。" : "从对话带来的任务会在这里准备，完成后仍回到原对话。";
+    : state.handoffMessageCount
+      ? `已带入当前分支的 ${state.handoffMessageCount} 条完整原文和一份上下文提要；两者都会交给能力执行。`
+      : goal ? "目标已经带过来，确认做法后即可开始。" : "从对话带来的任务会在这里准备，完成后仍回到原对话。";
   $("#chatContextReturn").textContent = fromOffice ? "回到文件" : "回到对话";
   if (incomingMaterials.length) {
     state.materials = incomingMaterials;
@@ -647,7 +757,7 @@ function applyChatHandoff() {
   if (goal) {
     selectCapability(matchCapability(goal));
     $("#goalInput").value = goal;
-    $("#instructionInput").value = goal;
+    $("#instructionInput").value = state.handoffSummary || goal;
   }
   if ([...$("#personaSelect").options].some((option) => option.value === personaId)) $("#personaSelect").value = personaId;
   if (goal) openCapability(goal);
@@ -667,6 +777,8 @@ function bindEvents() {
   $("#closeLaunch").addEventListener("click", closeCapability);
   $("#goalInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
   $("#instructionInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
+  $("#workspaceInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
+  $("#accessModeSelect").addEventListener("change", saveDraft);
   $("#formatSelect").addEventListener("change", saveDraft);
   $("#personaSelect").addEventListener("change", saveDraft);
   $("#memoryToggle").addEventListener("change", saveDraft);

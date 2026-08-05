@@ -28,7 +28,10 @@ test("工作页提供任务、结果、运行和记忆的独立新手入口", ()
   assert.match(chat, /branchConversation/);
   assert.match(chat, /rollbackConversation/);
   assert.match(chat, /conversationRequestOptions/);
-  assert.match(chat, /协作进度/);
+  assert.doesNotMatch(chat, /协作进度|executionPanel/);
+  assert.match(chat, /function splitStreamMessages/);
+  assert.match(chat, /STREAM_MESSAGE_REVEAL_DELAY_MS = 180/);
+  assert.match(chat, /await revealChain/);
 });
 
 test("技能支持固定、停用、陈旧与证据写回", async () => {

@@ -23,6 +23,7 @@ export interface CompanionModelProviderPreset {
   protocol: CompanionModelProtocol;
   baseUrl: string;
   model: string;
+  dailyChatModel?: string;
   keyRequired: boolean;
   note: string;
 }
@@ -34,8 +35,9 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     protocol: "openai-compatible",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     model: "glm-5.2",
+    dailyChatModel: "glm-5.2",
     keyRequired: true,
-    note: "支持对话、记忆向量、识图、语音与联网搜索。",
+    note: "日常对话与任务默认使用 glm-5.2。",
   },
   {
     id: "openai",
@@ -43,8 +45,9 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     protocol: "openai-compatible",
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-5.6-terra",
+    dailyChatModel: "gpt-5.6-luna",
     keyRequired: true,
-    note: "支持对话、工具调用与记忆向量。",
+    note: "日常对话自动使用 gpt-5.6-luna；这里设置的模型用于专家、能力和复杂任务。",
   },
   {
     id: "anthropic",
@@ -52,8 +55,9 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     protocol: "anthropic",
     baseUrl: "https://api.anthropic.com/v1",
     model: "claude-sonnet-5",
+    dailyChatModel: "claude-haiku-4-5",
     keyRequired: true,
-    note: "支持对话与工具调用；记忆检索使用本地文字索引。",
+    note: "日常对话自动使用 Claude Haiku 4.5；这里设置的模型用于专家、能力和复杂任务。",
   },
   {
     id: "deepseek",
@@ -61,8 +65,9 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     protocol: "openai-compatible",
     baseUrl: "https://api.deepseek.com",
     model: "deepseek-v4-pro",
+    dailyChatModel: "deepseek-v4-flash",
     keyRequired: true,
-    note: "支持对话与工具调用；记忆检索使用本地文字索引。",
+    note: "日常对话自动使用 DeepSeek V4 Flash；这里设置的模型用于专家、能力和复杂任务。",
   },
   {
     id: "qwen",
@@ -70,8 +75,9 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     protocol: "openai-compatible",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen3.7-max",
+    dailyChatModel: "qwen3.6-flash",
     keyRequired: true,
-    note: "使用阿里云百炼的 OpenAI 兼容接口。",
+    note: "日常对话自动使用 qwen3.6-flash；这里设置的模型用于专家、能力和复杂任务。",
   },
   {
     id: "minimax",
@@ -79,8 +85,9 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     protocol: "openai-compatible",
     baseUrl: "https://api.minimaxi.com/v1",
     model: "MiniMax-M3",
+    dailyChatModel: "MiniMax-M2.7-highspeed",
     keyRequired: true,
-    note: "使用 MiniMax 的 OpenAI 兼容接口。",
+    note: "日常对话自动使用 MiniMax-M2.7-highspeed；这里设置的模型用于专家、能力和复杂任务。",
   },
   {
     id: "custom",
@@ -134,6 +141,37 @@ export function modelConnectionEndpoint(connection: CompanionModelConnection): s
   const suffix = connection.protocol === "anthropic" ? "/messages" : "/chat/completions";
   if (connection.baseUrl.endsWith(suffix)) return connection.baseUrl;
   return `${connection.baseUrl}${suffix}`;
+}
+
+export function dailyChatModelForConnection(
+  connection: Pick<CompanionModelConnection, "provider" | "model">,
+): string {
+  const preset = companionModelProviderPreset(connection.provider);
+  return preset.dailyChatModel || connection.model;
+}
+
+const COMPANION_TASK_CUE = /帮我|请你|给我(?:写|做|生成|制作|整理|分析|设计|规划|总结|翻译|修改|查找|搜索)|写一|生成|制作|调研|分析|整理|总结|翻译|设计|规划|创建|编辑|修改|修复|实现|开发|导出|保存|上传|下载|联网|搜索|能力|工具|代码|项目|文档|表格|演示|PPT|PDF|Word|Excel|任务/i;
+
+export function isCompanionDailyConversation(instruction: string): boolean {
+  const text = instruction.trim();
+  if (!text) return true;
+  if (text.length > 1200) return false;
+  return !COMPANION_TASK_CUE.test(text);
+}
+
+export function selectCompanionConversationModel(input: {
+  connection?: Pick<CompanionModelConnection, "provider" | "model">;
+  requestedModel?: string;
+  target: { kind: "persona" | "group"; id: string };
+  expertPersonaIds?: ReadonlySet<string>;
+  instruction?: string;
+  forceTaskModel?: boolean;
+}): string | undefined {
+  if (input.requestedModel) return input.requestedModel;
+  if (!input.connection || input.target.kind !== "persona") return undefined;
+  if (input.expertPersonaIds?.has(input.target.id)) return undefined;
+  if (input.forceTaskModel || !isCompanionDailyConversation(input.instruction || "")) return undefined;
+  return dailyChatModelForConnection(input.connection);
 }
 
 export function publicModelConnection(connection?: CompanionModelConnection): {

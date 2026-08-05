@@ -114,7 +114,7 @@ test("companion stream reuses AgentRuntime and emits tool status events", async 
     );
     assert.equal(result, "上海今天晴。");
     assert.deepEqual(tokens, ["上海今天", "晴。"]);
-    assert.deepEqual(statuses, ["工作中", "查询中", "整理中"]);
+    assert.deepEqual(statuses, ["查询中", "整理中"]);
   } finally {
     if (previousKey === undefined) delete process.env.ZHIPU_API_KEY;
     else process.env.ZHIPU_API_KEY = previousKey;

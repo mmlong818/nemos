@@ -45,12 +45,14 @@
     "check": "npm run build && npm test"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.83.0",
     "@modelcontextprotocol/client": "^2.0.0",
     "better-sqlite3": "^12.10.0",
     "jszip": "^3.10.1",
     "pdfjs-dist": "^5.4.624",
     "pdfkit": "^0.17.2",
-    "pptxgenjs": "^4.0.1"
+    "pptxgenjs": "^4.0.1",
+    "typebox": "^1.1.4"
   },
   "optionalDependencies": {
     "sqlite-vec": "^0.1.0"
@@ -75,7 +77,7 @@
     "typescript": "^5.4.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19"
   },
   "private": true
 }

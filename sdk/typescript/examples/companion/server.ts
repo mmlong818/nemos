@@ -43,6 +43,8 @@ import {
   defaultCompanionModelConnection,
   normalizeCompanionModelConnection,
   publicModelConnection,
+  dailyChatModelForConnection,
+  selectCompanionConversationModel,
   type CompanionModelConnection,
   type CompanionModelProvider,
   type CompanionModelProtocol,
@@ -73,6 +75,7 @@ import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from 
 import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
 import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
+import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
 import {
   importWeChatPrivateSource,
   loadPrivateSourcesConfig,
@@ -287,6 +290,15 @@ const capabilities = new CapabilityRuntime({
     expert: LONG_FORM_EXPERT_IDS.has(p.id),
   })),
   toolRegistry: capabilityTools,
+  runDeveloper: async (input) => {
+    if (!modelConnection) throw new Error("请先在设置中连接一个可用模型。");
+    const result = await runPiDevelopment({
+      ...input,
+      connection: modelConnection,
+      agentDir: join(DATA_DIR, "pi-development"),
+    });
+    return { reply: result.reply };
+  },
   notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode) => {
     const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
@@ -388,13 +400,20 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       trigger: "agent-job",
       runId: `agent-job/${job.id}`,
       memoryMode: job.payload.memoryMode === "off" ? "off" : job.payload.memoryMode === "preferences" ? "preferences" : "default",
+      workspacePath: String(job.payload.workspacePath || ""),
+      accessMode: job.payload.accessMode === "inspect" ? "inspect" : "develop",
       onProgress: (message, percent) => context.checkpoint(message, percent),
     }, context.signal);
     context.checkpoint("产物已保存", 100, { artifactId: notification.artifact.id });
     return {
       summary: notification.text,
       artifactRefs: [`artifact:${notification.artifact.id}`],
-      data: capabilityReply(notification),
+      data: {
+        ...capabilityReply(notification),
+        conversationKey: String(job.payload.conversationKey || ""),
+        parentJobId: String(job.payload.parentJobId || ""),
+        handoffChain: Array.isArray(job.payload.handoffChain) ? job.payload.handoffChain : [],
+      },
     };
   },
   orchestration: async (job, context) => {
@@ -780,6 +799,8 @@ function modelConnectionStatus(): Record<string, unknown> {
     live: llm.live,
     label: llm.label,
     ...connection,
+    dailyChatModel: modelConnection ? dailyChatModelForConnection(modelConnection) : "",
+    taskModel: connection.model,
     savedConnection: savedLLMKeyExists(),
     savedKey: savedLLMKeyExists() && connection.hasKey,
     supports: {
@@ -1824,7 +1845,11 @@ async function createHkReminderDelivery(
   let facts: string[] = [];
   if (llm.live) {
     try {
-      const result = await engine.notify(USER, APP_PERSONA_ID, prompt, { signal, runId });
+      const result = await engine.notify(USER, APP_PERSONA_ID, prompt, {
+        signal,
+        runId,
+        model: modelConnection ? dailyChatModelForConnection(modelConnection) : undefined,
+      });
       reply = result.reply;
       facts = bullets(result.context.userFacts);
     } catch (error) {
@@ -1970,9 +1995,19 @@ function conversationSendOptions(body: ChatBody): {
       ? { maxRounds: 8, maxToolRounds: 5, maxTotalTokens: 80_000, maxOutputChars: 20_000 }
       : { maxRounds: 4, maxToolRounds: 2, maxTotalTokens: 32_000, maxOutputChars: 10_000 };
   const model = String(body.model || "").trim();
+  const requestedModel = model && model !== "default" && /^[a-z0-9._:/-]{1,120}$/i.test(model)
+    ? model
+    : undefined;
   return {
     sessionId: body.sessionId ? String(body.sessionId).slice(0, 120) : undefined,
-    model: model && model !== "default" && /^[a-z0-9._:/-]{1,120}$/i.test(model) ? model : undefined,
+    model: selectCompanionConversationModel({
+      connection: modelConnection,
+      requestedModel,
+      target: body.target,
+      expertPersonaIds: LONG_FORM_EXPERT_IDS,
+      instruction: body.text,
+      forceTaskModel: body.reasoning === "deep",
+    }),
     toolMode: body.toolMode === "off" ? "off" : body.toolMode === "read-only" ? "read-only" : "auto",
     runtimeLimits,
   };
@@ -2896,6 +2931,11 @@ const server = createServer(async (req, res) => {
         personaId?: string;
         capabilityId?: string;
         instruction?: string;
+        conversationKey?: string;
+        workspacePath?: string;
+        accessMode?: DevelopmentAccessMode;
+        parentJobId?: string;
+        handoffChain?: string[];
         format?: ArtifactFormat;
         idempotencyKey?: string;
         timeoutMs?: number;
@@ -2908,6 +2948,15 @@ const server = createServer(async (req, res) => {
       if (body.kind === "capability-adhoc" && (!body.personaId || !body.capabilityId || !body.instruction)) {
         send(res, 400, { error: "missing personaId, capabilityId, or instruction" });
         return;
+      }
+      if (body.kind === "capability-adhoc" && body.capabilityId === "project-development") {
+        try { validateDevelopmentWorkspace(String(body.workspacePath || "")); }
+        catch (error) { send(res, 400, { error: error instanceof Error ? error.message : String(error) }); return; }
+      }
+      const parentJobId = String(body.parentJobId || "").trim();
+      if (parentJobId) {
+        const parent = agentJobQueue.get(parentJobId);
+        if (!parent || parent.status !== "succeeded") { send(res, 400, { error: "上一步能力结果不存在或尚未完成" }); return; }
       }
       if (body.kind !== "capability-task" && body.kind !== "capability-adhoc") {
         send(res, 400, { error: "unsupported Agent job kind" });
@@ -2938,6 +2987,13 @@ const server = createServer(async (req, res) => {
                 personaId: body.personaId,
                 capabilityId: body.capabilityId,
                 instruction: body.instruction,
+                conversationKey: /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(body.conversationKey || "")) ? body.conversationKey : "",
+                workspacePath: body.capabilityId === "project-development" ? validateDevelopmentWorkspace(String(body.workspacePath || "")) : "",
+                accessMode: body.accessMode === "inspect" ? "inspect" : "develop",
+                parentJobId,
+                handoffChain: Array.isArray(body.handoffChain)
+                  ? body.handoffChain.map((item) => String(item).trim()).filter(Boolean).slice(0, 12)
+                  : [],
                 format: body.format,
                 memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
               },
@@ -3654,6 +3710,13 @@ const server = createServer(async (req, res) => {
       if (!capabilities.previewArtifact(res, id)) send(res, 404, { error: "artifact not found" });
       return;
     }
+    if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact/context") {
+      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
+      const handoff = capabilities.artifactHandoff(id);
+      if (!handoff) send(res, 404, { error: "artifact not found" });
+      else send(res, 200, { ok: true, artifact: handoff.artifact, text: handoff.text });
+      return;
+    }
     if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact") {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id");
       const download = new URLSearchParams(url.split("?")[1] || "").get("download") === "1";
@@ -4063,8 +4126,15 @@ const server = createServer(async (req, res) => {
       for (const layer of ["personal_semantic", "semantic", "episodic", "procedural", "archival"]) {
         const items = await store.listByLayer(layer as never, { limit: 500 });
         for (const m of items) {
-          const tail = m.scope.split(":").pop() ?? m.scope;
-          const speaker = PERSONAS.find((p) => p.id === tail)?.name ?? tail;
+          if (who.startsWith("persona:")
+            && layer !== "archival"
+            && !["persona-bio", "persona-self"].includes(m.source.origin)) continue;
+          const ownerPersona = who.startsWith("persona:")
+            ? PERSONAS.find((p) => personaNamespace(p.id) === who)
+            : undefined;
+          const speaker = who === USER
+            ? (userProfile.displayName || "我")
+            : (ownerPersona?.name ?? "角色");
           facts.push({ id: m.id, layer, who: speaker, content: m.content, created: m.created_at });
         }
       }

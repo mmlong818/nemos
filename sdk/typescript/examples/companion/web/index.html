@@ -519,6 +519,7 @@
   .msg-body {
     display:flex;
     flex-direction:column;
+    gap:6px;
     min-width:0;
     max-width:min(680px,calc(100vw - 460px));
   }
@@ -2490,6 +2491,79 @@
   #topActions button:hover, .top-icon:hover, #vbtn:hover, #imgbtn:hover, #shotbtn:hover { color:#8f2f59; background:#f3e9ed; }
   .row.other .bub { background:#fffcf7; border:1px solid #e2dbd0; }
   .row.me .bub, .msg-avatar.me-avatar, #callbtn.on { color:#fff; background:#b33f72; }
+  .expert-longform-row {
+    align-self:center;
+    width:min(840px,100%);
+    max-width:none;
+    padding:8px 0 20px;
+  }
+  .expert-longform {
+    width:100%;
+    padding:0;
+    color:#292b27;
+  }
+  .expert-longform-header {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    min-height:40px;
+    padding:0 0 10px;
+    border-bottom:1px solid #d9d3ca;
+  }
+  .expert-longform-label {
+    margin:0;
+    color:#74766f;
+    font-size:12px;
+    font-weight:500;
+    letter-spacing:.02em;
+  }
+  .expert-longform-copy {
+    flex:none;
+    min-height:32px;
+    padding:0 10px;
+    border:0;
+    border-radius:5px;
+    background:transparent;
+    color:#777a72;
+    font:inherit;
+    font-size:12px;
+    cursor:pointer;
+  }
+  .expert-longform-copy:hover { color:#8f2f59; background:#f3e9ed; }
+  .expert-longform-copy:focus-visible { outline:none; box-shadow:var(--ring); }
+  .expert-longform-contributors {
+    margin:4px 0 0;
+    color:#8a8c85;
+    font-size:12px;
+    line-height:1.45;
+    letter-spacing:.01em;
+  }
+  .expert-longform-content {
+    max-width:72ch;
+    margin:0;
+    padding-top:4px;
+    font-size:15px;
+    line-height:1.72;
+  }
+  .expert-longform-section { padding:18px 0 4px; }
+  .expert-longform-section + .expert-longform-section { border-top:1px solid #e5dfd6; }
+  .expert-longform-section h3 {
+    margin:0 0 12px;
+    color:#6f4558;
+    font-size:13px;
+    line-height:1.4;
+    letter-spacing:.02em;
+  }
+  .expert-longform-section p { margin:0 0 12px; }
+  .expert-longform-section p:last-child { margin-bottom:0; }
+  .expert-longform-section ul, .expert-longform-section ol { margin:8px 0 14px 22px; padding:0; }
+  .expert-longform-section li { margin:4px 0; }
+  .expert-longform-section blockquote { margin:12px 0; padding:8px 12px; border-left:3px solid #b33f72; background:#f8f1f3; color:#555851; }
+  .expert-longform-section pre { max-width:100%; overflow:auto; padding:12px; border-radius:5px; background:#f2eee7; font-size:12px; }
+  .expert-longform-section table { width:100%; margin:12px 0; border-collapse:collapse; font-size:13px; }
+  .expert-longform-section th, .expert-longform-section td { padding:8px; border:1px solid #ded7cd; text-align:left; vertical-align:top; }
+  .expert-longform-section th { background:#f4f0e8; }
   #txtWrap { background:#fffefa; border-color:#d8d1c6; }
   #txtWrap:focus-within { border-color:#b33f72; box-shadow:var(--ring); }
   #send, .btn-primary, .primary { color:#fff; background:#b33f72; box-shadow:none; }
@@ -2828,6 +2902,10 @@
     #header .hname { max-width:38vw; }
     #msgs { padding:14px 12px; }
     .row { max-width:96%; }
+    .expert-longform-row { width:100%; max-width:none; }
+    .expert-longform { padding:0; }
+    .expert-longform-header { gap:12px; }
+    .expert-longform-content { font-size:14px; line-height:1.68; }
     .msg-body { max-width:calc(100vw - 84px); }
     #composer { min-height:104px; padding:8px; }
     #txtWrap { min-height:58px; }
@@ -2882,15 +2960,6 @@
   .timeline-message span { color:#8f2f59; }
   .timeline-message p { overflow:hidden; margin:0; color:#5f625b; text-overflow:ellipsis; white-space:nowrap; }
   .command-strip { display:flex; flex-wrap:wrap; gap:7px; margin-top:16px; }
-  #executionPanel { flex:0 0 auto; margin:8px 16px 0; padding:9px 12px; border:1px solid #dbcbd1; border-radius:8px; background:#fbf5f7; color:#5f625b; font-size:11px; }
-  #executionPanel>div { display:flex; align-items:center; justify-content:space-between; }
-  #executionPanel strong { color:#20221f; }
-  #executionPanel button { border:0; color:#8f2f59; background:transparent; font-size:10px; }
-  #executionSteps { display:grid; gap:4px; margin:7px 0 0; padding-left:20px; }
-  #executionPanel.is-collapsed #executionSteps { display:none; }
-  #executionSteps li { padding-left:2px; }
-  #executionSteps li.is-done { color:#34745c; }
-  #executionSteps li.is-error { color:#b4234d; }
   @media(max-width:720px){.conversation-layout{grid-template-columns:1fr}.conversation-card{padding:18px}.timeline-message{grid-template-columns:54px minmax(0,1fr)}.timeline-message button{grid-column:2}}
 </style>
   <link rel="stylesheet" href="/assets/app-navigation-labels.css" />
@@ -3010,7 +3079,7 @@
             <select id="modelProvider" name="provider"></select>
           </label>
           <label class="model-field" for="modelName">
-            <span>模型名称</span>
+            <span id="modelNameLabel">任务与专家模型</span>
             <input id="modelName" name="model" placeholder="例如：glm-5.2" autocomplete="off" spellcheck="false" />
           </label>
           <label class="model-field model-field-wide" for="modelKey">
@@ -3488,7 +3557,7 @@
       <div class="conversation-head"><div><p>当前工作线</p><h2 id="conversationTitle">对话与分支</h2></div><button id="conversationClose" type="button" aria-label="关闭">×</button></div>
       <div class="conversation-layout">
         <section><div class="conversation-section-head"><h3>对话树</h3><button id="newConversation" type="button">新对话</button></div><div id="conversationTree"></div></section>
-        <section><h3>当前对话设置</h3><label>模型<input id="conversationModel" maxlength="120" placeholder="默认使用已连接模型"></label><label>思考深度<select id="conversationReasoning"><option value="fast">快速</option><option value="balanced">均衡</option><option value="deep">深入</option></select></label><label>工具范围<select id="conversationTools"><option value="auto">按需使用</option><option value="read-only">只读工具</option><option value="off">不使用工具</option></select></label><button class="primary" id="saveConversationSettings" type="button">保存当前设置</button></section>
+        <section><h3>当前对话设置</h3><label>模型<input id="conversationModel" maxlength="120" placeholder="留空则自动分配快模型或主模型"></label><label>思考深度<select id="conversationReasoning"><option value="fast">快速</option><option value="balanced">均衡</option><option value="deep">深入</option></select></label><label>工具范围<select id="conversationTools"><option value="auto">按需使用</option><option value="read-only">只读工具</option><option value="off">不使用工具</option></select></label><button class="primary" id="saveConversationSettings" type="button">保存当前设置</button></section>
       </div>
       <section class="conversation-timeline"><div class="conversation-section-head"><h3>回到某一步</h3><span>回退前会自动保留备份分支</span></div><div id="conversationTimeline"></div></section>
       <nav class="command-strip" aria-label="快捷操作"><button data-conversation-command="branch">从末尾建立分支</button><button data-conversation-command="capabilities">打开能力</button><button data-conversation-command="office">打开文件</button><button data-conversation-command="tasks">查看任务</button><button data-conversation-command="memory">查看记忆</button></nav>
@@ -3511,7 +3580,6 @@
       <span class="chat-capability-copy"><strong id="chatCapabilityTitle">能力任务正在执行</strong><small id="chatCapabilityStatus">完成后会回到这段对话</small></span>
       <button id="chatCapabilityOpen" type="button">查看进度</button>
     </section>
-    <section id="executionPanel" aria-live="polite" hidden><div><strong>协作进度</strong><button id="executionToggle" type="button">收起</button></div><ol id="executionSteps"></ol></section>
     <div id="msgs"></div>
       <div id="composer">
         <div id="txtWrap">
@@ -4410,7 +4478,17 @@ function renderLog() {
   const log = chatLogs[logKey()] || [];
   if (!log.length) { m.innerHTML = emptyStateHtml(); m.scrollTop = 0; return; }
   m.innerHTML = "";
-  for (const e of log) addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact });
+  for (const e of log) {
+    if (e.longform && isSubstantialExpertLongform(e.longform.sections)) {
+      addExpertLongform(e.longform);
+    } else if (e.longform && Array.isArray(e.longform.sections)) {
+      for (const section of e.longform.sections) {
+        addRow("other", section.name || null, section.text || "", { pid: section.personaId || e.pid });
+      }
+    } else {
+      addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact });
+    }
+  }
   m.scrollTop = m.scrollHeight;
 }
 
@@ -4790,6 +4868,66 @@ function addRow(side, who, text, opts = {}) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
+function addExpertLongform(brief) {
+  const msgs = $("#msgs");
+  const hint = msgs.querySelector(".hint"); if (hint) hint.remove();
+  const empty = msgs.querySelector(".empty-state"); if (empty) empty.remove();
+  const sections = Array.isArray(brief.sections) ? brief.sections.filter((section) => section && section.text) : [];
+  if (!sections.length) return;
+
+  const row = document.createElement("div");
+  row.className = "row other expert-longform-row";
+  const article = document.createElement("article");
+  article.className = "expert-longform";
+  article.setAttribute("aria-label", brief.title || "专家组答复");
+
+  const header = document.createElement("header");
+  header.className = "expert-longform-header";
+  const heading = document.createElement("div");
+  const label = document.createElement("p");
+  label.className = "expert-longform-label";
+  label.textContent = "专家组完成";
+  const contributors = document.createElement("p");
+  contributors.className = "expert-longform-contributors";
+  contributors.textContent = "参与：" + [...new Set(sections.map((section) => section.name))].join(" · ");
+  heading.append(label, contributors);
+
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "expert-longform-copy";
+  copy.textContent = "复制全文";
+  copy.onclick = async () => {
+    const plain = sections.map((section) => section.name + "\n" + section.text).join("\n\n");
+    try {
+      await navigator.clipboard.writeText(plain);
+      copy.textContent = "已复制";
+      setTimeout(() => { copy.textContent = "复制全文"; }, 1400);
+    } catch {
+      copy.textContent = "复制失败";
+    }
+  };
+  header.append(heading, copy);
+  article.appendChild(header);
+
+  const content = document.createElement("div");
+  content.className = "expert-longform-content";
+  for (const section of sections) {
+    const block = document.createElement("section");
+    block.className = "expert-longform-section";
+    const name = document.createElement("h3");
+    name.textContent = section.name;
+    block.appendChild(name);
+    const body = document.createElement("div");
+    body.innerHTML = isLikelyHtml(section.text) ? sanitizeHtml(section.text) : markdownToHtml(section.text);
+    block.appendChild(body);
+    content.appendChild(block);
+  }
+  article.appendChild(content);
+  row.appendChild(article);
+  msgs.appendChild(row);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
 let curSource = null, speakGen = 0;
 // 常驻播放上下文 + 静音保活：避免每次播放时音频设备从休眠唤醒发出"咔/嘟"声
 let playCtx = null;
@@ -4875,44 +5013,39 @@ function addTyping() {
   return { row, inner, bub: inner.querySelector(".bub") };
 }
 
-let executionSteps = [];
-function renderExecutionSteps() {
-  const panel = $("#executionPanel");
-  const list = $("#executionSteps");
-  if (!panel || !list) return;
-  panel.hidden = executionSteps.length === 0;
-  list.innerHTML = executionSteps.map((step) => '<li class="' + esc(step.state || "") + '">' + esc(step.text) + '</li>').join("");
+const STREAM_MESSAGE_REVEAL_DELAY_MS = 180;
+function splitStreamMessages(text) {
+  const parts = String(text || "").split(/\n\s*\n+/).map((part) => part.trim()).filter(Boolean);
+  return parts.length ? parts : [String(text || "").trim()].filter(Boolean);
 }
-function startExecution(text) {
-  executionSteps = [{ text: text || "开始处理", state: "" }];
-  $("#executionPanel")?.classList.remove("is-collapsed");
-  renderExecutionSteps();
-}
-function pushExecutionStep(text, state) {
-  if (!text) return;
-  const latest = executionSteps[executionSteps.length - 1];
-  if (latest && latest.text === text) {
-    latest.state = state || latest.state;
-  } else {
-    if (latest && !latest.state) latest.state = "is-done";
-    executionSteps.push({ text, state: state || "" });
+function syncStreamBubbles(inner, text, visibleCount, opts = {}) {
+  const parts = splitStreamMessages(text).slice(0, Math.max(1, visibleCount));
+  let nodes = [...inner.querySelectorAll(".bub")];
+  while (nodes.length < parts.length) {
+    const node = document.createElement("div");
+    node.className = "bub";
+    inner.appendChild(node);
+    nodes.push(node);
   }
-  renderExecutionSteps();
+  while (nodes.length > parts.length) nodes.pop().remove();
+  nodes.forEach((node, index) => {
+    node.className = "bub";
+    if (opts.final) renderBubbleContent(node, parts[index], { artifact: index === parts.length - 1 ? opts.artifact : null });
+    else node.textContent = parts[index];
+  });
+  return parts;
 }
-function finishExecution(error) {
-  if (executionSteps.length) executionSteps[executionSteps.length - 1].state = error ? "is-error" : "is-done";
-  renderExecutionSteps();
+function waitForStreamMessage(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// 助理：流式 + 状态（查询中/工作中/整理中）
-async function streamAssistant(key, text, voice, image) {
+// 单人回复按空行拆成独立消息；前一条出现后，再逐条展示后续消息。
+async function streamPersona(key, text, voice, image) {
   const { inner, bub } = addTyping();
-  startExecution("理解当前目标");
-  const activeLog = chatLogs[key] || [];
-  if (activeLog.length > 24) pushExecutionStep("较早对话保留在本机历史，本轮使用近期上下文与长期记忆");
   const pid = state.target.id;
   let acc = "", started = false, facts = null, artifact = null;
-  // 通话模式：文本边流式生成边按句喂给播放器，首声更快
+  let visibleCount = 1, scheduledCount = 1;
+  let revealChain = Promise.resolve();
   const speaker = callMode ? createSpeaker(pid) : null;
   let spokenIdx = 0;
   function pumpSpeech(final) {
@@ -4922,6 +5055,18 @@ async function streamAssistant(key, text, voice, image) {
     let lastEnd = -1, m; const re = /[。！？!?\n；;]/g;
     while ((m = re.exec(seg))) lastEnd = m.index;
     if (lastEnd >= 0 && seg.slice(0, lastEnd + 1).trim().length >= 2) { speaker.push(seg.slice(0, lastEnd + 1)); spokenIdx += lastEnd + 1; }
+  }
+  function scheduleNewMessages() {
+    const targetCount = splitStreamMessages(acc).length;
+    while (scheduledCount < targetCount) {
+      scheduledCount += 1;
+      revealChain = revealChain.then(async () => {
+        await waitForStreamMessage(STREAM_MESSAGE_REVEAL_DELAY_MS);
+        visibleCount += 1;
+        syncStreamBubbles(inner, acc, visibleCount);
+        $("#msgs").scrollTop = $("#msgs").scrollHeight;
+      });
+    }
   }
   try {
     const resp = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: { kind: "persona", id: state.target.id }, text, voice, image, ...conversationRequestOptions(key) }) });
@@ -4939,50 +5084,105 @@ async function streamAssistant(key, text, voice, image) {
         const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
         if (!line) continue;
         let ev; try { ev = JSON.parse(line); } catch { continue; }
-        if (ev.type === "status" && !started) { pushExecutionStep(ev.text); bub.className = "bub status"; bub.textContent = "（" + ev.text + "…）"; }
-        else if (ev.type === "token") { if (!started || bub.classList.contains("status")) { started = true; bub.className = "bub"; bub.textContent = ""; if (callMode) callStatus("💬 回复中…"); } acc += ev.text; bub.textContent = acc; pumpSpeech(false); $("#msgs").scrollTop = $("#msgs").scrollHeight; }
-        else if (ev.type === "done") { facts = ev.facts; artifact = ev.artifact || artifact; pushExecutionStep(artifact ? "结果已保存并完成交付检查" : "回答已完成"); }
+        if (ev.type === "status" && !started) { bub.className = "bub status"; bub.textContent = "（" + ev.text + "…）"; }
+        else if (ev.type === "token") {
+          if (!started) { started = true; if (callMode) callStatus("💬 回复中…"); }
+          acc += ev.text;
+          syncStreamBubbles(inner, acc, visibleCount);
+          scheduleNewMessages();
+          pumpSpeech(false);
+          $("#msgs").scrollTop = $("#msgs").scrollHeight;
+        }
+        else if (ev.type === "done") { facts = ev.facts; artifact = ev.artifact || artifact; }
         else if (ev.type === "tasks") { await pushCapabilityNotifications(ev.notifications || []); }
-        else if (ev.type === "error") { started = true; acc = "出错了：" + ev.text; bub.className = "bub"; bub.textContent = acc; }
+        else if (ev.type === "error") { started = true; acc = "出错了：" + ev.text; visibleCount = 1; scheduledCount = 1; syncStreamBubbles(inner, acc, 1); }
       }
     }
     const finalText = acc || (facts ? "任务已处理。" : "这次没有收到可显示的结果。");
-    if (!started) { bub.className = "bub"; renderBubbleContent(bub, finalText, { artifact }); }
-    else renderBubbleContent(bub, finalText, { artifact });
-    record(key, { side: "other", who: null, text: finalText, mem: facts, pid, artifact });
+    acc = finalText;
+    scheduleNewMessages();
+    await revealChain;
+    const finalMessages = syncStreamBubbles(inner, finalText, splitStreamMessages(finalText).length, { final: true, artifact });
+    finalMessages.forEach((message, index) => record(key, {
+      side: "other",
+      who: null,
+      text: message,
+      mem: index === finalMessages.length - 1 ? facts : null,
+      pid,
+      artifact: index === finalMessages.length - 1 ? artifact : null,
+    }));
     lastReply = { pid, text: finalText, live: !!speaker };
-    finishExecution(false);
-    if (speaker) { pumpSpeech(true); await speaker.end(); } // 等流式语音播完
-  } catch (e) { finishExecution(true); bub.className = "bub"; bub.textContent = "网络错误：" + e; }
+    if (speaker) { pumpSpeech(true); await speaker.end(); }
+  } catch (e) {
+    inner.innerHTML = '<div class="bub"></div>';
+    inner.querySelector(".bub").textContent = "网络错误：" + e;
+  }
 }
 
-// 其他角色 / 群：显示"输入中…"，回复到了换成多条气泡
+function expertLongformSections(replies) {
+  return (replies || []).map((reply) => {
+    const messages = (reply.messages && reply.messages.length) ? reply.messages : [reply.reply];
+    return {
+      name: reply.name || "专家",
+      personaId: reply.personaId,
+      text: messages.filter(Boolean).join("\n\n"),
+    };
+  }).filter((section) => section.text);
+}
+
+function shouldRenderExpertLongform(replies) {
+  if (!state.target || state.target.id !== "nemos_advisory_group") return false;
+  if ((replies || []).some((reply) => reply.artifact)) return false;
+  return isSubstantialExpertLongform(expertLongformSections(replies));
+}
+
+function isSubstantialExpertLongform(sections) {
+  sections = Array.isArray(sections) ? sections.filter((section) => section && section.text) : [];
+  const total = sections.reduce((sum, section) => sum + section.text.length, 0);
+  return sections.length > 1
+    || total >= 320
+    || sections.some((section) => isLikelyMarkdown(section.text));
+}
+
+function expertLongformTitle(text) {
+  const clean = String(text || "").replace(/^\[图片\]\s*/, "").replace(/\s+/g, " ").trim();
+  if (!clean) return "本轮建议";
+  return "关于「" + (clean.length > 32 ? clean.slice(0, 32) + "…" : clean) + "」";
+}
+
+// 群聊：普通闲聊保留气泡；专家任务整合为可阅读、可复制的长文。
 async function sendRegular(key, text, voice, image) {
   const { row } = addTyping();
-  startExecution(key.indexOf("group:") === 0 ? "正在分配专家任务" : "正在组织回答");
   const isGroup = key.indexOf("group:") === 0;
   try {
     const data = await api("/api/chat", { target: { kind: state.target.kind, id: state.target.id }, text, voice, image, ...conversationRequestOptions(key) });
     row.remove();
-    for (const r of (data.replies || [])) {
-      pushExecutionStep((r.name || "专家") + " 已完成判断", "is-done");
-      const msgs = (r.messages && r.messages.length) ? r.messages : [r.reply];
-      for (let i = 0; i < msgs.length; i++) {
-        if (i > 0) await sleep(Math.min(1300, 450 + msgs[i].length * 28));
-        const last = i === msgs.length - 1;
-        const who = isGroup ? (avatarOf("persona", r.personaId).e + " " + r.name).trim() : null;
-        const mem = last ? r.facts : null;
-        const artifact = last ? r.artifact : null;
-        addRow("other", who, msgs[i], { mem, pid: r.personaId, artifact });
-        record(key, { side: "other", who, text: msgs[i], mem, pid: r.personaId, artifact });
+    const replies = data.replies || [];
+    if (shouldRenderExpertLongform(replies)) {
+      const sections = expertLongformSections(replies);
+      const brief = { title: expertLongformTitle(text), sections };
+      addExpertLongform(brief);
+      const plainText = sections.map((section) => section.name + "：" + section.text).join("\n\n");
+      record(key, { side: "other", who: "专家组答复", text: plainText, pid: "clownfish", longform: brief });
+      const finalSection = sections[sections.length - 1];
+      lastReply = { pid: finalSection.personaId, text: plainText };
+    } else {
+      for (const r of replies) {
+        const msgs = (r.messages && r.messages.length) ? r.messages : [r.reply];
+        for (let i = 0; i < msgs.length; i++) {
+          const last = i === msgs.length - 1;
+          const who = isGroup ? (avatarOf("persona", r.personaId).e + " " + r.name).trim() : null;
+          const mem = last ? r.facts : null;
+          const artifact = last ? r.artifact : null;
+          addRow("other", who, msgs[i], { mem, pid: r.personaId, artifact });
+          record(key, { side: "other", who, text: msgs[i], mem, pid: r.personaId, artifact });
+        }
+        lastReply = { pid: r.personaId, text: msgs.join("。") };
       }
-      lastReply = { pid: r.personaId, text: msgs.join("。") };
     }
     await pushCapabilityNotifications(data.taskReplies || []);
     if (data.error) addRow("other", "系统", "出错了：" + data.error);
-    pushExecutionStep(isGroup ? "专家结果已回到当前对话" : "回答已完成", "is-done");
-    finishExecution(false);
-  } catch (e) { finishExecution(true); row.remove(); addRow("other", "系统", "网络错误：" + e); }
+  } catch (e) { row.remove(); addRow("other", "系统", "网络错误：" + e); }
 }
 
 let sending = false;
@@ -5002,10 +5202,9 @@ async function sendMsg(voiceFlag, overrideText) {
   record(key, { side: "me", who: null, text: utext, voice });
   setPendingImage(null); $("#imgfile").value = "";
   const per = state.target.kind === "persona" ? state.personas.find((x) => x.id === state.target.id) : null;
-  const isAppConversation = !!(per && per.id === APP_PERSONA_ID); // 应用主对话走流式执行状态
   lastReply = { pid: null, text: "", live: false };
   try {
-    if (isAppConversation) await streamAssistant(key, text, voice, image);
+    if (state.target.kind === "persona") await streamPersona(key, text, voice, image);
     else await sendRegular(key, text, voice, image);
   } finally {
     sending = false;
@@ -6036,7 +6235,12 @@ function renderChatCapabilityBridge() {
   let requestedId = "";
   try { requestedId = JSON.parse(localStorage.getItem(CAPABILITY_ACTIVITY_KEY) || "null")?.jobId || ""; } catch {}
   const personaId = currentCapabilityPersonaId();
-  const relevant = (agentOpsState.jobs || []).filter((job) => job.type === "capability-adhoc" && String(job.payload && job.payload.personaId || "") === personaId);
+  const activeKey = logKey();
+  const relevant = (agentOpsState.jobs || []).filter((job) => {
+    if (job.type !== "capability-adhoc") return false;
+    const jobKey = String(job.payload && job.payload.conversationKey || "");
+    return jobKey ? jobKey === activeKey : String(job.payload && job.payload.personaId || "") === personaId;
+  });
   const active = relevant.find((job) => job.status === "running" || job.status === "queued");
   const requested = requestedId ? relevant.find((job) => job.id === requestedId) : null;
   const job = active || requested;
@@ -6102,17 +6306,30 @@ function openPersonaById(pid) {
   const p = state.personas.find((x) => x.id === pid);
   if (p) selectTarget("persona", pid, p.name);
 }
+function openConversationByKey(key, fallbackPersonaId) {
+  if (key.startsWith("group:")) {
+    const groupId = key.slice("group:".length);
+    const group = state.groups.find((item) => item.id === groupId);
+    if (group) { selectTarget("group", group.id, group.name || "专家组"); return; }
+  }
+  const personaId = key.startsWith("persona:") ? key.slice("persona:".length) : fallbackPersonaId;
+  openPersonaById(personaId);
+}
 async function pushCapabilityNotifications(items) {
   for (const n of items || []) {
-    const key = "persona:" + n.personaId;
+    const requestedKey = String(n.conversationKey || "");
+    const key = /^(persona|group):[^:][^\r\n]{0,180}$/.test(requestedKey) ? requestedKey : "persona:" + n.personaId;
     if (n.deliveryId && (chatLogs[key] || []).some((entry) => entry.deliveryId === n.deliveryId)) continue;
-    openPersonaById(n.personaId);
+    openConversationByKey(key, n.personaId);
+    const groupReply = key.startsWith("group:");
+    const persona = state.personas.find((item) => item.id === n.personaId);
+    const who = groupReply ? ((avatarOf("persona", n.personaId).e + " " + (persona?.name || n.name || "小丑鱼")).trim()) : null;
     const msgs = (n.messages && n.messages.length) ? n.messages : [n.reply || "任务已完成。"];
     for (let i = 0; i < msgs.length; i++) {
       if (i > 0) await sleep(Math.min(1300, 450 + msgs[i].length * 28));
       const artifact = i === msgs.length - 1 ? n.artifact : null;
-      addRow("other", null, msgs[i], { pid: n.personaId, artifact });
-      record(key, { side: "other", who: null, text: msgs[i], pid: n.personaId, artifact, deliveryId: n.deliveryId || undefined });
+      addRow("other", who, msgs[i], { pid: n.personaId, artifact });
+      record(key, { side: "other", who, text: msgs[i], pid: n.personaId, artifact, deliveryId: n.deliveryId || undefined });
     }
   }
 }
@@ -7079,11 +7296,41 @@ async function deleteSkill(id, name) {
 function openCapabilityPanel(options = {}) {
   const target = state.target || { kind: "persona", id: CAPABILITY_OWNER_ID, name: "小丑鱼" };
   const personaId = target.kind === "persona" ? target.id : CAPABILITY_OWNER_ID;
-  const chatName = target.kind === "persona" ? target.name : "小丑鱼";
-  const goal = options.includeDraft ? $("#txt").value.trim().slice(0, 2000) : "";
+  const chatName = target.name || "小丑鱼";
+  const conversationKey = logKey(target);
+  const sourceMessages = activeConversation(conversationKey)?.messages || chatLogs[conversationKey] || [];
+  const conversation = sourceMessages.map((entry) => {
+    const persona = entry.pid ? state.personas.find((item) => item.id === entry.pid) : null;
+    return {
+      speaker: entry.side === "me" ? "用户" : (entry.who || persona?.name || chatName),
+      side: entry.side === "me" ? "user" : "assistant",
+      text: String(entry.text || ""),
+    };
+  }).filter((entry) => entry.text.trim());
+  const draft = options.includeDraft ? $("#txt").value.trim().slice(0, 2000) : "";
+  const latestUserMessage = [...conversation].reverse().find((entry) => entry.side === "user");
+  const goal = draft || String(latestUserMessage?.text || "").slice(0, 2000);
+  const uniqueExcerpts = (side, limit) => [...new Set(conversation
+    .filter((entry) => entry.side === side)
+    .map((entry) => entry.text.replace(/\s+/g, " ").trim().slice(0, 600))
+    .filter(Boolean))].slice(-limit);
+  const userExcerpts = uniqueExcerpts("user", 10);
+  const assistantExcerpts = uniqueExcerpts("assistant", 6);
+  const summary = [
+    "【当前目标】",
+    goal || "请结合完整对话判断当前目标。",
+    "",
+    "【用户已经说明】",
+    ...(userExcerpts.length ? userExcerpts.map((text) => "- " + text) : ["- 暂无明确说明"]),
+    "",
+    "【对话中已有的分析与结论】",
+    ...(assistantExcerpts.length ? assistantExcerpts.map((text) => "- " + text) : ["- 暂无"]),
+  ].join("\n");
   sessionStorage.setItem("clownfish-capability-handoff-v1", JSON.stringify({
     source: "chat",
     returnTo: "/",
+    conversationKey,
+    summary,
     personaId,
     chatName: chatName || "小丑鱼",
     goal,
@@ -7147,13 +7394,18 @@ function renderModelConnectionStatus(state, hydrateForm = false) {
   const summary = $("#sm-model-summary");
   const current = $("#modelCurrent");
   const offline = $("#modelOffline");
-  if (summary) summary.textContent = state.live ? `${state.providerName} · ${state.model}` : "当前离线，可连接任意模型服务";
+  const routedModels = state.live && state.dailyChatModel && state.dailyChatModel !== state.model;
+  if (summary) summary.textContent = state.live
+    ? (routedModels ? state.providerName + " · 对话 " + state.dailyChatModel + " / 任务 " + state.model : state.providerName + " · " + state.model)
+    : "当前离线，可连接任意模型服务";
   if (current) {
     current.classList.toggle("live", Boolean(state.live));
     current.innerHTML = '<span class="model-current-dot" aria-hidden="true"></span><span><b>'
-      + esc(state.live ? `${state.providerName} · ${state.model}` : "离线模式")
+      + esc(state.live ? state.providerName + " · 已连接" : "离线模式")
       + '</b><small>'
-      + esc(state.live ? "连接有效，模型可用于对话和任务" : "基础功能仍可使用，连接模型后可获得完整体验")
+      + esc(state.live
+        ? (routedModels ? "日常对话：" + state.dailyChatModel + " · 任务与专家：" + state.model : "默认模型：" + state.model)
+        : "基础功能仍可使用，连接模型后可获得完整体验")
       + '</small></span>';
   }
   if (offline) offline.disabled = !state.live;
@@ -7174,6 +7426,7 @@ function updateModelFormHints() {
   const providerId = $("#modelProvider").value;
   const preset = modelPreset(providerId);
   const sameProvider = modelConnectionState?.provider === providerId;
+  $("#modelNameLabel").textContent = providerId === "custom" ? "默认模型" : "任务与专家模型";
   $("#modelProtocol").disabled = providerId !== "custom";
   $("#modelKey").placeholder = preset?.keyRequired ? `粘贴 ${preset.name} API Key` : "本机服务通常无需填写";
   $("#modelKeyHint").textContent = sameProvider && modelConnectionState?.hasKey
@@ -7429,11 +7682,6 @@ $("#conversationmodal").onclick = (event) => {
 };
 $("#newConversation").onclick = createConversation;
 $("#saveConversationSettings").onclick = saveConversationSettings;
-$("#executionToggle").onclick = () => {
-  const panel = $("#executionPanel");
-  panel.classList.toggle("is-collapsed");
-  $("#executionToggle").textContent = panel.classList.contains("is-collapsed") ? "展开" : "收起";
-};
 addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();

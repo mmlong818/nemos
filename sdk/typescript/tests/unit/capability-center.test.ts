@@ -15,6 +15,7 @@ const NEW_CAPABILITIES = [
   "business-deal",
   "market-opportunity",
   "ability-builder",
+  "project-development",
 ];
 
 const THINKING_RESULT = JSON.stringify({
@@ -82,6 +83,37 @@ test("单次能力任务只使用偏好记忆或完全关闭召回", async () =>
   }
 });
 
+test("开发项目作为独立能力执行，并保存可继续交接的完整结果", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-development-capability-"));
+  const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-workspace-"));
+  let received: { workspacePath: string; instruction: string; accessMode: string } | undefined;
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => { throw new Error("开发能力不应走普通角色回复"); },
+      runDeveloper: async (input) => {
+        received = { workspacePath: input.workspacePath, instruction: input.instruction, accessMode: input.accessMode };
+        return { reply: "已完成项目修改。\n\n测试通过。" };
+      },
+    });
+    const notification = await runtime.runAdHocTask({
+      title: "修复项目",
+      personaId: "clownfish",
+      capabilityId: "project-development",
+      instruction: "修复页面跳动，并运行测试。",
+      workspacePath: workspace,
+      accessMode: "develop",
+    });
+    assert.deepEqual(received, { workspacePath: workspace, instruction: "修复页面跳动，并运行测试。", accessMode: "develop" });
+    const handoff = runtime.artifactHandoff(notification.artifact.id);
+    assert.equal(handoff?.text, "已完成项目修改。\n\n测试通过。");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test("长期任务脉络会保存进展、专家职责、决定替代关系和协作记录", () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-task-storyline-"));
   try {
@@ -138,7 +170,7 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   for (const view of ["start", "runs", "history", "files"]) {
     assert.match(html, new RegExp(`data-view="${view}"`));
   }
-  assert.equal([...script.matchAll(/backendId:/g)].length, 12);
+  assert.equal([...script.matchAll(/backendId:/g)].length, 13);
   assert.match(script, /memoryMode:[^\n]+"preferences"/);
   assert.match(script, /\/api\/agent\/job/);
   assert.match(html, /id="capabilityPicker"/);
@@ -148,6 +180,9 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   assert.match(script, /name: "深度研究"/);
   assert.match(script, /name: "查港股资料"/);
   assert.match(script, /name: "生成新能力"/);
+  assert.match(script, /name: "开发项目"/);
+  assert.match(html, /id="workspaceInput"/);
+  assert.match(html, /id="accessModeSelect"/);
   assert.match(script, /format: "pptx"/);
   assert.match(script, /name: "写正式文档"/);
   assert.match(html, /class="rail-secondary" href="\/#settings"/);
@@ -160,17 +195,34 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   const chatHtml = readFileSync(join(webDir, "index.html"), "utf8");
   const capabilityHtml = readFileSync(join(webDir, "capabilities.html"), "utf8");
   const capabilityScript = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
+  const serverSource = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
 
   assert.match(chatHtml, /id="composerCapability"/);
   assert.match(chatHtml, /id="chatCapabilityBridge"/);
   assert.match(chatHtml, /function renderChatCapabilityBridge/);
   assert.match(chatHtml, /dataset\.viewTarget = completed \? "history" : "runs"/);
   assert.match(chatHtml, /value\.trim\(\)\.slice\(0, 2000\)/);
+  assert.match(chatHtml, /sourceMessages/);
+  assert.match(chatHtml, /conversationKey/);
+  assert.match(chatHtml, /【用户已经说明】/);
+  assert.match(chatHtml, /【对话中已有的分析与结论】/);
   assert.match(capabilityHtml, /id="chatContext"/);
   assert.match(capabilityHtml, /id="runConversationBridge"/);
   assert.match(capabilityScript, /function applyChatHandoff/);
+  assert.match(capabilityScript, /handoffContext/);
+  assert.match(capabilityScript, /handoffSummary/);
+  assert.match(capabilityScript, /function loadHandoffConversation/);
+  assert.match(capabilityScript, /clownfish-conversation-trees-v1/);
+  assert.match(capabilityScript, /conversationContext/);
+  assert.match(capabilityScript, /【完整对话原文】/);
+  assert.match(capabilityScript, /【对话提要】/);
+  assert.match(capabilityScript, /conversationKey: state\.returnConversationKey/);
+  assert.match(serverSource, /conversationKey: String\(job\.payload\.conversationKey/);
   assert.match(capabilityScript, /clownfish-capability-activity-v1/);
   assert.match(capabilityScript, /在对话中查看/);
+  assert.match(capabilityScript, /function handoffJob/);
+  assert.match(capabilityScript, /artifact\/context/);
+  assert.match(capabilityScript, /parentJobId/);
 });
 
 test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单一入口", () => {
@@ -186,7 +238,7 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
   assert.match(workScript, /\/api\/capabilities\/task\/storyline/);
   assert.match(workScript, /\/api\/capabilities\/task\/decision/);
   assert.match(workScript, /data-open-story/);
-  assert.match(chatHtml, /<strong>协作进度<\/strong>/);
+  assert.doesNotMatch(chatHtml, /协作进度|executionPanel/);
   assert.doesNotMatch(workHtml, /专家群聊|大群/);
 });
 
@@ -204,7 +256,7 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.match(script, /data-capability[\s\S]*activateCapability/);
   assert.match(script, /focusInput: true/);
   assert.match(script, /classList\.add\("is-launching"\)/);
-  assert.match(script, /button\.disabled = !status\.ready \|\| !hasInstruction/);
+  assert.match(script, /button\.disabled = !status\.ready \|\| !hasInstruction \|\| !hasWorkspace/);
   assert.match(script, /const ICON_TONES =/);
   assert.match(script, /function updateLaunchState\(\)/);
   assert.doesNotMatch(html, /picker-action/);

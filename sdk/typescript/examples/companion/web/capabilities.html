@@ -85,6 +85,19 @@
               <div class="launch-form">
                 <label for="instructionInput">任务要求</label>
                 <textarea id="instructionInput" rows="7" maxlength="16000" placeholder="说清楚要完成什么，也可以补充受众、重点、语气或页数"></textarea>
+                <section class="developer-fields" id="developerFields" hidden>
+                  <label for="workspaceInput">项目文件夹</label>
+                  <input id="workspaceInput" type="text" maxlength="1000" spellcheck="false" placeholder="例如：C:\\Users\\你\\Documents\\我的项目">
+                  <div class="field-row single">
+                    <label>执行方式
+                      <select id="accessModeSelect">
+                        <option value="develop">开发并验证</option>
+                        <option value="inspect">只检查，不修改</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p class="field-help">开发能力只能访问这个文件夹；不会读取密钥、删除文件、推送、发布或部署。</p>
+                </section>
                 <label class="file-drop" for="materialInput">
                   <span class="file-drop-icon" aria-hidden="true">＋</span>
                   <strong>加入参考材料</strong>

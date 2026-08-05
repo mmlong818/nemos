@@ -1,6 +1,6 @@
 // examples/companion/llm.ts — 真实 / 离线 LLM 解析（按环境变量自动选择）
 //
-// 有 ZHIPU_API_KEY → 用智谱：glm-5.2 抽取(JSON) + embedding-3 向量检索 + free-form 人格回复。
+// 有 ZHIPU_API_KEY → 用智谱主模型做抽取/复杂任务，embedding-3 做向量检索；日常对话模型由服务端路由。
 // 无 key → 离线兜底：本地启发式抽取 + 回声脑（零依赖，仍能演示拓扑）。
 //
 // 注意：API key 只从环境变量读，绝不硬编码 / 落盘 / 提交。
@@ -459,7 +459,6 @@ function makeConnectionChatStream(
     const selectedModel = model || defaultModel;
     const completionTokens = Math.min(requestedMaxTokens, limits.maxTokens);
     let emittedChars = 0;
-    cb.onStatus("工作中");
     const runtime = new AgentRuntime(
       makeConnectionAgentModel({
         connection,

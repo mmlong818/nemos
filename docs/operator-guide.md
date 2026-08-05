@@ -6,7 +6,7 @@
 
 ## 1. 系统要求
 
-- Node.js 20 或更高版本；
+- Node.js 22.19 或更高版本；
 - Windows 便携客户端需要 .NET Framework C# 编译器；
 - 构建便携版时需要网络下载 WebView2、Node 和 Python 运行时。
 

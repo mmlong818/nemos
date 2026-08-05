@@ -38,6 +38,7 @@
 - 查港股资料
 - 梳理复杂问题
 - 设计产品界面
+- 开发项目
 - 整理会议纪要
 - 做网页报告
 - 比较方案
@@ -80,6 +81,8 @@
 
 在 **设置 → 模型连接** 中选择服务商、模型名称和 API Key。系统会先验证连接，再保存配置。
 
+小丑鱼会自动分配模型：日常单人对话使用服务商的轻量模型，专家、能力、文件生成和复杂任务使用这里配置的主模型；也可以在单个对话的设置中手动指定模型。
+
 ![小丑鱼模型连接](docs/assets/readme/clownfish-model-connection.jpg)
 
 当前预设包括智谱 GLM、OpenAI、Anthropic Claude、DeepSeek、通义千问、MiniMax 和自定义服务，支持 OpenAI 兼容与 Anthropic 兼容协议。识图、联网、语音和向量能力取决于所选服务与模型。
@@ -95,7 +98,7 @@ Windows 下，密钥使用当前用户的 DPAPI 加密并保存在本机；接�
 
 ## 本地运行
 
-需要 Node.js 20 或更高版本。
+需要 Node.js 22.19 或更高版本。
 
 ~~~powershell
 cd sdk\typescript
