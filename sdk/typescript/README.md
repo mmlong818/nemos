@@ -2,6 +2,8 @@
 
 [English](README.en.md)
 
+当前包版本：`0.7.5-alpha.17`；文档复核：2026-08-06。完整设计边界见 [0.7.x 设计基线](docs/nemos-memory-v0.7-design.md)。
+
 嵌入式 TypeScript 长期记忆引擎。默认数据存储为本机 SQLite，适合直接集成到 AI 助理、Agent、知识工具和其他需要跨会话记忆的应用中。
 
 ## 安装

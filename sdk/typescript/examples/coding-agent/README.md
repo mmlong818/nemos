@@ -1,5 +1,7 @@
 # Example: Coding Agent
 
+适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
+
 模拟一个 coding agent 跨 session 持久化用户偏好 + 项目知识。
 
 ## 运行

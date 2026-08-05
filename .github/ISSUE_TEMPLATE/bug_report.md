@@ -21,16 +21,16 @@ labels: bug
 
 ## 环境
 
-- nemos 版本：
-- 部署 SKU（a 公共云 / b E2EE / c 自托管）：
-- 客户端：SDK (语言+版本) / MCP / REST
-- AI app（如适用）：
-- OS / runtime：
+- 影响范围：小丑鱼应用 / Nemos Memory SDK
+- 小丑鱼版本（如适用）：
+- Nemos Memory SDK 版本：
+- 运行方式：网页 / Windows 客户端 / 嵌入式 SDK
+- 操作系统与运行时：
 
 ## 日志 / 截图
 
 如有，请附（注意脱敏敏感数据）。
 
-## 相关 spec / RFC
+## 相关文档 / RFC
 
-如这个 bug 涉及某条 spec 或 RFC 的解读，标注。
+如这个 bug 涉及某份当前文档或 RFC，请附链接。`spec/` 下的文件是历史草案，不作为当前接口依据。

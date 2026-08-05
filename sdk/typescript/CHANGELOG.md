@@ -3,7 +3,7 @@
 ## 0.7.5-alpha.17
 
 - Kept complete family-relation statements in bounded evidence excerpts for aggregate kinship questions.
-- Reached 89.8% overall accuracy in the full 500-question, shared-reader LongMemEval comparison with zero generation or judge errors.
+- Recorded an external 89.8% overall result on a 500-question shared-reader LongMemEval comparison. The raw evaluation artifact is not included in this repository, so this number is release context rather than a repository-reproducible gate.
 
 ## 0.7.5-alpha.16
 

@@ -1,10 +1,12 @@
 # Nemos v0.1 — REST API (20-rest-api)
 
-> **状态**：Draft，Round 1 输出
+> **状态**：归档草案，未作为当前 REST API 实施
 > **版本**：v0.1
+
+> **归档说明（2026-08-06）**：这是未实施的早期 REST API 草案，不是当前公开服务。当前产品以本机应用和嵌入式 TypeScript SDK 为准，入口见 [spec/README](README.md)。
 > **更新**：2026-06-04
 > 配套阅读：`00-overview.md` + `10-data-schema.md`
-> Spec 格式：OpenAPI 3.1（本文档是人读版；机器读版见 `openapi.yaml`，Round 2 产出）
+> 设想格式：OpenAPI 3.1。机器可读的 `openapi.yaml` 当时没有产出。
 
 ---
 
@@ -29,8 +31,8 @@
 ### 1.1 Base URL
 
 ```
-SKU a 公共云:     https://api.nemos.org/v1
-SKU b E2EE:       https://api.nemos.org/v1     (同 URL，密文走 body)
+SKU a 公共云:     https://api.example.invalid/v1
+SKU b E2EE:       https://api.example.invalid/v1     (同 URL，密文走 body)
 SKU c 自托管:     http://localhost:8080/v1       (默认)
 ```
 
@@ -100,7 +102,7 @@ X-Timestamp: 2026-06-04T10:00:00Z
 JWT claim：
 ```json
 {
-  "iss": "nemos.org",
+  "iss": "identity.example.invalid",
   "sub": "agent_<id>",
   "tenant_id": "...",
   "capability_id": "cap_<id>",
@@ -161,7 +163,7 @@ HTTP/1.1 422 Unprocessable Entity
 Content-Type: application/problem+json
 
 {
-  "type": "https://nemos.org/errors/source-routing-violation",
+  "type": "https://example.invalid/errors/source-routing-violation",
   "title": "Source routing violation",
   "status": 422,
   "detail": "source.kind=derived cannot write to personal_semantic store (I4 invariant)",
@@ -830,7 +832,7 @@ E2EE 服务端 burn 后还需要客户端清理本地 mirror：
 ```
 Deprecation: true
 Sunset: 2027-01-01
-Link: <https://docs.nemos.org/migrate/v0.2-v0.3>; rel="successor-version"
+Link: <https://docs.example.invalid/migrate/v0.2-v0.3>; rel="successor-version"
 ```
 
 任何 deprecated 端点必须保留 ≥ 6 个月。
@@ -841,7 +843,7 @@ Link: <https://docs.nemos.org/migrate/v0.2-v0.3>; rel="successor-version"
 X-Nemos-Features: muse-pull,relational-crdt-v2
 ```
 
-服务端按 capability + feature flag 路由到不同实现。Round 2+ 用。
+服务端按 capability + feature flag 路由到不同实现。后续阶段 用。
 
 ---
 
@@ -858,8 +860,6 @@ Referrer-Policy: strict-origin-when-cross-origin
 
 ---
 
-## Handoff
+## 后续阅读
 
 > 下一步：读 `30-mcp-server.md`（MCP 协议适配）。
-
-**End of rest-api.**

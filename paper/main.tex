@@ -9,11 +9,12 @@
 \usepackage{hyperref}
 \usepackage{xcolor}
 \usepackage[margin=1in]{geometry}
+\setlength{\emergencystretch}{2em}
 
-% ---- result macros: fill from bench/results/*.json once n=50 runs land ----
+% ---- frozen result macros: bench/results/*.json, provenance in manifest.json ----
 % BUC (belief update) — Stale Leakage Rate / Update Accuracy
 \newcommand{\bucSLRfull}{\textbf{34.0}}   % nemos-v2-semantic
-\newcommand{\bucSLRvone}{50.0}            % nemos-v1-lexical (shipped)
+\newcommand{\bucSLRvone}{50.0}            % earlier lexical configuration
 \newcommand{\bucSLRnone}{80.0}            % no-invalidation (floor)
 \newcommand{\bucUAfull}{76.0}
 \newcommand{\bucUAvone}{84.0}
@@ -39,11 +40,12 @@
 
 \title{MnemoBench: Evaluating Belief Update, Self-Pollution Resistance,\\
 and Forgetting in Long-Lived Memory Systems}
-\author{Nemos Development Team\thanks{Working draft. All reported numbers are from the frozen
-$n{=}50$ benchmark runs in the released harness.}\\
-\texttt{s181@163.com}\\
+\author{Nemos Research\thanks{Working draft. The three synthetic task families each contain
+$n{=}50$ items; probe totals vary, and the LongMemEval cross-anchor contains $n{=}30$
+questions. Frozen result provenance is recorded in
+\texttt{bench/results/manifest.json}.}\\
 Project: \url{https://github.com/mmlong818/nemos}}
-\date{2026}
+\date{August 2026}
 
 \begin{document}
 \maketitle
@@ -62,7 +64,7 @@ with bitemporal contradiction invalidation, namespace isolation between user fac
 agent self-narrative, and FSRS-style decay. On belief update, contradiction invalidation
 cuts stale-answer leakage from \bucSLRnone{}\% to \bucSLRfull{}\%, at a moderate recall
 cost (update accuracy \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%) that exposes a
-precision/recall knob; we further show that the shipped lexical contradiction detector
+precision/recall knob; we further show that an earlier lexical contradiction detector
 misses attribute-replacement updates and that a semantic detector recovers them
 (leakage \bucSLRvone{}~$\rightarrow$~\bucSLRfull{}\%). Namespace isolation reduces
 self-pollution from \aspPRshared{}\% to \aspPRiso{}\% with no recall loss. Decay suppresses
@@ -98,8 +100,9 @@ defect we found and fixed in the contradiction detector.
 \paragraph{Memory architectures.} MemGPT/Letta~\cite{memgpt}, mem0~\cite{mem0},
 Zep/Graphiti's temporal knowledge graph~\cite{zep,graphiti}. Contrast: layered separation,
 explicit invalidation semantics, source-authority gating.
-\paragraph{Temporal/ bitemporal modelling.} Graphiti edge validity intervals~\cite{graphiti}
-vs.\ Nemos event-sourced invalidation with materialised flat fields.
+\paragraph{Temporal/ bitemporal modelling.} Graphiti uses edge validity
+intervals~\cite{graphiti}; Nemos keeps materialised world-time and system-time validity
+fields on each memory record.
 \paragraph{Forgetting.} FSRS / spaced-repetition retrievability~\cite{ssp,fsrs} applied to
 machine memory rather than human review scheduling.
 \paragraph{Benchmarks.} LoCoMo~\cite{locomo} and LongMemEval~\cite{longmemeval} are
@@ -118,13 +121,13 @@ Five layers (episodic, semantic, personal\_semantic, procedural, archival). Ever
 carries \texttt{source.authoritative} (user-stated vs.\ model-derived); derived content is
 barred from authoritative personal facts (invariant I4).
 \subsection{Bitemporal contradiction invalidation}
-Records carry world-axis (\texttt{valid\_at}/\texttt{invalid\_at}) and system-axis
-(\texttt{created\_at}/\texttt{expired\_at}) timestamps and a
-\texttt{belief\_state}~$\in$~\{active, invalidated, superseded, corrected\}. During offline
-reflection, a new fact that contradicts an existing \texttt{personal\_semantic} anchor marks
+Records carry world-axis (\texttt{valid\_\allowbreak at}/\texttt{invalid\_\allowbreak at}) and system-axis
+(\texttt{created\_\allowbreak at}/\texttt{expired\_\allowbreak at}) timestamps and a
+\texttt{belief\_\allowbreak state}~$\in$~\{active, invalidated, superseded, corrected\}. During offline
+reflection, a new fact that contradicts an existing \texttt{personal\_\allowbreak semantic} anchor marks
 the old one \texttt{invalidated}; default retrieval returns only \texttt{active} records.
 \paragraph{A real defect: lexical vs.\ semantic detection.}
-The shipped detector prefilters contradiction candidates by character-bigram Jaccard
+The earlier detector prefilters contradiction candidates by character-bigram Jaccard
 similarity. This reliably catches strong negations (``left Google'') but \emph{misses
 attribute replacement} where the new value is lexically dissimilar (vegetarian
 $\rightarrow$ pescatarian). We replace the prefilter with embedding-cosine candidate
@@ -182,15 +185,18 @@ explicitly marks a forbidden value as past does \emph{not} count as a leak.
 \section{Experimental Setup}
 \label{sec:setup}
 % Models, ablation arms, n, judge model, reproducibility.
-All systems use OpenAI \texttt{gpt-4o} for extraction/reflection and
-\texttt{text-embedding-3-small} for embeddings; the judge is \texttt{gpt-4o}. We report
+The frozen June--July 2026 runs use OpenAI \texttt{gpt-4o} for extraction/reflection and
+\texttt{text-\allowbreak embedding-\allowbreak 3-\allowbreak small} for embeddings; the judge is \texttt{gpt-4o}. These are
+historical run identifiers, not current model recommendations; replacing any model creates
+a new, non-comparable run. We report
 $n=\nItems{}$ items per task. A memory-system run that fails all transient-error retries is
 scored as an empty retrieval (all its probes count as misses, matching the external
 baseline's path); a judge call that fails all retries excludes the probe from the rates and
-is reported separately (zero such failures in the frozen runs). Each task is evaluated by ablating exactly the mechanism under
-test, so any difference is attributable to that mechanism:
+is reported separately (zero such failures in the frozen runs). Each task changes one named
+mechanism while the local runner configuration is held fixed; observed differences are
+evidence consistent with that mechanism in this frozen setup, not universal causal estimates:
 \begin{itemize}
-  \item BUC: \texttt{semantic} (full) vs.\ \texttt{lexical} (shipped) vs.\ invalidation-off.
+  \item BUC: \texttt{semantic} (current configuration) vs.\ \texttt{lexical} (earlier configuration) vs.\ invalidation-off.
   \item ASP: namespace-isolated vs.\ shared store.
   \item FOR: decay-on vs.\ decay-off. To isolate decay we disable reflection in both arms and
   use cold threshold $0.3$, dormancy $0$, with a 120-day retention interval; important facts
@@ -212,8 +218,8 @@ System & Update Acc.\ (\%) & Stale Leakage (\%) \\
 \midrule
 mem0 (external)\footnotemark{}      & \bucUAmemo{} & \bucSLRmemo{} \\
 No invalidation (floor)        & \bucUAnone{} & \bucSLRnone{} \\
-Lexical detector (shipped)     & \bucUAvone{} & \bucSLRvone{} \\
-Semantic detector (this work)  & \bucUAfull{} & \bucSLRfull{} \\
+Lexical detector (earlier)     & \bucUAvone{} & \bucSLRvone{} \\
+Semantic detector (evaluated)  & \bucUAfull{} & \bucSLRfull{} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -237,7 +243,7 @@ Decay on                 & \forTLdecay{}  & \forIFRdecay{} \\
 \end{table}
 
 \paragraph{Belief update (BUC).} Stale leakage falls monotonically across the ablation
-ladder: \bucSLRnone{}\% with no invalidation, \bucSLRvone{}\% with the shipped lexical
+ladder: \bucSLRnone{}\% with no invalidation, \bucSLRvone{}\% with the earlier lexical
 detector, and \bucSLRfull{}\% with the semantic detector --- the contradiction mechanism more
 than halves stale answers, and the lexical$\rightarrow$semantic change alone removes a further
 third of the leakage by catching attribute-replacement updates the lexical prefilter misses.
@@ -274,6 +280,11 @@ retrieval without dropping the revisited important facts.
 set-membership judge (no answer generation), low temperature, and a human-audited sample.
 \paragraph{Self-generated data.} Items are synthetic; we report only relative differences
 under identical data and add a standard-benchmark slice (LongMemEval) as a cross anchor.
+
+\paragraph{Frozen implementation snapshot.} The paper reports the committed benchmark
+artifacts listed in \texttt{bench/results/manifest.json}. Later SDK releases add structured
+claim reconciliation and broader recall improvements; those changes are not silently folded
+into the tables here and require a new benchmark release.
 \paragraph{FOR isolation choices.} Disabling reflection and using aggressive decay parameters
 isolate decay cleanly but do not reflect the full-system default; we report them explicitly.
 \paragraph{Residual leakage.} The semantic detector does not reach zero stale leakage on

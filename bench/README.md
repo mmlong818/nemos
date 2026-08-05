@@ -1,8 +1,10 @@
 # MnemoBench
 
+> 状态：冻结研究快照（复核于 2026-08-06）。论文主表使用每项 50 条合成任务；原始结果、提交版本和文件哈希见 [`results/manifest.json`](./results/manifest.json)。
+
 A reproducible benchmark for **memory maintenance** in long-lived LLM memory systems —
-the behaviours that erode trust over time but that recall-centric benchmarks (LOCOMO,
-LongMemEval) don't isolate:
+the behaviours that erode trust over time but that recall-centric benchmarks (LoCoMo,
+LongMemEval) do not isolate in the same way:
 
 | Task | Question it asks | Primary metric (lower=better) |
 |------|------------------|-------------------------------|
@@ -19,7 +21,7 @@ statements are traps) is fixed by the generator *before* rendering to natural la
 Labels are therefore not post-hoc judgments. Scoring uses an **LLM judge that inspects only
 the retrieved record set** and decides whether the expected fact is present and whether a
 forbidden (stale/leaked) fact is presented as current — it never writes the final answer,
-decoupling memory quality from generation quality.
+reducing, but not eliminating, generation-model variance.
 
 ## Layout
 
@@ -52,6 +54,7 @@ node src/run.mjs --task ASP --n 50    # namespace-isolated vs shared store
 node src/run.mjs --task FOR --n 50    # decay-on vs decay-off
 
 # external baseline (mem0), then score with the shared judge
+python -m pip install -r requirements-mem0.txt
 python src/adapters/mem0_run.py --task BUC --n 50
 node src/score-external.mjs --task BUC --sys mem0
 
@@ -63,13 +66,18 @@ node src/run-lme.mjs --n 30                 # nemos-v2-semantic vs no-invalidati
 
 > Note: the SDK must be built first — `cd ../sdk/typescript && npm run build`. The runner
 > imports the compiled `dist/`.
+>
+> The model IDs in these commands are the frozen 2026 experiment configuration, not current
+> model recommendations. Reproducing a run also requires preserving the provider, model
+> revision, prompts, datasets, and result manifest; hosted APIs can still introduce variance.
 
-## Ablation = attribution
+## Interpreting the ablations
 
-Each task ablates exactly the mechanism under test, so any metric difference is attributable
-to that mechanism (not to model or data): invalidation detector for BUC, namespace isolation
-for ASP, decay for FOR. An external system (mem0) is scored by the identical judge as a
-reference point.
+Each task changes one named mechanism while keeping the local runner configuration fixed:
+invalidation for BUC, namespace isolation for ASP, and decay for FOR. The observed
+differences are evidence consistent with those mechanisms, not proof of universal causal
+effects across other datasets, providers, or deployments. mem0 is scored by the same judge
+as an external reference point.
 
 ## License
 

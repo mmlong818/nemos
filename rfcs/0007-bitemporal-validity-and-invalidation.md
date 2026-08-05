@@ -3,9 +3,9 @@ rfc_number: 0007
 title: Bi-Temporal Validity & Invalidation Semantics
 authors:
   - nemos team
-status: accepted
+status: implemented
 created_at: 2026-06-17
-updated_at: 2026-07-03
+updated_at: 2026-08-06
 discussion_url: ROADMAP.md
 implementation_pr: merged（已并入 main；分期落地状态见正文 Implementation Plan）
 supersedes: []
@@ -13,7 +13,9 @@ supersedes: []
 
 # Summary
 
-为 Nemos 引入**双时间（bi-temporal）有效性模型**与**失效语义**：每条事实在「世界轴」（何时为真 / 何时停止为真）与「系统轴」（何时被系统采信 / 何时被取代）两条独立时间线上被追踪。失效不再等同删除或遗忘——旧事实被标失效但保留，可回答「我在某时刻所知、关于某事在另一时刻的状态」。失效信息以事件流（复用 `audit.mutations`）记录、物化回扁平字段供热路径查询。
+为 Nemos 引入**双时间（bi-temporal）有效性模型**与**失效语义**：每条事实在「世界轴」（何时为真 / 何时停止为真）与「系统轴」（何时被系统采信 / 何时被取代）两条独立时间线上被追踪。失效不再等同删除或遗忘——旧事实被标失效但保留，可回答「我在某时刻所知、关于某事在另一时刻的状态」。当前实现直接物化世界时间、系统采信顺序与信念状态字段，不把事件溯源作为热路径前提。
+
+> 当前说明（2026-08-06）：双时间字段、claim index、时间裁决、失效/争议状态和普通召回过滤已实现。早期“事件流回放生成物化状态”的方向已放弃，当前以扁平物化状态为准。
 
 # Motivation
 

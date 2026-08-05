@@ -1,7 +1,7 @@
 # Nemos Memory v0.7 设计
 
-状态：设计草案（评审修订 2）
-目标版本：0.7.x
+状态：0.7.5-alpha.17 实现设计基线
+适用版本：0.7.x
 适用范围：Nemos 记忆核心。Companion 仅作为首个真实验收应用。
 
 ## 1. 背景
@@ -14,7 +14,7 @@ Nemos v0.6 已具备以下基础：
 - 来源、置信度、敏感标记、事件时间、失效时间和纠正关系。
 - 后台抽取队列、反思、领域演化、前瞻记忆和衰减模块。
 
-当前主要问题不是缺少更多记忆类型，而是这些能力尚未组成一个统一、可验证的生命周期：
+v0.7 的主要工作不是增加更多记忆类型，而是把这些能力组成统一、可验证的生命周期。以下问题描述的是本轮实现要解决的基线，不代表当前版本仍全部缺失：
 
 - 同步与异步写入执行不同的后处理。
 - 反思进度不持久，无法证明一批事件只处理一次。
@@ -688,7 +688,7 @@ burn 一个 Event 时按来源图处理：
 - 同一空间同一反思区间只能有一个任务。
 - 更换模型配置时，旧 worker 必须先停止领取并完成在途事务。
 
-## 13. 公开 API 草案
+## 13. 公开 API 与实现约定
 
 现有 API 保留兼容层，新增以下高层接口：
 
@@ -856,72 +856,17 @@ v0.7 优先增加辅助表，不立即合并现有五张 layer 表：
 
 风险清单与测试集必须同构。新增高风险设计变更时，同一个提交必须增加对应测试描述或解释为何不适用。
 
-## 16. 分阶段实施
+## 16. 实施状态（0.7.5-alpha.17）
 
-### 0.7.0：生命周期正确性
+本文最初按 0.7.0—0.7.4 分阶段设计。到 2026-08-06，仓库代码已经实现以下主链路：
 
-- 同步、异步共用一个 Lifecycle Orchestrator。
-- 增加空间内单调 `event_seq`。
-- 持久化反思 cursor、lease、generation 和执行幂等键。
-- 修复真实 backoff。
-- 增加生命周期状态与真实异步测试。
-- 在 claim identity 完成前，自动反思以 shadow mode 运行，不执行破坏性 SUPERSEDE/INVALIDATE。
+- 同步与后台写入共用 `LifecycleOrchestrator`，并持久化 `event_seq`、阶段状态、幂等键、反思游标和 lease。
+- 结构化 claim、来源、信任级别、话语模式、时间裁决、冲突状态和纠正传播已接入写入链路。
+- 召回已具备 Query Plan、关键词/向量/实体/时间等多路候选、融合排序、可靠性判断和 Recall Trace。
+- Memory Space、主体解析、用户命名空间与角色私有空间已进入当前接口和测试。
+- reflect、分类衰减、procedural 召回与派生 generation 上限已实现。
 
-完成标准：
-
-- Companion 的同步和异步路径经过相同阶段。
-- 重启或重复领取不会重复提交同一阶段产物。
-- generation 上限、cursor 和 backoff 测试通过。
-
-### 0.7.1：事实主张与来源
-
-- 建立受控 predicate registry、稳定 claim key 和 re-key 机制。
-- 增加最小主体解析及可撤销 identity merge/split。
-- 增加 trust tier、utterance mode、结构化值和时间裁决。
-- 实现 ADD/CONFIRM/SUPERSEDE/INVALIDATE/DISPUTE/RESOLVE_DISPUTE/MERGE/IGNORE。
-- 建立 provenance edge、correct 传播和操作日志。
-- 接通 legacy 文本退场路径。
-- 通过乱序和状态收敛测试后，才允许自动失效从 shadow mode 转为 active。
-
-完成标准：
-
-- 稳定通过知识更新、乱序完成、角色扮演、实体拆并、纠正传播和来源冲突测试。
-- 同一输入的非确定性抽取最终收敛到相同 active 事实集合。
-
-### 0.7.2：召回 2.0
-
-- Query Plan。
-- 关键词、向量、实体、时间并行召回。
-- RRF、准入过滤、拒答门槛和 Recall Trace。
-
-完成标准：
-
-- 在固定模型下，Nemos 中文集和 LongMemEval 的召回指标显著高于 v0.6。
-- 错误召回率不因提高 Recall@K 而恶化。
-
-### 0.7.3：核心档案与 Memory Space
-
-- Core Profile blocks。
-- 正式空间、主体授权和数据主体权利。
-- 派生记忆的来源权限继承。
-
-完成标准：
-
-- 姓名、称呼和关键长期约束稳定可用。
-- 多主体隔离测试全部通过。
-
-### 0.7.4：反思、程序性记忆与遗忘
-
-- 多信号反思。
-- Procedure Candidate 晋级机制。
-- 分类衰减策略。
-- hide、forget、burn 及 provenance 传播。
-- SQLite secure_delete、WAL checkpoint、VACUUM/文件替换和备份报告。
-
-完成标准：
-
-- 反思产生的长期规律有证据、可解释、可撤销。
-- 清理操作与用户看到的语义一致。
+这表示“核心链路已经实现”，不表示本设计中的每项完成标准都已满足。尤其不能把文档目标自动解释为已经通过的性能或隐私证明。
 
 ## 17. 外部参考及取舍
 
@@ -940,27 +885,17 @@ v0.7 优先增加辅助表，不立即合并现有五张 layer 表：
 - https://xiaowu0162.github.io/long-mem-eval/
 - https://github.com/snap-research/locomo
 
-## 18. 首个实现切入点
+## 18. 尚未闭环的边界
 
-第一个实现单元应仅覆盖 0.7.0：
+- `burn` 的物理清理、WAL/VACUUM 处理、应用备份传播和可核验报告尚未形成完整公开接口；当前代码中的 `forget` 不等于物理删除。
+- 10 万/100 万条数据的固定硬件基准与正文 P95 目标尚无仓库内报告，不能声称已达到规模指标。
+- predicate 的完整 value schema、主体别名治理和可撤销 merge/split 仍需继续收敛。
+- Core Profile 的产品级编辑、权限继承可视化和恢复流程主要属于应用层，SDK 只提供底层原语。
+- CHANGELOG 记录的完整 LongMemEval 分数缺少仓库内原始产物，不能作为可复现发布门槛。
 
-1. 提取 `LifecycleOrchestrator`。
-2. 让同步和后台队列调用同一个 post-process。
-3. 新增 `event_seq`、持久化 reflection state、generation 和执行幂等键。
-4. 修正队列领取条件与 backoff。
-5. 增加真实 Companion 异步、重启、重复领取和递归上限测试。
-6. 反思结果先以 shadow mode 记录决策，不自动失效现有事实。
+## 19. 文档使用规则
 
-在这一单元通过之前，不应先引入复杂图关系、全面 Core Profile 或新 UI；在 0.7.1 的稳定 claim identity 和乱序裁决通过之前，也不应启用破坏性自动失效。
-## 19. 评审决策状态
-
-本轮评审提出的结构性风险已转成正文约束和 15.6 的回归门槛。以下内容不再作为开放架构问题：claim key 由确定性组件生成、最小主体解析前置、按事实时间/event_seq 裁决、执行幂等与状态收敛分层、DISPUTE 可退出、correct/burn 沿来源图传播、派生可见性继承、反思 generation 上限，以及旧文本事实退场。
-
-实现前仍需确定的只是可测参数，不允许重新放松上述约束：
-
-- 首批 predicate 的完整 value schema、别名和 context dimensions。
-- utterance mode、provisional identity 和语义候选匹配的置信门槛。
-- Windows 参考机的固定硬件规格及 10 万/100 万数据生成器。
-- 应用备份的默认保留策略和 burn 时的用户确认文案。
-
-这些参数必须以版本化配置进入测试报告，不能散落在提示词或代码常量中。
+- 本文是 0.7.x 的设计基线；当前公开接口以 `src/types.ts`、`src/index.ts` 和 SDK README 为准。
+- “完成标准”是验证要求，不是完成声明。只有存在代码、测试或结果产物时才标为已实现。
+- 论文与 benchmark 使用冻结版本和独立 manifest，不随 SDK 版本自动更新。
+- 新的高风险设计变更必须同时补充对应测试或说明为何不适用。

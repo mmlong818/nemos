@@ -1,7 +1,9 @@
 # Nemos v0.1 — SDK 接口契约 (40-sdk-contract)
 
-> **状态**：Draft，Round 1 输出
+> **状态**：归档草案，已被当前 TypeScript SDK 取代
 > **版本**：v0.1
+
+> **归档说明（2026-08-06）**：这是早期 TS/Python 接口草案，已被当前 TypeScript SDK 取代；仓库没有按本文实现完整 Python SDK。当前接口以 [SDK README](../sdk/typescript/README.md)、`src/types.ts` 和 `src/index.ts` 为准。
 > **更新**：2026-06-04
 > 配套阅读：`00-overview.md` + `10-data-schema.md` + `20-rest-api.md` + `30-mcp-server.md`
 
@@ -97,7 +99,7 @@ npm install @nemos/sdk
 import { Nemos, MemoryRecord, Source, Arousal, Surprise } from '@nemos/sdk';
 
 const client = new Nemos({
-  endpoint: 'https://api.nemos.org/v1',
+  endpoint: 'https://api.example.invalid/v1',
   apiKey: process.env.NEMOS_CAPABILITY_JWT,
   agentPrivateKey: process.env.NEMOS_AGENT_KEY,    // for ed25519 sign
   sku: 'a',                                          // 'a' | 'b' | 'c'
@@ -287,7 +289,7 @@ interface Ownership {
 
 ```typescript
 const nemos = new Nemos({
-  endpoint: 'https://api.nemos.org/v1',
+  endpoint: 'https://api.example.invalid/v1',
   apiKey: process.env.NEMOS_JWT!,
   agentPrivateKey: process.env.NEMOS_AGENT_KEY!
 });
@@ -356,7 +358,7 @@ pip install nemos
 from nemos import Nemos, MemoryRecord, Source, Arousal, Surprise
 
 client = Nemos(
-    endpoint="https://api.nemos.org/v1",
+    endpoint="https://api.example.invalid/v1",
     api_key=os.environ["NEMOS_CAPABILITY_JWT"],
     agent_private_key_path=os.environ["NEMOS_AGENT_KEY_PATH"],
     sku="a",
@@ -473,7 +475,7 @@ class MemoryRecord:
 from nemos import Nemos
 
 client = Nemos(
-    endpoint="https://api.nemos.org/v1",
+    endpoint="https://api.example.invalid/v1",
     api_key=os.environ["NEMOS_JWT"],
     agent_private_key_path="~/.nemos/agent.key"
 )
@@ -566,7 +568,7 @@ client.propose_personal_semantic(
 
 ## 5. 客户端缓存策略（L1/L2/L3）
 
-### 5.1 三层 cache（与 sizing §5.3 对齐）
+### 5.1 三层 cache（与 早期容量估算（未随本归档收录） 对齐）
 
 | 层 | 内容 | TTL | invalidation | 体感 |
 |---|---|---|---|---|
@@ -650,7 +652,7 @@ const localIndex = new HNSWIndex({
 
 - 用 `hnswlib-node` (TS) / `hnswlib` (Python)
 - 增量插入：写入时同时更新本地索引
-- 多设备同步：CRDT delta 通过服务端 relay（见 sizing §7.2）
+- 多设备同步：CRDT delta 通过服务端 relay（见 早期容量估算（未随本归档收录））
 
 ### 6.4 客户端 reflect
 
@@ -686,15 +688,15 @@ device A 写新 record → 加密 → 上传密文 + CRDT op
 device B 启动 → 拉 op log → 客户端 merge
 ```
 
-详见 Companion §8。SDK v0.1 只支持单设备（多设备走 Round 2 RFC）。
+详见 Companion §8。SDK v0.1 只支持单设备（多设备走 后续验证阶段 RFC）。
 
-### 6.6 移动端限制（Round 2 待验证）
+### 6.6 移动端限制（后续验证阶段 待验证）
 
 - React Native：`onnxruntime-react-native` 实验性，性能未验证
 - iOS Safari：WASM ONNX 可跑但 ~5x 慢
 - Android Chrome：WASM ONNX 可跑
 
-sizing §11 风险 #12 标注需 PoC 验证。
+早期容量估算（未随本归档收录） 风险 #12 标注需 PoC 验证。
 
 ---
 
@@ -773,7 +775,7 @@ const client = new Nemos({ ..., offlineMode: { enabled: true, queuePath: '~/.nem
 
 ### 8.3 队列冲突解决（v0.1）
 
-last-write-wins + audit 双写 + 警告。Round 2 看是否需要 vector clock（见 overview Q8）。
+last-write-wins + audit 双写 + 警告。后续验证阶段 看是否需要 vector clock（见 overview Q8）。
 
 ### 8.4 队列容量
 
@@ -828,7 +830,7 @@ SDK 启动时自动调一次 `/meta` 校验版本兼容。
 
 ---
 
-## Handoff
+## 归档结论
 
 > 5 份 spec 文件到此完整：
 > - `00-overview.md` 项目总览 + 不变量 + 开放问题
@@ -837,11 +839,9 @@ SDK 启动时自动调一次 `/meta` 校验版本兼容。
 > - `30-mcp-server.md` MCP server tools/resources/prompts
 > - `40-sdk-contract.md` SDK 接口契约（本文件）
 >
-> **下一步（Round 2）**：
+> **当时设想的后续工作（未纳入当前路线图）**：
 > - 把 `00-overview.md §8` 列出的 14 个开放问题落地为 RFC
-> - 跑 PoC（sizing §11 风险 #12 #13 #14）验证 schema 假设
+> - 跑 PoC（早期容量估算（未随本归档收录） 风险 #12 #13 #14）验证 schema 假设
 > - 写 OpenAPI YAML（机器可读 REST spec）
 > - 写 JSON Schema for shared types
 > - 起 nemos-server reference implementation（Go single-binary，SKU c first）
-
-**End of sdk-contract.**

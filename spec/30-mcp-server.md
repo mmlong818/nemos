@@ -1,7 +1,9 @@
 # Nemos v0.1 — MCP Server (30-mcp-server)
 
-> **状态**：Draft，Round 1 输出
+> **状态**：归档草案，未作为当前 MCP 服务实施
 > **版本**：v0.1
+
+> **归档说明（2026-08-06）**：这是未作为公共服务实施的早期 MCP Server 草案，不是当前工具契约。小丑鱼当前的 MCP/Skill 边界见 [Agent Runtime 设计](../sdk/typescript/examples/companion/docs/agent-runtime-design.md)。
 > **更新**：2026-06-04
 > 配套阅读：`00-overview.md` + `10-data-schema.md` + `20-rest-api.md`
 > 上游协议：Model Context Protocol（Anthropic / 跨厂商）2025-2026 演进中。本文档与 MCP spec 0.x 兼容。
@@ -437,7 +439,7 @@ MCP prompts 是 server 提供的预制 prompt template，让 AI app 在与 Nemos
       "command": "nemos-mcp",
       "args": ["--mode", "local-stdio"],
       "env": {
-        "NEMOS_ENDPOINT": "https://api.nemos.org/v1",
+        "NEMOS_ENDPOINT": "https://api.example.invalid/v1",
         "NEMOS_CAPABILITY_JWT_FILE": "~/.nemos/agent-claude-code.jwt",
         "NEMOS_AGENT_KEY_FILE": "~/.nemos/agent-claude-code.key"
       }
@@ -472,7 +474,7 @@ from mcp.client.stdio import stdio_client
 server_params = StdioServerParameters(
     command="nemos-mcp",
     args=["--mode", "local-stdio"],
-    env={"NEMOS_ENDPOINT": "https://api.nemos.org/v1", "NEMOS_CAPABILITY_JWT": "..."}
+    env={"NEMOS_ENDPOINT": "https://api.example.invalid/v1", "NEMOS_CAPABILITY_JWT": "..."}
 )
 
 async with stdio_client(server_params) as (read, write):
@@ -491,7 +493,7 @@ async with stdio_client(server_params) as (read, write):
   "mcpServers": {
     "nemos-cloud": {
       "transport": "http",
-      "url": "https://mcp.nemos.org",
+      "url": "https://mcp.example.invalid",
       "headers": {
         "Authorization": "Bearer <capability_jwt>"
       }
@@ -523,7 +525,7 @@ Nemos 的硬约束：MCP tool 的请求 / 响应字段必须能 1:1 映射到 RE
 
 ### 6.3 Schema 单一来源
 
-`spec/schemas/` 目录（Round 2 产出）放 JSON Schema 定义；REST OpenAPI + MCP tool inputSchema 都从这里引用。
+`spec/schemas/` 目录（后续验证阶段 产出）放 JSON Schema 定义；REST OpenAPI + MCP tool inputSchema 都从这里引用。
 
 ---
 
@@ -558,7 +560,7 @@ Nemos 的硬约束：MCP tool 的请求 / 响应字段必须能 1:1 映射到 RE
 
 ### 7.3 remote http 部署
 
-服务端直接暴露 `https://mcp.nemos.org`，AI app 直连。鉴权走 capability JWT。
+服务端直接暴露 `https://mcp.example.invalid`，AI app 直连。鉴权走 capability JWT。
 
 ### 7.4 hybrid 部署（E2EE SKU 必走）
 
@@ -570,7 +572,7 @@ AI app ↔ local nemos-mcp (stdio) ↔ local key store + 客户端 SQLite + HNSW
 - AI app 看到的是 local MCP server（语义查询走本地索引）
 - local MCP server 做密文加解密
 - 远程 cloud 只存密文 + 元数据
-- multi-device sync 走 CRDT delta（见 sizing §7.2 方案 B）
+- multi-device sync 走 CRDT delta（见 早期容量估算（未随本归档收录））
 
 ### 7.5 SKU c 自托管 MCP
 
@@ -588,13 +590,13 @@ AI app ↔ local nemos-mcp (stdio) ↔ local key store + 客户端 SQLite + HNSW
 
 ### 8.2 Nemos v0.1 的 MCP 兼容承诺
 
-- 与 MCP 0.x spec 兼容（具体 minor 版本号待 Round 2 锁定）
+- 与 MCP 0.x spec 兼容（具体 minor 版本号待 后续验证阶段 锁定）
 - 任何 MCP spec breaking change → Nemos 在 6 个月内适配
 - 任何 Nemos 内部协议变更不影响 MCP 兼容
 
 ### 8.3 Nemos 想推动的 MCP 扩展
 
-下列 Nemos 用例可能推动 MCP working group 加新字段（Round 3+ RFC）：
+下列 Nemos 用例可能推动 MCP working group 加新字段（长期研究阶段 RFC）：
 
 | 用例 | MCP 缺的字段 |
 |---|---|
@@ -627,8 +629,6 @@ Nemos v0.1 在自己的 envelope 里加这些字段（如 §2.7 的 `audit_id`�
 
 ---
 
-## Handoff
+## 后续阅读
 
 > 下一步：读 `40-sdk-contract.md`（开发者直接 import 用的客户端契约）。
-
-**End of mcp-server.**

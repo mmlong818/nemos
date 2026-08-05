@@ -5,15 +5,17 @@ authors:
   - nemos team
 status: draft
 created_at: 2026-06-15
-updated_at: 2026-06-15
-discussion_url: <PR URL>
-implementation_pr: <if accepted, PR URL>
+updated_at: 2026-08-06
+discussion_url: not opened
+implementation_pr: none
 supersedes: []
 ---
 
 # Summary
 
 为 Nemos 引入**前瞻记忆（prospective memory）**：除了记录"发生过什么"（回溯），系统还持有"面对某类情境，这个人可能会/应当如何行为与思考"的建构性模板。前瞻记忆通过 surprise（预测误差）与 reflect 形成**预测-验证-修正闭环**，使记忆从"会膨胀的硬盘"转变为"对用户预测得越来越准的模型"。
+
+> 当前说明（2026-08-06）：RFC 仍是草案，不构成公开接口或路线承诺。SDK 的领域反思中存在有限的 prospective 验证实验，但没有实现本文完整的数据模型和产品闭环。
 
 # Motivation
 

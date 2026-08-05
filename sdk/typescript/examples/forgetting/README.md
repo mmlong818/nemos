@@ -1,5 +1,7 @@
 # examples/forgetting
 
+适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
+
 v0.4 FSRS decay 演示。
 
 ## 跑

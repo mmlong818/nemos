@@ -1,5 +1,7 @@
 # examples/scenario-profiles
 
+适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
+
 演示 v0.2 scenario profile 对同一份内容产出的分类差异。
 
 ## 跑法

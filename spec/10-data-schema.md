@@ -1,7 +1,9 @@
 # Nemos v0.1 — 数据 Schema (10-data-schema)
 
-> **状态**：Draft，Round 1 输出
+> **状态**：归档草案，未作为当前 Schema 实施
 > **版本**：v0.1
+
+> **归档说明（2026-08-06）**：这是早期云端 Schema 草案，不是当前 SQLite Schema 或迁移契约。当前入口见 [spec/README](README.md) 和 [0.7.x 设计基线](../sdk/typescript/docs/nemos-memory-v0.7-design.md)。
 > **更新**：2026-06-04
 > 配套阅读：`00-overview.md`（不变量 I1-I10）+ Universal Substrate `00-universal-substrate.md`（5 层 + 三维元数据 + R1-R12）
 
@@ -36,7 +38,7 @@ Nemos 是 day-1 多租户系统。所有数据都用三级隔离键：
 | `user_id` | string (ULID) | true | server | 每 tenant 内的用户。E2EE SKU 下服务端可见（用于路由），但用户身份与现实身份的绑定（email/phone）必须 hash 后存 |
 | `scope_id` | string | true | server (HMAC) | 见 §7。E2EE SKU 服务端见 HMAC 后的 hash |
 
-### 1.1 隔离粒度（与 sizing §3.3 对齐）
+### 1.1 隔离粒度（与 早期容量估算（未随本归档收录） 对齐）
 
 | 规模 | 物理隔离 | 字段隔离 |
 |---|---|---|
@@ -419,7 +421,7 @@ ShareDecision:
 
 ## 3. day-1 必锁字段（错一次后期迁移代价不可逆）
 
-下列 12 个字段在 v0.1 day-1 锁定，v0.x 期间不再变动语义。错一次会让所有部署用户的数据迁移痛苦不可逆（sizing §12.4 + §12.6）。
+下列 12 个字段在 v0.1 day-1 锁定，v0.x 期间不再变动语义。错一次会让所有部署用户的数据迁移痛苦不可逆（早期容量估算（未随本归档收录） + §12.6）。
 
 | # | 字段 | 锁定的内容 | 错一次的迁移代价 |
 |---|---|---|---|
@@ -793,7 +795,7 @@ flags.private_zone:
 #### 7.4.1 PKI 假设
 
 v0.1 用弱 identity：principal_id 是用户 email 的 sha256 hash。
-未来（Round 3+）探 federation：见 overview Q4。
+未来（长期研究阶段）探 federation：见 overview Q4。
 
 #### 7.4.2 跨 user 共享流程
 
@@ -1043,7 +1045,7 @@ flags.surface_cooldown_reason:
 ```jsonc
 // memory-export.jsonld
 {
-  "@context": "https://nemos.org/schema/v1",
+  "@context": "https://example.invalid/schema/v1",
   "@type": "PersonalMemoryArchive",
   "export_version": "1.0",
   "nemos_schema_version": "0.1",
@@ -1335,12 +1337,10 @@ v1.0 之后 schema 变更走 RFC + 至少 6 个月 deprecation 窗口。
 - Reflect / MDL abstraction → 客户端 LLM call
 - Contradiction detection（语义层）→ 客户端
 
-详见 sizing §7.1 + Round 2 Q5。
+详见 早期容量估算（未随本归档收录） + 后续验证阶段 Q5。
 
 ---
 
-## Handoff
+## 后续阅读
 
 > **下一步**：读 `20-rest-api.md`（基于本 schema 暴露 HTTP 接口）+ `30-mcp-server.md`（MCP 协议适配）+ `40-sdk-contract.md`（开发者 import 用的客户端接口）。
-
-**End of data-schema.**
