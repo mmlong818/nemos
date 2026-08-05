@@ -1,5 +1,7 @@
 # examples/multi-perspective
 
+适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
+
 对比 v0.2 `doubleCheck` 与 v0.3 `multi-perspective` 在同一份内容上的产出差异。
 
 ## 跑法

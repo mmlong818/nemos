@@ -1,5 +1,7 @@
 # Example: Chat Product
 
+适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
+
 模拟一个聊天产品的 Nemos 集成。每条用户消息会被 `ingest`，AI 回复前用 `getRelevantContext` 取相关记忆拼进 prompt。
 
 ## 运行

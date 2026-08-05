@@ -1,151 +1,178 @@
-# 小丑鱼桌面客户端
+# 小丑鱼本机应用
 
-这是小丑鱼的本机桌面客户端，也可以直接作为独立产品使用。
+当前应用版本：**0.2.19**
+内置记忆核心：**Nemos 0.7.5-alpha.17**
+文档复核：**2026-08-06**
 
-当前版本：`0.2.19`
+小丑鱼可以作为网页应用运行，也可以构建成 Windows 便携客户端。聊天、能力、文件和工作页共享同一套本机数据。
 
-## 使用方式
+## 快速运行
 
-便携版解压后运行：
+在 **sdk/typescript** 目录执行：
 
-```text
-小丑鱼.exe
-```
+~~~powershell
+npm install
+npm run companion
+~~~
 
-或：
+默认打开 <http://localhost:8787>。
 
-```text
-启动小丑鱼.cmd
-```
+可用环境变量：
 
-客户端会自动启动本机服务，并打开内置 WebView 界面。默认服务端口是 `8787`。
+| 变量 | 作用 |
+|---|---|
+| **PORT** | 修改服务端口 |
+| **CLOWNFISH_HOME** | 修改应用数据目录 |
+| **COMPANION_USER** | 指定本机用户命名空间；服务部署时应由可信身份映射 |
 
-## 用户只需要配置什么
+## 首次使用
 
-在「设置 → 模型连接」中选择模型服务商、填写模型名称和 API Key。客户端会先测试连接，再将配置加密保存在当前 Windows 用户下，重启后仍然生效。
+1. 设置称呼；
+2. 在 **设置 → 模型连接** 中选择服务商、模型和 API Key；
+3. 连接测试通过后保存；
+4. 从聊天直接描述目标，或进入能力、文件和工作页。
 
-界面内置智谱 GLM、OpenAI、Anthropic Claude、DeepSeek、通义千问、MiniMax 与自定义服务预设，并支持 OpenAI 兼容和 Anthropic 兼容协议。识图、联网搜索、语音和记忆向量是否可用，取决于所选服务与模型。
+离线模式仍可浏览界面、管理本机内容，以及使用不需要模型的功能。
 
-无 Key 时仍可浏览界面和使用本地功能；ASR、私域来源、X 与开发者参数放在对应设置或开发者模式中。
+## 当前页面
 
-## 主要能力
+| 路径 | 页面 | 主要用途 |
+|---|---|---|
+| **/** | 聊天 | 单聊、群聊、历史、分支、图片和语音 |
+| **/capabilities** | 能力 | 自动选择或直接选择能力，启动并跟踪任务 |
+| **/office** | 文件 | 打开、编辑、处理和导出办公文件 |
+| **/tasks** | 工作 | 任务与计划 |
+| **/artifacts** | 结果 | 查看和下载交付物 |
+| **/runs** | 运行 | 运行、失败、取消、重试和恢复 |
+| **/memory** | 记忆 | 查看分类记忆，添加或忘记习惯 |
 
-- 微信式单聊和群聊
-- 专家顾问角色：可行性顾问、产品顾问、决策顾问、思考教练、长期战略顾问、系统架构师、用户体验顾问、界面设计师、交互设计师、精简开发顾问、质量测试师、发布运维师、产业分析师、定价财务顾问、品牌定位顾问、销售增长顾问、创业验证顾问等，可独立单聊，也会自动进入「小丑鱼专家组」；群聊默认由小丑鱼统一承载，@ 某位专家时该专家单独回复
-- 角色改名、人设修改、头像修改
-- 用户自己的头像修改
-- 首次启动称呼设置
-- 本机长期记忆（开发源码核心 `0.7.5-alpha.17`：事实演化、时间召回、来源证据、长期重要性和可解释召回）
-- 图片理解和 OCR
-- 图片提示词反推：可见证据拆解、固定结构校验、完整/精简/复刻/负面提示词交付
-- 网页链接读取
-- 语音输入和语音通话
-- 聊天导出 HTML
-- 交付物在聊天气泡里查看和下载
-- 对话中的目标可直接交给能力页，角色和任务要求会自动带入；运行状态与结果会回到原对话
-- 对话树支持独立对话、分支、自动备份回退，以及每段对话单独设置模型、思考深度和工具范围
-- 独立「工作」页集中管理任务、结果、运行记录和记忆偏好
-- 12 项内置能力与任务管理：PPT、正式文档、深度研究、港股资料简报、复杂问题梳理、产品设计、会议纪要、网页报告、方案比较、商务推进、市场机会模拟和新能力生成
-- Skills URL 安装、本机安装与复用
-- 预装 Skills 会在新机器首次启动时自动注册到本机能力层
-- 已安装 Skill 会参与聊天里的自动能力选择；外部新增 Skills 需要用户手动安装或导入
-- Agent 运行中心：查看运行、后台任务、失败原因和扩展状态
-- 长任务持久排队、实时进度、可取消和受保护重试，完成后由角色交付
-- Skill、MCP 与 Agent App 统一清单、按需加载和权限边界
-- 受控多 Agent 编排：独立会话、预算、产物引用和失败隔离
-- 办公文件工作台：读取 DOCX、PPTX、XLSX、PDF，保存工作副本、版本比较与恢复，不覆盖原文件
-- 真实导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown；PPT 内容过密时返回版面复核提示
-- 港股资料适配器：本机关注列表、港交所官方公告、带时间戳的第三方行情快照；只读且不执行交易
-- 微信私域资料导入和 X 来源连接框架
+## 公开能力
+
+当前能力页公开 12 项能力：
+
+1. 做 PPT
+2. 写正式文档
+3. 深度研究
+4. 查港股资料
+5. 梳理复杂问题
+6. 设计产品界面
+7. 整理会议纪要
+8. 做网页报告
+9. 比较方案
+10. 推进商务合作
+11. 模拟市场机会
+12. 生成新能力
+
+动车、航班、酒店和餐馆的实时查询适配器不在当前范围内。
+
+## 文件工作台
+
+- 读取 DOCX、PPTX、XLSX 和 PDF；
+- 原文件保留在浏览器本机存储中，不被工作副本覆盖；
+- PDF 使用原始文件预览，Office 文件提供结构化预览；
+- 编辑和 AI 处理都留在文件页；
+- 支持版本记录与恢复；
+- 导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown。
+
+旧版本已保存但没有原始 Blob 的文件，需要重新打开一次才能恢复原文件预览。
+
+## 记忆行为
+
+### 普通对话
+
+- 用户消息进入用户命名空间；
+- 角色回复进入该角色自己的命名空间；
+- 召回只读取当前角色可见的会话范围；
+- 原始归档与分类记忆分开保存；
+- 反思、事实失效和领域路由由统一记忆配置开启。
+
+### 能力与文件
+
+- 能力页可选择 **使用我的习惯** 或关闭偏好召回；
+- 文件页的 AI 处理使用偏好召回；
+- 偏好召回只查 **procedural** 与 **personal_semantic**；
+- 先取最多 12 个候选，再筛选与习惯、文笔、排版或格式相关的最多 6 项；
+- 当前请求仍是任务主指令。
+
+### 用户控制
+
+- 记忆页可以明确写入一条全局习惯；
+- 可以忘记单条非归档记忆；
+- 原始归档受保护，不会被单条忘记或分类清理删除；
+- 当前版本尚不显示一次运行实际应用的偏好编号，也不支持单次忽略某一条偏好。
+
+## 模型和网络边界
+
+预设服务商包括智谱 GLM、OpenAI、Anthropic Claude、DeepSeek、通义千问、MiniMax 和自定义服务。
+
+- 调用模型时，任务内容和必要上下文会发送给所选服务商；
+- 使用联网搜索、公开来源或 X 连接时会访问对应网络服务；
+- Windows 保存的模型 Key 使用当前用户的 DPAPI 加密；
+- 接口与日志不应返回完整密钥；
+- 工具、MCP 和 Agent App 按清单、权限和沙箱边界执行。
 
 ## 数据目录
 
-默认数据目录：
+默认目录：
 
-```text
+~~~text
 ~/.clownfish
-```
+~~~
 
-可用环境变量覆盖：
+主要文件：
 
-```powershell
-$env:CLOWNFISH_HOME="D:\your-data-dir"
-```
+~~~text
+companion.db
+user-profile.json
+llm-key.dpapi.json
+tool-settings.dpapi.json
+agent-runs.json
+agent-jobs.json
+agent-approvals.json
+agent-extensions.json
+capabilities/
+backups/
+logs/
+~~~
 
-关键文件：
+旧版数据目录仅在新目录不存在时自动沿用。
 
-```text
-companion.db                 本机记忆数据库
-llm-key.dpapi.json           加密保存的模型服务、模型名称和 API Key
-tool-settings.dpapi.json     工具配置
-capabilities\                能力、任务、Skills、市场关注列表和交付物
-agent-runs.json              脱敏后的 Agent 运行与事件记录
-agent-jobs.json              可恢复的后台任务队列
-agent-extensions.json        Skill、MCP 与 Agent App 扩展注册表
-logs\                        本机服务日志
-```
+## Windows 便携客户端
 
-## 开发运行
-
-在 `sdk/typescript` 目录执行：
-
-```powershell
-npm install
-npm run companion
-```
-
-然后打开：
-
-```text
-http://localhost:8787
-```
-
-## 构建便携版
-
-在 `sdk/typescript` 目录执行：
-
-```powershell
+~~~powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-Clownfish.ps1
-```
+~~~
 
-构建输出：
+构建脚本会下载并校验：
 
-```text
+- Microsoft WebView2 SDK；
+- Node 26.5.0 沙箱运行时；
+- Python 3.14.6 嵌入式运行时。
+
+输出目录：
+
+~~~text
 examples\companion\client\dist\portable\小丑鱼
-```
+~~~
 
-## 打包 zip
-
-可以直接压缩便携目录，也可以从已部署目录打包：
-
-```powershell
-Compress-Archive -LiteralPath "examples\companion\client\dist\portable\小丑鱼" -DestinationPath "小丑鱼 0.2.19.zip" -Force
-```
-
-分享前确认压缩包内不包含 `~/.clownfish` 数据目录。旧版数据目录会自动沿用，不会丢失历史数据。
+用户数据默认不在程序目录。分享便携包前仍应检查是否误带 **~/.clownfish** 或自定义数据目录。
 
 ## 验证
 
-```powershell
-cd sdk/typescript
+~~~powershell
 npm run build
-```
+npm test
+~~~
 
-常用接口：
+常用只读接口：
 
-```text
-GET http://127.0.0.1:8787/api/version
-GET http://127.0.0.1:8787/api/llm
-GET http://127.0.0.1:8787/api/llm-config
-GET http://127.0.0.1:8787/api/capabilities/tools
-GET http://127.0.0.1:8787/api/market/watchlist
-POST http://127.0.0.1:8787/api/market/snapshot
-```
+~~~text
+GET /api/version
+GET /api/runtime
+GET /api/llm-config
+GET /api/capabilities
+GET /api/agent/jobs
+GET /api/memory?who=me
+~~~
 
-## 更新约定
-
-- 程序版本写在 `examples/companion/client/manifest.json`
-- 服务端 fallback 版本在 `examples/companion/server.ts`
-- SDK 包版本在 `sdk/typescript/package.json`
-- 更新部署版时替换程序目录即可，用户数据默认不在程序目录
-- 测试期每次修改后清理本机测试数据，但保留 `llm-key.dpapi.json`、`tool-settings.dpapi.json` 和 `client-preferences.json`
+文档必须以当前代码和接口为准；设计稿中的“计划”或“建议”不能写成已经实现。

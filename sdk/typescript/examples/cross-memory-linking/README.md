@@ -1,5 +1,7 @@
 # examples/cross-memory-linking
 
+适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
+
 演示 v0.3 跨 memory 自动连接 + spreading activation 检索。
 
 ## 跑法
@@ -7,7 +9,7 @@
 ```bash
 cd sdk/typescript
 npm install
-ANTHROPIC_API_KEY=sk-... npx tsx examples/cross-memory-linking/index.ts
+ANTHROPIC_API_KEY=<your-key> npx tsx examples/cross-memory-linking/index.ts
 ```
 
 ## 工作流
@@ -37,8 +39,8 @@ features: {
 - **archival 也参与 entity 抽取**：archival 本身常含最完整 entity 信息
 - **entities ≤ 10 / memory**：避免单条爆炸
 
-## v0.4+ 候选改进
+## 尚未实现的改进
 
 - entity 别名表（"张三" / "Zhang San" / "@zhangsan" 合并）
 - vector + entity 混合 linking
-- dead-letter queue + manual retry
+- 可管理的 dead-letter queue 与人工重试界面

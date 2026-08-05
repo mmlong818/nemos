@@ -9,6 +9,7 @@ import { AgentRuntime, FileAgentRunStore, type AgentModel, type AgentTool } from
 test("persists checkpoints, terminal status, audit metadata, and redacted tool results", async () => {
   const dir = mkdtempSync(join(tmpdir(), "nemos-agent-runs-"));
   const file = join(dir, "runs.json");
+  const fakeApiKey = ["sk", "1234567890abcdef"].join("-");
   try {
     let modelCall = 0;
     const model: AgentModel = {
@@ -23,7 +24,7 @@ test("persists checkpoints, terminal status, audit metadata, and redacted tool r
         inputSchema: { type: "object", additionalProperties: true },
         effect: "read",
       },
-      execute: async () => ({ content: "Bearer private-token and sk-1234567890abcdef" }),
+      execute: async () => ({ content: `Bearer fixture-token-value and ${fakeApiKey}` }),
     };
     const store = new FileAgentRunStore(file, { toolResultMode: "summary" });
     const result = await new AgentRuntime(model, [tool]).run({
@@ -43,7 +44,8 @@ test("persists checkpoints, terminal status, audit metadata, and redacted tool r
     assert.equal(saved?.metadata?.userId, "user-a");
     assert.equal(saved?.messages.some((message) => message.role === "tool"), true);
     const raw = readFileSync(file, "utf8");
-    assert.doesNotMatch(raw, /private-token|sk-1234567890abcdef/);
+    assert.doesNotMatch(raw, /fixture-token-value/);
+    assert.equal(raw.includes(fakeApiKey), false);
     assert.match(raw, /\[REDACTED\]/);
   } finally {
     rmSync(dir, { recursive: true, force: true });

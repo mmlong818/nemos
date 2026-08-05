@@ -1,6 +1,6 @@
 ---
 name: RFC proposal
-about: 提议一个重大变更（schema / 协议 / governance / license / 商业化）
+about: 提议一个重大变更（数据结构 / 接口 / 治理 / 许可证 / 商业化）
 title: 'rfc: '
 labels: rfc
 ---
@@ -14,9 +14,9 @@ labels: rfc
 
 ## 类型
 
-- [ ] Schema 变更
-- [ ] 协议变更（REST / MCP / SDK）
-- [ ] 新接入面 / 新 SKU
+- [ ] 数据结构变更
+- [ ] 公开接口变更
+- [ ] 新接入方式或交付形态
 - [ ] 新核心能力
 - [ ] Governance 变更
 - [ ] License 变更
@@ -24,11 +24,11 @@ labels: rfc
 - [ ] 默认依赖变更
 - [ ] 其他：
 
-## Motivation
+## 为什么需要
 
 为什么必须做这件事？不做会怎样？
 
-## 已考虑的 alternative
+## 已考虑的替代方案
 
 至少 1-2 个其他方案。
 
@@ -38,7 +38,7 @@ labels: rfc
 
 ## 期望的下一步
 
-- [ ] 与 maintainer 同步对齐
+- [ ] 与维护者同步对齐
 - [ ] 我自己继续写正式 RFC
-- [ ] 寻找其他 contributor 协作
+- [ ] 寻找其他贡献者协作
 - [ ] 等社区反馈再决定

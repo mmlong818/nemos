@@ -6,8 +6,8 @@ authors:
 status: draft
 created_at: YYYY-MM-DD
 updated_at: YYYY-MM-DD
-discussion_url: <PR URL>
-implementation_pr: <if accepted, PR URL>
+discussion_url: ""
+implementation_pr: ""
 supersedes: []
 superseded_by: <if applicable>
 ---

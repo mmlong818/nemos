@@ -1,65 +1,51 @@
 # Governance
 
-Nemos 的决策、维护、与社区治理模型。
+更新：2026-08-06
 
----
+## 当前阶段
 
-## 当前阶段：BDFL（2026-06-04 起）
+Nemos Memory SDK 与小丑鱼均处于 Alpha，由仓库维护者负责最终合并和发布决策。
 
-项目处于 Pre-Alpha。当前阶段由作者（BDFL，Benevolent Dictator For Life）做最终决策，但所有重大决定走 RFC 公开讨论。
+重大数据模型、公开 API、许可和治理变化应留下 Issue 或 RFC 记录。
 
-## 阶段演化路径
+## 决策
 
-| 阶段 | 触发条件 | 治理模型 |
-|---|---|---|
-| **Pre-Alpha** | 当前（无生产部署） | BDFL，所有重大决策 RFC 公开 |
-| **Alpha** | 首个引用实现 + 5 个外部 contributor | BDFL + 1-2 个 core maintainer |
-| **Beta（~10k DAU 触发）** | 引用云 / SDK 被生产使用 | Core maintainer 团队（3-5 人）+ RFC review committee |
-| **GA（~100k DAU 触发）** | 多生产部署 / 多语言 SDK 稳定 | 考虑独立基金会（Linux Foundation / OpenJS / 自建） |
-| **商业衍生（如发生）** | 引用云规模运营所需 | 商业实体与 OSS 项目治理分离；OSS 不被商业反向锁定 |
-
-## 决策类型与所需流程
-
-| 决策类型 | 流程 |
+| 变更 | 流程 |
 |---|---|
-| Bug fix / 非破坏性新增 | 直接 PR |
-| 文档改进 | 直接 PR |
-| Schema 字段添加 | RFC（轻量）+ 14 天讨论 |
-| Schema 破坏性变更 | RFC + 30 天讨论 + 迁移路径必备 |
-| 协议变更（REST/MCP/SDK 任一） | RFC + 30 天讨论 |
-| 新接入面 / 新 SKU | RFC + 30 天讨论 |
-| License 变更 | RFC + 60 天讨论 + **所有现存 contributor 同意** |
-| Governance 变更（本文件） | RFC + 60 天讨论 |
-| 商业化决策（如成立商业实体、引用云收费） | RFC + 60 天讨论 + 不可单方面决策 |
+| Bug、测试、文档 | PR 评审 |
+| 向后兼容的小功能 | Issue 或 PR 说明 |
+| 破坏性 API 或 Schema | RFC、迁移路径和测试 |
+| 安全边界 | 安全评审与回归测试 |
+| License 或治理 | RFC 和维护者明确批准 |
 
-RFC 流程详见 [`rfcs/README.md`](rfcs/README.md)。
+当前实现证据优先级：
 
-## Core Maintainer 准入
+1. 通过的测试；
+2. 类型定义和运行代码；
+3. 当前 README 与实现文档；
+4. RFC；
+5. 历史规范草案。
 
-Beta 阶段后，Core Maintainer 的加入：
-- 提名：现有 maintainer 或 BDFL
-- 标准：至少 3 个 substantive PR / RFC contribution，且体现项目价值观
-- 决策：现有 maintainer 多数 + BDFL 不反对
+## Maintainer
 
-## Conflict Resolution
+维护者负责：
 
-技术决策无共识时：
-1. 优先寻找数据 / 引用实现 / 实测验证
-2. 若仍无解，BDFL 决策（Pre-Alpha/Alpha 阶段）或 Core Maintainer 投票（Beta+ 阶段）
-3. 所有决策必须在 RFC 留下书面理由
+- 保护数据和兼容性；
+- 确认发布范围；
+- 审查依赖与凭证风险；
+- 保持文档与实现一致；
+- 对安全问题进行私密协调。
 
-## 利益冲突声明
+## 分歧
 
-任何 maintainer 在做出可能影响其个人/雇主商业利益的决策时，必须在 RFC 中披露。
-
-## 商业化承诺（Pre-Alpha 阶段锁定）
-
-- Nemos 协议 + 引用实现 + 默认 SDK：**永久 PolyForm Noncommercial 1.0.0（禁止商用的 source-available）**
-- 引用云（cloud SKU a）：可能由作者/社区/第三方运营，运营方式不影响 OSS 部分
-- 任何商业衍生必须经过 60 天 RFC 公开讨论
-- 不接受任何包含"OSS 部分被商业版本反向蚕食"条款的资金来源
+1. 先用复现、测试或测量澄清；
+2. 仍有分歧时记录方案、代价和边界；
+3. 由维护者作出当前版本决定；
+4. 破坏性决定保留可回滚或迁移路径。
 
 ## 联系
 
-- 治理问题：开 issue 或 RFC
-- 维护者直接联系：`<maintainer-email-placeholder>`
+- 一般问题：GitHub Issue；
+- 设计变化：Issue 或 RFC；
+- 安全问题：[SECURITY.md](SECURITY.md)；
+- 私人信息不得放入公开讨论。

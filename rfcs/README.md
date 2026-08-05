@@ -2,6 +2,8 @@
 
 > RFC（Request for Comments）是 Nemos 重大变更的公开讨论与归档流程。
 > 灵感来自 Rust RFC、Python PEP、Kubernetes KEP。
+>
+> 状态复核：2026-08-06。RFC 是决策历史；当前接口仍以 SDK 类型、README 和测试为准。
 
 ---
 
@@ -86,10 +88,10 @@
 | 编号 | 标题 | 状态 |
 |---|---|---|
 | 0001 | Nemos Design Principles | accepted（founding document） |
-| 0002 | Scenario Profiles & Content Awareness | accepted |
-| 0003 | Production Pipeline | accepted |
-| 0004 | Forgetting & Consolidation | accepted |
-| 0005 | Domain Experts & Sparse Activation Routing | accepted（implementation merged） |
-| 0006 | Prospective Memory & Prediction-Verification Loop | draft |
-| 0007 | Bi-Temporal Validity & Invalidation Semantics | accepted（核心失效链路 implemented，MnemoBench 消融验证） |
-| 0008 | Companion Memory Topology — Relational Visibility & Persona Self-State | accepted（implementation merged） |
+| 0002 | Scenario Profiles & Content Awareness | implemented |
+| 0003 | Production Pipeline | implemented |
+| 0004 | Forgetting & Consolidation | implemented（优化缺口见正文） |
+| 0005 | Domain Experts & Sparse Activation Routing | implemented（规模基准待补） |
+| 0006 | Prospective Memory & Prediction-Verification Loop | draft（未成为公开契约） |
+| 0007 | Bi-Temporal Validity & Invalidation Semantics | implemented（扁平物化状态） |
+| 0008 | Companion Memory Topology — Relational Visibility & Persona Self-State | implemented |

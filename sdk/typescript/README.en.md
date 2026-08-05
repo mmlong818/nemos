@@ -2,6 +2,8 @@
 
 [中文](README.md)
 
+Current package version: `0.7.5-alpha.17`. Documentation reviewed on 2026-08-06. See the [0.7.x design baseline](docs/nemos-memory-v0.7-design.md) for implementation boundaries.
+
 An embedded TypeScript long-term memory engine backed by local SQLite. It is designed for AI assistants, agents, knowledge tools, and other applications that need durable cross-session memory.
 
 ## Install

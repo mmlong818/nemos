@@ -1,5 +1,7 @@
 # examples/background-ingest
 
+适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
+
 演示 v0.3 后台 ingest 队列：archival 同步写入，derived 异步抽取。
 
 ## 跑法
@@ -31,6 +33,6 @@ ANTHROPIC_API_KEY=sk-... npx tsx examples/background-ingest/index.ts
 ## 关键点
 
 - **archival sync**：即便 background 模式，原文也立刻入库。Worker 失败/进程崩溃不会让用户丢失原文。
-- **handle 模式**：`ingest({ background: true })` 返回 `IngestHandle`，不是 `IngestResult`。朋友通过 `mem.waitForIngest(id)` 或 `userMem.getIngestStatus(id)` 拿后续状态。
+- **handle 模式**：`ingest({ background: true })` 返回 `IngestHandle`，不是 `IngestResult`。集成方通过 `mem.waitForIngest(id)` 或 `userMem.getIngestStatus(id)` 拿后续状态。
 - **Serverless 友好**：每请求 spawn 新进程时，传 `worker: { manualWorker: true }`，然后在请求结尾调一次 `mem.runWorkerTick()`。
 - **崩溃恢复**：Worker 启动时把 `status='analyzing'` 的任务重置为 `'queued'`，避免任务卡死。

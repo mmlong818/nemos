@@ -2,151 +2,152 @@
 
 **中文** · [English](README.en.md)
 
-> 本机优先、带长期记忆的 AI 伴侣与工作台。它不只陪你对话，也能接过目标、执行能力，并把结果送回原对话。
+> 一款本机优先、带长期记忆的 AI 对话与工作应用。用户从聊天开始，需要时直接调用能力、处理办公文件，并在同一处查看任务、结果和记忆。
 
-![小丑鱼 对话界面](docs/assets/readme/clownfish-chat.png)
+![小丑鱼对话界面](docs/assets/readme/clownfish-chat.jpg)
 
-## 小丑鱼是什么
+## 现在能做什么
 
-小丑鱼把三件原本分散的事合成一个连续体验：
+小丑鱼把四个常用入口放在同一套界面里：
 
-| | 用户看到的体验 | 小丑鱼在做什么 |
+| 入口 | 用户操作 | 当前实现 |
 |---|---|---|
-| **对话** | 和角色交流、提问、上传图片或语音 | 保留上下文，判断何时回答、何时执行 |
-| **能力** | 直接说目标，不必先研究工具名称 | 选择合适能力，在后台运行并生成可编辑结果 |
-| **工作** | 查看任务、结果、运行和记忆 | 保存历史、检查执行、恢复中断并管理偏好 |
-| **办公文件** | 打开常见文件，编辑后导出 | 保护原文件，保存工作副本和版本 |
-| **记忆** | 角色逐渐适应你的习惯、文笔和格式偏好 | 在本机保存、更新、检索并允许审计长期信息 |
+| **聊天** | 提问、上传图片、发送语音、继续历史对话 | 独立对话与分支、角色或专家协作、结果回到原对话 |
+| **能力** | 直接描述目标，或直接选择一种能力 | 后台任务、实时进度、取消与重试、结果预览和下载 |
+| **文件** | 打开 Word、PowerPoint、Excel 或 PDF | 保留原文件、编辑本机工作副本、页内处理和版本记录 |
+| **工作** | 查看任务、结果、运行和记忆 | 计划任务、交付物、运行记录、习惯管理 |
 
-数据、记忆、任务记录与交付物默认保存在本机。你可以查看 AI 记住了什么，也可以清空记忆或切换到离线模式。
+新用户不需要先创建项目，也不需要先理解工具名称。
 
-## 从对话自然进入能力
+## 能力：说目标，也可以直接选
 
-能力不是另一个互不相干的应用。你可以在聊天输入目标后点 **「交给能力」**：
+能力页有两条同等有效的路径：
 
-1. 当前角色和目标会自动带到能力页；
-2. 小丑鱼推荐适合的能力，并预填任务要求；
-3. 确认结果形式与材料后，任务在后台继续；
-4. 进行中状态在对话和能力页都可见；
-5. 完成结果回到原对话，也会保留在历史记录与文件中。
+1. 写下要完成的事情，由小丑鱼选择合适能力；
+2. 已经知道要做什么时，直接点击能力并填写要求。
 
-![从对话带入目标并准备能力](docs/assets/readme/clownfish-capability-handoff.png)
+选择后直接进入任务填写，不再增加“准备能力”之类的中间步骤。运行期间可以离开页面，进度和结果会保存在本机。
 
-## 内置能力
+![小丑鱼能力页](docs/assets/readme/clownfish-capabilities.jpg)
 
-能力页以“想完成什么”为入口，新手不必先从清单里寻找。已经知道做法时，也可以直接选择能力。
+当前公开的 12 项能力：
 
-| 能力 | 适合处理 |
-|---|---|
-| **做 PPT** | 汇报、提案、课程分享、路演；生成版式、备注与可编辑 PPTX |
-| **写正式文档** | 方案、总结、说明和长文；轻量沿用你的文笔与排版习惯 |
-| **深度研究** | 规划检索、核验来源、形成可追溯结论 |
-| **查港股资料** | 读取本机关注代码、港交所公告和带时间戳的第三方行情快照；不提供交易指令 |
-| **梳理复杂问题** | 拆分事实、假设、矛盾、选项和验证计划 |
-| **设计产品界面** | 从真实用户任务形成流程、页面结构与验收要点 |
-| **整理会议纪要** | 提炼决定、行动项、责任人、风险和未决问题 |
-| **做网页报告** | 生成可直接打开的独立 HTML 页面 |
-| **比较方案** | 对比证据、收益、代价、风险和改变决定的条件 |
-| **推进商务合作** | 整理关键人、异议、谈判边界与跟进行动 |
-| **模拟市场机会** | 用多种情景检验需求、竞争、执行与失效条件 |
-| **生成新能力** | 把重复工作沉淀为有触发边界、步骤和测试的本机能力 |
+- 做 PPT
+- 写正式文档
+- 深度研究
+- 查港股资料
+- 梳理复杂问题
+- 设计产品界面
+- 整理会议纪要
+- 做网页报告
+- 比较方案
+- 推进商务合作
+- 模拟市场机会
+- 生成新能力
 
-任务支持附加 TXT、Markdown、CSV、JSON 与 HTML 材料。不同能力可交付真实的 PPTX、DOCX、PDF、XLSX、Markdown、结构化数据或独立网页。
+不同能力可以交付 PPTX、DOCX、PDF、XLSX、HTML、Markdown 或结构化数据。动车、航班、酒店和餐馆的实时查询不在当前产品范围内。
 
-## 对话、工作与办公文件
+## 文件：原文件、工作副本和结果不分家
 
-- 对话支持独立会话、分支和回到某一步；回退前会自动保留备份分支。模型、思考深度和工具范围可以按对话设置。
-- 「工作」页集中查看持续任务、可下载结果、后台运行和记忆偏好；不要求新用户先建立项目。
-- 「办公文件」可读取 DOCX、PPTX、XLSX 和 PDF，保留本机工作副本、版本比较和恢复，不覆盖原文件。
-- 编辑结果可以实际导出为 DOCX、PDF、PPTX、XLSX、HTML 或 Markdown；演示内容过密时会给出版面复核提示。
-## 长期记忆，但不过度代替你
+文件页支持 DOCX、PPTX、XLSX 和 PDF：
 
-小丑鱼使用 Nemos Memory SDK 管理长期记忆，而不是把全部聊天堆成一整段，也不会把模型自己说的话当成你的事实。
+- 新建文件和打开文件位于最近文件列表上方；
+- 原文件保留在本机，不会被编辑流程覆盖；
+- PDF 可显示原始版式，Office 文件提供结构化预览并保留原文件；
+- 编辑、版本记录、AI 处理进度和结果都留在当前页面；
+- 可以导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown。
 
-- **分层保存**：区分具体经历、长期事实、个人偏好、做事习惯与原始记录。
-- **会更新**：新信息可以使旧事实失效，历史仍可追溯，回答默认使用当前有效信息。
-- **按主题检索**：只激活与当前问题相关的记忆，避免把全部历史塞进一次对话。
-- **轻量适配**：能力可以参考你的文笔、排版和格式习惯，但不会让偏好压过当前明确要求。
-- **可审计**：记忆保存在本机 SQLite，可查看、导出备份或清空。
+![小丑鱼办公文件页](docs/assets/readme/clownfish-office.jpg)
 
-![小丑鱼 记忆的稀疏激活机制](docs/assets/four-tier-sparse-activation.svg)
+## 记忆：少量、可见、由用户控制
 
-更详细的记忆结构见 [系统架构](docs/architecture-overview.md) 与 [RFC](rfcs/)。
+小丑鱼使用同仓库的 Nemos Memory SDK 保存长期记忆。当前应用中的实际规则是：
+
+- 用户内容与角色自身内容存放在不同命名空间，角色回复不会写入用户事实库；
+- 原始对话进入受保护的归档层，分类记忆用于检索和长期适配；
+- 普通对话按当前问题召回相关事实；
+- 能力任务可以只召回交付偏好，从“习惯与做法”和“个人偏好”中最多选取 6 项；
+- 用户可在工作页明确添加习惯，也可忘记单条分类记忆；
+- 原始归档不会被“忘记”或“清理分类记忆”误删。
+
+文笔、排版和格式偏好只作为补充，当前任务的明确要求始终优先。当前版本尚未提供“查看本次具体应用了哪几条偏好”或“仅本次忽略某一条偏好”的细粒度控制。
+
+![小丑鱼记忆页](docs/assets/readme/clownfish-memory.jpg)
+
+记忆内核的结构、事实演化和召回接口见 [TypeScript SDK 文档](sdk/typescript/README.md) 与 [v0.7 实现设计](sdk/typescript/docs/nemos-memory-v0.7-design.md)。
 
 ## 通用模型连接
 
-在 **设置 → 模型连接** 中选择服务商、填写模型名称和 API Key，小丑鱼会先测试连接再保存。
+在 **设置 → 模型连接** 中选择服务商、模型名称和 API Key。系统会先验证连接，再保存配置。
 
-![小丑鱼 通用模型连接](docs/assets/readme/clownfish-model-connection.png)
+![小丑鱼模型连接](docs/assets/readme/clownfish-model-connection.jpg)
 
-当前提供智谱 GLM、OpenAI、Anthropic Claude、DeepSeek、通义千问、MiniMax 与自定义服务预设，支持 OpenAI 兼容和 Anthropic 兼容协议。模型是否支持识图、联网搜索、语音或向量能力，以所选服务与模型为准。
+当前预设包括智谱 GLM、OpenAI、Anthropic Claude、DeepSeek、通义千问、MiniMax 和自定义服务，支持 OpenAI 兼容与 Anthropic 兼容协议。识图、联网、语音和向量能力取决于所选服务与模型。
 
-Windows 下，保存的模型连接使用系统 DPAPI 加密；界面和接口不会回显完整密钥。无 Key 时仍可浏览界面并使用本地功能。
+Windows 下，密钥使用当前用户的 DPAPI 加密并保存在本机；接口不会回显完整密钥。离线模式可以浏览界面、管理本机内容和使用不依赖模型的功能。
 
-## 小丑鱼、专家与群聊
+## 数据与隐私边界
 
-- **小丑鱼就是应用本身**，不是一个单独的虚构角色；对话、能力和交付都从这里继续。
-- 需要专业判断时，可按需加入原理工程师、产品主理人、决策分析师等原创功能专家；陪伴角色仍可单独添加。
-- 每个角色的名字、头像、人设、话量和声音均可单独调整并保存在本机。
-- 群聊支持 `@角色名` 精确点名；角色只在自己在场的会话范围内使用相应记忆。
+- 记忆数据库、任务、运行记录、文件工作副本和交付物默认位于 **~/.clownfish**。
+- 调用已配置的模型时，当前请求及必要上下文会发送给该模型服务商；打开联网来源时会访问相应公开服务。
+- 本机日志和运行记录会脱敏常见凭证字段，但仍不应把密钥或私人配置写入任务正文。
+- 开发者模式可以导出本机备份；分享备份或便携包前，应确认其中不包含用户数据目录。
 
 ## 本地运行
 
 需要 Node.js 20 或更高版本。
 
-```bash
-cd sdk/typescript
+~~~powershell
+cd sdk\typescript
 npm install
 npm run companion
-```
+~~~
 
-默认打开 <http://localhost:8787>。如果该端口已被占用，可以通过 `PORT` 环境变量指定其他端口。
+默认地址是 <http://localhost:8787>。可用 **PORT** 修改端口，用 **CLOWNFISH_HOME** 修改数据目录。
 
-### Windows 独立客户端
+### Windows 便携客户端
 
-```powershell
+~~~powershell
 cd sdk\typescript
 powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-Clownfish.ps1
-```
+~~~
 
-构建后运行：
+构建脚本会下载并校验 WebView2、沙箱 Node 和 Python 运行时。输出目录：
 
-```text
-examples\companion\client\dist\portable\小丑鱼\小丑鱼.exe
-```
-
-客户端用法、数据位置与诊断接口见 [小丑鱼使用说明](sdk/typescript/examples/companion/README.md)。
+~~~text
+examples\companion\client\dist\portable\小丑鱼
+~~~
 
 ## 作为记忆 SDK 使用
 
-小丑鱼应用之下是可独立嵌入的 TypeScript 记忆 SDK：
+~~~typescript
+import { Nemos } from "@nemos/sdk";
 
-```typescript
-const mem = new Nemos({ storage, llm })
-const user = mem.forUser(userId)
+const nemos = new Nemos({
+  storage: { type: "sqlite", path: "./memory.db" },
+  llm,
+});
 
-await user.ingest("用户说：我不喜欢深色主题")
-const context = await user.getRelevantContext("帮我设计一个界面")
-```
+const memory = nemos.forUser(authenticatedUserId);
+await memory.ingest("用户说：正式文档先给结论");
+const context = await memory.getRelevantContext("起草一份方案");
+~~~
 
-多用户通过 `forUser(userId)` 隔离记忆；应用可以替换存储、模型与检索策略。完整接口见 [TypeScript SDK 文档](sdk/typescript/README.md)。
+**userId** 应来自服务端可信身份，不能直接相信客户端传入值。
 
-## 项目资料
+## 文档入口
 
-| 文档 | 用途 |
+| 文档 | 内容 |
 |---|---|
-| [小丑鱼使用说明](sdk/typescript/examples/companion/README.md) | 启动、模型连接、数据位置与桌面打包 |
-| [TypeScript SDK 文档](sdk/typescript/README.md) | 在其他产品中接入 Nemos 记忆 |
-| [Agent Runtime 设计](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | 任务、工具、权限和运行时边界 |
-| [系统架构](docs/architecture-overview.md) | 分层记忆与整体结构 |
-| [MnemoBench](bench/README.md) | 可复现的记忆维护基准 |
-| [论文](paper/) | 方法、实验与消融结果，中英双语 |
-| [路线图](ROADMAP.md) | 版本计划与当前进度 |
+| [小丑鱼使用说明](sdk/typescript/examples/companion/README.md) | 启动、数据目录、桌面构建和接口 |
+| [TypeScript SDK](sdk/typescript/README.md) | 当前可用的记忆 API |
+| [记忆架构](docs/architecture-overview.md) | 已实现结构与边界 |
+| [Agent Runtime](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | 任务、工具、权限与恢复 |
+| [能力地图](sdk/typescript/examples/companion/docs/clownfish-capability-map.md) | 用户能力与内部执行映射 |
+| [路线图](ROADMAP.md) | 当前版本和后续重点 |
+| [项目资料状态](docs/document-status.md) | 每份文档的当前、研究快照或归档属性 |
+| [历史规范草案](spec/) · [RFC](rfcs/) | 设计记录，不等同于当前已实现接口 |
 
 ## 许可
 
-本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE)：允许非商业使用、修改与分发；商业用途需要另行授权。
-
----
-
-*小丑鱼是面向用户的应用；Nemos Memory SDK 是其本机记忆内核。*
+本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE)。允许非商业使用、修改和分发；商业用途需要另行授权。

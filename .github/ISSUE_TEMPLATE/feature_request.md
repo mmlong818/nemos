@@ -5,7 +5,7 @@ title: 'feat: '
 labels: enhancement
 ---
 
-> 注意：如果你的提议涉及 schema 变更、协议变更、新核心能力、license/governance/商业化，
+> 注意：如果你的提议涉及数据结构变更、公开接口变更、新核心能力、许可证、治理或商业化，
 > 请走 [RFC 流程](../../rfcs/README.md) 而非 feature request。
 
 ## 提议
@@ -15,7 +15,7 @@ labels: enhancement
 ## 解决的痛点
 
 - 你遇到的具体场景
-- 当前 nemos 不能做到 / 做得不好的地方
+- 当前小丑鱼或 Nemos Memory SDK 不能做到、或做得不好的地方
 
 ## 你想要的体验
 
@@ -24,8 +24,8 @@ labels: enhancement
 ## 兼容性
 
 - 这个 feature 是否影响现有 API？
-- 是否需要 schema 字段变更？（如有 → 升级为 RFC）
-- 是否影响某个 SKU？
+- 是否需要数据结构变更？（如有 → 升级为 RFC）
+- 是否影响现有数据或迁移？
 
 ## 替代方案
 
@@ -33,4 +33,4 @@ labels: enhancement
 
 ## 相关引用
 
-链接到 spec / RFC / docs。
+链接到当前文档或 RFC。历史 `spec/` 只用于解释设计演变。

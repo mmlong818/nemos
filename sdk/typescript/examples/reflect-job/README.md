@@ -1,5 +1,7 @@
 # examples/reflect-job
 
+适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
+
 v0.4 reflect consolidation 演示。
 
 ## 跑
@@ -35,7 +37,6 @@ features: {
 }
 ```
 
-## 真 LLM 成本估算
+## 成本说明
 
-每次 reflect ≈ 3000 input + 1500 output token ≈ Claude Sonnet $0.02。
-单 user 每周 1 次 ≈ $1/月（按朋友 LLM provider 计费）。
+真实成本取决于所选 provider、模型、输入长度和触发频率。运行前应查看对应模型的最新官方价格，并用实际调用日志估算；本文不保存容易过期的固定金额。
