@@ -1,6 +1,6 @@
 {
-  "appId": "nemos-companion",
-  "name": "Nemos Companion",
+  "appId": "clownfish",
+  "name": "小丑鱼",
   "version": "0.2.19",
   "channel": "local",
   "schemaVersion": 1,
@@ -9,7 +9,7 @@
     "entry": "app/examples/companion/server.ts"
   },
   "data": {
-    "defaultDirName": ".nemos-companion",
+    "defaultDirName": ".clownfish",
     "backupOnStartup": true
   }
 }

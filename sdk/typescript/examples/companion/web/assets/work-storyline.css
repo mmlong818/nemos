@@ -1,0 +1,472 @@
+:root {
+  --story-fast: 120ms;
+  --story-default: 200ms;
+  --story-ease-out: cubic-bezier(0, 0, .2, 1);
+  --story-ease-change: cubic-bezier(.4, 0, .2, 1);
+}
+
+.task-overview {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 8px 0 18px;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: .015em;
+}
+
+.task-overview strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.task-card {
+  align-items: start;
+}
+
+.task-card h2 {
+  text-wrap: balance;
+}
+
+.task-storyline-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(180px, .65fr);
+  gap: 10px;
+  margin-top: 13px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.task-storyline-preview div {
+  min-width: 0;
+}
+
+.task-storyline-preview span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--subtle);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .045em;
+}
+
+.task-storyline-preview p,
+.task-storyline-preview strong {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.task-storyline-preview .next-step {
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+}
+
+.task-actions {
+  min-width: 176px;
+  justify-content: flex-end;
+}
+
+.task-actions .primary {
+  color: #fff;
+  background: var(--accent);
+}
+
+.task-actions .primary:hover {
+  color: #fff;
+  background: var(--accent2);
+}
+
+.task-more {
+  position: relative;
+}
+
+.task-more summary {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 11.5px;
+  list-style: none;
+}
+
+.task-more summary::-webkit-details-marker { display: none; }
+
+.task-more[open] summary {
+  border-color: #c397aa;
+  color: var(--accent2);
+}
+
+.task-more-menu {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 108px;
+  display: grid;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 16px 36px rgba(32, 34, 31, .12);
+}
+
+.task-more-menu button {
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+#storyDialog {
+  width: min(1060px, calc(100% - 24px));
+  max-width: none;
+}
+
+.storyline-dialog-card {
+  max-height: min(88vh, 900px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.storyline-dialog-head {
+  padding-right: 40px;
+}
+
+.storyline-dialog-head h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.18;
+  letter-spacing: -.015em;
+  text-wrap: balance;
+}
+
+.storyline-dialog-head > p:last-child {
+  max-width: 64ch;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.storyline-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, .75fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.storyline-main {
+  min-width: 0;
+  display: grid;
+  gap: 22px;
+}
+
+.story-form,
+.decision-form {
+  display: grid;
+  gap: 13px;
+}
+
+.story-form > label,
+.decision-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: .015em;
+}
+
+.story-form input,
+.story-form textarea,
+.story-form select,
+.decision-form input,
+.decision-form textarea,
+.decision-form select,
+.expert-assignment input,
+.expert-assignment select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line2);
+  border-radius: 7px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.story-form textarea,
+.decision-form textarea {
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.expert-fieldset {
+  min-width: 0;
+  margin: 1px 0 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.expert-fieldset legend {
+  padding: 0 5px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .015em;
+}
+
+.expert-fieldset > p {
+  margin: 0 0 10px;
+  color: var(--subtle);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.expert-assignments {
+  display: grid;
+  gap: 7px;
+}
+
+.expert-assignment {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) 34px;
+  gap: 7px;
+}
+
+.expert-assignment button {
+  min-height: 38px;
+  padding: 0;
+  color: var(--danger);
+  background: transparent;
+}
+
+#addExpertAssignment {
+  min-height: 32px;
+  margin-top: 8px;
+  background: transparent;
+  font-size: 11.5px;
+}
+
+.story-section {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.story-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.story-section-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.story-section-head span {
+  color: var(--subtle);
+  font-size: 10.5px;
+  letter-spacing: .02em;
+}
+
+.decision-list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.decision-item {
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--panel);
+}
+
+.decision-item.is-superseded {
+  border-left-color: var(--line2);
+  opacity: .7;
+}
+
+.decision-item strong,
+.decision-item p,
+.decision-item small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.decision-item strong {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.decision-item p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.decision-item small {
+  margin-top: 5px;
+  color: var(--subtle);
+  font-size: 10px;
+  letter-spacing: .015em;
+}
+
+.decision-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.storyline-aside {
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.story-activity {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-activity li {
+  position: relative;
+  min-width: 0;
+  padding: 0 0 16px 18px;
+}
+
+.story-activity li:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: -1px;
+  left: 4px;
+  width: 1px;
+  background: var(--line2);
+}
+
+.story-activity li::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--panel);
+}
+
+.story-activity li.is-error::after { background: var(--danger); }
+.story-activity li.is-result::after { background: var(--ok); }
+
+.story-activity strong,
+.story-activity span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.story-activity strong {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.story-activity span {
+  margin-top: 3px;
+  color: var(--subtle);
+  font-size: 10px;
+  letter-spacing: .015em;
+}
+
+.story-empty {
+  padding: 12px;
+  color: var(--subtle);
+  background: var(--panel);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.task-card,
+.decision-item,
+.storyline-aside {
+  transition: border-color var(--story-fast) var(--story-ease-out),
+              background-color var(--story-fast) var(--story-ease-out);
+}
+
+@media (max-width: 820px) {
+  .task-storyline-preview,
+  .storyline-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .task-storyline-preview .next-step {
+    padding: 10px 0 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .task-actions {
+    min-width: 0;
+    justify-content: flex-start;
+  }
+
+  .storyline-aside {
+    position: static;
+  }
+}
+
+@media (max-width: 560px) {
+  .task-overview,
+  .decision-actions,
+  .expert-assignment {
+    grid-template-columns: 1fr;
+  }
+
+  .task-overview {
+    display: grid;
+  }
+
+  .expert-assignment button {
+    width: max-content;
+    min-height: 30px;
+    padding: 0 9px;
+  }
+
+  .storyline-dialog-card {
+    padding: 22px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --story-fast: 0ms;
+    --story-default: 0ms;
+  }
+}

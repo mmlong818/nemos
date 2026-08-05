@@ -7,12 +7,12 @@ import test from "node:test";
 import { CapabilityRuntime } from "../../examples/companion/capabilities.js";
 
 test("due task discovery is read-only and produces a stable occurrence key", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "nemos-capability-due-"));
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-capability-due-"));
   let notifications = 0;
   try {
     const runtime = new CapabilityRuntime({
       dataDir: dir,
-      personas: () => [{ id: "zhiwei", name: "知微" }],
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
       notify: async () => {
         notifications++;
         return { reply: "测试交付\n\n交付完成。", facts: [] };
@@ -20,7 +20,7 @@ test("due task discovery is read-only and produces a stable occurrence key", asy
     });
     const task = runtime.createTask({
       title: "每日测试",
-      personaId: "zhiwei",
+      personaId: "clownfish",
       capabilityId: "decision-brief",
       instruction: "生成测试简报",
       format: "md",
@@ -49,16 +49,16 @@ test("due task discovery is read-only and produces a stable occurrence key", asy
 });
 
 test("turn-based due discovery uses the persisted turn counter", () => {
-  const dir = mkdtempSync(join(tmpdir(), "nemos-capability-turn-due-"));
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-capability-turn-due-"));
   try {
     const runtime = new CapabilityRuntime({
       dataDir: dir,
-      personas: () => [{ id: "zhiwei", name: "知微" }],
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
       notify: async () => ({ reply: "交付完成。", facts: [] }),
     });
     const task = runtime.createTask({
       title: "轮次测试",
-      personaId: "zhiwei",
+      personaId: "clownfish",
       capabilityId: "decision-brief",
       instruction: "每两轮总结一次",
       format: "md",
@@ -66,9 +66,9 @@ test("turn-based due discovery uses the persisted turn counter", () => {
       schedule: { mode: "turns", everyTurns: 2 },
     });
 
-    runtime.recordPersonaTurn("zhiwei");
+    runtime.recordPersonaTurn("clownfish");
     assert.equal(runtime.dueTaskRuns("turn").some((item) => item.taskId === task.id), false);
-    runtime.recordPersonaTurn("zhiwei");
+    runtime.recordPersonaTurn("clownfish");
     const due = runtime.dueTaskRuns("turn").find((item) => item.taskId === task.id);
     assert.ok(due);
     assert.match(due?.occurrenceKey ?? "", /:turn:2$/);

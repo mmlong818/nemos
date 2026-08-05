@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildCapabilityRoadmap } from "../../examples/companion/capability-roadmap.js";
 
-test("路线图不会把只有来源框架的真实适配器标为完成", () => {
+test("路线图明确排除不做的实时餐旅适配器", () => {
   const roadmap = buildCapabilityRoadmap();
   const realConnectors = roadmap.phases.find((phase) => phase.id === "real-connectors");
   assert.ok(realConnectors);
 
   const status = Object.fromEntries(realConnectors.items.map((item) => [item.id, item.status]));
-  assert.equal(status["market-adapter"], "doing");
-  assert.equal(status["travel-adapter"], "next");
-  assert.equal(status["hotel-restaurant-adapter"], "next");
+  assert.equal(status["market-adapter"], "done");
+  assert.equal(status["travel-adapter"], "excluded");
+  assert.equal(status["hotel-restaurant-adapter"], "excluded");
   assert.equal(status["source-verification-ui"], "done");
 });
 
@@ -32,10 +32,10 @@ test("路线图在真实 MCP provider 验收后标记桥接完成", () => {
 test("路线图统计只计算经过验收的完成项", () => {
   const roadmap = buildCapabilityRoadmap();
   const completed = roadmap.phases.flatMap((phase) => phase.items).filter((item) => item.status === "done").length;
-  const total = roadmap.phases.reduce((sum, phase) => sum + phase.items.length, 0);
+  const total = roadmap.phases.reduce((sum, phase) => sum + phase.items.filter((item) => item.status !== "excluded").length, 0);
 
   assert.equal(roadmap.completed, completed);
   assert.equal(roadmap.total, total);
   assert.equal(roadmap.percent, Math.round((completed / total) * 100));
-  assert.equal(roadmap.updatedAt, "2026-08-04T00:00:00.000+08:00");
+  assert.equal(roadmap.updatedAt, "2026-08-05T00:00:00.000+08:00");
 });

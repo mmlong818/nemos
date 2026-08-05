@@ -384,16 +384,16 @@ test("Skill installation uses the Companion approval gateway before changing loc
     });
 
     const output = await llm.chat(
-      "你是知微。",
+      "你是小丑鱼。",
       "帮我安装这个 Skill：https://example.test/SKILL.md",
       undefined,
       undefined,
       {
         userId: "user-a",
-        personaId: "zhiwei",
+        personaId: "clownfish",
         instruction: "帮我安装这个 Skill：https://example.test/SKILL.md",
-        scope: "conv:1on1:user-a:zhiwei",
-        memoryScopes: ["conv:1on1:user-a:zhiwei"],
+        scope: "conv:1on1:user-a:clownfish",
+        memoryScopes: ["conv:1on1:user-a:clownfish"],
         mode: "chat",
       },
     );
@@ -401,7 +401,7 @@ test("Skill installation uses the Companion approval gateway before changing loc
     assert.equal(output, "Skill 已安装并可以使用。");
     assert.equal(approvals, 1);
     assert.equal(installed.length, 1);
-    assert.equal(installed[0]?.personaId, "zhiwei");
+    assert.equal(installed[0]?.personaId, "clownfish");
   } finally {
     if (previousKey === undefined) delete process.env.ZHIPU_API_KEY;
     else process.env.ZHIPU_API_KEY = previousKey;

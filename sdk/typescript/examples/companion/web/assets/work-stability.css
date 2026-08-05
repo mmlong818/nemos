@@ -1,0 +1,22 @@
+html {
+  scrollbar-gutter: stable;
+}
+
+main {
+  min-height: 100vh;
+}
+
+.content {
+  display: flow-root;
+  min-height: calc(100vh - 190px);
+}
+
+.loading {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+}
+
+@media (max-width: 720px) {
+  .content { min-height: calc(100vh - 226px); }
+}

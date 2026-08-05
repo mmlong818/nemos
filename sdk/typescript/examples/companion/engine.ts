@@ -11,6 +11,7 @@
 // 依赖注入：engine 不关心用哪个 LLM —— SDK 抽取 LLM 由 Nemos 配置，人格回复由 chat 注入。
 
 import type { Nemos } from "../../src/index.js";
+import { APP_PERSONA_ID, personaIdentityAliases } from "./identity.js";
 import { groupParticipationFor, selectGroupResponderIds, type GroupReplyRoute } from "./group-routing.js";
 
 export interface Persona {
@@ -46,6 +47,7 @@ export interface ChatAgentContext {
   memoryScopes: readonly string[];
   mode: "chat" | "task" | "group";
   signal?: AbortSignal;
+  toolMode?: "auto" | "read-only" | "off";
   runtimeLimits?: {
     maxRounds: number;
     maxToolRounds: number;
@@ -87,6 +89,8 @@ export interface SendOptions {
   runtimeLimits?: ChatAgentContext["runtimeLimits"];
   runId?: string;
   sessionId?: string;
+  model?: string;
+  toolMode?: "auto" | "read-only" | "off";
   /** 单次任务可关闭用户习惯与事实的召回；角色自身状态仍保留。 */
   memoryMode?: "default" | "preferences" | "off";
 }
@@ -311,9 +315,9 @@ export class CompanionEngine {
     const reply = await this.chat(
       this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text)),
       this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice),
-      persona.chatModel,
+      opts.model || persona.chatModel,
       persona.maxReplyTokens,
-      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode),
     );
 
     await this.ingestPersonaReply(personaId, scope, reply);
@@ -343,17 +347,17 @@ export class CompanionEngine {
         system,
         userMsg,
         cb,
-        persona.chatModel,
+        opts.model || persona.chatModel,
         persona.maxReplyTokens,
-        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode),
       );
     } else {
       reply = await this.chat(
         system,
         userMsg,
-        persona.chatModel,
+        opts.model || persona.chatModel,
         persona.maxReplyTokens,
-        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode),
       );
       cb.onToken(reply);
     }
@@ -522,14 +526,20 @@ export class CompanionEngine {
     //  - 基础记忆（scope=bio）：背景事实（取代 prompt 里的具体设定），全量带上（每角色小集合）
     //  - 种入的近况（scope=self）
     //  - 它在本关系里说过的原话（archival 原文，最近几条）→ 保持前后一致
-    const self = this.nemos.forUser(personaNamespace(personaId));
-    const bio = await self.listByLayer("personal_semantic", { scope: BIO_SCOPE, limit: 50 });
-    const seeded = await self.listByLayer(SELF_LAYER, { scope: SELF_SCOPE, limit: 3 });
-    const said = await self.listByLayer("archival", { scope: convScope(userId, personaId), limit: 5 });
+    const selfSnapshots = await Promise.all(personaIdentityAliases(personaId).map(async (id) => {
+      const self = this.nemos.forUser(personaNamespace(id));
+      const scope = convScope(userId, id);
+      const [bio, seeded, said] = await Promise.all([
+        self.listByLayer("personal_semantic", { scope: BIO_SCOPE, limit: 50 }),
+        self.listByLayer(SELF_LAYER, { scope: SELF_SCOPE, limit: 3 }),
+        self.listByLayer("archival", { scope, limit: 5 }),
+      ]);
+      return { bio, seeded, said };
+    }));
     const selfState = [
-      ...bio.map((m) => m.content.trim()),
-      ...seeded.map((m) => m.content.trim()),
-      ...said.map((m) => `（我曾说过）${m.content.trim().slice(0, 140)}`),
+      ...selfSnapshots.flatMap((snapshot) => snapshot.bio.map((m) => m.content.trim())),
+      ...selfSnapshots.flatMap((snapshot) => snapshot.seeded.map((m) => m.content.trim())),
+      ...selfSnapshots.flatMap((snapshot) => snapshot.said.map((m) => `（我曾说过）${m.content.trim().slice(0, 140)}`)),
     ].filter(Boolean).join("\n");
     return { userFacts, selfState };
   }
@@ -588,7 +598,7 @@ export class CompanionEngine {
 
   /** 人格可见 scope = 它所在的全部会话（1-on-1 + 成员群）。这就是"在场才知道"。 */
   private visibleScopes(userId: string, personaId: string): string[] {
-    const scopes = [convScope(userId, personaId)];
+    const scopes = personaIdentityAliases(personaId).map((id) => convScope(userId, id));
     for (const [gid, members] of this.groups) {
       if (members.has(personaId)) scopes.push(groupScope(gid));
     }
@@ -605,6 +615,7 @@ export class CompanionEngine {
     runtimeLimits?: ChatAgentContext["runtimeLimits"],
     runId?: string,
     sessionId?: string,
+    toolMode?: "auto" | "read-only" | "off",
   ): ChatAgentContext {
     return {
       userId,
@@ -616,24 +627,25 @@ export class CompanionEngine {
       memoryScopes: this.visibleScopes(userId, personaId),
       mode,
       signal,
+      toolMode,
       runtimeLimits,
     };
   }
 
-  private isExecutionAssistant(persona: Persona): boolean {
-    return persona.id === "zhiwei" || persona.tag === "个人助理";
+  private isAppAgent(persona: Persona): boolean {
+    return persona.id === APP_PERSONA_ID;
   }
 
   private speechModeBlock(persona: Persona): string[] {
-    if (this.isExecutionAssistant(persona)) {
+    if (this.isAppAgent(persona)) {
       return [
-        `【知微的说话方式 —— 最高优先】`,
-        `你是 AI 个人助理，不要模仿人类同事排期。用户让你整理、总结、查询、分析、写作、转换、纪要、跟踪或交付时，必须在当前回复里直接执行并给出结果。`,
+        `【小丑鱼的执行方式 —— 最高优先】`,
+        `你是小丑鱼应用本身，不是虚构人物，也不要模仿人类同事排期。用户让你整理、总结、查询、分析、写作、转换、纪要、跟踪或交付时，必须在当前回复里直接执行并给出结果。`,
         `不要把"我接下来会怎么做"当成结果；用户问能不能今晚 / 明天 / 稍后赶出来时，也要直接给当前可交付正文。`,
         `格式未指定时默认交付 Markdown，不要停下来问格式；只有缺少会改变结论的关键信息时才问，否则先交付可用版本。`,
         `禁止说"今晚赶出来"、"今晚交付"、"明天给你"、"晚点发你"、"回头整理"、"我先记着"、"我盯着"、"稍后提交"、"尽快处理"、"马上开写"这类拖延承诺。`,
         `如果缺少必要信息、权限、工具或可靠来源，就明确列出缺口，并交付当前能完成的部分或核验入口。`,
-        `保持知微的女性助理气质：清楚、细腻、可靠，有温度但不撒娇；像微信对话，但交付优先，不要为了像朋友而牺牲结果。`,
+        `保持小丑鱼的应用级口吻：清楚、自然、可靠，有温度但不使用性别化助理人设；像日常对话，但交付优先。`,
       ];
     }
     return [
@@ -791,7 +803,7 @@ export class CompanionEngine {
     const transcript = this.groupTranscript(groupId);
     const coordinatorPrompt = coordinating
       ? [
-          "你在这个群里是统一承载者和调度者：默认由你回应用户，避免所有角色一起刷屏。",
+          "小丑鱼在这个群里负责统筹：默认由应用回应用户，避免所有专家一起刷屏。",
           "你可以综合群内专家的视角来帮助用户，例如战略、产品、体验、技术、测试、营销、财务等；但不要假装其他专家已经逐字发言。",
           "如果用户明确 @ 某位成员，那一轮应由被 @ 的成员直接回复；如果用户只是向群里说话，你要先接住需求、判断需要哪些专家视角，并给出整合后的回复或交付物。",
           "涉及搜索、OCR、文档、Skills、定时任务和交付物时，你仍然是执行入口；能执行就当场交付，不能执行就说明缺少的信息或权限。",

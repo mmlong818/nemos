@@ -4,6 +4,7 @@ const CATALOG = [
   { id: "presentation", backendId: "presentation-builder", name: "做 PPT", icon: "presentation", summary: "生成可放映、可继续编辑的演示文稿", description: "先梳理受众和叙事主线，再生成有版式变化、演讲备注和网页预览的 PowerPoint。", use: "汇报、提案、课程分享、路演", deliverable: "可编辑 PPTX 与网页预览", format: "pptx", featured: true, detail: "生成页面结构、版式、备注和可编辑文件" },
   { id: "document", backendId: "document-draft", name: "写正式文档", icon: "document", summary: "起草、改写和整理正式内容", description: "根据目标和材料生成结构完整的文稿，也能沿用你的常用文笔与排版习惯。", use: "方案、总结、说明、长文", deliverable: "可编辑文稿", format: "doc", featured: true, detail: "形成结构清楚、可以继续编辑的文稿" },
   { id: "research", backendId: "research-brief", name: "深度研究", icon: "search", summary: "搜索来源、核验声明并形成可追溯结论", description: "围绕一个问题规划研究路径，搜索并分级来源，对关键声明做独立复核，清楚标出证据和限制。", use: "行业研究、竞品、专题调研", deliverable: "带来源台账的研究报告", format: "html", featured: true, detail: "规划、搜索、来源分级、事实核验和结论复审" },
+  { id: "marketBrief", backendId: "market-briefing", name: "查港股资料", icon: "trend", summary: "读取公告、行情快照并整理盘前盘后简报", description: "按股票代码读取港交所官方公告和带查询时间的第三方行情快照；明确延迟、来源和待核验项，不提供交易指令。", use: "自选股、公告核验、盘前盘后复盘", deliverable: "带来源与时间戳的市场资料简报", format: "html", detail: "读取关注代码、官方公告、行情快照和风险边界" },
   { id: "thinking", backendId: "thinking-workbench", name: "梳理复杂问题", icon: "lightbulb", summary: "把模糊问题变成可操作的思考工作台", description: "分开事实、假设、矛盾和未知，保留多个选项，形成可以勾选和补充的验证计划。", use: "问题拆解、创意探索、复盘", deliverable: "可交互思考工作台", format: "html", featured: true, detail: "梳理问题、假设、选择和验证办法" },
   { id: "product", backendId: "product-design", name: "设计产品界面", icon: "layout", summary: "从用户任务形成页面和交互方案", description: "先理清真实用户路径，再产出信息结构、关键界面、交互说明和验收要点。", use: "新功能、界面改版、产品方案", deliverable: "产品设计说明", format: "html", featured: true, detail: "形成用户流程、页面结构与设计说明" },
   { id: "meeting", backendId: "meeting-minutes", name: "整理会议纪要", icon: "checklist", summary: "从记录中提炼结论和行动项", description: "把会议文字整理成摘要、决定、责任人、截止时间、风险和未决问题。", use: "会议记录、访谈、讨论复盘", deliverable: "纪要与行动表", format: "doc", featured: true, detail: "提炼决定、行动项与未决问题" },
@@ -11,19 +12,14 @@ const CATALOG = [
   { id: "decision", backendId: "decision-brief", name: "比较方案", icon: "scale", summary: "比较证据、风险与行动条件", description: "把零散信息整理成可判断的选择，说明收益、代价、风险和什么时候应该改变决定。", use: "选型、取舍、优先级判断", deliverable: "决策简报", format: "md", detail: "比较方案、风险和行动条件" },
   { id: "business", backendId: "business-deal", name: "推进商务合作", icon: "handshake", summary: "建立关键人、异议和跟进工作台", description: "梳理双方价值、关键人、异议、谈判边界和跟进动作，话术可以直接复制使用。", use: "合作、销售、谈判、跟进", deliverable: "可执行商务推进台", format: "html", detail: "准备合作策略、异议处理与跟进动作" },
   { id: "market", backendId: "market-opportunity", name: "模拟市场机会", icon: "trend", summary: "用多种情景检验机会是否成立", description: "从用户、竞争、执行和不确定性出发，调整权重比较不同情景，形成机会判断和低成本验证计划。", use: "市场洞察、机会评估、定位", deliverable: "可调节情景模拟台", format: "html", detail: "比较需求、竞争和执行情景，明确失效条件" },
-  { id: "ability", backendId: "ability-builder", name: "生成新能力", icon: "branch", summary: "把重复工作沉淀成真正可用的能力", description: "先判断是否值得沉淀，再生成触发边界、输入、步骤、异常路径和测试；通过检查后会加入本机能力库。", use: "重复工作、团队方法、固定交付", deliverable: "已验证并安装的 Nemos 能力", format: "html", detail: "资格判断、触发测试、能力生成和本机安装" },
+  { id: "ability", backendId: "ability-builder", name: "生成新能力", icon: "branch", summary: "把重复工作沉淀成真正可用的能力", description: "先判断是否值得沉淀，再生成触发边界、输入、步骤、异常路径和测试；通过检查后会加入本机能力库。", use: "重复工作、团队方法、固定交付", deliverable: "已验证并安装的 小丑鱼能力", format: "html", detail: "资格判断、触发测试、能力生成和本机安装" },
 ];
 
 const ICON_PATHS = {
-  message: '<path d="M4 5.5h16v11H9l-5 3v-14Z"/><path d="M8 9h8M8 12.5h5"/>',
-  boxes: '<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/>',
   clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
-  file: '<path d="M7 3.5h7l4 4V20H7z"/><path d="M14 3.5V8h4M9.5 12h5M9.5 15.5h5"/>',
   history: '<path d="M4.5 9a8 8 0 1 1 .4 7"/><path d="M4.5 4.5V9H9"/><path d="M12 8v4l2.8 1.8"/>',
   brain: '<path d="M10 5a3 3 0 0 0-5 2.2A3.5 3.5 0 0 0 5.7 14 3 3 0 0 0 10 18.5V5ZM14 5a3 3 0 0 1 5 2.2 3.5 3.5 0 0 1-.7 6.8 3 3 0 0 1-4.3 4.5V5Z"/><path d="M7 9.5h3M14 9.5h3M7.5 14H10M14 14h2.5"/>',
-  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3A1.7 1.7 0 0 0 14 21v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14h-.2v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9A1.7 1.7 0 0 0 21 10h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/>',
   presentation: '<rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M8 20l4-5 4 5M8 8.5h5M8 11.5h8"/>',
-  document: '<path d="M7 3.5h7l4 4V20H7z"/><path d="M14 3.5V8h4M9.5 12h5M9.5 15.5h5"/>',
   search: '<circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5M8.5 10.5h4M10.5 8.5v4"/>',
   lightbulb: '<path d="M8.5 15.5c-1.5-1.1-2.5-2.7-2.5-4.7a6 6 0 1 1 12 0c0 2-1 3.6-2.5 4.7L14.5 18h-5z"/><path d="M9.5 21h5M9.5 18h5"/>',
   layout: '<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M3.5 9h17M9 9v11"/>',
@@ -33,11 +29,11 @@ const ICON_PATHS = {
   handshake: '<path d="m4 8 4-3 4 2 4-2 4 3-4 7-4 2-4-2-4-7Z"/><path d="m8 9 3 3a2 2 0 0 0 3 0l1-1M8 15l2-2M16 15l-2-2"/>',
   trend: '<path d="M4 18V6M4 18h16"/><path d="m7 14 4-4 3 2 5-6"/><path d="M15.5 6H19v3.5"/>',
   branch: '<circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="18" cy="17" r="2"/><path d="M6 7v5a5 5 0 0 0 5 5h5M8 7h8M11 7v5a5 5 0 0 0 5 5"/>',
+  ...window.ClownfishIcons.paths,
 };
 
 function iconSvg(name) {
-  const paths = ICON_PATHS[name] || ICON_PATHS.boxes;
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths}</svg>`;
+  return window.ClownfishIcons.render(name, { paths: ICON_PATHS });
 }
 
 function renderStaticIcons() {
@@ -56,6 +52,7 @@ const MATCH_RULES = [
   ["meeting", /会议|纪要|访谈|录音|讨论记录/i],
   ["product", /产品|界面|交互|原型|用户体验|功能设计/i],
   ["business", /商务|合作|销售|客户|谈判|成交|跟进/i],
+  ["marketBrief", /港股|股票|行情|公告|财报|盘前|盘后|自选|持仓|HKEX/i],
   ["market", /市场|赛道|机会|定位|竞品|增长/i],
   ["research", /研究|调研|资料|调查|行业|搜集|分析报告/i],
   ["decision", /决策|比较|选择|取舍|评估|该不该/i],
@@ -65,10 +62,54 @@ const MATCH_RULES = [
   ["thinking", /思考|梳理|头脑风暴|复盘|想法|困惑/i],
 ];
 
+const EXAMPLE_PROMPTS = {
+  presentation: "例如：把季度总结做成 10 页管理层汇报，重点突出增长、风险和下一步行动",
+  document: "例如：根据这些材料起草一份正式方案，结构清楚，语气专业",
+  research: "例如：研究国内 AI 办公市场，核验主要数据并附上可追溯来源",
+  marketBrief: "例如：整理 02513.HK 最近公告和行情变化，标明来源、时间与风险",
+  thinking: "例如：帮我梳理是否应该进入这个市场，分开事实、假设和待验证问题",
+  product: "例如：重新设计新用户首页，减少认知负担并给出关键交互说明",
+  meeting: "例如：把会议记录整理成结论、行动项、负责人和截止时间",
+  web: "例如：把这份报告做成可直接打开的单页网页",
+  decision: "例如：比较三个方案的收益、代价、风险和改变决定的条件",
+  business: "例如：为这次客户合作准备关键人、异议处理和下一步跟进话术",
+  market: "例如：用乐观、中性和保守情景检验这个市场机会是否成立",
+  ability: "例如：把每周资料简报沉淀成可重复运行的能力",
+};
+
+const ICON_TONES = {
+  presentation: "#c45b32",
+  document: "#3f6f91",
+  research: "#39786f",
+  marketBrief: "#356b8c",
+  thinking: "#a36a1f",
+  product: "#9a476b",
+  meeting: "#4c765e",
+  web: "#3c7873",
+  decision: "#765f92",
+  business: "#9a6138",
+  market: "#4f7b4b",
+  ability: "#a24f58",
+};
+
 const STATUS_TEXT = { queued: "等待开始", running: "正在执行", succeeded: "已完成", failed: "执行失败", cancelled: "已取消" };
-const FORMAT_LABELS = { pptx: "可编辑 PowerPoint", html: "可交互网页", doc: "Word 就绪文稿", md: "可编辑文稿", json: "结构化数据", txt: "纯文本" };
-const DRAFT_KEY = "nemos-capability-center-draft-v1";
-const RECENT_KEY = "nemos-capability-center-recent-v1";
+const FORMAT_LABELS = { pptx: "可编辑 PowerPoint", html: "可交互网页", doc: "可编辑 Word", pdf: "PDF", xlsx: "Excel", md: "可编辑文稿", json: "结构化数据", txt: "纯文本" };
+
+function migrateStorageKey(codes, target, storage) {
+  const source = String.fromCharCode(...codes);
+  const existing = storage.getItem(source);
+  if (existing !== null && storage.getItem(target) === null) storage.setItem(target, existing);
+  if (source !== target) storage.removeItem(source);
+}
+migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 99, 101, 110, 116, 101, 114, 45, 100, 114, 97, 102, 116, 45, 118, 49], "clownfish-capability-center-draft-v1", localStorage);
+migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 99, 101, 110, 116, 101, 114, 45, 114, 101, 99, 101, 110, 116, 45, 118, 49], "clownfish-capability-center-recent-v1", localStorage);
+migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 97, 99, 116, 105, 118, 105, 116, 121, 45, 118, 49], "clownfish-capability-activity-v1", localStorage);
+migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 104, 97, 110, 100, 111, 102, 102, 45, 118, 49], "clownfish-capability-handoff-v1", sessionStorage);
+
+const DRAFT_KEY = "clownfish-capability-center-draft-v1";
+const RECENT_KEY = "clownfish-capability-center-recent-v1";
+const ACTIVITY_KEY = "clownfish-capability-activity-v1";
+const HANDOFF_KEY = "clownfish-capability-handoff-v1";
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -83,6 +124,8 @@ const state = {
   materials: [],
   memoryCount: 0,
   pollTimer: 0,
+  handoffApplied: false,
+  returnUrl: "/",
 };
 
 function escapeHtml(value) {
@@ -114,14 +157,14 @@ function availability(item) {
   if (!state.llm.live) return { ready: false, label: "需设置模型", action: "设置模型后即可使用" };
   const search = state.snapshot.tools?.find((tool) => tool.id === "web.search");
   if (item.id === "research" && !search?.available) return { ready: false, label: "需联网搜索", action: "配置联网搜索后使用" };
-  return { ready: true, label: "可直接使用", action: "准备这个能力" };
+  return { ready: true, label: "可直接使用", action: "开始使用" };
 }
 
 function supportedFormats(item) {
-  if (item.id === "presentation") return ["pptx", "html", "json", "md"];
-  if (["research", "thinking", "product", "business", "market", "ability"].includes(item.id)) return ["html", "json", "md", "doc"];
-  if (item.id === "web") return ["html", "md", "json"];
-  if (["document", "meeting"].includes(item.id)) return ["doc", "md", "txt"];
+  if (item.id === "presentation") return ["pptx", "pdf", "html", "json", "md"];
+  if (["research", "marketBrief", "thinking", "product", "business", "market", "ability"].includes(item.id)) return ["html", "pdf", "doc", "json", "md"];
+  if (item.id === "web") return ["html", "pdf", "md", "json"];
+  if (["document", "meeting"].includes(item.id)) return ["doc", "pdf", "md", "txt"];
   return ["md", "html", "doc", "json", "txt"];
 }
 
@@ -154,46 +197,40 @@ function showToast(message, error = false) {
 function renderCatalog() {
   const root = $("#capabilityGrid");
   root.innerHTML = CATALOG.map((item) => `
-    <button class="cap-card${item.id === state.selectedId ? " is-selected" : ""}" type="button" data-capability="${item.id}" ${!state.showAll && !item.featured ? "hidden" : ""}>
+    <button class="cap-card${item.id === state.selectedId ? " is-selected" : ""}" type="button" data-capability="${item.id}" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}" ${!state.showAll && !item.featured ? "hidden" : ""}>
       <span class="cap-icon" aria-hidden="true">${iconSvg(item.icon)}</span>
       <strong>${item.name}</strong>
       <small>${item.summary}</small>
       <span class="availability">${availability(item).label}</span>
     </button>`).join("");
-  $$('[data-capability]', root).forEach((button) => button.addEventListener("click", () => selectCapability(button.dataset.capability)));
-  $("#toggleAll").textContent = state.showAll ? "只看常用" : "查看全部 11 项";
-}
-
-function renderDetail() {
-  const item = selectedCapability();
-  $("#detailIcon").innerHTML = iconSvg(item.icon);
-  $("#detailTitle").textContent = item.name;
-  $("#detailDescription").textContent = item.description;
-  $("#detailUse").textContent = item.use;
-  $("#detailDeliverable").textContent = item.deliverable;
-  const button = $("#prepareSelected");
-  const status = availability(item);
-  button.disabled = !status.ready;
-  button.textContent = status.action;
+  $$('[data-capability]', root).forEach((button) => button.addEventListener("click", () => activateCapability(button.dataset.capability)));
+  $("#toggleAll").textContent = state.showAll ? "只看常用" : `查看全部 ${CATALOG.length} 项`;
 }
 
 function renderExecutionState() {
   const item = selectedCapability();
   const status = availability(item);
   const button = $("#startTask");
-  button.disabled = !status.ready;
-  button.textContent = status.ready ? "开始执行" : status.action;
-  $(".run-note").textContent = status.ready
-    ? "任务会在后台继续。离开此页后，可在“进行中”查看。"
-    : "请先在设置中配置模型；任务不会用离线回声生成假结果。";
+  const hasInstruction = Boolean($("#goalInput").value.trim() || $("#instructionInput").value.trim());
+  button.disabled = !status.ready || !hasInstruction;
+  button.textContent = !status.ready ? status.action : hasInstruction ? "开始执行" : "先填写任务要求";
+  $(".run-note").textContent = !status.ready
+    ? "请先在设置中配置模型；任务不会用离线回声生成假结果。"
+    : hasInstruction
+      ? "任务会在后台继续；离开此页后，可在“进行中”查看。"
+      : "填写任务要求后即可开始。";
 }
 
 function selectCapability(id) {
   state.selectedId = CATALOG.some((item) => item.id === id) ? id : "document";
   renderCatalog();
-  renderDetail();
   renderExecutionState();
-  updatePreview();
+  updateLaunchState();
+}
+
+function activateCapability(id) {
+  selectCapability(id);
+  openCapability($("#goalInput").value.trim(), { focusInput: true });
 }
 
 function matchCapability(goal) {
@@ -201,30 +238,40 @@ function matchCapability(goal) {
   return rule?.[0] || "thinking";
 }
 
-function prepareTask(goal = $("#goalInput").value.trim()) {
+function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
   const item = selectedCapability();
   if (goal) {
     $("#goalInput").value = goal;
     if (!$("#instructionInput").value.trim()) $("#instructionInput").value = goal;
   }
-  $("#prepareTitle").textContent = `准备：${item.name}`;
+  $("#launchTitle").textContent = item.name;
+  $("#launchSummary").textContent = item.summary;
+  $("#instructionInput").placeholder = EXAMPLE_PROMPTS[item.id] || "说清楚要完成什么，也可以补充受众、重点、语气或格式";
   renderFormatOptions(item);
   $("#formatSelect").value = item.format;
-  $("#preparePanel").hidden = false;
-  $("#capabilityPicker").open = false;
-  updatePreview();
+  $("#launchPanel").hidden = false;
+  $(".start-wrap").classList.add("is-launching");
+  updateLaunchState();
   renderExecutionState();
   saveDraft();
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  $("#preparePanel").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+    if (options.focusInput && !goal && window.matchMedia("(min-width: 721px)").matches) {
+      $("#instructionInput").focus({ preventScroll: true });
+    }
+  });
 }
 
-function updatePreview() {
-  const item = selectedCapability();
-  const goal = $("#goalInput").value.trim() || $("#instructionInput").value.trim();
-  $("#previewKind").textContent = item.name;
-  $("#previewTitle").textContent = goal || "等待填写目标";
-  $("#previewDetail").textContent = item.detail;
+function closeCapability() {
+  $("#launchPanel").hidden = true;
+  $(".start-wrap").classList.remove("is-launching");
+  window.scrollTo({ top: 0, behavior: "auto" });
+  saveDraft();
+  window.requestAnimationFrame(() => $(`[data-capability="${state.selectedId}"]`)?.focus());
+}
+
+function updateLaunchState() {
+  renderExecutionState();
 }
 
 function renderMaterials() {
@@ -235,16 +282,47 @@ function renderMaterials() {
     renderMaterials();
     saveDraft();
   }));
+  updateLaunchState();
 }
 
 async function addMaterial(file) {
   if (!file) return;
-  const allowed = /\.(txt|md|markdown|csv|json|html?|htm)$/i.test(file.name);
-  if (!allowed) return showToast("目前只支持文字材料", true);
-  if (file.size > 1024 * 1024) return showToast("单个材料不能超过 1 MB", true);
-  state.materials = [{ name: file.name, size: file.size, text: await file.text() }];
-  renderMaterials();
-  saveDraft();
+  const isText = /\.(txt|md|markdown|csv|json|html?|htm)$/i.test(file.name);
+  const isOffice = /\.(docx|pptx|xlsx|pdf)$/i.test(file.name);
+  if (!isText && !isOffice) return showToast("支持文字、Word、PowerPoint、Excel 和 PDF 材料", true);
+  if (isText && file.size > 1024 * 1024) return showToast("文字材料不能超过 1 MB", true);
+  if (isOffice && file.size > 8 * 1024 * 1024) return showToast("办公文件不能超过 8 MB", true);
+  try {
+    showToast(isOffice ? "正在读取办公文件…" : "正在读取材料…");
+    let text = "";
+    let kind = "text";
+    if (isText) {
+      text = await file.text();
+    } else {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+      }
+      const response = await api("/api/files/extract", {
+        method: "POST",
+        body: JSON.stringify({ name: file.name, dataBase64: btoa(binary) }),
+      });
+      text = response.extraction?.text || "";
+      kind = response.extraction?.kind || "office";
+    }
+    state.materials = [{ name: file.name, size: file.size, text, kind }];
+    renderMaterials();
+    saveDraft();
+    showToast(responseMessageForMaterial(isOffice, text));
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "文件读取失败", true);
+  }
+}
+
+function responseMessageForMaterial(isOffice, text) {
+  if (!isOffice) return "材料已加入";
+  return text.includes("[内容较长") ? "文件较长，已读取可处理的前半部分" : "办公文件已读取，可以开始执行";
 }
 
 function saveDraft() {
@@ -286,7 +364,7 @@ function restoreLast() {
     selectCapability(recent.selectedId);
     $("#goalInput").value = recent.goal;
     $("#instructionInput").value = recent.goal;
-    prepareTask(recent.goal);
+    openCapability(recent.goal);
     return;
   }
   state.selectedId = CATALOG.some((item) => item.id === draft.selectedId) ? draft.selectedId : "document";
@@ -295,9 +373,8 @@ function restoreLast() {
   $("#instructionInput").value = draft.instruction || "";
   $("#memoryToggle").checked = draft.memoryMode !== "off";
   renderCatalog();
-  renderDetail();
   renderMaterials();
-  prepareTask();
+  openCapability();
   if ([...$("#formatSelect").options].some((option) => option.value === draft.format)) $("#formatSelect").value = draft.format;
   if ([...$("#personaSelect").options].some((option) => option.value === draft.personaId)) $("#personaSelect").value = draft.personaId;
 }
@@ -308,7 +385,8 @@ function resetDraft() {
   $("#instructionInput").value = "";
   state.materials = [];
   renderMaterials();
-  $("#preparePanel").hidden = true;
+  $("#launchPanel").hidden = true;
+  $(".start-wrap").classList.remove("is-launching");
   updateContinueButton();
 }
 
@@ -324,12 +402,12 @@ async function startTask() {
   button.textContent = "正在加入任务…";
   const materials = state.materials.length ? `\n\n用户提供的材料：\n--- ${state.materials[0].name} ---\n${state.materials[0].text}` : "";
   try {
-    await api("/api/agent/job", {
+    const response = await api("/api/agent/job", {
       method: "POST",
       body: JSON.stringify({
         kind: "capability-adhoc",
         title: (goal || instruction).slice(0, 60),
-        personaId: $("#personaSelect").value || "zhiwei",
+        personaId: $("#personaSelect").value || "clownfish",
         capabilityId: item.backendId,
         instruction: `${instruction}${materials}`,
         format: $("#formatSelect").value,
@@ -337,11 +415,18 @@ async function startTask() {
         idempotencyKey: `capability-center-${crypto.randomUUID()}`,
       }),
     });
+    const job = response.job || null;
     localStorage.setItem(RECENT_KEY, JSON.stringify({ goal: goal || instruction, selectedId: item.id, at: new Date().toISOString() }));
+    if (job) localStorage.setItem(ACTIVITY_KEY, JSON.stringify({ jobId: job.id, title: goal || instruction, personaId: $("#personaSelect").value || "clownfish", startedAt: new Date().toISOString() }));
     resetDraft();
     await refreshData();
+    if (job) {
+      $("#runConversationBridge").hidden = false;
+      $("#runConversationLink").href = chatHref(job.id);
+      $("#runConversationText").textContent = "你可以继续聊天；完成后，结果会由执行角色直接送回。";
+    }
     openView("runs");
-    showToast("任务已开始，可以放心离开此页");
+    showToast("任务已开始；可以回到对话继续，结果会自动送回");
   } catch (error) {
     showToast(error.message || "任务未能开始", true);
   } finally {
@@ -374,6 +459,11 @@ function artifactLinks(artifact, compact = false) {
   return preview + download;
 }
 
+function chatHref() {
+  const url = new URL(state.returnUrl || "/", location.origin);
+  return `${url.pathname}${url.hash}`;
+}
+
 function renderRuns() {
   const jobs = state.jobs.filter((job) => job.status === "queued" || job.status === "running");
   $("#runsEmpty").hidden = jobs.length > 0;
@@ -382,12 +472,18 @@ function renderRuns() {
     const checkpoint = latestCheckpoint(job);
     const progress = Math.max(3, Math.min(100, Number(checkpoint?.progress ?? (job.status === "running" ? 12 : 3))));
     return `<article class="task-row">
-      <span class="task-row-icon" aria-hidden="true">${iconSvg(item.icon)}</span>
+      <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
       <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${escapeHtml(checkpoint?.status || item.name)} · ${displayDate(job.updatedAt)}</p><div class="progress-track" aria-label="进度 ${progress}%"><span style="width:${progress}%"></span></div></div>
-      <div class="task-actions"><button type="button" data-cancel-job="${escapeHtml(job.id)}">取消任务</button></div>
+      <div class="task-actions"><a href="${escapeHtml(chatHref(job.id))}">回到对话</a><button type="button" data-cancel-job="${escapeHtml(job.id)}">取消任务</button></div>
     </article>`;
   }).join("");
   $$('[data-cancel-job]').forEach((button) => button.addEventListener("click", () => cancelJob(button.dataset.cancelJob)));
+  const bridge = $("#runConversationBridge");
+  bridge.hidden = jobs.length === 0;
+  if (jobs[0]) {
+    $("#runConversationLink").href = chatHref(jobs[0].id);
+    $("#runConversationText").textContent = `「${jobTitle(jobs[0])}」正在进行；完成后会直接送回对话。`;
+  }
   const badge = $("#runningCount");
   badge.textContent = jobs.length;
   badge.hidden = jobs.length === 0;
@@ -410,9 +506,9 @@ function renderHistory() {
     const open = artifactLinks(artifact);
     const installed = artifact?.metadata?.generatedAbilityId ? " · 已加入能力库" : "";
     return `<article class="task-row">
-      <span class="task-row-icon" aria-hidden="true">${iconSvg(item.icon)}</span>
+      <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
       <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p></div>
-      <div class="task-actions">${open}<button type="button" data-reuse-job="${escapeHtml(job.id)}">再次使用</button></div>
+      <div class="task-actions">${job.status === "succeeded" ? `<a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${open}<button type="button" data-reuse-job="${escapeHtml(job.id)}">再次使用</button></div>
     </article>`;
   }).join("");
   $$('[data-reuse-job]').forEach((button) => button.addEventListener("click", () => reuseJob(button.dataset.reuseJob)));
@@ -429,9 +525,8 @@ function reuseJob(id) {
   state.materials = [];
   renderMaterials();
   renderCatalog();
-  renderDetail();
   openView("start");
-  prepareTask(jobTitle(job));
+  openCapability(jobTitle(job));
   if ([...$("#formatSelect").options].some((option) => option.value === job.payload?.format)) $("#formatSelect").value = job.payload.format;
   showToast("已复制为新任务，原结果不会改变");
 }
@@ -461,7 +556,7 @@ function renderPersonas() {
   const previous = select.value;
   select.innerHTML = state.personas.map((persona) => `<option value="${escapeHtml(persona.id)}">${escapeHtml(persona.name)}</option>`).join("");
   if ([...select.options].some((option) => option.value === previous)) select.value = previous;
-  else if ([...select.options].some((option) => option.value === "zhiwei")) select.value = "zhiwei";
+  else if ([...select.options].some((option) => option.value === "clownfish")) select.value = "clownfish";
 }
 
 function openView(view, updateUrl = true) {
@@ -475,7 +570,7 @@ function openView(view, updateUrl = true) {
     else node.removeAttribute("aria-current");
   });
   if (updateUrl) history.replaceState(null, "", view === "start" ? location.pathname : `#${view}`);
-  document.title = `${{ start: "能力", runs: "进行中", history: "已完成", files: "文件" }[view]} · Nemos`;
+  document.title = `${{ start: "能力", runs: "进行中", history: "已完成", files: "文件" }[view]} · 小丑鱼`;
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
@@ -495,7 +590,6 @@ async function refreshData() {
     state.llm = llm || { live: false };
     $("#memorySummary").textContent = state.memoryCount > 0 ? `可轻量参考 ${state.memoryCount} 条写作、排版或格式习惯` : "会轻量参考文笔、排版和格式偏好";
     renderCatalog();
-    renderDetail();
     renderExecutionState();
     renderPersonas();
     renderRuns();
@@ -506,6 +600,59 @@ async function refreshData() {
   }
 }
 
+function loadChatHandoff() {
+  try {
+    const handoff = JSON.parse(sessionStorage.getItem(HANDOFF_KEY) || "null");
+    if (!handoff || Date.now() - Number(handoff.createdAt || 0) > 10 * 60_000) return null;
+    return handoff;
+  } catch { return null; }
+}
+
+function configureReturnLinks() {
+  const handoff = loadChatHandoff();
+  const requestedReturn = handoff?.returnTo || "/";
+  state.returnUrl = requestedReturn.startsWith("/") && !requestedReturn.startsWith("//") ? requestedReturn : "/";
+  $$('a[href="/"]').forEach((link) => {
+    if (link.id === "runConversationLink" || link.id === "chatContextReturn" || link.classList.contains("back-chat") || link.classList.contains("brand")) link.href = state.returnUrl;
+  });
+}
+
+function applyChatHandoff() {
+  if (state.handoffApplied) return;
+  state.handoffApplied = true;
+  const handoff = loadChatHandoff();
+  if (!handoff) return;
+  const goal = String(handoff.goal || "").trim().slice(0, 2000);
+  const personaId = String(handoff.personaId || "");
+  const chatName = String(handoff.chatName || "当前对话").slice(0, 40);
+  const fromOffice = handoff.source === "office";
+  const incomingMaterials = Array.isArray(handoff.materials)
+    ? handoff.materials.filter((item) => item && typeof item.name === "string" && typeof item.text === "string" && item.text.trim()).slice(0, 1).map((item) => ({
+      name: item.name.slice(0, 160),
+      size: Math.max(0, Number(item.size || 0)),
+      text: item.text.slice(0, 120000),
+      kind: String(item.kind || "text").slice(0, 16),
+    }))
+    : [];
+  $("#chatContext").hidden = false;
+  $("#chatContextTitle").textContent = `从「${chatName}」继续`;
+  $("#chatContextText").textContent = fromOffice
+    ? "工作副本已经带过来，确认能力和结果形式后即可开始。"
+    : goal ? "目标已经带过来，确认做法后即可开始。" : "从对话带来的任务会在这里准备，完成后仍回到原对话。";
+  $("#chatContextReturn").textContent = fromOffice ? "回到文件" : "回到对话";
+  if (incomingMaterials.length) {
+    state.materials = incomingMaterials;
+    renderMaterials();
+  }
+  if (goal) {
+    selectCapability(matchCapability(goal));
+    $("#goalInput").value = goal;
+    $("#instructionInput").value = goal;
+  }
+  if ([...$("#personaSelect").options].some((option) => option.value === personaId)) $("#personaSelect").value = personaId;
+  if (goal) openCapability(goal);
+}
+
 function bindEvents() {
   $$('[data-view-target]').forEach((button) => button.addEventListener("click", () => openView(button.dataset.viewTarget)));
   $("#toggleAll").addEventListener("click", () => { state.showAll = !state.showAll; renderCatalog(); });
@@ -514,35 +661,31 @@ function bindEvents() {
     const goal = $("#goalInput").value.trim();
     if (!goal) return showToast("先写下想完成的事情", true);
     selectCapability(matchCapability(goal));
-    prepareTask(goal);
+    openCapability(goal);
   });
-  $("#prepareSelected").addEventListener("click", () => prepareTask());
   $("#continueLast").addEventListener("click", restoreLast);
-  $("#closePrepare").addEventListener("click", () => { $("#preparePanel").hidden = true; saveDraft(); });
-  $("#goalInput").addEventListener("input", () => { updatePreview(); saveDraft(); });
-  $("#instructionInput").addEventListener("input", () => { updatePreview(); saveDraft(); });
+  $("#closeLaunch").addEventListener("click", closeCapability);
+  $("#goalInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
+  $("#instructionInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
   $("#formatSelect").addEventListener("change", saveDraft);
   $("#personaSelect").addEventListener("change", saveDraft);
   $("#memoryToggle").addEventListener("change", saveDraft);
   $("#materialInput").addEventListener("change", async (event) => { await addMaterial(event.target.files?.[0]); event.target.value = ""; });
   $("#startTask").addEventListener("click", startTask);
   $("#memoryHelp").addEventListener("click", () => $("#memoryDialog").showModal());
-  $("#capabilityPicker").addEventListener("toggle", () => {
-    const action = $("#capabilityPicker .picker-action");
-    if (action) action.textContent = $("#capabilityPicker").open ? "收起" : "展开";
-  });
   window.addEventListener("hashchange", () => openView(location.hash.slice(1) || "start", false));
 }
 
 async function init() {
   renderStaticIcons();
+  configureReturnLinks();
   bindEvents();
   renderCatalog();
-  renderDetail();
   renderMaterials();
   updateContinueButton();
   openView(location.hash.slice(1) || "start", false);
   await refreshData();
+  applyChatHandoff();
   state.pollTimer = window.setInterval(refreshData, 4000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshData();

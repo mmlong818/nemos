@@ -381,7 +381,7 @@ interface XPost {
 async function xGet<T>(url: string, token: string): Promise<T> {
   const headers = {
     Authorization: `Bearer ${token}`,
-    "User-Agent": "NemosCompanion/0.1",
+    "User-Agent": "Clownfish/0.1",
   };
   let status = 0;
   let ok = false;

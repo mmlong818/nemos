@@ -172,12 +172,12 @@ test("persists pending chat deliveries and removes them only after client acknow
     const first = fixture.queue.claimNext("worker-a")!;
     fixture.queue.complete(first.id, "worker-a", {
       summary: "ready",
-      data: { personaId: "zhiwei", reply: "结果已完成" },
+      data: { personaId: "clownfish", reply: "结果已完成" },
     });
     const second = fixture.queue.claimNext("worker-a")!;
     fixture.queue.complete(second.id, "worker-a", {
       summary: "internal",
-      data: { personaId: "zhiwei", reply: "不应投递" },
+      data: { personaId: "clownfish", reply: "不应投递" },
     });
 
     const restarted = new FileAgentJobQueue(fixture.file);

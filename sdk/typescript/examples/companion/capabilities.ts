@@ -26,6 +26,7 @@ import {
   type GeneratedAbilitySpec,
 } from "./native-capability-contracts.js";
 import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
+import { exportOfficeDocument } from "./office-export.js";
 
 const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -38,12 +39,13 @@ const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   hour12: false,
 });
 
-export type ArtifactFormat = "md" | "html" | "txt" | "json" | "doc" | "pptx";
+export type ArtifactFormat = "md" | "html" | "txt" | "json" | "doc" | "pptx" | "pdf" | "xlsx";
 
 export interface CapabilityPersona {
   id: string;
   name: string;
   tag?: string;
+  expert?: boolean;
 }
 
 export interface Capability {
@@ -60,6 +62,9 @@ export interface Capability {
   useCount?: number;
   updatedAt?: string;
   archivedAt?: string;
+  pinnedAt?: string;
+  disabledAt?: string;
+  staleAt?: string;
 }
 
 export interface CapabilitySchedule {
@@ -70,6 +75,40 @@ export interface CapabilitySchedule {
   everyTurns?: number;
   turnCount?: number;
   lastTurnRun?: number;
+}
+
+export type CapabilityTaskStorylineStatus = "active" | "waiting" | "paused" | "completed";
+
+export interface CapabilityTaskExpertAssignment {
+  personaId: string;
+  responsibility: string;
+}
+
+export interface CapabilityTaskDecision {
+  id: string;
+  text: string;
+  note?: string;
+  status: "active" | "superseded";
+  createdAt: string;
+  supersededAt?: string;
+}
+
+export interface CapabilityTaskStorylineEvent {
+  id: string;
+  type: "created" | "progress" | "decision" | "handoff" | "result" | "error";
+  text: string;
+  createdAt: string;
+  personaId?: string;
+  artifactId?: string;
+}
+
+export interface CapabilityTaskStoryline {
+  status: CapabilityTaskStorylineStatus;
+  summary: string;
+  nextAction: string;
+  experts: CapabilityTaskExpertAssignment[];
+  decisions: CapabilityTaskDecision[];
+  events: CapabilityTaskStorylineEvent[];
 }
 
 export interface CapabilityTask {
@@ -85,6 +124,7 @@ export interface CapabilityTask {
   updatedAt: string;
   lastRunAt?: string;
   lastRunKey?: string;
+  storyline: CapabilityTaskStoryline;
 }
 
 export interface CapabilityArtifact {
@@ -121,6 +161,7 @@ export interface CapabilityNotification {
 
 export interface CapabilitySnapshot {
   abilities: Capability[];
+  personas: CapabilityPersona[];
   tasks: CapabilityTask[];
   artifacts: CapabilityArtifact[];
   tools: CapabilityToolSummary[];
@@ -150,7 +191,7 @@ export interface CapabilitySearchReport {
   results: CapabilitySearchResult[];
 }
 
-export type SkillAuditState = "active" | "watch" | "duplicate" | "archive-suggested" | "archived";
+export type SkillAuditState = "active" | "pinned" | "disabled" | "stale" | "watch" | "duplicate" | "archive-suggested" | "archived";
 
 export interface SkillAuditItem {
   abilityId: string;
@@ -168,6 +209,12 @@ export interface SkillAuditItem {
   skillFile: string;
   sourceUrl?: string;
   archived: boolean;
+  pinned: boolean;
+  disabled: boolean;
+  stale: boolean;
+  positiveEvidence: number;
+  negativeEvidence: number;
+  lastFeedbackAt?: string;
 }
 
 export interface SkillAudit {
@@ -210,6 +257,7 @@ export class CapabilityRuntime {
   private readonly artifactDir: string;
   private readonly skillsDir: string;
   private readonly skillUsageFile: string;
+  private readonly artifactFeedbackFile: string;
   private generatedAbilities: Capability[] = [];
   private tasks: CapabilityTask[] = [];
   private artifacts: CapabilityArtifact[] = [];
@@ -224,6 +272,7 @@ export class CapabilityRuntime {
     this.intakesFile = join(root, "intakes.json");
     this.skillsDir = join(root, "skills");
     this.skillUsageFile = join(this.skillsDir, ".usage.json");
+    this.artifactFeedbackFile = join(root, "artifact-feedback.json");
     mkdirSync(this.artifactDir, { recursive: true });
     mkdirSync(this.skillsDir, { recursive: true });
     this.load();
@@ -234,6 +283,7 @@ export class CapabilityRuntime {
   snapshot(): CapabilitySnapshot {
     return {
       abilities: this.listAbilities(),
+      personas: this.opts.personas(),
       tasks: [...this.tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       artifacts: [...this.artifacts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 80),
       tools: this.opts.toolRegistry?.list() ?? [],
@@ -264,13 +314,21 @@ export class CapabilityRuntime {
       const idleDays = lastUsedAt ? daysBetween(lastUsedAt, now) : ageDays;
       const state: SkillAuditState = ability.archivedAt
         ? "archived"
-        : duplicateGroup
-          ? "duplicate"
-          : useCount === 0 && artifactCount === 0 && idleDays >= 14
-            ? "archive-suggested"
-            : useCount === 0 && artifactCount === 0
-              ? "watch"
-              : "active";
+        : ability.disabledAt
+          ? "disabled"
+          : ability.pinnedAt
+            ? "pinned"
+            : ability.staleAt
+              ? "stale"
+              : duplicateGroup
+                ? "duplicate"
+                : useCount === 0 && artifactCount === 0 && idleDays >= 14
+                  ? "archive-suggested"
+                  : useCount === 0 && artifactCount === 0
+                    ? "watch"
+                    : "active";
+      const feedback = readJson<Array<{ capabilityId: string; outcome: string; createdAt: string }>>(this.artifactFeedbackFile, [])
+        .filter((item) => item.capabilityId === ability.id);
       return {
         abilityId: ability.id,
         name: ability.name,
@@ -287,13 +345,19 @@ export class CapabilityRuntime {
         skillFile: this.skillFilePath(ability),
         sourceUrl: skillSourceUrl(this.skillFilePath(ability)),
         archived: !!ability.archivedAt,
+        pinned: !!ability.pinnedAt,
+        disabled: !!ability.disabledAt,
+        stale: !!ability.staleAt,
+        positiveEvidence: feedback.filter((entry) => entry.outcome === "useful").length,
+        negativeEvidence: feedback.filter((entry) => entry.outcome === "needs-work").length,
+        lastFeedbackAt: feedback.at(-1)?.createdAt,
       };
     }).sort((a, b) => stateRank(a.state) - stateRank(b.state) || b.updatedAt!.localeCompare(a.updatedAt!));
     return {
       checkedAt: new Date().toISOString(),
       total: items.length,
       active: items.filter((item) => item.state === "active").length,
-      needsReview: items.filter((item) => item.state === "watch" || item.state === "duplicate" || item.state === "archive-suggested").length,
+      needsReview: items.filter((item) => item.state === "watch" || item.state === "duplicate" || item.state === "archive-suggested" || item.state === "stale").length,
       archived: items.filter((item) => item.state === "archived").length,
       items,
     };
@@ -325,6 +389,53 @@ export class CapabilityRuntime {
     this.updateSkillUsage(ability, { state: "active", touchedAt: now });
     this.saveAbilities();
     return ability;
+  }
+
+  setAbilityLifecycle(id: string, action: "pin" | "unpin" | "disable" | "enable" | "stale" | "refresh"): Capability {
+    const ability = this.generatedAbilities.find((item) => item.id === id);
+    if (!ability) throw new Error("只能维护生成、自学习或安装的能力：" + id);
+    const now = new Date().toISOString();
+    if (action === "pin") ability.pinnedAt = now;
+    if (action === "unpin") delete ability.pinnedAt;
+    if (action === "disable") ability.disabledAt = now;
+    if (action === "enable") delete ability.disabledAt;
+    if (action === "stale") ability.staleAt = now;
+    if (action === "refresh") delete ability.staleAt;
+    ability.updatedAt = now;
+    this.updateSkillUsage(ability, { state: ability.disabledAt ? "disabled" : ability.pinnedAt ? "pinned" : ability.staleAt ? "stale" : "active", touchedAt: now });
+    this.saveAbilities();
+    return ability;
+  }
+
+  recordArtifactFeedback(input: {
+    artifactId: string;
+    outcome: "useful" | "needs-work";
+    note?: string;
+    applyToSkill?: boolean;
+  }): { artifact: CapabilityArtifact; applied: boolean } {
+    const artifact = this.artifacts.find((item) => item.id === input.artifactId);
+    if (!artifact) throw new Error("结果不存在：" + input.artifactId);
+    const note = text(input.note || "", input.outcome === "useful" ? "产物被确认可用。" : "产物需要改进。", 800);
+    const createdAt = new Date().toISOString();
+    const feedback = readJson<Array<Record<string, unknown>>>(this.artifactFeedbackFile, []);
+    feedback.push({ id: uniqueId("feedback"), artifactId: artifact.id, capabilityId: artifact.capabilityId, outcome: input.outcome, note, createdAt });
+    writeJson(this.artifactFeedbackFile, feedback.slice(-1000));
+    let applied = false;
+    const ability = this.generatedAbilities.find((item) => item.id === artifact.capabilityId);
+    if (input.applyToSkill && ability) {
+      const file = this.skillFilePath(ability);
+      const current = existsSync(file) ? readFileSync(file, "utf8").trimEnd() : "";
+      const heading = "## 已验证经验";
+      const entry = "- " + createdAt.slice(0, 10) + " · " + (input.outcome === "useful" ? "有效做法" : "失败边界") + "：" + note;
+      const next = current.includes(heading) ? current + "\n" + entry + "\n" : current + "\n\n" + heading + "\n\n" + entry + "\n";
+      writeFileSync(file, next, "utf8");
+      ability.updatedAt = createdAt;
+      delete ability.staleAt;
+      this.updateSkillUsage(ability, { state: ability.disabledAt ? "disabled" : ability.pinnedAt ? "pinned" : "active", touchedAt: createdAt });
+      this.saveAbilities();
+      applied = true;
+    }
+    return { artifact, applied };
   }
 
   getAbility(id: string): Capability | undefined {
@@ -635,6 +746,7 @@ export class CapabilityRuntime {
       enabled: input.enabled ?? true,
       createdAt: now,
       updatedAt: now,
+      storyline: createTaskStoryline(now),
     };
     this.tasks.push(task);
     this.saveTasks();
@@ -659,6 +771,84 @@ export class CapabilityRuntime {
     if (input.format) task.format = normalizeFormat(input.format);
     if (input.schedule) task.schedule = normalizeSchedule(input.schedule);
     if (typeof input.enabled === "boolean") task.enabled = input.enabled;
+    task.updatedAt = new Date().toISOString();
+    this.saveTasks();
+    return task;
+  }
+
+  updateTaskStoryline(input: {
+    id: string;
+    status?: CapabilityTaskStorylineStatus;
+    summary?: string;
+    nextAction?: string;
+    experts?: CapabilityTaskExpertAssignment[];
+  }): CapabilityTask {
+    const task = this.requireTask(input.id);
+    const previous = task.storyline;
+    const next = normalizeTaskStoryline({
+      ...previous,
+      status: input.status ?? previous.status,
+      summary: input.summary ?? previous.summary,
+      nextAction: input.nextAction ?? previous.nextAction,
+      experts: input.experts ?? previous.experts,
+    }, task.createdAt);
+    const changed = next.status !== previous.status
+      || next.summary !== previous.summary
+      || next.nextAction !== previous.nextAction
+      || JSON.stringify(next.experts) !== JSON.stringify(previous.experts);
+    task.storyline = next;
+    if (changed) this.appendTaskStorylineEvent(task, {
+      type: "progress",
+      text: next.status === "completed" ? "任务已标记为完成" : "当前进展和下一步已更新",
+    });
+    task.updatedAt = new Date().toISOString();
+    this.saveTasks();
+    return task;
+  }
+
+  recordTaskDecision(input: {
+    id: string;
+    text: string;
+    note?: string;
+    supersedesId?: string;
+  }): CapabilityTask {
+    const task = this.requireTask(input.id);
+    const decisionText = text(input.text, "", 280);
+    if (!decisionText) throw new Error("关键决定不能为空");
+    const now = new Date().toISOString();
+    if (input.supersedesId) {
+      const previous = task.storyline.decisions.find((item) => item.id === input.supersedesId && item.status === "active");
+      if (previous) {
+        previous.status = "superseded";
+        previous.supersededAt = now;
+      }
+    }
+    task.storyline.decisions.unshift({
+      id: uniqueId("decision"),
+      text: decisionText,
+      note: text(input.note, "", 800) || undefined,
+      status: "active",
+      createdAt: now,
+    });
+    task.storyline.decisions = task.storyline.decisions.slice(0, 40);
+    this.appendTaskStorylineEvent(task, {
+      type: "decision",
+      text: input.supersedesId ? `更新决定：${decisionText}` : `确认决定：${decisionText}`,
+    });
+    task.updatedAt = now;
+    this.saveTasks();
+    return task;
+  }
+
+  recordTaskStorylineEvent(input: {
+    id: string;
+    type: CapabilityTaskStorylineEvent["type"];
+    text: string;
+    personaId?: string;
+    artifactId?: string;
+  }): CapabilityTask {
+    const task = this.requireTask(input.id);
+    this.appendTaskStorylineEvent(task, input);
     task.updatedAt = new Date().toISOString();
     this.saveTasks();
     return task;
@@ -710,11 +900,19 @@ export class CapabilityRuntime {
     const task = this.requireTask(id);
     const ability = this.requireAbility(task.capabilityId);
     const persona = this.persona(task.personaId);
-    const prompt = await this.buildRunPrompt(task, ability, persona, trigger);
-    const result = await this.opts.notify(task.personaId, prompt, signal, limits, runId);
-    this.markSkillUsed(ability);
-    const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId });
-    return this.finishTaskRun(task, ability, persona, reply);
+    this.appendTaskStorylineEvent(task, { type: "handoff", text: `${persona.name}开始处理`, personaId: task.personaId });
+    this.saveTasks();
+    try {
+      const prompt = await this.buildRunPrompt(task, ability, persona, trigger);
+      const result = await this.opts.notify(task.personaId, prompt, signal, limits, runId);
+      this.markSkillUsed(ability);
+      const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId });
+      return this.finishTaskRun(task, ability, persona, reply);
+    } catch (error) {
+      this.appendTaskStorylineEvent(task, { type: "error", text: "本次执行未完成，可从运行记录查看原因", personaId: task.personaId });
+      this.saveTasks();
+      throw error;
+    }
   }
 
   async runTaskStream(id: string, trigger: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string): Promise<CapabilityNotification> {
@@ -742,6 +940,18 @@ export class CapabilityRuntime {
     task.lastRunKey = runKey(task, new Date());
     if (task.schedule.mode === "turns") task.schedule.lastTurnRun = task.schedule.turnCount ?? 0;
     task.updatedAt = artifact.createdAt;
+    this.appendTaskStorylineEvent(task, {
+      type: "result",
+      text: `已生成结果：${artifact.title}`,
+      personaId: task.personaId,
+      artifactId: artifact.id,
+    });
+    if (!task.storyline.summary || task.storyline.summary === "任务已建立，等待首次执行。") {
+      task.storyline.summary = artifact.summary || "最近一次执行已经完成。";
+    }
+    if (!task.storyline.nextAction || task.storyline.nextAction === "先运行一次，检查结果是否符合预期。") {
+      task.storyline.nextAction = "查看本次结果，确认是否需要调整。";
+    }
     this.artifacts.push(artifact);
     this.saveTasks();
     this.saveArtifacts();
@@ -778,6 +988,7 @@ export class CapabilityRuntime {
       enabled: false,
       createdAt: now,
       updatedAt: now,
+      storyline: createTaskStoryline(now),
     };
     input.onProgress?.("正在分析目标并生成结构", 20);
     const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
@@ -929,6 +1140,7 @@ export class CapabilityRuntime {
       enabled: false,
       createdAt: now,
       updatedAt: now,
+      storyline: createTaskStoryline(now),
     };
     return { task, ability, persona };
   }
@@ -1024,18 +1236,36 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
 
   private load(): void {
     this.generatedAbilities = readJson<Capability[]>(this.abilitiesFile, []);
-    this.tasks = readJson<CapabilityTask[]>(this.tasksFile, []);
+    this.tasks = readJson<CapabilityTask[]>(this.tasksFile, []).map((task) => ({
+      ...task,
+      storyline: normalizeTaskStoryline(task.storyline, task.createdAt),
+    }));
     this.artifacts = readJson<CapabilityArtifact[]>(this.artifactsFile, []);
     this.intakes = readJson<DemandIntakeReport[]>(this.intakesFile, []);
   }
 
+  private appendTaskStorylineEvent(
+    task: CapabilityTask,
+    input: Pick<CapabilityTaskStorylineEvent, "type" | "text" | "personaId" | "artifactId">,
+  ): void {
+    task.storyline.events.unshift({
+      id: uniqueId("event"),
+      type: input.type,
+      text: text(input.text, "进展已更新", 320),
+      createdAt: new Date().toISOString(),
+      personaId: input.personaId,
+      artifactId: input.artifactId,
+    });
+    task.storyline.events = task.storyline.events.slice(0, 80);
+  }
+
   private ensureDefaultTasks(): void {
     if (this.tasks.length > 0) return;
-    const zhiwei = this.opts.personas().find((p) => p.id === "zhiwei")?.id ?? this.opts.personas()[0]?.id ?? "zhiwei";
+    const appPersonaId = this.opts.personas().find((p) => p.id === "clownfish")?.id ?? this.opts.personas()[0]?.id ?? "clownfish";
     this.tasks.push({
       id: uniqueId("task"),
       title: "每日资料简报",
-      personaId: zhiwei,
+      personaId: appPersonaId,
       capabilityId: "research-brief",
       instruction: "收集我需要关注的资料，整理成可以快速阅读的 Markdown 简报。主题可以在任务中心里改。",
       format: "md",
@@ -1070,7 +1300,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
   private resolveBundledSkillPersona(preferred: string): string {
     const personas = this.opts.personas();
     return personas.find((p) => p.id === preferred)?.id
-      ?? personas.find((p) => p.id === "zhiwei")?.id
+      ?? personas.find((p) => p.id === "clownfish")?.id
       ?? personas[0]?.id
       ?? preferred;
   }
@@ -1095,6 +1325,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     const ability = [...BUILTIN_ABILITIES, ...this.generatedAbilities].find((item) => item.id === id);
     if (!ability) throw new Error(`未知能力：${id}`);
     if (ability.archivedAt) throw new Error(`能力已归档：${ability.name}`);
+    if (ability.disabledAt) throw new Error("能力已停用：" + ability.name);
     return ability;
   }
 
@@ -1140,7 +1371,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     const executionRequirements = nativeId
       ? [
         "Execution requirements:",
-        "1. Complete the work now; the JSON is an internal handoff contract that Nemos will render into the final artifact.",
+        "1. Complete the work now; the JSON is an internal handoff contract that Clownfish will render into the final artifact.",
         "2. Use configured search or source tools when the request depends on current or source-sensitive facts.",
         "3. Do not mention the internal contract, prompts, external projects, repositories, or implementation sources.",
         "4. Do not append a completion marker.",
@@ -1273,7 +1504,7 @@ ${task.instruction}`,
       "",
       `# ${ability.name}`,
       "",
-      "This skill is maintained by Nemos Companion. It captures a reusable way to complete this class of user work.",
+      "This skill is maintained by 小丑鱼. It captures a reusable way to complete this class of user work.",
       "",
       "## When to Use",
       "",
@@ -1322,7 +1553,7 @@ ${task.instruction}`,
       "",
       `# ${ability.name}`,
       "",
-      "This skill was installed into Nemos Companion. The original instructions are preserved below and are used as the reusable operating procedure.",
+      "This capability is available in 小丑鱼. The original instructions are preserved below and are used as the reusable operating procedure.",
       "",
       sourceLabel ? `Source: ${sourceLabel.slice(0, 500)}` : "",
       "",
@@ -1453,6 +1684,28 @@ ${task.instruction}`,
       };
     }
     if (task.format === "pptx") throw new Error("只有演示文稿能力支持 PowerPoint 导出。");
+    if (task.format === "doc" || task.format === "pdf" || task.format === "xlsx") {
+      const format = task.format === "doc" ? "docx" : task.format;
+      const exported = await exportOfficeDocument({
+        name: task.title,
+        format,
+        blocks: rawToOfficeBlocks(raw),
+      });
+      const file = fileBase + "." + extension(task.format);
+      writeFileSync(file, exported.data);
+      return {
+        id,
+        taskId: task.id,
+        capabilityId: ability.id,
+        personaId: task.personaId,
+        title: task.title,
+        format: task.format,
+        file,
+        createdAt,
+        summary: summarize(raw),
+        verification: verification?.relevant ? verification : undefined,
+      };
+    }
 
     const ext = extension(task.format);
     const file = `${fileBase}.${ext}`;
@@ -1563,7 +1816,7 @@ const BUILTIN_ABILITIES: Capability[] = [
     description: "把资料整理为可在浏览器打开的单页 HTML。",
     kind: "builtin",
     defaultFormat: "html",
-    prompt: "输出完整 HTML 文档，包含基础样式、清晰标题、章节、表格或列表。不要依赖外部 CDN。",
+    prompt: "输出完整、可打印的 HTML 文档。body 用 data-layout 标明 editorial、dashboard 或 brief；包含清晰标题、章节、表格或列表。图表使用 table data-chart=bar|line|donut 的结构化数据，小丑鱼会统一渲染。不要依赖外部 CDN。",
     createdAt: BUILTIN_CREATED_AT,
   },
   {
@@ -1572,7 +1825,7 @@ const BUILTIN_ABILITIES: Capability[] = [
     description: "把任务结果整理成适合继续编辑、归档或发送的文档结构。",
     kind: "builtin",
     defaultFormat: "doc",
-    prompt: "输出正式文档稿，包含标题、摘要、正文结构、必要表格、结论和附录。格式用 Markdown，便于后续转 Word。",
+    prompt: "输出正式文档稿，包含标题、摘要、正文结构、必要表格、结论和附录。小丑鱼会把结构写入真实可编辑的 Word 文件。",
     createdAt: BUILTIN_CREATED_AT,
   },
   {
@@ -1610,7 +1863,7 @@ const BUILTIN_ABILITIES: Capability[] = [
       "3. Cleaned metadata: title, date, author/source when provided.",
       "4. Conversion warnings: formatting loss, unsupported embedded objects, missing attachments, or fields requiring manual verification.",
       "Rules:",
-      "- Do not claim a binary DOCX/PDF conversion unless an actual conversion tool is available.",
+      "- Binary DOCX, PDF, XLSX, PPTX and HTML exports are available; preserve headings, sections and tables in the structural export.",
       "- If the target is Word/PDF but only text conversion is available, produce a Word-ready Markdown draft and state the remaining export step.",
       "- Preserve meaning over decorative formatting.",
     ].join("\n"),
@@ -1694,7 +1947,7 @@ const BUILTIN_ABILITIES: Capability[] = [
       "2. Source map: exchange/company announcements, filings, official investor relations, trusted quote provider, news leads, and user-provided positions or watchlist.",
       "3. Watchlist table: ticker/name, catalyst, source status, quote freshness, risk, what to verify next.",
       "4. Risk boundary: what would make the user pause, reduce attention, or ask for confirmation.",
-      "5. Assistant message: one short conversational summary that Zhiwei can say in chat.",
+      "5. Assistant message: one short conversational summary that Clownfish can say in chat.",
       "Rules:",
       "- Do not recommend buy/sell/hold as financial advice.",
       "- Quotes, turnover, holdings, breaking news, and analyst views must include timestamp and provider when available.",
@@ -1785,7 +2038,7 @@ const BUILTIN_ABILITIES: Capability[] = [
       "Start with audience, purpose, speaking situation, and one clear narrative spine.",
       "Output a page-by-page plan with title, key message, supporting evidence, recommended visual or layout, and speaker note.",
       "Keep one main idea per page, vary layouts intentionally, and include opening, transition, conclusion, and next action.",
-      "Return the structured slide contract; Nemos will render it into a standalone preview or editable PPTX.",
+      "Return the structured slide contract; Clownfish will render it into a standalone preview or editable PPTX.",
     ].join("\n"),
     createdAt: BUILTIN_CREATED_AT,
   },
@@ -1855,7 +2108,7 @@ const BUILTIN_ABILITIES: Capability[] = [
       "First decide whether the job deserves a reusable ability. Reject one-off, vague, or unsafe automation.",
       "Define clear positive and negative trigger examples, required inputs, ordered steps, decision rules, output contract, exception paths, and acceptance checks.",
       "Create trigger test cases that include close non-matches.",
-      "When qualification passes, Nemos will install the validated result into the local ability library.",
+      "When qualification passes, Clownfish will install the validated result into the local ability library.",
     ].join("\n"),
     createdAt: BUILTIN_CREATED_AT,
   },
@@ -1977,7 +2230,7 @@ function firstParagraph(content: string): string {
 }
 
 function normalizeFormat(format?: string): ArtifactFormat {
-  if (format === "html" || format === "txt" || format === "json" || format === "doc" || format === "pptx") return format;
+  if (format === "html" || format === "txt" || format === "json" || format === "doc" || format === "pptx" || format === "pdf" || format === "xlsx") return format;
   return "md";
 }
 
@@ -2000,6 +2253,65 @@ function normalizeSchedule(input?: Partial<CapabilitySchedule>): CapabilitySched
     };
   }
   return { mode: "manual" };
+}
+
+function createTaskStoryline(createdAt: string): CapabilityTaskStoryline {
+  return {
+    status: "active",
+    summary: "任务已建立，等待首次执行。",
+    nextAction: "先运行一次，检查结果是否符合预期。",
+    experts: [],
+    decisions: [],
+    events: [{
+      id: uniqueId("event"),
+      type: "created",
+      text: "建立任务脉络",
+      createdAt,
+    }],
+  };
+}
+
+function normalizeTaskStoryline(input: unknown, createdAt: string): CapabilityTaskStoryline {
+  const value = input && typeof input === "object" ? input as Partial<CapabilityTaskStoryline> : {};
+  const validStatuses = new Set<CapabilityTaskStorylineStatus>(["active", "waiting", "paused", "completed"]);
+  const validEventTypes = new Set<CapabilityTaskStorylineEvent["type"]>(["created", "progress", "decision", "handoff", "result", "error"]);
+  const fallback = createTaskStoryline(createdAt);
+  const experts = Array.isArray(value.experts) ? value.experts
+    .filter((item): item is CapabilityTaskExpertAssignment => Boolean(item && typeof item.personaId === "string" && typeof item.responsibility === "string"))
+    .map((item) => ({ personaId: text(item.personaId, "", 80), responsibility: text(item.responsibility, "", 180) }))
+    .filter((item) => item.personaId && item.responsibility)
+    .slice(0, 6) : [];
+  const decisions = Array.isArray(value.decisions) ? value.decisions
+    .filter((item): item is CapabilityTaskDecision => Boolean(item && typeof item.id === "string" && typeof item.text === "string"))
+    .map((item) => ({
+      id: text(item.id, uniqueId("decision"), 100),
+      text: text(item.text, "", 280),
+      note: text(item.note, "", 800) || undefined,
+      status: item.status === "superseded" ? "superseded" as const : "active" as const,
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : createdAt,
+      supersededAt: typeof item.supersededAt === "string" ? item.supersededAt : undefined,
+    }))
+    .filter((item) => item.text)
+    .slice(0, 40) : [];
+  const events = Array.isArray(value.events) ? value.events
+    .filter((item): item is CapabilityTaskStorylineEvent => Boolean(item && typeof item.id === "string" && typeof item.text === "string" && validEventTypes.has(item.type)))
+    .map((item) => ({
+      id: text(item.id, uniqueId("event"), 100),
+      type: item.type,
+      text: text(item.text, "进展已更新", 320),
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : createdAt,
+      personaId: typeof item.personaId === "string" ? text(item.personaId, "", 80) || undefined : undefined,
+      artifactId: typeof item.artifactId === "string" ? text(item.artifactId, "", 100) || undefined : undefined,
+    }))
+    .slice(0, 80) : fallback.events;
+  return {
+    status: validStatuses.has(value.status as CapabilityTaskStorylineStatus) ? value.status as CapabilityTaskStorylineStatus : fallback.status,
+    summary: text(value.summary, fallback.summary, 800),
+    nextAction: text(value.nextAction, fallback.nextAction, 400),
+    experts,
+    decisions,
+    events: events.length ? events : fallback.events,
+  };
 }
 
 function text(value: string | undefined, fallback: string, max: number): string {
@@ -2100,6 +2412,9 @@ function daysBetween(value: string, now: Date): number {
 
 function skillAuditReason(state: SkillAuditState, idleDays: number, duplicateGroup?: string): string {
   if (state === "archived") return "已归档；技能文件和历史产物仍保留。";
+  if (state === "disabled") return "已停用；不会被任务或对话调用。";
+  if (state === "pinned") return "已固定；优先保留并持续显示。";
+  if (state === "stale") return "内容可能陈旧，需要用新证据复核。";
   if (state === "duplicate") return `疑似重复技能组：${duplicateGroup}`;
   if (state === "archive-suggested") return `超过 ${idleDays} 天没有使用记录和产物，建议归档。`;
   if (state === "watch") return "还没有使用记录和产物，先观察。";
@@ -2107,10 +2422,11 @@ function skillAuditReason(state: SkillAuditState, idleDays: number, duplicateGro
 }
 
 function stateRank(state: SkillAuditState): number {
-  if (state === "archive-suggested") return 0;
+  if (state === "stale" || state === "archive-suggested") return 0;
   if (state === "duplicate") return 1;
   if (state === "watch") return 2;
-  if (state === "active") return 3;
+  if (state === "active" || state === "pinned") return 3;
+  if (state === "disabled") return 4;
   return 4;
 }
 
@@ -2177,6 +2493,9 @@ function asciiFileName(name: string): string {
 
 function extension(format: ArtifactFormat): string {
   if (format === "pptx") return "pptx";
+  if (format === "doc") return "docx";
+  if (format === "pdf") return "pdf";
+  if (format === "xlsx") return "xlsx";
   if (format === "html") return "html";
   if (format === "txt") return "txt";
   if (format === "json") return "json";
@@ -2185,6 +2504,9 @@ function extension(format: ArtifactFormat): string {
 
 function contentType(format: ArtifactFormat): string {
   if (format === "pptx") return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  if (format === "doc") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (format === "pdf") return "application/pdf";
+  if (format === "xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   if (format === "html") return "text/html; charset=utf-8";
   if (format === "json") return "application/json; charset=utf-8";
   return "text/plain; charset=utf-8";
@@ -2192,11 +2514,34 @@ function contentType(format: ArtifactFormat): string {
 
 function formatLabel(format: ArtifactFormat): string {
   if (format === "pptx") return "可编辑 PowerPoint";
+  if (format === "pdf") return "PDF";
+  if (format === "xlsx") return "Excel";
   if (format === "html") return "HTML";
   if (format === "json") return "JSON";
   if (format === "txt") return "纯文本";
-  if (format === "doc") return "文档稿（Markdown，可转 Word）";
+  if (format === "doc") return "可编辑 Word";
   return "Markdown";
+}
+
+function rawToOfficeBlocks(raw: string): Array<{ title: string; text: string }> {
+  const sections: Array<{ title: string; text: string }> = [];
+  let title = "正文";
+  let lines: string[] = [];
+  const flush = (): void => {
+    if (lines.length || !sections.length) sections.push({ title, text: lines.join("\n").trim() });
+    lines = [];
+  };
+  for (const line of raw.replace(/\r\n/g, "\n").split("\n")) {
+    const match = line.match(/^#{1,3}\s+(.+)/);
+    if (match) {
+      flush();
+      title = match[1]!.trim();
+    } else {
+      lines.push(line);
+    }
+  }
+  flush();
+  return sections.slice(0, 200);
 }
 
 function summarize(raw: string): string {
@@ -2220,9 +2565,11 @@ function normalizeArtifactContent(raw: string, format: ArtifactFormat, title: st
   const verificationBlock = verification?.relevant ? sourceVerificationMarkdown(verification) : "";
   if (format === "html") {
     if (/<!doctype html|<html[\s>]/i.test(body)) {
-      if (!verificationBlock) return body;
-      const block = `<section style="max-width:920px;margin:32px auto;padding:18px;border:1px solid #eadfff;border-radius:12px;background:#fff"><pre style="white-space:pre-wrap">${escapeHtml(verificationBlock)}</pre></section>`;
-      return /<\/body>/i.test(body) ? body.replace(/<\/body>/i, `${block}</body>`) : `${body}${block}`;
+      const block = verificationBlock
+        ? '<section class="clownfish-source-check"><pre>' + escapeHtml(verificationBlock) + '</pre></section>'
+        : "";
+      const withVerification = /<\/body>/i.test(body) ? body.replace(/<\/body>/i, block + "</body>") : body + block;
+      return enhanceHtmlArtifact(withVerification);
     }
     return `<!doctype html>
 <html lang="zh-CN">
@@ -2249,6 +2596,13 @@ pre{white-space:pre-wrap;background:#fff;border:1px solid #eadfff;border-radius:
   const withVerification = [body, verificationBlock].filter(Boolean).join("\n\n---\n\n");
   if (format === "doc") return `# ${title}\n\n${withVerification}`;
   return withVerification;
+}
+
+function enhanceHtmlArtifact(body: string): string {
+  const style = '<style id="clownfish-layout-system">:root{--cf-ink:#20221f;--cf-muted:#656860;--cf-paper:#fffcf7;--cf-page:#f4f0e8;--cf-line:#ddd7cd;--cf-accent:#b33f72;color:var(--cf-ink);background:var(--cf-page)}body{margin:0 auto;padding:40px 24px;max-width:1120px;font-family:"Segoe UI","Microsoft YaHei",sans-serif;line-height:1.7;background:var(--cf-page)}body[data-layout="brief"]{max-width:820px}body[data-layout="dashboard"]{max-width:1320px}.clownfish-source-check{margin:28px 0;padding:18px;border:1px solid var(--cf-line);border-radius:10px;background:var(--cf-paper)}.clownfish-source-check pre{white-space:pre-wrap}.clownfish-chart{width:100%;height:auto;display:block;margin:16px 0}.clownfish-print-warning{position:sticky;top:0;z-index:99;padding:10px 14px;color:#7b4d16;background:#fff2d4;border:1px solid #e5c88b}@media print{body{max-width:none;padding:0;background:#fff}.clownfish-print-warning{display:none}section,article,table,figure{break-inside:avoid}a{color:inherit;text-decoration:none}}@media(max-width:720px){body{padding:24px 14px}table{display:block;overflow:auto}}</style>';
+  const script = '<script>(()=>{const color=["#b33f72","#34745c","#446b8c","#9b6a16"];document.querySelectorAll("table[data-chart]").forEach((table)=>{const rows=[...table.querySelectorAll("tbody tr")].slice(0,10).map(r=>{const c=r.querySelectorAll("th,td");return{label:(c[0]?.textContent||"").trim(),value:Number((c[1]?.textContent||"").replace(/[^0-9.-]/g,""))||0}});if(!rows.length)return;const max=Math.max(1,...rows.map(x=>Math.abs(x.value)));const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("viewBox","0 0 760 280");svg.setAttribute("class","clownfish-chart");rows.forEach((x,i)=>{const bar=document.createElementNS(svg.namespaceURI,"rect");bar.setAttribute("x","120");bar.setAttribute("y",String(18+i*25));bar.setAttribute("width",String(560*Math.abs(x.value)/max));bar.setAttribute("height","16");bar.setAttribute("rx","4");bar.setAttribute("fill",color[i%color.length]);svg.appendChild(bar);const label=document.createElementNS(svg.namespaceURI,"text");label.setAttribute("x","6");label.setAttribute("y",String(31+i*25));label.setAttribute("font-size","11");label.textContent=x.label.slice(0,16);svg.appendChild(label);const value=document.createElementNS(svg.namespaceURI,"text");value.setAttribute("x",String(128+560*Math.abs(x.value)/max));value.setAttribute("y",String(31+i*25));value.setAttribute("font-size","11");value.textContent=String(x.value);svg.appendChild(value)});table.insertAdjacentElement("beforebegin",svg)});const overflow=[...document.querySelectorAll("table,pre,figure")].some(x=>x.scrollWidth>x.clientWidth+2);if(overflow){const note=document.createElement("div");note.className="clownfish-print-warning";note.textContent="版面检查：有内容超出可打印宽度，请导出前复核。";document.body.prepend(note)}})();</script>';
+  const withStyle = /<\/head>/i.test(body) ? body.replace(/<\/head>/i, style + "</head>") : style + body;
+  return /<\/body>/i.test(withStyle) ? withStyle.replace(/<\/body>/i, script + "</body>") : withStyle + script;
 }
 
 function escapeHtml(value: string): string {

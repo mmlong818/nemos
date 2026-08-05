@@ -125,7 +125,7 @@ export function buildDemandIntakeReport(input: BuildDemandIntakeInput): DemandIn
   const nextActions = buildNextActions(recommendedMode, gaps, matchedAbilities);
   const connectorPlan = buildConnectorPlan(sources);
   const normalizedGoal = request
-    .replace(/^(知微|帮我|请|给我|替我|麻烦|需要你|你来)[，,:：\s]*/g, "")
+    .replace(/^(小丑鱼|帮我|请|给我|替我|麻烦|需要你|你来)[，,:：\s]*/g, "")
     .trim()
     .slice(0, 240) || "处理用户交办事项";
 

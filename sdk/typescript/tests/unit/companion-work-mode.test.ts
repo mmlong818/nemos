@@ -9,7 +9,7 @@ import { Nemos } from "../../src/index.js";
 import { makeMockLLMConfig } from "../helpers.js";
 
 test("English capability prompts use task mode and its long-output budget", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "nemos-companion-work-mode-"));
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-work-mode-"));
   let observed: {
     system?: string;
     maxTokens?: number;
@@ -26,16 +26,16 @@ test("English capability prompts use task mode and its long-output budget", asyn
     worker: { manualWorker: true },
   });
   const engine = new CompanionEngine(memory, [{
-    id: "zhiwei",
-    name: "知微",
+    id: "clownfish",
+    name: "小丑鱼",
     persona: "可靠的个人助理。",
     maxReplyTokens: 800,
   }], chat);
 
   try {
-    await engine.seedSelfState("zhiwei", ["这条角色近况不能进入能力任务"]);
-    await engine.notify("me", "zhiwei", [
-      "Run a backend capability as 知微.",
+    await engine.seedSelfState("clownfish", ["这条角色近况不能进入能力任务"]);
+    await engine.notify("me", "clownfish", [
+      "Run a backend capability as 小丑鱼.",
       "Capability: 思考工作台",
       "Target artifact format: HTML",
       "Execution requirements:",

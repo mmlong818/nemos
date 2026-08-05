@@ -36,7 +36,7 @@ export function resolveGroupReplyRoute(
   text: string,
   members: GroupRouteMember[],
   advisoryGroupId: string,
-  coordinatorPersonaId = "zhiwei",
+  coordinatorPersonaId = "clownfish",
 ): GroupReplyRoute {
   const body = text || "";
   const explicitlyMentionedPersonaIds = members

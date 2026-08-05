@@ -4,16 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>能力 · Nemos</title>
+  <link rel="icon" href="/assets/brand/clownfish-mark.svg">
+  <title>能力 · 小丑鱼</title>
   <link rel="stylesheet" href="/assets/capability-center.css">
+  <link rel="stylesheet" href="/assets/app-navigation-labels.css">
 </head>
 <body>
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" aria-label="返回聊天">我</a>
+      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
       <nav class="rail-nav">
         <a href="/" title="聊天" aria-label="聊天" data-app-icon="message"><span aria-hidden="true"></span><small>聊天</small></a>
-        <button class="is-current" type="button" data-view-target="start" title="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></button>
+        <button class="is-current" type="button" data-view-target="start" title="能力" aria-label="能力" aria-current="page" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></button>
+        <a href="/office" title="办公文件" aria-label="办公文件" data-app-icon="file"><span aria-hidden="true"></span><small>文件</small></a>
+        <a href="/tasks" title="工作" aria-label="工作" data-app-icon="work"><span aria-hidden="true"></span><small>工作</small></a>
       </nav>
       <a class="rail-secondary" href="/#settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
     </aside>
@@ -32,10 +36,15 @@
 
       <section class="view is-active" data-view="start">
         <div class="start-wrap">
+          <aside class="chat-context" id="chatContext" hidden>
+            <span class="chat-context-icon" data-app-icon="message" aria-hidden="true"><span></span></span>
+            <span><strong id="chatContextTitle">从对话继续</strong><small id="chatContextText">目标已经带过来，补充材料后即可开始。</small></span>
+            <a id="chatContextReturn" href="/">回到对话</a>
+          </aside>
           <header class="hero">
-            <p class="eyebrow">把事情交给 Nemos</p>
+            <p class="eyebrow">把事情交给小丑鱼</p>
             <h1>直接说，你想完成什么？</h1>
-            <p>不用先寻找能力。说清目标后，Nemos 会推荐合适的做法，你也可以自己选择。</p>
+            <p>说清目标后，小丑鱼会直接打开合适的能力；如果你已经知道要用什么，也可以直接选择。</p>
           </header>
 
           <form class="goal-box" id="goalForm">
@@ -43,60 +52,44 @@
             <textarea id="goalInput" rows="3" maxlength="2000" placeholder="例如：把这份季度总结做成一套适合汇报的演示稿"></textarea>
             <div class="goal-actions">
               <button class="quiet-button" type="button" id="continueLast" hidden>继续未完成内容</button>
-              <button class="primary-button" type="submit">帮我准备</button>
+              <button class="primary-button" type="submit">自动选择并继续</button>
             </div>
           </form>
 
-          <details class="capability-picker" id="capabilityPicker">
-            <summary><span><strong>自己选择能力</strong><small>适合已经知道要使用哪种能力时</small></span><span class="picker-action">展开</span></summary>
+          <section class="capability-picker" id="capabilityPicker">
             <div class="workspace">
               <section class="catalog-panel" aria-labelledby="catalogTitle">
                 <div class="section-heading">
                   <div>
-                    <p class="eyebrow">能力列表</p>
-                    <h2 id="catalogTitle">选择一种能力</h2>
+                    <p class="eyebrow">常用能力</p>
+                    <h2 id="catalogTitle">直接选择能力</h2>
+                    <p class="section-help">点击后直接填写任务要求，不再经过中间步骤。</p>
                   </div>
-                  <button class="text-button" type="button" id="toggleAll">查看全部 11 项</button>
+                  <button class="text-button" type="button" id="toggleAll">查看全部能力</button>
                 </div>
                 <div class="capability-grid" id="capabilityGrid"></div>
               </section>
-
-              <aside class="detail-panel" id="detailPanel" aria-live="polite">
-                <p class="eyebrow">已选择</p>
-                <div class="detail-icon" id="detailIcon" aria-hidden="true"></div>
-                <h2 id="detailTitle">做 PPT</h2>
-                <p id="detailDescription"></p>
-                <dl class="detail-meta">
-                  <div><dt>适合</dt><dd id="detailUse"></dd></div>
-                  <div><dt>得到</dt><dd id="detailDeliverable"></dd></div>
-                </dl>
-                <button class="primary-button full" type="button" id="prepareSelected">用这个能力</button>
-              </aside>
             </div>
-          </details>
+          </section>
 
-          <section class="prepare-panel" id="preparePanel" hidden>
-            <div class="prepare-heading">
+          <section class="launch-panel" id="launchPanel" aria-labelledby="launchTitle" hidden>
+            <div class="launch-heading">
               <div>
-                <p class="eyebrow">执行前确认</p>
-                <h2 id="prepareTitle">准备演示文稿</h2>
+                <p class="eyebrow">已选择能力</p>
+                <h2 id="launchTitle">做 PPT</h2>
+                <p class="launch-summary" id="launchSummary">生成可放映、可继续编辑的演示文稿</p>
               </div>
-              <button class="icon-button" type="button" id="closePrepare" aria-label="关闭准备区">×</button>
+              <button class="quiet-button" type="button" id="closeLaunch">更换能力</button>
             </div>
-            <ol class="flow-steps" aria-label="任务步骤">
-              <li class="is-done"><span>1</span>说清目标</li>
-              <li class="is-current"><span>2</span>准备材料</li>
-              <li><span>3</span>开始执行</li>
-            </ol>
-            <div class="prepare-layout">
-              <div class="prepare-form">
-                <label for="instructionInput">具体要求</label>
-                <textarea id="instructionInput" rows="7" maxlength="16000" placeholder="补充受众、重点、语气、页数或其他要求"></textarea>
+            <div class="launch-layout">
+              <div class="launch-form">
+                <label for="instructionInput">任务要求</label>
+                <textarea id="instructionInput" rows="7" maxlength="16000" placeholder="说清楚要完成什么，也可以补充受众、重点、语气或页数"></textarea>
                 <label class="file-drop" for="materialInput">
                   <span class="file-drop-icon" aria-hidden="true">＋</span>
-                  <strong>加入文字材料</strong>
-                  <small>支持 TXT、Markdown、CSV、JSON、HTML，单个不超过 1 MB</small>
-                  <input id="materialInput" type="file" accept=".txt,.md,.markdown,.csv,.json,.html,.htm,text/plain,text/markdown,text/csv,application/json,text/html">
+                  <strong>加入参考材料</strong>
+                  <small>支持文字、Word、PowerPoint、Excel 和 PDF；办公文件不超过 8 MB</small>
+                  <input id="materialInput" type="file" accept=".txt,.md,.markdown,.csv,.json,.html,.htm,.docx,.pptx,.xlsx,.pdf,text/plain,text/markdown,text/csv,application/json,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf">
                 </label>
                 <div class="material-list" id="materialList"></div>
                 <div class="field-row single">
@@ -116,25 +109,19 @@
                   <label>由谁完成
                     <select id="personaSelect"></select>
                   </label>
+                  <div class="memory-setting">
+                    <label class="memory-choice">
+                      <input id="memoryToggle" type="checkbox" checked>
+                      <span><strong>按我的习惯生成</strong><small id="memorySummary">会轻量参考文笔、排版和格式偏好</small></span>
+                    </label>
+                    <button class="memory-help" type="button" id="memoryHelp">说明</button>
+                  </div>
                 </details>
+                <div class="launch-submit-row">
+                  <p class="run-note">填写任务要求后即可开始。</p>
+                  <button class="primary-button" type="button" id="startTask">开始执行</button>
+                </div>
               </div>
-              <aside class="task-preview">
-                <p class="eyebrow">任务预览</p>
-                <div class="preview-sheet" id="previewSheet">
-                  <span id="previewKind">演示文稿</span>
-                  <strong id="previewTitle">等待填写目标</strong>
-                  <small id="previewDetail">Nemos 会整理结构、内容与版式建议</small>
-                </div>
-                <div class="memory-setting">
-                  <label class="memory-choice">
-                    <input id="memoryToggle" type="checkbox" checked>
-                    <span><strong>按我的习惯生成</strong><small id="memorySummary">会轻量参考文笔、排版和格式偏好</small></span>
-                  </label>
-                  <button class="memory-help" type="button" id="memoryHelp">说明</button>
-                </div>
-                <button class="primary-button full" type="button" id="startTask">开始执行</button>
-                <p class="run-note">任务会在后台继续。离开此页后，可在“进行中”查看。</p>
-              </aside>
             </div>
           </section>
         </div>
@@ -143,6 +130,10 @@
       <section class="view" data-view="runs">
         <div class="list-page">
           <header class="page-heading"><div><p class="eyebrow">后台执行</p><h1>进行中</h1><p>可以离开这里，任务不会消失。</p></div><button class="quiet-button" type="button" data-view-target="start">新建任务</button></header>
+          <aside class="conversation-bridge" id="runConversationBridge" hidden>
+            <span><strong>任务已回到对话主线</strong><small id="runConversationText">你可以继续聊天；完成后，结果会由小丑鱼直接送回。</small></span>
+            <a id="runConversationLink" href="/">返回对话</a>
+          </aside>
           <div class="empty-state" id="runsEmpty"><span data-empty-icon="clock" aria-hidden="true"></span><h2>暂时没有进行中的任务</h2><p>开始一个任务后，进度会出现在这里。</p></div>
           <div class="item-list" id="runsList"></div>
         </div>
@@ -177,6 +168,7 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/app-icons.js" defer></script>
   <script src="/assets/capability-center.js" defer></script>
 </body>
 </html>

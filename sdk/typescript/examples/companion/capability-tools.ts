@@ -1,6 +1,7 @@
 import type { AgentTool, AgentToolEffect } from "../../src/index.js";
 import { buildSourceConnectorGuide, listSourceConnectors, matchSourceConnectors } from "./source-connectors.js";
 import { buildSourceVerificationReport, sourceVerificationPromptBlock } from "./source-verification.js";
+import { buildMarketSnapshotText, createMarketDataAdapter, type MarketDataAdapter } from "./market-data-adapter.js";
 
 export interface CapabilityToolContext {
   dataDir: string;
@@ -177,9 +178,11 @@ export function createDefaultCapabilityToolRegistry(
     hasVision: () => boolean;
     hasVoice: () => boolean;
     runLiveSearch?: (query: string, signal?: AbortSignal) => Promise<Array<{ title: string; content: string; url: string }>>;
+    marketData?: MarketDataAdapter;
   },
 ): CapabilityToolRegistry {
   const registry = new CapabilityToolRegistry({ dataDir });
+  const marketData = checks.marketData ?? createMarketDataAdapter({ dataDir });
 
   registry.register({
     id: "web.search",
@@ -313,6 +316,52 @@ export function createDefaultCapabilityToolRegistry(
 
   for (const connector of listSourceConnectors()) {
     if (connector.id === "source-discovery") continue;
+    if (connector.id === "market-briefing") {
+      registry.register({
+        id: "source.market-briefing",
+        name: "港股公告与行情快照",
+        description: "读取本机关注列表或指定港股代码，返回港交所官方公告和带查询时间的第三方行情快照。",
+        toolset: "source",
+        inputSchema: {
+          type: "object",
+          properties: {
+            symbols: {
+              type: "array",
+              items: { type: "string" },
+              maxItems: 8,
+              description: "港股代码，例如 00700、09988；不传时使用本机关注列表",
+            },
+            announcementLimit: {
+              type: "number",
+              minimum: 1,
+              maximum: 10,
+              description: "每只股票返回的最新公告数量",
+            },
+          },
+          additionalProperties: false,
+        },
+        effect: "read",
+        timeoutMs: 60_000,
+        run: async (args, context) => {
+          try {
+            const snapshot = await marketData.snapshot({
+              symbols: Array.isArray(args.symbols) ? args.symbols.map(String) : undefined,
+              announcementLimit: Number(args.announcementLimit || 3),
+            }, context.signal);
+            return {
+              ok: true,
+              checkedAt: snapshot.queriedAt,
+              text: buildMarketSnapshotText(snapshot),
+              data: snapshot,
+              needsVerification: snapshot.symbols.some((item) => !item.quote || item.errors.length > 0),
+            };
+          } catch (error) {
+            return { ok: false, checkedAt: new Date().toISOString(), text: error instanceof Error ? error.message : String(error), needsVerification: true };
+          }
+        },
+      });
+      continue;
+    }
     registry.register({
       id: `source.${connector.id}`,
       name: connector.label,

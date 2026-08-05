@@ -1,0 +1,117 @@
+/* Shared navigation geometry prevents the product rail from shifting between pages. */
+html {
+  scrollbar-gutter: stable;
+}
+
+.rail-main-nav {
+  display: grid;
+  width: 100%;
+}
+
+@media (min-width: 721px) {
+  .app-shell {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .rail {
+    width: 76px;
+  }
+
+  .rail nav > a,
+  .rail nav > button,
+  #wechatRail .rail-main-nav > button,
+  .rail-settings,
+  .rail-secondary {
+    width: 60px;
+    height: 52px;
+    margin-right: auto;
+    margin-left: auto;
+    grid-template-rows: 24px 12px;
+    align-content: center;
+    gap: 3px;
+  }
+
+  .rail nav small,
+  #wechatRail .rail-main-nav small,
+  .rail-settings small,
+  .rail-secondary small {
+    display: block;
+    color: currentColor;
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: .035em;
+  }
+
+  #sidebar {
+    width: 271px;
+  }
+
+  #wechatRail {
+    width: 76px;
+    flex-basis: 76px;
+  }
+
+  .rail nav,
+  #wechatRail .rail-main-nav {
+    display: grid;
+    gap: 2px;
+    width: 100%;
+  }
+
+  #sessionPane {
+    width: 195px;
+  }
+
+  .rail-icon,
+  #settingsbtn {
+    width: 60px;
+    height: 52px;
+    display: grid;
+    grid-template-rows: 24px 12px;
+    align-content: center;
+    place-items: center;
+    gap: 3px;
+  }
+
+  .rail nav > a > span,
+  .rail nav > button > span,
+  .rail-settings > span,
+  .rail-secondary > span,
+  .rail-icon > .ui-icon-slot,
+  #settingsbtn > .ui-icon-slot {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    align-self: center;
+    justify-self: center;
+    place-items: center;
+    flex-basis: 22px;
+    line-height: 0;
+  }
+
+  .rail nav svg,
+  .rail-settings svg,
+  .rail-secondary svg,
+  .rail-icon svg,
+  #settingsbtn svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+  }
+
+  .rail-label {
+    display: block;
+    color: currentColor;
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: .035em;
+  }
+}
+
+@media (max-width: 720px) {
+  #wechatRail .rail-label {
+    display: none;
+  }
+}

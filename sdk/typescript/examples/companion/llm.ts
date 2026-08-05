@@ -366,7 +366,7 @@ const TOOL_POLICY =
   "Use it for markets, prices, exchange rates, weather, news, sports, company/product status, flights, trains, hotels, restaurants, bookings, opening hours, routes, addresses, phones, ratings, menus, tickets, inventory, and official-source verification. " +
   "Do not invent exact prices, schedules, availability, or booking facts. If search results are weak, say what was checked and what still needs confirmation. " +
   "When the user explicitly asks to install, save, schedule, or change local state and a matching tool is available, call that tool now. Never claim the action succeeded before receiving a successful tool result. " +
-  "Use multi-agent delegation only for 2-4 genuinely distinct expert perspectives or parallel verification tasks; keep simple work in the current agent, and let Zhiwei synthesize the expert artifacts.";
+  "Use multi-agent delegation only for 2-4 genuinely distinct expert perspectives or parallel verification tasks; keep simple work in the current agent, and let Clownfish synthesize the expert artifacts.";
 
 // 工具按需挂载：弱模型不听"别搜"的话，所以日常/情绪聊天根本不把 web_search 给它。
 // 只在用户这句话确实像在问实时硬事实时才挂工具。只看"对方："（用户）说的话，
@@ -389,8 +389,8 @@ function makeConnectionChat(
 ): ChatFn {
   return async (system, user, model, maxTokens, context): Promise<string> => {
     const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
-    const extraTools = [...await additionalTools(context?.instruction ?? user, context)];
-    const runtimeTools = uniqueAgentTools([...tools, ...extraTools]);
+    const extraTools = context?.toolMode === "off" ? [] : [...await additionalTools(context?.instruction ?? user, context)];
+    const runtimeTools = context?.toolMode === "off" ? [] : uniqueAgentTools([...tools, ...extraTools]).filter((tool) => context?.toolMode !== "read-only" || readOnlyAgentTool(tool));
     const useTools = runtimeTools.length > 0 && (mightNeedWeb(user) || extraTools.length > 0);
     const sys = useTools
       ? `${system}${TOOL_POLICY}\n（现在是 ${now}（北京时间），引用搜索结果时务必注意时效，过时的就说过时。）`
@@ -448,8 +448,8 @@ function makeConnectionChatStream(
 ): ChatStreamFn {
   return async (system, user, cb, model, maxTokens, context) => {
     const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
-    const extraTools = [...await additionalTools(context?.instruction ?? user, context)];
-    const runtimeTools = uniqueAgentTools([...tools, ...extraTools]);
+    const extraTools = context?.toolMode === "off" ? [] : [...await additionalTools(context?.instruction ?? user, context)];
+    const runtimeTools = context?.toolMode === "off" ? [] : uniqueAgentTools([...tools, ...extraTools]).filter((tool) => context?.toolMode !== "read-only" || readOnlyAgentTool(tool));
     const useTools = runtimeTools.length > 0 && (mightNeedWeb(user) || extraTools.length > 0);
     const sys = useTools
       ? `${system}${TOOL_POLICY}\n（现在是 ${now}（北京时间），引用搜索结果注意时效。）`
@@ -599,6 +599,7 @@ function storedAgentContext(run: AgentStoredRun): ChatAgentContext | undefined {
     scope: metadata.scope,
     memoryScopes,
     mode,
+    toolMode: metadata.toolMode === "off" ? "off" : metadata.toolMode === "read-only" ? "read-only" : "auto",
   };
 }
 
@@ -612,6 +613,10 @@ function metadataNumber(
   const parsed = Number(run.metadata?.[key]);
   return Math.min(maximum, Math.max(minimum, Number.isFinite(parsed) ? parsed : fallback));
 }
+function readOnlyAgentTool(tool: AgentTool): boolean {
+  return /(^|_)(search|read|get|list|find|lookup|preview|inspect|status|query)(_|$)/i.test(tool.definition.name);
+}
+
 function uniqueAgentTools(tools: readonly AgentTool[]): AgentTool[] {
   const byName = new Map<string, AgentTool>();
   for (const tool of tools) byName.set(tool.definition.name, tool);
@@ -630,6 +635,7 @@ function agentMetadata(
       scope: context.scope,
       mode: context.mode,
       memoryScopes: JSON.stringify(context.memoryScopes),
+      toolMode: context.toolMode ?? "auto",
     } : {}),
     ...runtime,
   };

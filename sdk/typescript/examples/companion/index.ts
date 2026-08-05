@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   console.log(`LLM: ${llm.label}\n`);
 
   const [p1, p2] = PERSONAS; // 菲菲(主) + 阿哲(对照)
-  const dir = mkdtempSync(join(tmpdir(), "nemos-companion-demo-"));
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-demo-"));
   const mem = new Nemos({
     storage: { type: "sqlite", path: join(dir, "companion.db") },
     llm: llm.extraction,

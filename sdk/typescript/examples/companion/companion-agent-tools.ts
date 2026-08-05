@@ -27,7 +27,7 @@ const MEMORY_CUE = /(记得|记忆|想起|之前.{0,8}(说|提|聊)|我.{0,8}(�
 const TASK_CUE = /(任务|计划|定时|待办|进度|上次运行|task|schedule|todo)/i;
 const TASK_CREATE_CUE = /((创建|新增|登记|保存|安排|设为).{0,12}(能力|任务)|常规任务|固定能力|定时任务|每天|每日|每周|每.{0,4}轮)/i;
 const SKILL_INSTALL_CUE = /((安装|导入|添加|注册).{0,24}(skill|skills|SKILL\.md|技能包|能力包)|((skill|skills|SKILL\.md|技能包|能力包).{0,24}(安装|导入|添加|注册)))/i;
-const DELEGATION_CUE = /(多.{0,4}(角色|专家|人)|团队|分工|并行|分别.{0,10}(分析|研究|核验|给出)|不同.{0,6}(角度|视角)|交叉.{0,4}(验证|复核)|让.{0,12}(马斯克|乔布斯|芒格|苏格拉底).{0,12}(和|与|、))/i;
+const DELEGATION_CUE = /(多.{0,4}(角色|专家|人)|团队|分工|并行|分别.{0,10}(分析|研究|核验|给出)|不同.{0,6}(角度|视角)|交叉.{0,4}(验证|复核)|让.{0,12}(可行性顾问|产品顾问|决策顾问|思考教练|原理工程师|产品主理人|决策分析师|思辨教练).{0,12}(和|与|、))/i;
 const ARTIFACT_CUE = /(产物|交付物|生成的.{0,6}(报告|文件|文档)|最近的.{0,6}(报告|文件|文档)|artifact|deliverable)/i;
 
 /**
@@ -46,14 +46,14 @@ export function createCompanionAgentToolProvider(
     if (TASK_CUE.test(instruction)) {
       tools.push(taskListTool(dependencies, context));
     }
-    if (context.personaId === "zhiwei" && TASK_CREATE_CUE.test(instruction)) {
+    if (context.personaId === "clownfish" && TASK_CREATE_CUE.test(instruction)) {
       tools.push(taskCreateTool(dependencies, context));
     }
-    if (context.personaId === "zhiwei" && SKILL_INSTALL_CUE.test(instruction)) {
+    if (context.personaId === "clownfish" && SKILL_INSTALL_CUE.test(instruction)) {
       tools.push(skillInstallTool(dependencies, context));
     }
     if (
-      context.personaId === "zhiwei" &&
+      context.personaId === "clownfish" &&
       DELEGATION_CUE.test(instruction) &&
       dependencies.listPersonas &&
       dependencies.enqueueOrchestration
@@ -185,7 +185,7 @@ function taskCreateTool(
       const ability = existing
         ? runtime.snapshot().abilities.find((item) => item.id === existing.id)!
         : runtime.createGeneratedAbility({
-          personaId: "zhiwei",
+          personaId: "clownfish",
           name: title,
           goal: instruction,
           defaultFormat: format,
@@ -195,7 +195,7 @@ function taskCreateTool(
       if (input.createRecurringTask === true) {
         task = runtime.createTask({
           title,
-          personaId: "zhiwei",
+          personaId: "clownfish",
           capabilityId: ability.id,
           instruction,
           format,
@@ -223,7 +223,7 @@ function skillInstallTool(
     definition: {
       name: "skill_install",
       description:
-        "Install or update a reusable SKILL.md for Zhiwei. Use only when the user explicitly asks to install or import a Skill. Prefer sourceUrl or sourcePath; do not copy sourceText when a URL or path exists. This downloads or reads content and changes local files, so it requires confirmation.",
+        "Install or update a reusable SKILL.md for Clownfish. Use only when the user explicitly asks to install or import a Skill. Prefer sourceUrl or sourcePath; do not copy sourceText when a URL or path exists. This downloads or reads content and changes local files, so it requires confirmation.",
       inputSchema: {
         type: "object",
         properties: {
@@ -297,7 +297,7 @@ function delegationCreateTool(
     definition: {
       name: "agent_delegation_create",
       description:
-        "Delegate one bounded objective to 2-4 distinct expert personas, then require Zhiwei to synthesize and review their artifacts. Use only when the work genuinely benefits from independent perspectives or parallel verification. Never use for a simple single-person task.",
+        "Delegate one bounded objective to 2-4 distinct expert personas, then require Clownfish to synthesize and review their artifacts. Use only when the work genuinely benefits from independent perspectives or parallel verification. Never use for a simple single-person task.",
       inputSchema: {
         type: "object",
         properties: {
@@ -320,7 +320,7 @@ function delegationCreateTool(
           },
           synthesisInstruction: {
             type: "string",
-            description: "Optional criteria for Zhiwei's final review and synthesis",
+            description: "Optional criteria for Clownfish's final review and synthesis",
           },
         },
         required: ["objective", "assignments"],
@@ -385,7 +385,7 @@ function delegationCreateTool(
       }));
       tasks.push({
         id: "synthesis",
-        title: "知微复核与汇总",
+        title: "小丑鱼复核与汇总",
         instruction: synthesisInstruction || [
           "复核各专家交付物，指出一致结论、关键分歧、证据缺口和风险。",
           "只保留能由交付物支持的结论，形成一份可直接给用户使用的最终结果。",
