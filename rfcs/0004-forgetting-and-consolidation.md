@@ -2,7 +2,7 @@
 rfc_number: 0004
 title: Forgetting & Consolidation — FSRS Decay + Reflect Job + Sensitivity Defaults + Output Tiers
 authors:
-  - nemos founding team
+  - Nemos contributors
 status: implemented
 created_at: 2026-06-05
 updated_at: 2026-08-06

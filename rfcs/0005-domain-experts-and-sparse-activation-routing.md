@@ -2,7 +2,7 @@
 rfc_number: 0005
 title: Domain Experts & Sparse Activation Routing
 authors:
-  - nemos team
+  - Nemos contributors
 status: implemented
 created_at: 2026-06-15
 updated_at: 2026-08-06
@@ -52,7 +52,7 @@ Nemos 现有 5 层（episodic / semantic / personal_semantic / procedural / arch
 
 > **智能先流动**（LLM 直接判断，零工程、能跑）→ **被现实验证后结晶成结构**（规则 / 表 / 固化条目）→ **评估迭代**。
 
-该原则分形地出现在多个层面：领域本体（记忆涌现 → split/merge 固化）、路由（LLM 路由 → 质心 → 路由表）、前瞻记忆（按需 LLM 合成 → 验证后固化，见 RFC 0006）。它既是设计美学的一致性来源，也是实现排期的依据：**每个能力都先用 LLM 发车，再逐步结晶兜底**。其对称面——**反固化（de-crystallization）**，即过时的结晶结构如何退场——见 Unresolved Questions。
+该原则分形地出现在多个层面：领域本体（记忆涌现 → split/merge 固化）、路由（LLM 路由 → 质心 → 路由表）、前瞻记忆（按需 LLM 合成 → 验证后固化，见 RFC 0006）。它既是设计美学的一致性来源，也是实现排期的依据：**每个能力先由 LLM 提供初始路径，再逐步固化稳定规则**。其对称面——**反固化（de-crystallization）**，即过时的结晶结构如何退场——见 Unresolved Questions。
 
 ## 1. 三轴正交模型
 
@@ -110,7 +110,7 @@ RouterProvider {
 
 | 阶段 | 实现 | 适用 | 角色 |
 |---|---|---|---|
-| 保底 | `LLMRouter`：领域清单 + query 交 LLM 选 top-k | 冷启动 / 领域数少（<~8） | v1 直接发车 |
+| 初始路径 | `LLMRouter`：领域清单 + query 交 LLM 选 top-k | 冷启动 / 领域数少（<~8） | v1 初始实现 |
 | 热路径 | `CentroidRouter`：q_vec · prototype_vec，纯数值 top-k | 中等规模 | 守 100ms；LLM 退到 reflect 离线校正质心 |
 | 大规模 | `HybridRouter`：质心 + **路由表**（entity/keyword → domain 硬触发） | 领域多、质心区分度下降 | 规则提供确定性锚点，质心兜其余 |
 
@@ -237,7 +237,7 @@ domain_affinity {
 
 # Prior Art
 
-- **DeepSeekMoE（2024）**：shared-expert isolation —— L0 共享层的直接来源。
+- **DeepSeekMoE（2024）**：shared-expert isolation —— L0 共享层的相关研究。
 - **Sparsely-Gated MoE（Shazeer et al. 2017）**：top-k gating、expert collapse 与负载均衡问题。
 - **Fuzzy c-means**：soft membership 的经典原型。
 - **mem0 / Letta**：单层/统一存储方案在规模增长下的概念污染，作为反例。

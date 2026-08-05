@@ -2,7 +2,7 @@
 rfc_number: 0003
 title: Production Pipeline — Background Queue + Multi-Perspective + Cross-Memory Linking
 authors:
-  - nemos founding team
+  - Nemos contributors
 status: implemented
 created_at: 2026-06-05
 updated_at: 2026-08-06

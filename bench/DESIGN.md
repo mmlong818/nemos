@@ -10,7 +10,7 @@
 2. **被 AI 自己污染**:陪伴/agent 场景里,AI 自己虚构或推断的内容,被错当成"用户事实"存进去、之后当真返回。
 3. **不会遗忘**:琐碎/过期信息无限堆积,挤占检索、拉低精度。
 
-MnemoBench 把这三件事变成可量化任务。它**不**测通用召回(那是 LOCOMO 的主场),而是测"记忆的可信演化"。一个系统通用召回再高,这三项垮掉,长期使用就会"踩雷"。
+MnemoBench 将这三类问题转化为可量化任务。它不重复 LOCOMO 等基准的通用召回评测，而是测量记忆能否可信地演化。即使通用召回较高，这三类失败仍会影响长期使用可靠性。
 
 ## 1. 设计原则
 
@@ -25,7 +25,7 @@ MnemoBench 把这三件事变成可量化任务。它**不**测通用召回(那�
 
 **考什么**:某用户属性在多个会话里变化 1–3 次。系统被问"当前值"时,必须返回最新值,不能把旧值当现状。
 
-> **有效性约束(v0.1.1 修正)**:BUC 只用**单值、互斥**属性 —— 同一时刻只能有一个值为真,新值使旧值为假(employer/city/diet/relationship_status/job_title/gym/phone_brand/neighborhood/commute_mode/current_car)。**排除可并存的加性属性**(pet/favorite_cuisine/primary_hobby/exercise_routine/streaming_service:一个人可以同时养猫又养狗、既爱意餐又爱墨餐)。原因:加性属性的旧值与新值并不矛盾,把旧值标成 `forbidden` 是无效测试项——失效机制正确地拒绝失效"喜欢意餐"(因为它与"喜欢墨餐"可共存),却会被误判为踩雷。早期混入加性属性导致 n=50 的 v2 SLR 虚高约一倍,修正后重测。
+> **有效性约束(v0.1.1 修正)**:BUC 只用**单值、互斥**属性 —— 同一时刻只能有一个值为真,新值使旧值为假(employer/city/diet/relationship_status/job_title/gym/phone_brand/neighborhood/commute_mode/current_car)。**排除可并存的加性属性**(pet/favorite_cuisine/primary_hobby/exercise_routine/streaming_service:一个人可以同时养猫又养狗、既爱意餐又爱墨餐)。原因:加性属性的旧值与新值并不矛盾,把旧值标成 `forbidden` 是无效测试项——失效机制正确地拒绝失效"喜欢意餐"(因为它与"喜欢墨餐"可共存),却会被误判为失效泄漏。早期混入加性属性导致 n=50 的 v2 SLR 虚高约一倍,修正后重测。
 
 **样本结构**:
 - `sessions`: 多个会话,按时间推进,中途出现属性变更陈述("我离开 Google 了,现在在 OpenAI")。可夹无关干扰陈述。

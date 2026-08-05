@@ -1,97 +1,62 @@
-# Nemos RFCs
+# Nemos RFC
 
-> RFC（Request for Comments）是 Nemos 重大变更的公开讨论与归档流程。
-> 灵感来自 Rust RFC、Python PEP、Kubernetes KEP。
->
-> 状态复核：2026-08-06。RFC 是决策历史；当前接口仍以 SDK 类型、README 和测试为准。
+RFC（Request for Comments）用于记录影响公开接口、数据模型、安全边界或长期兼容性的设计决策。
 
----
+当前接口以 SDK 类型、README、测试和发布记录为准；RFC 解释决策背景和演进方向。
 
-## 什么时候必须写 RFC
+## 需要 RFC 的变化
 
-| 变更类型 | RFC 必需 | 备注 |
-|---|---|---|
-| Schema 破坏性变更 | ✅ | 必须含迁移路径 |
-| 协议（REST / MCP / SDK contract）变更 | ✅ | |
-| 新接入面 / 新 SKU | ✅ | |
-| 新核心能力（如新存储层） | ✅ | |
-| License 变更 | ✅ | 60 天 + 现存 contributor 全员同意 |
-| Governance 变更 | ✅ | 60 天讨论 |
-| 商业化决策 | ✅ | 60 天讨论 |
-| 默认依赖变更（如换 vector DB） | ✅ | 影响所有 SKU |
+| 变更 | 要求 |
+| --- | --- |
+| 破坏性 Schema 变化 | 迁移路径、兼容性测试和回滚说明 |
+| 公开 API 或协议变化 | 接口设计、替代方案和升级影响 |
+| 新存储层或核心生命周期 | 数据边界、失败模式和验证方法 |
+| 用户隔离、权限或安全边界 | 威胁分析和回归测试 |
+| 许可证或治理变化 | 影响说明和维护者明确批准 |
 
-## 什么时候不需要 RFC
+Bug 修复、文档勘误、向后兼容的小功能、测试和翻译通常可以直接通过 Issue 或 PR 讨论。
 
-| 变更类型 | 直接 PR 即可 |
-|---|---|
-| Bug fix | ✅ |
-| 文档勘误 / 补充 | ✅ |
-| Schema 字段新增（向后兼容） | 轻量讨论 issue 即可 |
-| 性能优化（不改 API） | ✅ |
-| 测试覆盖 | ✅ |
-| 翻译 | ✅ |
+## 流程
 
-不确定？先开 issue 问，maintainer 会判断是否需要升级为 RFC。
+1. 通过 Issue 描述问题、目标和约束；
+2. 复制 [RFC 模板](0000-template.md)；
+3. 提交设计、替代方案、风险和未决问题；
+4. 根据评审意见修订；
+5. 接受后分配正式编号并合并；
+6. 实现完成后更新状态和关联资料。
 
----
-
-## RFC 流程
-
-```
-1. 想法 / Issue 讨论
-        ↓
-2. 复制 0000-template.md 到 0000-<slug>.md（保持 0000 编号占位）
-        ↓
-3. 提交 PR：rfc/<slug>
-        ↓
-4. 公开讨论期（轻量 14d / 重大 30d / 治理 60d）
-        ↓
-5. Maintainer 决策：
-   - Accept   → 分配正式编号 → merge 进 main → 状态 accepted
-   - Withdraw → close PR     → 归档 withdrawn/
-   - Defer    → 留 PR open   → 进入 deferred
-        ↓
-6. （Accepted 后）实施 PR 关联本 RFC
-        ↓
-7. 实施完成 → 更新 RFC 状态为 implemented
-```
-
-## 编号规则
-
-- `0000-template.md`：模板，永不分配
-- `0001` 起按 accepted 顺序递增
-- Withdrawn 的 RFC 保留编号，避免后续编号混淆
-- Deferred 的 RFC 保留编号
+讨论时间根据影响范围决定，不使用固定时长代替实际评审。
 
 ## 状态
 
-- `draft` — PR open，公开讨论中
-- `accepted` — merge 进 main，未实施
-- `implemented` — 已实施
-- `withdrawn` — 提案人或 maintainer 撤回
-- `superseded` — 被后续 RFC 替代（必须标 superseded-by）
-- `deferred` — 不否定但暂不推进
+- `draft`：讨论中；
+- `accepted`：设计已接受，尚未完全实现；
+- `implemented`：核心方案已实现；
+- `withdrawn`：提案已撤回；
+- `superseded`：已被后续 RFC 替代；
+- `deferred`：保留但暂不推进。
 
-## 编写规范
+## 编写要求
 
-参考 `0000-template.md`。要点：
-- **Motivation 必写**：为什么必须做这件事，不做会怎样
-- **Detailed Design**：具体到 schema 字段 / API 签名 / 协议消息
-- **Drawbacks**：诚实列出代价
-- **Alternatives**：至少 2 个其他方案 + 为什么本方案胜出
-- **Unresolved questions**：明示哪些子问题留作未决
+RFC 至少包含：
 
----
+- Motivation：需要解决的问题；
+- Detailed Design：数据、接口和行为；
+- Security and Privacy：权限与数据影响；
+- Drawbacks：代价和限制；
+- Alternatives：其他可行方案；
+- Compatibility：迁移和回滚；
+- Unresolved Questions：尚未决定的事项。
 
-## 现有 RFCs
+## 现有 RFC
 
 | 编号 | 标题 | 状态 |
-|---|---|---|
-| 0001 | Nemos Design Principles | accepted（founding document） |
-| 0002 | Scenario Profiles & Content Awareness | implemented |
-| 0003 | Production Pipeline | implemented |
-| 0004 | Forgetting & Consolidation | implemented（优化缺口见正文） |
-| 0005 | Domain Experts & Sparse Activation Routing | implemented（规模基准待补） |
-| 0006 | Prospective Memory & Prediction-Verification Loop | draft（未成为公开契约） |
-| 0007 | Bi-Temporal Validity & Invalidation Semantics | implemented（扁平物化状态） |
-| 0008 | Companion Memory Topology — Relational Visibility & Persona Self-State | implemented |
+| --- | --- | --- |
+| [0001](0001-nemos-design-principles.md) | Nemos Design Principles | accepted |
+| [0002](0002-scenario-profiles-and-content-awareness.md) | Scenario Profiles & Content Awareness | implemented |
+| [0003](0003-production-pipeline.md) | Production Pipeline | implemented |
+| [0004](0004-forgetting-and-consolidation.md) | Forgetting & Consolidation | implemented |
+| [0005](0005-domain-experts-and-sparse-activation-routing.md) | Domain Experts & Sparse Activation Routing | implemented |
+| [0006](0006-prospective-memory-and-prediction-verification-loop.md) | Prospective Memory & Prediction-Verification Loop | draft |
+| [0007](0007-bitemporal-validity-and-invalidation.md) | Bi-Temporal Validity & Invalidation Semantics | implemented |
+| [0008](0008-companion-memory-topology.md) | Multi-Role Memory Visibility and Self-State Isolation | implemented |

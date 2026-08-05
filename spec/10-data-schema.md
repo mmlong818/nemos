@@ -18,7 +18,7 @@
 | §3 | day-1 必锁的 12 个字段（误锁迁移代价） |
 | §4 | 三维元数据完整定义 |
 | §5 | 关系字段（双向链 / corrects） |
-| §6 | 错误标注（来自 ECC v2 实战） |
+| §6 | 错误标注 |
 | §7 | scope + ownership 模型 |
 | §8 | Lifetime Period 字段（创作者 persona 用） |
 | §9 | 衰减字段 + FSRS 接口 |
@@ -247,7 +247,7 @@ Attachment:
 
 ### 2.3 Personal Semantic Store（关于"我"的事实层）
 
-**这是 SC6（AI 是仆人不是代理）的最严格区**——任何 LLM 推断永不自动写入这里（I4 + I9 不变量）。
+**这是来源与用户控制约束最严格的区域**——任何 LLM 推断永不自动写入这里（I4 + I9 不变量）。
 
 继承所有 §2.0 公共字段，叠加：
 
@@ -431,7 +431,7 @@ ShareDecision:
 | 4 | `schema_version` 字段名 + SemVer 语义 | string；新增 record 必带 | 读取方按版本路由的能力废掉 → 兼容性承诺被推翻 |
 | 5 | `source.kind` 枚举 | `authoritative` \| `derived` | I4 不变量（Personal Semantic 不接 derived）失效 → SC6 被推翻 |
 | 6 | `source.chain_depth` 单调递增 | int，写入时只能递增 | R8 信号失效；防 AI 自污染机制崩 |
-| 7 | `source.authoritative` bool（ECC v2 遗留） | bool；与 `kind == authoritative` 等价 | 与 ECC v2 兼容性断 → 已有用户数据无法 import |
+| 7 | `source.authoritative` bool（兼容旧版本） | bool；与 `kind == authoritative` 等价 | 旧数据兼容性中断 → 已有用户数据无法导入 |
 | 8 | `archival_ref` 字段名 + content-addressed | string；指向 archival.id | immutable 原始层 day-1 ；一变所有 supersede 链失效 |
 | 9 | `period_id` 字段名 + 类型 | string ULID；nullable | 时间旅行查询失效；创作者 persona 用 |
 | 10 | `ownership.kind` 枚举 | `self` \| `relational` \| `public` | relational store 字段错位 → 跨 user 共享全断 |
@@ -512,7 +512,7 @@ source:
     type: bool
     required: true
     e2ee_visibility: server
-    notes: 与 kind 冗余，ECC v2 遗留字段，二者必须一致
+    notes: 与 kind 冗余，旧版本兼容字段，二者必须一致
   confidence:
     type: float (0-1)
     required: true
@@ -619,7 +619,7 @@ surprise:
 
 ## 5. 关系字段 + 双向链
 
-### 5.1 `corrects` / `corrected_by`（ECC v2 实战字段）
+### 5.1 `corrects` / `corrected_by`
 
 ```yaml
 corrects:
@@ -671,9 +671,9 @@ supersedes:
 
 ---
 
-## 6. 错误标注（来自 ECC v2 实战）
+## 6. 错误标注
 
-ECC v2 dogfood 6 个月发现：用户纠正分两类——"永远错"和"特定 context 下错"。Schema 必须能区分。
+用户纠正可以分为两类：“普遍错误”和“仅在特定上下文中错误”。Schema 需要区分这两种情况。
 
 ### 6.1 `wrong_scope` + `wrong_behavior` + `correction_context`
 
@@ -699,9 +699,9 @@ correction_context:
   notes: 在什么情境下错（架构版本、任务类型、特定 agent 等）
 ```
 
-### 6.2 ECC v2 → Nemos 字段映射
+### 6.2 旧格式 → Nemos 字段映射
 
-| ECC v2 字段 | Nemos 字段 |
+| 旧格式字段 | Nemos 字段 |
 |---|---|
 | `scope` (global / project:X / task:X) | `scope_id` (见 §7) |
 | `source.authoritative: bool` | `source.kind` + `source.authoritative` 双写（兼容） |
@@ -715,13 +715,13 @@ correction_context:
 | `stability` | `fsrs.stability` |
 | `private_zone` | `flags.private_zone` |
 
-ECC v2 用户从单租户 markdown 迁到 Nemos 时，import adapter 走此映射表自动转换（见 §10.6）。
+从旧版单租户 Markdown 迁移到 Nemos 时，导入适配器按此映射表转换（见 §10.6）。
 
 ---
 
 ## 7. Scope + Ownership
 
-### 7.1 `scope_id` 三段式语义（来自 ECC v2 D4 + Companion §2.3）
+### 7.1 `scope_id` 三段式语义
 
 ```yaml
 scope_id:
@@ -1109,7 +1109,7 @@ flags.surface_cooldown_reason:
 
 ### 10.4 Markdown 双轨
 
-每条 record 同时输出 markdown（用户在无 Nemos 时也能读，与 ECC v2 兼容）：
+每条记录同时输出 Markdown，便于在不依赖 Nemos 的情况下读取：
 
 ```markdown
 ---
@@ -1181,19 +1181,19 @@ nemos-export-20260601/
 └── checksums.sha256
 ```
 
-### 10.6 Import adapter（从 ECC v2 / mem0 / Letta）
+### 10.6 Import adapter（从旧版 Markdown / mem0 / Letta）
 
 每个 import adapter 是独立小程序（`nemos import --from=ecc-v2 --path=...`），由 Nemos CLI 提供：
 
 | 源 | 路径 |
 |---|---|
-| ECC v2 markdown | `nemos-import-ecc-v2` |
+| 旧版 Markdown | `nemos-import-legacy` |
 | mem0 export | `nemos-import-mem0`（社区贡献） |
 | Letta archive | `nemos-import-letta`（社区贡献） |
 | Memory-Palace | `nemos-import-memory-palace`（社区贡献） |
 
 Adapter 责任：
-- 字段映射（见 §6.2 for ECC v2）
+- 字段映射（见 §6.2）
 - 缺失字段填默认（`source.kind` 推断 / `scope_id` 默认 `"global"`）
 - 完整性校验（sha256 重算）
 - 写入失败 → 输出 reject_log.jsonl 报告

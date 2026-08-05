@@ -2,7 +2,7 @@
 rfc_number: 0006
 title: Prospective Memory & Prediction-Verification Loop
 authors:
-  - nemos team
+  - Nemos contributors
 status: draft
 created_at: 2026-06-15
 updated_at: 2026-08-06
@@ -37,7 +37,7 @@ procedural 层虽指向未来行为，但它只承载**已稳定的习惯**；�
 
 | 原则 | 本 RFC 的兼容方式 |
 |---|---|
-| 原则 1（AI 是仆人不是代理） | 前瞻是建构的，恒为 `derived` / `chain_depth >= 1`，**永不冒充用户陈述**。 |
+| 原则 1（来源清晰，用户保持控制） | 前瞻是建构的，恒为 `derived` / `chain_depth >= 1`，**永不冒充用户陈述**。 |
 | 原则 3（默认衰减） | 前瞻条目复用 FSRS：长期不被触发/验证的预案衰减下沉。 |
 | 原则 5（三维元数据） | surprise 获得第二身份——**预测误差信号**。 |
 | 原则 8（reflect 非 hot-path） | 预测验证与模板修正只在 reflect 离线执行。 |
