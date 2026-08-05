@@ -37,10 +37,6 @@ Nemos Memory SDK
 - JSON-LD 与 Markdown 导出；
 - 小丑鱼本机应用和 Windows 便携客户端。
 
-## 历史规格说明
-
-`spec/` 保存了早期的平台化设计讨论，其中部分从未进入当前产品。这些内容不是当前功能、待办清单或交付承诺。
-
 ## 数据边界
 
 小丑鱼默认把数据放在本机。使用外部模型时，当前请求和必要上下文会发送给用户配置的模型服务商；使用联网来源时会访问相应网络服务。
@@ -54,4 +50,4 @@ Nemos Memory SDK
 - 集成记忆：[TypeScript SDK](../sdk/typescript/README.md)
 - 理解结构：[架构总览](architecture-overview.md)
 - 运维本机应用：[运维指南](operator-guide.md)
-- 判断资料是否仍有效：[项目资料状态](document-status.md)
+- 浏览全部资料：[文档导航](README.md)

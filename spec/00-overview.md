@@ -103,7 +103,7 @@ Nemos 同一份协议、同一份 schema、同一组 API/MCP/SDK 接口在三种
 
 ### I4. Personal Semantic 永不接收 derived
 - `source.kind = derived` 或 `chain_depth >= 1` 的记录写入 Personal Semantic store → REJECT
-- 这是 SC6（AI 是仆人不是代理）的工程铁律
+- 这是来源与用户控制原则的工程约束
 
 ### I5. Reflect 不在 hot path
 - 所有 LLM 推断 fact 只能在离线 Reflect 通道里发生
@@ -122,7 +122,7 @@ Nemos 同一份协议、同一份 schema、同一组 API/MCP/SDK 接口在三种
 - 所有 Nemos 部署必实现 §10 export schema（§10 见 `10-data-schema.md`）
 - Export tar.gz 可被任意 Nemos 部署 import，且 round-trip checksum = 0
 
-### I9. AI 是仆人不是代理（SC6 的协议层守门）
+### I9. 来源清晰，用户保持控制
 - 所有 LLM-generated fact 必标 `source.kind = derived` + `chain_depth >= 1`
 - 用户能 query "这条事实是用户说的还是 AI 推断的" → 立即返回 source
 
@@ -292,7 +292,7 @@ Nemos 用 SemVer 2.0，但额外约定：
 
 下列决议在 spec 各文件中已落地，本节作为索引：
 
-| Round 决议 | 落地位置 |
+| 当时决议 | 记录位置 |
 |---|---|
 | 决议 1（AI 调 surface 频次需授权） | schema §3 audit + REST `/forget` `/cool` 端点 |
 | 决议 2（反例必保但不主动 surface） | schema §6 contradiction policy = `preserve_counter` |

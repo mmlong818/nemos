@@ -2,7 +2,7 @@
 rfc_number: 0002
 title: Scenario Profiles + Content Awareness
 authors:
-  - nemos founding team
+  - Nemos contributors
 status: implemented
 created_at: 2026-06-04
 updated_at: 2026-08-06

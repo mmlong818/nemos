@@ -2,7 +2,7 @@
 rfc_number: 0007
 title: Bi-Temporal Validity & Invalidation Semantics
 authors:
-  - nemos team
+  - Nemos contributors
 status: implemented
 created_at: 2026-06-17
 updated_at: 2026-08-06
@@ -48,7 +48,7 @@ Nemos 现有的时间表达是**残缺的半轴**：
 
 | 原则 | 本 RFC 的兼容方式 |
 |---|---|
-| 原则 1（AI 是仆人不是代理 / I4） | personal_semantic 的失效**只能由 authoritative（用户亲述）触发**；LLM 推断永不自动失效个人事实——比矛盾失效的通用规则更严。 |
+| 原则 1（来源清晰，用户保持控制 / I4） | personal_semantic 的失效**只能由 authoritative（用户亲述）触发**；LLM 推断永不自动失效个人事实——比矛盾失效的通用规则更严。 |
 | 原则 3（默认衰减） | 失效与衰减**正交且互补**：衰减改可见性（FSRS `cold`），失效改有效性（`invalid_at`）。一条记忆可以「冷但仍为真」或「热但已失效」。 |
 | 原则 5（三维元数据 / 不可变 archival） | 失效是对**派生品**的标注，archival（I3）永不失效；失效事件挂在 `audit.mutations` 上，本身不可篡改。 |
 | 原则 8（reflect 非 hot-path） | 矛盾检测与自动失效只在 reflect / worker 离线执行；热路径只读物化字段。 |
@@ -227,7 +227,7 @@ kind: "asserted" | "invalidated" | "revalidated" | "corrected" | "superseded" | 
 
 # Prior Art
 
-- **Graphiti（getzep）**：每条边带 `valid_at` / `invalid_at`（世界轴）+ `created_at` / `expired_at`（系统轴）四时间戳，矛盾驱动失效（`resolve_extracted_edges`），MinHash/LSH 去重粗筛——本 RFC 双时间模型与矛盾失效流程的直接来源。
+- **Graphiti（getzep）**：每条边带 `valid_at` / `invalid_at`（世界轴）+ `created_at` / `expired_at`（系统轴）四时间戳，矛盾驱动失效（`resolve_extracted_edges`），MinHash/LSH 去重粗筛——本 RFC 双时间模型与矛盾失效流程的相关实现参考。
 - **SQL:2011 双时间表 / Snodgrass《Developing Time-Oriented Database Applications》**：valid-time 与 transaction-time 双轴的规范理论基础。
 - **Datomic / 事件溯源（Event Sourcing）**：事实不可变、当前态是事件流投影——§3 基底的工程范式。
 - **Nemos RFC 0004（Forgetting & Consolidation）**：失效与遗忘的边界划分对象；FSRS `cold` 复用。
@@ -245,7 +245,7 @@ kind: "asserted" | "invalidated" | "revalidated" | "corrected" | "superseded" | 
 - Step 3: 双轴 as-of 查询接入 `SearchOptions`（`asOfValid` / `asOfSystem` / `includeInvalidated`）。
 - Step 4: 失效状态机写路径（取代 / 纠错与既有 supersedes / corrects 接线）+ 物化刷新。
 - Step 5: 矛盾驱动自动失效 worker（复用 queue.ts + MinHash 粗筛 + LLM 判矛盾），默认关闭。
-  - 🟡 最小闭环已落地（2026-06-20，由 RFC 0008 陪伴 App「从不踩雷」需求驱动）：reflect **内联**识别 `invalidates`（守门仅 personal_semantic anchor）→ `storage.markInvalidated`（belief_state=invalidated + invalid_at/expired_at + corrected_by 回链）；检索默认 `belief_state='active'` 过滤（`SearchOptions.includeInvalidated` 逃生阀）；gate = `features.invalidation.enabled`（默认关）。**已补（2026-06-22）**：Jaccard 词法粗筛已接入 reflect——anchor 先过 `prefilterCandidates`（字符 bigram Jaccard）滤掉不相干候选，再送 LLM 判矛盾，省 prompt。**仍未做**：独立 worker 化（当前仍内联在 `runReflect`）。**已升级（2026-07-03）**：粗筛从词法 Jaccard 升级为语义检测器（embedding 余弦候选 + psem 同属性互斥对账），成为默认推荐路径（`v2-semantic`），词法保留为 `v1-lexical` 消融基线；「写新 + 失效旧」并入 `storage.transaction` 单事务。MinHash/LSH 不再计划（语义候选检索替代其职能）。
+  - 🟡 最小闭环已落地（2026-06-20，由 RFC 0008 的失效事实保护需求驱动）：reflect **内联**识别 `invalidates`（守门仅 personal_semantic anchor）→ `storage.markInvalidated`（belief_state=invalidated + invalid_at/expired_at + corrected_by 回链）；检索默认 `belief_state='active'` 过滤（`SearchOptions.includeInvalidated` 逃生阀）；gate = `features.invalidation.enabled`（默认关）。**已补（2026-06-22）**：Jaccard 词法粗筛已接入 reflect——anchor 先过 `prefilterCandidates`（字符 bigram Jaccard）滤掉不相干候选，再送 LLM 判矛盾，省 prompt。**仍未做**：独立 worker 化（当前仍内联在 `runReflect`）。**已升级（2026-07-03）**：粗筛从词法 Jaccard 升级为语义检测器（embedding 余弦候选 + psem 同属性互斥对账），成为默认推荐路径（`v2-semantic`），词法保留为 `v1-lexical` 消融基线；「写新 + 失效旧」并入 `storage.transaction` 单事务。MinHash/LSH 不再计划（语义候选检索替代其职能）。
 - Step 6: `nemos verify --rematerialize` 一致性兜底 + 时间旅行 eval fixture + E2EE 客户端路径。
 
 预计里程碑：对齐 ROADMAP v0.6，可在 RFC 0005/0006 之后独立推进。
