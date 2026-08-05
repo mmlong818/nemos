@@ -51,3 +51,42 @@ test("English capability prompts use task mode and its long-output budget", asyn
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
+
+test("ordinary chat omits the full capability catalog until the user asks for it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-capability-context-"));
+  const systems: string[] = [];
+  let capabilityReads = 0;
+  const chat: ChatFn = async (system) => {
+    systems.push(system);
+    return "done";
+  };
+  const memory = new Nemos({
+    storage: { type: "sqlite", path: join(dir, "memory.db") },
+    llm: makeMockLLMConfig(),
+    features: { doubleCheck: false },
+    worker: { manualWorker: true },
+  });
+  const engine = new CompanionEngine(memory, [{
+    id: "clownfish",
+    name: "小丑鱼",
+    persona: "可靠的个人助理。",
+  }], chat, {
+    capabilityContext: () => {
+      capabilityReads++;
+      return "- 写正式文档：生成可编辑文档";
+    },
+  });
+
+  try {
+    await engine.notify("me", "clownfish", "今天有点累", { memoryMode: "off" });
+    assert.equal(capabilityReads, 0);
+    assert.doesNotMatch(systems[0] ?? "", /写正式文档/);
+
+    await engine.notify("me", "clownfish", "你有哪些能力？", { memoryMode: "off" });
+    assert.equal(capabilityReads, 1);
+    assert.match(systems[1] ?? "", /写正式文档/);
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});

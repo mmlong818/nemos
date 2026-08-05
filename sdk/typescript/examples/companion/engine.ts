@@ -135,7 +135,7 @@ interface Turn {
   voice: boolean;
 }
 
-const RECENT_MAX = 8;
+const RECENT_MAX = 24;
 const SELF_LAYER = "episodic" as const;
 const SELF_SCOPE = "self";
 const WORK_MAX_REPLY_TOKENS = 6000;
@@ -308,12 +308,13 @@ export class CompanionEngine {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
 
-    await this.ingestUtterance(userId, scope, text, personaId, opts);
+    await this.ensureRecentHistory(userId, personaId);
+    await this.ingestUtterance(userId, scope, text, opts);
 
     const count = this.bumpTurns(userId, personaId);
     const context = await this.recall(userId, personaId, text);
     const reply = await this.chat(
-      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text)),
+      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text),
       this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice),
       opts.model || persona.chatModel,
       persona.maxReplyTokens,
@@ -336,10 +337,11 @@ export class CompanionEngine {
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
-    await this.ingestUtterance(userId, scope, text, personaId, opts);
+    await this.ensureRecentHistory(userId, personaId);
+    await this.ingestUtterance(userId, scope, text, opts);
     const count = this.bumpTurns(userId, personaId);
     const context = await this.recall(userId, personaId, text);
-    const system = this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text));
+    const system = this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text);
     const userMsg = this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice);
     let reply: string;
     if (this.opts.chatStream) {
@@ -378,6 +380,9 @@ export class CompanionEngine {
     const targetScope = this.visibleScopes(userId, personaId).includes(scope)
       ? scope
       : convScope(userId, personaId);
+    if (!targetScope.startsWith("conv:group:")) {
+      await this.ensureRecentHistory(userId, personaId);
+    }
     await this.ingestPersonaReply(personaId, targetScope, reply);
     if (targetScope.startsWith("conv:group:")) {
       const groupId = targetScope.slice("conv:group:".length);
@@ -391,20 +396,21 @@ export class CompanionEngine {
     userId: string,
     personaId: string,
     text: string,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
+    await this.ensureRecentHistory(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
     const reply = await this.chat(
       workMode
-        ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)))
-        : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false),
+        ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), text)
+        : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false, text),
       workMode
         ? this.buildWorkUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text)
         : this.buildProactiveUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text),
-      persona.chatModel,
+      workMode ? persona.chatModel : (opts.model || persona.chatModel),
       workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens,
       this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
     );
@@ -422,15 +428,16 @@ export class CompanionEngine {
     personaId: string,
     text: string,
     cb: StreamCb,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
+    await this.ensureRecentHistory(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
     const system = workMode
-      ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)))
-      : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false);
+      ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), text)
+      : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false, text);
     const userMsg = workMode
       ? this.buildWorkUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text)
       : this.buildProactiveUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text);
@@ -440,14 +447,14 @@ export class CompanionEngine {
           system,
           userMsg,
           cb,
-          persona.chatModel,
+          workMode ? persona.chatModel : (opts.model || persona.chatModel),
           maxTokens,
           this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
         )
       : await this.chat(
           system,
           userMsg,
-          persona.chatModel,
+          workMode ? persona.chatModel : (opts.model || persona.chatModel),
           maxTokens,
           this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
         );
@@ -472,11 +479,12 @@ export class CompanionEngine {
     opts: SendOptions = {},
   ): Promise<CompanionReply[]> {
     const members = this.groupMembers(groupId);
-    const responderIds = new Set(selectGroupResponderIds(members.map((p) => p.id), opts.groupRoute));
-    const responders = members.filter((p) => responderIds.has(p.id));
+    const responderIds = selectGroupResponderIds(members.map((p) => p.id), opts.groupRoute);
+    const membersById = new Map(members.map((persona) => [persona.id, persona]));
+    const responders = responderIds.map((id) => membersById.get(id)).filter((persona): persona is Persona => !!persona);
     const scope = groupScope(groupId);
 
-    await this.ingestUtterance(userId, scope, text, undefined, opts);
+    await this.ingestUtterance(userId, scope, text, opts);
     this.pushRecent(this.groupRecent, groupId, "对方", text, !!opts.voice);
 
     const replies: CompanionReply[] = [];
@@ -484,7 +492,7 @@ export class CompanionEngine {
       const context = await this.recall(userId, p.id, text);
       const participation = groupParticipationFor(p.id, opts.groupRoute);
       const raw = await this.chat(
-        this.buildSystem(p, context, this.relSetting.get(this.rkey(userId, p.id)), this.turnsOf(userId, p.id), detectCrisis(text)),
+        this.buildSystem(p, context, this.relSetting.get(this.rkey(userId, p.id)), this.turnsOf(userId, p.id), detectCrisis(text), text),
         this.buildGroupUser(
           groupId,
           p,
@@ -515,33 +523,52 @@ export class CompanionEngine {
     query: string,
     memoryMode: "default" | "preferences" | "off" = "default",
   ): Promise<RecallResult> {
-    const userFacts = memoryMode === "off"
-      ? ""
+    const userFactsPromise = memoryMode === "off"
+      ? Promise.resolve("")
       : memoryMode === "preferences"
-        ? await this.recallPreferences(userId, personaId, query)
-        : await this.nemos.forUser(userId).getRelevantContext(query, {
-            scopes: this.visibleScopes(userId, personaId),
-          });
+        ? this.recallPreferences(userId, personaId, query)
+        : this.recallUserFacts(userId, personaId, query);
     // 块2 = 角色自己的记忆库：
     //  - 基础记忆（scope=bio）：背景事实（取代 prompt 里的具体设定），全量带上（每角色小集合）
     //  - 种入的近况（scope=self）
     //  - 它在本关系里说过的原话（archival 原文，最近几条）→ 保持前后一致
-    const selfSnapshots = await Promise.all(personaIdentityAliases(personaId).map(async (id) => {
+    const selfSnapshotsPromise = Promise.all(personaIdentityAliases(personaId).map(async (id) => {
       const self = this.nemos.forUser(personaNamespace(id));
       const scope = convScope(userId, id);
       const [bio, seeded, said] = await Promise.all([
         self.listByLayer("personal_semantic", { scope: BIO_SCOPE, limit: 50 }),
         self.listByLayer(SELF_LAYER, { scope: SELF_SCOPE, limit: 3 }),
-        self.listByLayer("archival", { scope, limit: 5 }),
+        self.listByLayer("archival", { scope, limit: 12 }),
       ]);
       return { bio, seeded, said };
     }));
-    const selfState = [
+    const [rawUserFacts, selfSnapshots] = await Promise.all([userFactsPromise, selfSnapshotsPromise]);
+    const userFacts = this.normalizePersonaReferences(rawUserFacts);
+    const selfLines = [
       ...selfSnapshots.flatMap((snapshot) => snapshot.bio.map((m) => m.content.trim())),
       ...selfSnapshots.flatMap((snapshot) => snapshot.seeded.map((m) => m.content.trim())),
       ...selfSnapshots.flatMap((snapshot) => snapshot.said.map((m) => `（我曾说过）${m.content.trim().slice(0, 140)}`)),
-    ].filter(Boolean).join("\n");
+    ].filter(Boolean);
+    const selfState = this.normalizePersonaReferences([...new Set(selfLines)].join("\n"));
     return { userFacts, selfState };
+  }
+
+  private async recallUserFacts(userId: string, personaId: string, query: string): Promise<string> {
+    const packet = await this.nemos.forUser(userId).recall(query, {
+      scopes: this.visibleScopes(userId, personaId),
+      maxResults: 12,
+    });
+    const persona = this.requirePersona(personaId);
+    const legacyNames = [persona.id, persona.name, ...(persona.id === "feifei" ? ["飞飞"] : [])];
+    const contents = packet.items
+      .filter(({ memory }) => {
+        const origin = memory.source.origin_agent;
+        if (!origin || !personaIdentityAliases(personaId).includes(origin)) return true;
+        return !legacyNames.some((name) => memory.content.toLocaleLowerCase().includes(name.toLocaleLowerCase()));
+      })
+      .map(({ memory, excerpt }) => this.normalizePersonaReferences((excerpt || memory.content).trim()))
+      .filter(Boolean);
+    return [...new Set(contents)].map((content) => `- ${content}`).join("\n");
   }
 
   private async recallPreferences(userId: string, personaId: string, query: string): Promise<string> {
@@ -565,16 +592,53 @@ export class CompanionEngine {
 
   // ——— 私有 ———
 
+  private async ensureRecentHistory(userId: string, personaId: string): Promise<void> {
+    const key = this.rkey(userId, personaId);
+    if (this.recent.has(key)) return;
+    const scope = convScope(userId, personaId);
+    const persona = this.requirePersona(personaId);
+    const [userTurns, personaTurns] = await Promise.all([
+      this.nemos.forUser(userId).listByLayer("archival", { scope, limit: RECENT_MAX }),
+      this.nemos.forUser(personaNamespace(personaId)).listByLayer("archival", { scope, limit: RECENT_MAX }),
+    ]);
+    const restored = [
+      ...userTurns.map((memory) => ({
+        speaker: "对方",
+        text: memory.content,
+        voice: memory.source?.scenario === "voice-transcript",
+        createdAt: memory.created_at,
+      })),
+      ...personaTurns.map((memory) => ({
+        speaker: persona.name,
+        text: this.normalizePersonaReferences(memory.content),
+        voice: false,
+        createdAt: memory.created_at,
+      })),
+    ]
+      .filter((turn) => turn.text.trim())
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(-RECENT_MAX)
+      .map(({ createdAt: _createdAt, ...turn }) => turn);
+    this.recent.set(key, restored);
+  }
+
+  private normalizePersonaReferences(value: string): string {
+    let normalized = value.replace(/飞飞/g, "菲菲");
+    for (const persona of this.personas.values()) {
+      const id = persona.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      normalized = normalized.replace(new RegExp(`\\b${id}\\b`, "gi"), persona.name);
+    }
+    return normalized;
+  }
+
   private async ingestUtterance(
     userId: string,
     scope: string,
     text: string,
-    originAgent: string | undefined,
     opts: SendOptions,
   ): Promise<void> {
     await this.nemos.forUser(userId).ingest(text, {
       scope,
-      originAgent,
       // 语音条走 SDK voice-transcript profile（异步语音的文本侧）；该 profile 不标 sensitive。
       ...(opts.voice ? { scenario: "voice-transcript" } : {}),
       // 在线服务：抽取移后台，回复不等它（记忆下一轮可用）。
@@ -592,7 +656,7 @@ export class CompanionEngine {
     await this.nemos.forUser(personaNamespace(personaId)).ingest(reply, {
       scope,
       originAgent: personaId,
-      ...(this.opts.asyncIngest ? { background: true } : {}),
+      skipAnalysis: true,
     });
   }
 
@@ -658,7 +722,14 @@ export class CompanionEngine {
     ];
   }
 
-  private buildSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined, turnCount = 0, crisis = false): string {
+  private buildSystem(
+    persona: Persona,
+    ctx: RecallResult,
+    relSetting: string | undefined,
+    turnCount = 0,
+    crisis = false,
+    instruction = "",
+  ): string {
     return [
       ...(crisis ? [SAFETY_PREAMBLE] : []), // 危机信号 → 顶置强制安全指令，凌驾人设
       persona.persona, // 人设已自我介绍（「你是X，…」），不重复加前缀
@@ -671,7 +742,7 @@ export class CompanionEngine {
       `【当前时间】${currentTimeBlock()}`,
       `涉及日期、星期、今天/明天/下周、截止时间或预约时间时，以这里的本机时间为准。`,
       `如果 ta 没给具体日期，不要凭空假设某个星期几；要么问清楚，要么明确写"日期待确认"。`,
-      ...this.capabilityContextBlock(persona),
+      ...this.capabilityContextBlock(persona, instruction),
       ``,
       this.buildStyle(persona, turnCount),
       ``,
@@ -696,6 +767,7 @@ export class CompanionEngine {
       `要分点就用"1. 2. 3."或"·"加短句，像在微信里发消息一样自然。`,
       ``,
       `下面两类信息规则不同，别混用：`,
+      `记忆归属是硬边界："对方 / 用户 / ta"始终指正在聊天的用户；「${persona.name}」始终指你自己。不要把用户经历说成你的，也不要把你的经历安到用户身上。`,
       ``,
       `【关于对方的事实】你确实知道的、关于对方的真相。只用这里有的，不要编造；`,
       `这里不会出现已被纠正 / 失效的旧事实，可放心引用。`,
@@ -709,7 +781,7 @@ export class CompanionEngine {
     ].join("\n");
   }
 
-  private buildWorkSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined): string {
+  private buildWorkSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined, instruction = ""): string {
     return [
       persona.persona,
       ``,
@@ -726,7 +798,7 @@ export class CompanionEngine {
       `Do not invent weekdays, dates, deadlines, booking times, or recurrence limits. If the user did not specify a date/time, mark it as missing or ask for it.`,
       `If reliable access is unavailable, downgrade clearly, give verification links or integration steps, and do not fabricate.`,
       `If information is incomplete, still deliver a useful version based on known constraints and list the gaps.`,
-      ...this.capabilityContextBlock(persona),
+      ...this.capabilityContextBlock(persona, instruction),
       ...(relSetting ? [``, `Relationship context: ${relSetting}`] : []),
       ``,
       `Known facts about the user. Use only if helpful:`,
@@ -757,7 +829,9 @@ export class CompanionEngine {
     ];
   }
 
-  private capabilityContextBlock(persona: Persona): string[] {
+  private capabilityContextBlock(persona: Persona, instruction: string): string[] {
+    const asksAboutCapabilities = /能力|技能|skill|mcp|工具|会什么|能做什么|可以做什么|支持什么|怎么用|如何使用|有哪些|安装/i.test(instruction);
+    if (!asksAboutCapabilities) return [];
     const context = this.opts.capabilityContext?.(persona.id)?.trim();
     if (!context) return [];
     return [
@@ -803,9 +877,9 @@ export class CompanionEngine {
     const transcript = this.groupTranscript(groupId);
     const coordinatorPrompt = coordinating
       ? [
-          "小丑鱼在这个群里负责统筹：默认由应用回应用户，避免所有专家一起刷屏。",
-          "你可以综合群内专家的视角来帮助用户，例如战略、产品、体验、技术、测试、营销、财务等；但不要假装其他专家已经逐字发言。",
-          "如果用户明确 @ 某位成员，那一轮应由被 @ 的成员直接回复；如果用户只是向群里说话，你要先接住需求、判断需要哪些专家视角，并给出整合后的回复或交付物。",
+          "小丑鱼在这个群里负责统筹。系统会按任务邀请少量相关专家，避免所有成员一起刷屏。",
+          "如果本轮记录中已有专家回复，请吸收他们的判断、消除重复和冲突，最后给出一份完整结论；不要再逐个复述，也不要假装未发言的专家已经参与。",
+          "如果本轮没有专家回复，直接接住用户即可；明确 @ 某位成员时，则由被 @ 的成员直接回复。",
           "涉及搜索、OCR、文档、Skills、定时任务和交付物时，你仍然是执行入口；能执行就当场交付，不能执行就说明缺少的信息或权限。",
         ].join("\n")
       : "";

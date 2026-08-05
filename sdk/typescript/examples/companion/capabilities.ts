@@ -141,6 +141,7 @@ export interface CapabilityArtifact {
   metadata?: {
     native?: boolean;
     generatedAbilityId?: string;
+    contextFile?: string;
   };
   verification?: SourceVerificationReport;
 }
@@ -232,6 +233,13 @@ export interface CapabilityRuntimeOptions {
   notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off") => Promise<{ reply: string; facts: string[] }>;
   personas: () => CapabilityPersona[];
   toolRegistry?: CapabilityToolRegistry;
+  runDeveloper?: (input: {
+    workspacePath: string;
+    instruction: string;
+    accessMode: "inspect" | "develop";
+    signal?: AbortSignal;
+    onProgress?: (message: string, percent: number) => void;
+  }) => Promise<{ reply: string }>;
 }
 
 export interface CapabilityRuntimeLimits {
@@ -972,6 +980,8 @@ export class CapabilityRuntime {
     trigger?: string;
     runId?: string;
     memoryMode?: "default" | "preferences" | "off";
+    workspacePath?: string;
+    accessMode?: "inspect" | "develop";
     onProgress?: (message: string, percent: number) => void;
   }, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
     const ability = this.requireAbility(input.capabilityId);
@@ -982,7 +992,7 @@ export class CapabilityRuntime {
       title: text(input.title, ability.name, 60),
       personaId: input.personaId,
       capabilityId: ability.id,
-      instruction: text(input.instruction, "按用户要求完成一次任务。", 2000),
+      instruction: text(input.instruction, "按用户要求完成一次任务。", 160000),
       format: normalizeFormat(input.format || ability.defaultFormat),
       schedule: { mode: "manual" },
       enabled: false,
@@ -991,9 +1001,13 @@ export class CapabilityRuntime {
       storyline: createTaskStoryline(now),
     };
     input.onProgress?.("正在分析目标并生成结构", 20);
-    const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
+    const result = ability.id === "project-development"
+      ? await this.runDevelopmentTask(input, task, signal)
+      : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
     this.markSkillUsed(ability);
-    const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress });
+    const reply = ability.id === "project-development"
+      ? result.reply
+      : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress });
     input.onProgress?.("正在生成并保存交付物", 85);
     return this.finishAdHocRun(task, ability, persona, reply);
   }
@@ -1134,7 +1148,7 @@ export class CapabilityRuntime {
       title: text(input.title, ability.name, 60),
       personaId: input.personaId,
       capabilityId: ability.id,
-      instruction: text(input.instruction, "按用户要求完成一次任务。", 2000),
+      instruction: text(input.instruction, "按用户要求完成一次任务。", 160000),
       format: normalizeFormat(input.format || ability.defaultFormat),
       schedule: { mode: "manual" },
       enabled: false,
@@ -1143,6 +1157,22 @@ export class CapabilityRuntime {
       storyline: createTaskStoryline(now),
     };
     return { task, ability, persona };
+  }
+
+  private async runDevelopmentTask(
+    input: { workspacePath?: string; accessMode?: "inspect" | "develop"; onProgress?: (message: string, percent: number) => void },
+    task: CapabilityTask,
+    signal?: AbortSignal,
+  ): Promise<{ reply: string; facts: string[] }> {
+    if (!this.opts.runDeveloper) throw new Error("开发能力尚未完成运行连接。");
+    const result = await this.opts.runDeveloper({
+      workspacePath: String(input.workspacePath || ""),
+      instruction: task.instruction,
+      accessMode: input.accessMode === "inspect" ? "inspect" : "develop",
+      signal,
+      onProgress: input.onProgress,
+    });
+    return { reply: result.reply, facts: [] };
   }
 
   private async finishAdHocRun(
@@ -1176,6 +1206,17 @@ export class CapabilityRuntime {
     });
     createReadStream(file).pipe(res);
     return true;
+  }
+
+  artifactHandoff(id: string | null): { artifact: CapabilityArtifact; text: string } | null {
+    const artifact = this.artifacts.find((item) => item.id === id);
+    if (!artifact) return null;
+    const root = resolve(this.artifactDir);
+    const contextFile = artifact.metadata?.contextFile ? resolve(artifact.metadata.contextFile) : "";
+    if (!contextFile || !contextFile.startsWith(root) || !existsSync(contextFile) || !statSync(contextFile).isFile()) {
+      return { artifact, text: artifact.summary };
+    }
+    return { artifact, text: readFileSync(contextFile, "utf8").slice(0, 160000) };
   }
 
   previewArtifact(res: ServerResponse, id: string | null): boolean {
@@ -1648,6 +1689,8 @@ ${task.instruction}`,
     mkdirSync(dir, { recursive: true });
     const verification = ability.id === "ocr-extraction" || ability.id === IMAGE_PROMPT_CAPABILITY_ID ? undefined : buildSourceVerificationReport(task.instruction);
     const fileBase = join(dir, `${safeFileName(task.title)}-${id}`);
+    const contextFile = `${fileBase}.context.md`;
+    writeFileSync(contextFile, raw.slice(0, 160000), "utf8");
     let generatedAbilityId: string | undefined;
     if (ability.id === "ability-builder") {
       const payload = parseNativeCapabilityPayload("ability-builder", raw);
@@ -1679,7 +1722,7 @@ ${task.instruction}`,
         previewFile: rendered.previewFile,
         createdAt,
         summary: rendered.summary,
-        metadata: { native: true, generatedAbilityId },
+        metadata: { native: true, generatedAbilityId, contextFile },
         verification: verification?.relevant ? verification : undefined,
       };
     }
@@ -1703,6 +1746,7 @@ ${task.instruction}`,
         file,
         createdAt,
         summary: summarize(raw),
+        metadata: { contextFile },
         verification: verification?.relevant ? verification : undefined,
       };
     }
@@ -1721,6 +1765,7 @@ ${task.instruction}`,
       file,
       createdAt,
       summary: summarize(raw),
+      metadata: { contextFile },
       verification: verification?.relevant ? verification : undefined,
     };
   }
@@ -2068,6 +2113,21 @@ const BUILTIN_ABILITIES: Capability[] = [
       "Output: user and situation, primary job, success criteria, end-to-end flow, information architecture, key screens, states and errors, content language, responsive behavior, and acceptance checks.",
       "Use progressive disclosure, clear hierarchy, accessible focus states, and realistic data.",
       "Explain which memory preferences may affect writing, layout, or formatting, while keeping task-specific instructions primary.",
+    ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "project-development",
+    name: "开发项目",
+    description: "在明确指定的本地项目文件夹内读取代码、实施修改并运行受控构建或测试。",
+    kind: "builtin",
+    defaultFormat: "md",
+    prompt: [
+      "Use the embedded Pi coding runtime for real project work.",
+      "The selected workspace is the complete access boundary.",
+      "Read project instructions and relevant files before changing anything.",
+      "Keep edits precise, run the most relevant approved checks, and report only verified results.",
+      "Never read secret files, delete files, rewrite Git history, push, publish, deploy, or access paths outside the selected workspace.",
     ].join("\n"),
     createdAt: BUILTIN_CREATED_AT,
   },
