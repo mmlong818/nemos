@@ -3,9 +3,9 @@ rfc_number: 0004
 title: Forgetting & Consolidation — FSRS Decay + Reflect Job + Sensitivity Defaults + Output Tiers
 authors:
   - nemos founding team
-status: accepted
+status: implemented
 created_at: 2026-06-05
-updated_at: 2026-06-05
+updated_at: 2026-08-06
 discussion_url: ROADMAP.md
 implementation_pr: merged（v0.4，已并入 main）
 supersedes: []
@@ -19,6 +19,8 @@ supersedes: []
 - **B9 FSRS decay**：每条 memory 维护 D/S/R 三参数，访问强化、不访问衰减、低于阈值降级
 - **B10 Reflect job**：周期性 LLM 整合，N 条 episodic → semantic 升层；mimics sleep consolidation
 
+> 当前说明（2026-08-06）：衰减、reflect、敏感内容过滤和输出层级的核心链路已实现。difficulty 更新、decay 大库轮转等优化缺口仍以正文标注为准。
+
 # Motivation
 
 v0.3 后系统 ingest/search/linking 都能跑，但**没有任何"遗忘"机制**：
@@ -26,7 +28,7 @@ v0.3 后系统 ingest/search/linking 都能跑，但**没有任何"遗忘"机制
 1. 所有 memory 同等优先级，老 / 新 / 偶用 / 常用都一样权重 → search 噪音随时间累积
 2. 用户 5 年前一次提到的 fact 和昨天的 fact 同等 surface
 3. 多条相关 episodic 累积后不会自然升 semantic（小规模可接受，10k+ memory 后 noise 超信号）
-4. Sensitivity 字段在 v0.2 加了但默认不生效（朋友自己要 filter）
+4. Sensitivity 字段在 v0.2 加了但默认不生效（需要集成方自行过滤）
 
 [RFC 0001 原则 3] 默认衰减 + 显式保留信号 / [原则 4] immutable archive + 可变解释层 都需要 v0.4 才完整落地。
 
@@ -45,7 +47,7 @@ v0.3 后系统 ingest/search/linking 都能跑，但**没有任何"遗忘"机制
 
 - `Memory.sensitive` 字段不动（v0.2 已加）
 - archival 永远不 hide
-- 朋友显式 `includeSensitive: true` 仍能查
+- 集成方显式 `includeSensitive: true` 仍能查
 
 ## B7. Output tiers
 
@@ -127,7 +129,7 @@ R = exp(-Δt / S)
 | `NemosWorker` 周期任务（每天 1 次） | 所有 memory 算 R；若 R < threshold（default 0.1）且 access_count == 0 → 标 `cold` |
 | 标 `cold` 后 7 天仍未访问 | 默认从 search 索引隐藏（archival 永远在） |
 
-### 朋友配置
+### 集成方配置
 
 ```typescript
 new Nemos({
@@ -157,7 +159,7 @@ archival 永久 stability=1.0，永远在。这是 RFC 0001 原则 4 守护。
 |---|---|
 | 每个 user 累积 ≥ 20 条新 episodic | 入 reflect queue |
 | 或每周 1 次（人工 cron） | 强制 reflect |
-| 或朋友显式 `userMem.runReflect()` | 立即跑 |
+| 或集成方显式 `userMem.runReflect()` | 立即跑 |
 
 ### LLM 流程
 
@@ -178,7 +180,7 @@ type Memory = {
 };
 ```
 
-### 朋友配置
+### 集成方配置
 
 ```typescript
 new Nemos({
@@ -196,7 +198,7 @@ new Nemos({
 
 - FSRS 增加 storage 读写（每次 search 命中都 update last_accessed/S）
 - Reflect job 增加 LLM 调用（每个 user 周/月 1 次）
-- Sensitivity 默认开可能让朋友首次集成时困惑（"为什么搜不到我刚 ingest 的健康记录"）—— 通过文档 + warning log 解决
+- Sensitivity 默认开可能让集成方首次集成时困惑（"为什么搜不到我刚 ingest 的健康记录"）—— 通过文档 + warning log 解决
 - Decay 触发的 cold 判定可能误伤罕用但重要的记忆（如年度纪念日）—— v0.5 加 protected flag
 
 # Alternatives
@@ -214,11 +216,11 @@ new Nemos({
 ## C. 不做 cold dormancy，只做 stability 衰减
 - 优：search 行为更可预期
 - 劣：noise 累积不解决
-- **决议**：cold 默认 hide 但提供 `includeCold: true` 朋友查全集
+- **决议**：cold 默认隐藏，但集成方可通过 `includeCold: true` 查询全集
 
 ## D. Sensitivity 检测靠用户 tag 而非 LLM
 - 优：避免误判
-- 劣：朋友不会教用户 tag
+- 劣：不能假设集成方会要求终端用户主动标记
 - **决议**：LLM 自动 + 用户可 override（write API 允许显式 `sensitive: false` 覆盖）
 
 # Unresolved Questions
@@ -235,8 +237,8 @@ new Nemos({
 4. **Sensitivity 检测的"亲密关系" 是否包括职场关系**？
    - 决议：不包括。亲密关系 = 配偶/伴侣/家人。职场关系不标 sensitive。
 
-5. **Narrative format 让朋友的 LLM 写还是 Nemos 自己写**？
-   - 决议：朋友的 LLM（用 Nemos 配置的 llm provider）。Nemos 不持有 LLM 凭证。
+5. **Narrative format 让集成方的 LLM 写还是 Nemos 自己写**？
+   - 决议：使用集成方配置的 LLM provider。Nemos 不单独持有 LLM 凭证。
 
 # Prior Art
 
@@ -312,10 +314,10 @@ new Nemos({
 # FAQ
 
 **Q**：升级 v0.4 后我的 v0.3 数据会变化吗？
-A：不会。新字段（difficulty / retrievability / last_decay_at / consolidated_from / consolidated_at）旧记录都是 NULL。FSRS decay 默认关，朋友显式开才生效。
+A：不会。新字段（difficulty / retrievability / last_decay_at / consolidated_from / consolidated_at）旧记录都是 NULL。FSRS decay 默认关，集成方显式开才生效。
 
 **Q**：Reflect job 烧多少 token？
 A：每次 ~3000 input + ~1500 output ≈ $0.02 (Claude Sonnet)。每用户每周 1 次 = $1/月。
 
 **Q**：sensitivity 检测错了会怎样？
-A：朋友通过 `write()` API 显式 override，或在 UI 让用户 unmark。永远不会因 sensitivity 误标导致数据丢失（archival 永远在）。
+A：集成方通过 `write()` API 显式 override，或在 UI 让用户 unmark。永远不会因 sensitivity 误标导致数据丢失（archival 永远在）。

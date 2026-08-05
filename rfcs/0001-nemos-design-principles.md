@@ -5,15 +5,17 @@ authors:
   - nemos founding team
 status: accepted
 created_at: 2026-06-04
-updated_at: 2026-06-04
+updated_at: 2026-08-06
 discussion_url: founding document
-implementation_pr: spec/* (Round 1)
+implementation_pr: not applicable (founding principles)
 supersedes: []
 ---
 
 # Summary
 
 Nemos 的核心设计原则。本 RFC 作为 founding document，任何后续 RFC 都必须与本文档兼容；与本文档冲突的 RFC 必须显式声明并经 60 天 governance 流程。
+
+> 当前说明（2026-08-06）：本文是原则性决策记录，不以 `spec/*` 早期草案作为当前实现证明。
 
 # Motivation
 

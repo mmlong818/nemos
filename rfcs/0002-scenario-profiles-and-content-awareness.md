@@ -3,17 +3,19 @@ rfc_number: 0002
 title: Scenario Profiles + Content Awareness
 authors:
   - nemos founding team
-status: accepted
+status: implemented
 created_at: 2026-06-04
-updated_at: 2026-06-04
+updated_at: 2026-08-06
 discussion_url: ROADMAP.md
-implementation_pr: TBD (v0.2 dispatch)
+implementation_pr: merged in sdk/typescript
 supersedes: []
 ---
 
 # Summary
 
 给 Nemos SDK 加入「场景感知」能力：分析同一份内容时，根据用户/AI 应用声明的 scenario，调整层级偏好、抽取重点、时间感知、敏感度处理。同时增加内容时间字段（`event_at`）和长内容自动 chunking。
+
+> 当前说明（2026-08-06）：内置 Scenario Profile、`contentDate/event_at`、长内容切分与相关测试已在 TypeScript SDK 中实现。
 
 # Motivation
 
@@ -23,7 +25,7 @@ v0.1 PoC 暴露的问题：
 2. **无时间感知**——MiniMax 报告含 "M3 于 2026-06-01 发布"，但 memory.created_at = ingest 时刻 = 2026-06-04
 3. **长内容（>10k 字）压一次喂 LLM**——token 预算紧，episodic 被压入 semantic（双 pass 之前的对比已验证）
 
-朋友的 AI 产品很可能"明确知道当前 context"——客服会话、文档上传、coding session——但 v0.1 没办法让朋友传达这个 context。
+集成方的 AI 产品很可能"明确知道当前 context"——客服会话、文档上传、coding session——但 v0.1 没办法让集成方传达这个 context。
 
 # Detailed Design
 
@@ -90,7 +92,7 @@ type IngestOptions = {
 };
 ```
 
-### 朋友的代码：
+### 集成方的代码：
 
 ```typescript
 // 内置 profile
@@ -189,30 +191,30 @@ LLM 解析"昨天"等相对时间 → 用 ingest 时刻作为 anchor（"昨天" 
 - **B. 每段单 pass + 全文 check pass 跨段比对**（N+1 次，省 ½）
 - **C. v0.1 行为：仅在不 chunk 时双 pass**（chunk 时关 doubleCheck）
 
-**决议 C**：chunk 多段已经是冗余覆盖（不同段独立抽取），无需再双 pass 加冗余。Chunking 触发时自动 `doubleCheck=false`。文档明确告诉朋友。
+**决议 C**：chunk 多段已经是冗余覆盖（不同段独立抽取），无需再双 pass 加冗余。Chunking 触发时自动 `doubleCheck=false`。文档明确告诉集成方。
 
 # Drawbacks
 
 - API surface 增加（IngestOptions 新增 2 字段 + ScenarioProfile 类型）
 - Schema migration 必须可靠（破了会丢数据）
-- 内置 profile 选错（朋友传 `chat` 但内容是会议）会比 default 更差
+- 内置 profile 选错（集成方传 `chat` 但内容是会议）会比 default 更差
 - 长 content chunking 跨段 entity 关联可能丢
 
 # Alternatives
 
-## A. 不做 scenario，让朋友自己写 SYSTEM_PROMPT
+## A. 不做 scenario，让集成方自己写 SYSTEM_PROMPT
 - 优：API 简单
-- 劣：朋友重写 prompt 工程量大，错误率高
+- 劣：集成方重写 prompt 工程量大，错误率高
 - **拒绝**：违背"5 行接入"承诺
 
 ## B. 用 LLM 自动检测 scenario
-- 优：朋友不用指定
+- 优：集成方不用指定
 - 劣：多一次 LLM 调用 + 检测错代价大
 - **缓 v0.3**：作为 `scenario: 'auto'` 选项实施，不强制
 
 ## C. 把 scenario 改成更细粒度（label[] / tags[]）
 - 优：组合更灵活
-- 劣：朋友学习曲线高
+- 劣：集成方学习曲线高
 - **拒绝**：6 个内置 + 自定义 object 已经足够灵活
 
 # Unresolved Questions
@@ -229,8 +231,8 @@ LLM 解析"昨天"等相对时间 → 用 ingest 时刻作为 anchor（"昨天" 
    - 用户主动 `search({ includeSensitive: true })` 显式调出
 
 3. **自定义 ScenarioProfile 的 promptAddendum 安全性**？
-   - 朋友能注入任意 prompt → 可能注入恶意指令污染分析
-   - 当前：trust 朋友（他是 SDK 集成方，不是终端用户）
+   - 集成方能注入任意 prompt → 可能注入恶意指令污染分析
+   - 当前：信任 SDK 集成方，但不信任终端用户直接传入的内容
    - 文档警告：promptAddendum 来自不可信源时需先净化
 
 # Prior Art
@@ -262,7 +264,7 @@ LLM 解析"昨天"等相对时间 → 用 ingest 时刻作为 anchor（"昨天" 
 
 # FAQ
 
-**Q**：朋友若不知道 scenario 怎么办？
+**Q**：集成方若不知道 scenario 怎么办？
 A：传 `default` 或不传 = v0.1 行为，仍然可用。
 
 **Q**：自定义 profile 能完全覆盖内置吗？

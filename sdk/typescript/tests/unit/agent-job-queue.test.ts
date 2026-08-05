@@ -132,7 +132,7 @@ test("redacts credentials from persisted payloads, checkpoints, results, and err
   try {
     const queued = fixture.queue.enqueue({
       type: "safe-log",
-      payload: { apiKey: "sk-examplecredential12345", authorization: "Bearer token-value" },
+      payload: { apiKey: "test-api-key-private-value", authorization: "Bearer token-value" },
     });
     assert.equal(queued.payload.apiKey, "[REDACTED]");
     assert.equal(queued.payload.authorization, "Bearer [REDACTED]");

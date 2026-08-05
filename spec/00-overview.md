@@ -1,7 +1,9 @@
 # Nemos v0.1 — 规范总览 (00-overview)
 
-> **状态**：Draft，Round 1 输出
+> **状态**：归档草案，未作为当前实现
 > **版本**：v0.1
+
+> **归档说明（2026-08-06）**：这是早期设计草案，不是当前实现或 API 契约。当前入口见 [spec/README](README.md)、[TypeScript SDK](../sdk/typescript/README.md) 和 [0.7.x 设计基线](../sdk/typescript/docs/nemos-memory-v0.7-design.md)。下文的 REST、MCP、Python 和云端内容未按此草案完整实现。
 > **更新**：2026-06-04
 > **License**：PolyForm Noncommercial 1.0.0（禁止商用）
 
@@ -216,7 +218,7 @@ Nemos 用 SemVer 2.0，但额外约定：
 | `30-mcp-server.md` | MCP server tools / resources / prompts | Draft v0.1 |
 | `40-sdk-contract.md` | SDK 接口契约（TS + Python） | Draft v0.1 |
 
-未来文件（Round 2+）：
+当时设想的后续文件：
 - `50-witness-layer.md`：Witness Layer 强制安全过滤（PreWrite / PreQuery / PostRetrieve）
 - `60-personality-presets.md`：Continuity / Companion preset 字段扩展
 - `70-federation.md`：Nemos 节点之间联邦同步协议
@@ -224,69 +226,69 @@ Nemos 用 SemVer 2.0，但额外约定：
 
 ---
 
-## 8. Round 2 需要回答的开放问题清单
+## 8. 当时未解决的问题
 
-以下 12 个开放问题是 Round 1 设计过程中识别的、依赖 Round 2 进一步研究或体量数据才能闭环的点。每条标注「不确定原因 + Round 2 解决路径」。
+以下开放问题来自早期架构设计，需要进一步研究或真实规模数据才能闭环。它们是历史研究线索，不是当前路线图承诺。
 
 ### Q1. `chain_depth` 上限策略
-- **不确定**：sizing study 假设 `chain_depth` 单调递增，但没设上限。理论上 100 次 reflect 后 chain_depth = 100 仍合法，但实践中 `chain_depth > 5` 几乎无意义
-- **Round 2 路径**：1k DAU 真实 metric 后看 chain_depth 分布，决定是否在 `chain_depth >= N` 时强制 archive 旧链 + 重新从 archival 出发
+- **不确定**：早期容量估算 假设 `chain_depth` 单调递增，但没设上限。理论上 100 次 reflect 后 chain_depth = 100 仍合法，但实践中 `chain_depth > 5` 几乎无意义
+- **当时的后续验证设想**：1k DAU 真实 metric 后看 chain_depth 分布，决定是否在 `chain_depth >= N` 时强制 archive 旧链 + 重新从 archival 出发
 
 ### Q2. `arousal` 在 E2EE SKU 的客户端算法版本管理
 - **不确定**：客户端跑 arousal v1（rule-based）vs v2（小 LLM）的版本协调；不同设备版本可能不一致 → arousal 值跨设备分叉
-- **Round 2 路径**：跑 5-device CRDT 模拟（sizing §11 风险 #14），决定是否在 `arousal` 字段加 `algorithm_version` 子字段做仲裁
+- **当时的后续验证设想**：跑 5-device CRDT 模拟（早期容量估算（未随本归档收录） 风险 #14），决定是否在 `arousal` 字段加 `algorithm_version` 子字段做仲裁
 
 ### Q3. `period_id` 一对多 vs 多对多
 - **不确定**：Continuity Layer 允许一条记忆属于多个 period（`period_ids: []`）；但 Universal Substrate §11.2 说"默认 = 当前 active period"——单值 vs 列表 day-1 锁哪个？
-- **Round 2 路径**：v0.1 锁单值 `period_id`，多 period 关联走独立 join table（`record_period_links`）；如真实使用中 join 性能差，再升级 schema
+- **当时的后续验证设想**：v0.1 锁单值 `period_id`，多 period 关联走独立 join table（`record_period_links`）；如真实使用中 join 性能差，再升级 schema
 
 ### Q4. Relational Store 的 ACL 模型在跨 Nemos 部署时的 PKI
 - **不确定**：alice 在 nemos.com（SKU a）+ user 自托管 SKU c，怎么互相签名？需要 PKI 网络 / Web of Trust / fediverse-style identity
-- **Round 2 路径**：先用 email 作弱 identity（hash 后存）；Round 3+ 探 ActivityPub-style federation
+- **当时的后续验证设想**：先用 email 作弱 identity（hash 后存）；长期研究阶段 探 ActivityPub-style federation
 
 ### Q5. `surprise.value` 在 E2EE SKU 下服务端是否可见
-- **不确定**：sizing §7.1 说 `surprise` 客户端算更安全，但服务端如果完全看不到，则无法做"按 surprise 排序 inject"
-- **Round 2 路径**：v0.1 让客户端算后回填到服务端的 bucket（0-3 区间），服务端只看 bucket 不看精确值；如不够则 Round 2 升级
+- **不确定**：早期容量估算（未随本归档收录） 说 `surprise` 客户端算更安全，但服务端如果完全看不到，则无法做"按 surprise 排序 inject"
+- **当时的后续验证设想**：v0.1 让客户端算后回填到服务端的 bucket（0-3 区间），服务端只看 bucket 不看精确值；如不够则 后续验证阶段 升级
 
 ### Q6. `embedding_model_id` 升级时的 re-embed 策略
 - **不确定**：embedding 模型 18 月升一次，re-embed 全库会撞 1M DAU 的 GPU 配额；inline lazy re-embed 可能让用户的 query 偶发慢
-- **Round 2 路径**：v0.1 锁 `embedding_model_id` 字段 + lazy re-embed 标记 + nightly batch；真实负载下看 lazy vs batch 的 trade-off
+- **当时的后续验证设想**：v0.1 锁 `embedding_model_id` 字段 + lazy re-embed 标记 + nightly batch；真实负载下看 lazy vs batch 的 trade-off
 
 ### Q7. MCP `resources` 是否暴露用户全量 memory
 - **不确定**：MCP resources 设计上是"可订阅资源"；Nemos 是否应把整个 memory 当 resource 暴露 vs 只暴露过滤后的 view
-- **Round 2 路径**：v0.1 只暴露按 capability 过滤的 view；跟 Anthropic MCP working group 互动后调整（sizing §11 风险 #15）
+- **当时的后续验证设想**：v0.1 只暴露按 capability 过滤的 view；跟 Anthropic MCP working group 互动后调整（早期容量估算（未随本归档收录） 风险 #15）
 
 ### Q8. SDK 离线模式的 write 队列冲突解决
 - **不确定**：SDK L1/L2 cache + 离线写队列在网络恢复后的合并冲突；多设备并发写同一 record 的 `version` 字段如何仲裁
-- **Round 2 路径**：v0.1 用 last-write-wins + audit 双写 + 警告；Round 2 看是否需要客户端 vector clock
+- **当时的后续验证设想**：v0.1 用 last-write-wins + audit 双写 + 警告；后续验证阶段 看是否需要客户端 vector clock
 
 ### Q9. `tenant_id` 在自托管 SKU 是否真允许 null
 - **不确定**：null tenant 让 schema 二值化（多租户分支 + 单租户分支），增加实现复杂度；但强制 default tenant 又让自托管显得繁琐
-- **Round 2 路径**：v0.1 自托管允许 `tenant_id = "default"` 字符串（不是 null），统一非空约束；如真实使用中烦人再考虑 null
+- **当时的后续验证设想**：v0.1 自托管允许 `tenant_id = "default"` 字符串（不是 null），统一非空约束；如真实使用中烦人再考虑 null
 
 ### Q10. `period_active = true` 跨 scope 的语义冲突
 - **不确定**：Companion Layer 一个用户多 scope，每个 scope 是否有独立 active period？还是全局只有一个？Conway 理论支持后者，但 work scope 和 health scope 显然可以平行
-- **Round 2 路径**：v0.1 强制全局 active period（单一身份）；Companion Layer 用 scope 内 `current_focus` 子字段表达"在 work scope 内现在专注的子主题"，不与 period 冲突
+- **当时的后续验证设想**：v0.1 强制全局 active period（单一身份）；Companion Layer 用 scope 内 `current_focus` 子字段表达"在 work scope 内现在专注的子主题"，不与 period 冲突
 
 ### Q11. `corrects` / `corrected_by` 双向链的强一致性
 - **不确定**：跨 shard / 跨 SKU 时双向链同步窗口；A.corrects = [B] 但 B 还没拉到这个变更
-- **Round 2 路径**：v0.1 接受最终一致（< 5s 窗口）；audit 日志兜底；强一致版本走 v0.2+ RFC
+- **当时的后续验证设想**：v0.1 接受最终一致（< 5s 窗口）；audit 日志兜底；强一致版本走 v0.2+ RFC
 
 ### Q12. 与 mem0 / Letta / Memory-Palace 的 schema 对齐语义
 - **不确定**：Nemos 想做"协议化"，但其他 OSS 项目已经有自己的 schema；强行对齐会拖慢 Nemos，不对齐会变孤岛
-- **Round 2 路径**：v0.1 spec 独立发布；同时发 import adapter（`mem0_to_nemos.py` / `letta_to_nemos.py`）做单向迁移；不做双向语义绑定
+- **当时的后续验证设想**：v0.1 spec 独立发布；同时发 import adapter（`mem0_to_nemos.py` / `letta_to_nemos.py`）做单向迁移；不做双向语义绑定
 
 ### Q13. Audit log 的 archival 路径
-- **不确定**：audit log 自身写入 Archival 是 Universal Substrate 不变量，但 audit log 体量（sizing §1.1 估 200/月/用户）远大于主存；全部进 archival 会让 archival 增长比预期快 4x
-- **Round 2 路径**：v0.1 让 audit log 独立 store（`audit_log`），但其完整性 hash 写入 archival；archival 只存 audit summary 而非全量
+- **不确定**：audit log 自身写入 Archival 是 Universal Substrate 不变量，但 audit log 体量（早期容量估算（未随本归档收录） 估 200/月/用户）远大于主存；全部进 archival 会让 archival 增长比预期快 4x
+- **当时的后续验证设想**：v0.1 让 audit log 独立 store（`audit_log`），但其完整性 hash 写入 archival；archival 只存 audit summary 而非全量
 
 ### Q14. Forget vs Burn 在多 agent capability 下的传播
 - **不确定**：用户 burn 一条 episodic，已被 agent A 缓存的内容怎么回收？Companion §6.5 提到 `AgentMemoryCache.invalidate`，但跨 agent / 跨 SKU 的 cache invalidation 协议不存在
-- **Round 2 路径**：v0.1 只保证 Nemos 服务端 + 官方 SDK cache 的回收；第三方 cache 由 agent 自行实现 + audit log 记录"burn 已发起"
+- **当时的后续验证设想**：v0.1 只保证 Nemos 服务端 + 官方 SDK cache 的回收；第三方 cache 由 agent 自行实现 + audit log 记录"burn 已发起"
 
 ---
 
-## 9. Round 1 决议清单（落地映射）
+## 9. 早期决议清单（历史映射）
 
 下列决议在 spec 各文件中已落地，本节作为索引：
 
@@ -294,14 +296,14 @@ Nemos 用 SemVer 2.0，但额外约定：
 |---|---|
 | 决议 1（AI 调 surface 频次需授权） | schema §3 audit + REST `/forget` `/cool` 端点 |
 | 决议 2（反例必保但不主动 surface） | schema §6 contradiction policy = `preserve_counter` |
-| 决议 3（deleted_scenes muse pull 默认关闭） | Continuity preset extension（Round 2 落地） |
+| 决议 3（deleted_scenes muse pull 默认关闭） | Continuity preset extension（后续验证阶段 落地） |
 | 决议 4（D 默认 opt-in） | schema §7 ownership + capability registry |
 | 决议 6（统一 export schema） | schema §10 完整落地 |
 | 决议 7（immutable + 可变层） | schema §2.6 archival + interpretation |
 | 决议 8（GDPR 反编译） | REST `/burn` + schema §8 burn 算法 |
 | 决议 9（authoritative vs derived 隔离） | schema §3.1 + I4 不变量 |
-| 决议 10（见证为默认） | Witness Layer 独立 spec（Round 2 单独成文） |
+| 决议 10（见证为默认） | Witness Layer 独立 spec（后续验证阶段 单独成文） |
 
 ---
 
-**End of overview. 下一步：读 `10-data-schema.md`。**
+后续阅读：[数据 Schema 草案](10-data-schema.md)。

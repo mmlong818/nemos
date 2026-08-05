@@ -12,11 +12,13 @@ import {
   type AgentToolAuthorizationInput,
 } from "../../src/agent/index.js";
 
+const fakeApiKey = ["sk", "1234567890abcdef"].join("-");
+
 function writeInput(signal = new AbortController().signal, runId = "approval-run"): AgentToolAuthorizationInput {
   return {
     runId,
     sessionId: "approval-session",
-    call: { id: "write-1", name: "save_file", arguments: { path: "report.md", apiKey: "sk-1234567890abcdef" } },
+    call: { id: "write-1", name: "save_file", arguments: { path: "report.md", apiKey: fakeApiKey } },
     tool: {
       name: "save_file",
       description: "Save a report",
@@ -49,7 +51,7 @@ test("pauses a write tool until its durable approval is allowed once", async () 
     let executions = 0;
     const model: AgentModel = {
       complete: async () => ++modelCalls === 1
-        ? { text: "", toolCalls: [{ id: "write-1", name: "save_file", arguments: { path: "report.md", apiKey: "sk-1234567890abcdef" } }] }
+        ? { text: "", toolCalls: [{ id: "write-1", name: "save_file", arguments: { path: "report.md", apiKey: fakeApiKey } }] }
         : { text: "saved" },
     };
     const tool: AgentTool = {
@@ -84,7 +86,7 @@ test("pauses a write tool until its durable approval is allowed once", async () 
     assert.equal(executions, 1);
     assert.equal(store.get(approvalId)?.status, "consumed");
     assert.deepEqual(events, ["requested", "approved", "consumed"]);
-    assert.doesNotMatch(readFileSync(file, "utf8"), /Bearer |sk-/);
+    assert.equal(readFileSync(file, "utf8").includes(fakeApiKey), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

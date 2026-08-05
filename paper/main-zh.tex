@@ -6,11 +6,12 @@
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage[margin=1in]{geometry}
+\setlength{\emergencystretch}{2em}
 \usepackage{hyperref}
 
 % ---- 结果宏:与 main.tex 同源,取自 bench/results/*.json 的冻结结果 ----
 \newcommand{\bucSLRfull}{\textbf{34.0}}   % nemos-v2-semantic
-\newcommand{\bucSLRvone}{50.0}            % nemos-v1-lexical（已发布）
+\newcommand{\bucSLRvone}{50.0}            % 较早的词法配置
 \newcommand{\bucSLRnone}{80.0}            % no-invalidation（下界）
 \newcommand{\bucUAfull}{76.0}
 \newcommand{\bucUAvone}{84.0}
@@ -31,16 +32,17 @@
 \newcommand{\lmeN}{30}
 
 \title{MnemoBench：评估长生命周期记忆系统的\\信念更新、抗自污染与遗忘能力}
-\author{Nemos 开发团队\thanks{工作草稿。所报告的全部数字均来自随附评测框架中冻结的 $n{=}50$ 实验运行。}\\
-\texttt{s181@163.com}\\
+\author{Nemos 研究\thanks{工作草稿。三个合成任务族各含 $n{=}50$ 条样本；
+探针总数不同，LongMemEval 外部交叉锚点含 $n{=}30$ 个问题。
+冻结结果的来源记录于 \texttt{bench/results/manifest.json}。}\\
 项目地址：\url{https://github.com/mmlong818/nemos}}
-\date{2026}
+\date{2026年8月}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-面向大语言模型（LLM）智能体的持久记忆层，通常以\textbf{召回}为评测标准：系统能否检索回先前说过的内容？我们主张，在长期使用中，主导性的失败模式并非召回，而是\textbf{维护}：(1) 当事实发生变化时未能修正旧信念；(2) 让智能体自己生成或想象的内容污染用户的事实库；(3) 从不遗忘，使陈旧琐碎信息随时间拉低检索精度。我们提出 \textbf{MnemoBench}——一个可复现的评测基准，含三类任务，恰好针对上述行为，且真值由生成器预先固定，而非事后判定。我们据此评测 Nemos：一个具备双时间矛盾失效、用户事实与智能体自述之间命名空间隔离、以及 FSRS 风格遗忘衰减的可嵌入记忆内核。在信念更新上，矛盾失效将旧值泄漏率从 \bucSLRnone{}\% 降到 \bucSLRfull{}\%，但伴随一定的召回代价（更新准确率 \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%），由此暴露出一个精度/召回的可调旋钮；我们进一步表明，已发布的\emph{词法}矛盾检测器会漏判“属性替换”型更新，而\emph{语义}检测器能将其捕回（泄漏 \bucSLRvone{}~$\rightarrow$~\bucSLRfull{}\%）。命名空间隔离将自污染率从 \aspPRshared{}\% 降到 \aspPRiso{}\%，且不损召回。遗忘衰减将陈旧琐碎泄漏从 \forTLnone{}\% 压到 \forTLdecay{}\%，同时保留重要事实。我们开源 MnemoBench 及全部评测代码。
+面向大语言模型（LLM）智能体的持久记忆层，通常以\textbf{召回}为评测标准：系统能否检索回先前说过的内容？我们主张，在长期使用中，主导性的失败模式并非召回，而是\textbf{维护}：(1) 当事实发生变化时未能修正旧信念；(2) 让智能体自己生成或想象的内容污染用户的事实库；(3) 从不遗忘，使陈旧琐碎信息随时间拉低检索精度。我们提出 \textbf{MnemoBench}——一个可复现的评测基准，含三类任务，恰好针对上述行为，且真值由生成器预先固定，而非事后判定。我们据此评测 Nemos：一个具备双时间矛盾失效、用户事实与智能体自述之间命名空间隔离、以及 FSRS 风格遗忘衰减的可嵌入记忆内核。在信念更新上，矛盾失效将旧值泄漏率从 \bucSLRnone{}\% 降到 \bucSLRfull{}\%，但伴随一定的召回代价（更新准确率 \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%），由此暴露出一个精度/召回的可调旋钮；我们进一步表明，较早的\emph{词法}矛盾检测器会漏判“属性替换”型更新，而\emph{语义}检测器能将其捕回（泄漏 \bucSLRvone{}~$\rightarrow$~\bucSLRfull{}\%）。命名空间隔离将自污染率从 \aspPRshared{}\% 降到 \aspPRiso{}\%，且不损召回。遗忘衰减将陈旧琐碎泄漏从 \forTLnone{}\% 压到 \forTLdecay{}\%，同时保留重要事实。我们开源 MnemoBench 及全部评测代码。
 \end{abstract}
 
 \section{引言}
@@ -56,7 +58,7 @@
 \section{相关工作}
 \label{sec:related}
 \paragraph{记忆架构。}MemGPT/Letta~\cite{memgpt}、mem0~\cite{mem0}、Zep/Graphiti 的时序知识图谱~\cite{zep,graphiti}。区别在于：分层分离、显式的失效语义、来源权威性把关。
-\paragraph{时序/双时间建模。}Graphiti 用边的有效区间~\cite{graphiti}；Nemos 采用事件溯源式失效，并物化为扁平字段供热路径查询。
+\paragraph{时序/双时间建模。}Graphiti 用边的有效区间~\cite{graphiti}；Nemos 在每条记忆上物化世界时间与系统时间的有效性字段。
 \paragraph{遗忘。}FSRS / 间隔重复的可提取性模型~\cite{ssp,fsrs}，被用于机器记忆而非人类复习排程。
 \paragraph{评测基准。}LoCoMo~\cite{locomo} 与 LongMemEval~\cite{longmemeval} 均以召回为中心。与本文主张最接近的是 Uddin 等人的同期工作~\cite{fama}：其 \emph{Memora} 基准与 Forgetting-Aware Memory Accuracy（FAMA）指标显式惩罚对过时/失效记忆的依赖，印证了“从召回转向维护”的转变。MnemoBench 与之互补：不汇总成单一总分，而是通过单机制消融分别隔离每个维护机制（失效、隔离、衰减），并额外给出一处真实检测器修复的 before/after。
 
@@ -64,10 +66,10 @@
 \label{sec:system}
 Nemos 是一个可嵌入的记忆内核。此处只描述受测的机制。
 \subsection{分层记忆与来源权威性}
-五层（episodic、semantic、personal\_semantic、procedural、archival）。每条记录带 \texttt{source.authoritative}（用户陈述 vs.\ 模型推断）；推断内容被禁止进入权威的个人事实（不变量 I4）。
+五层（episodic、semantic、personal\_\allowbreak semantic、procedural、archival）。每条记录带 \texttt{source.\allowbreak authoritative}（用户陈述 vs.\ 模型推断）；推断内容被禁止进入权威的个人事实（不变量 I4）。
 \subsection{双时间矛盾失效}
-记录带世界轴（\texttt{valid\_at}/\texttt{invalid\_at}）与系统轴（\texttt{created\_at}/\texttt{expired\_at}）时间戳，以及 \texttt{belief\_state}~$\in$~\{active, invalidated, superseded, corrected\}。在离线反思中，与现有 \texttt{personal\_semantic} 锚点矛盾的新事实会把旧条目标为 \texttt{invalidated}；默认检索只返回 \texttt{active} 记录。
-\paragraph{一处真实缺陷：词法 vs.\ 语义检测。}已发布的检测器用字符二元组（bigram）Jaccard 相似度对矛盾候选做粗筛。它能可靠捕获强否定（“离开了 Google”），却\emph{漏判属性替换}——当新值与旧值在词法上不相似时（素食 $\rightarrow$ 鱼素）。我们用 embedding 余弦的候选检索替换该粗筛，并在现有个人事实上增加一道“同属性、互斥”的对账（reconciliation）。\S\ref{sec:results} 量化了其 before/after。
+记录带世界轴（\texttt{valid\_\allowbreak at}/\texttt{invalid\_\allowbreak at}）与系统轴（\texttt{created\_\allowbreak at}/\texttt{expired\_\allowbreak at}）时间戳，以及 \texttt{belief\_\allowbreak state}~$\in$~\{active, invalidated, superseded, corrected\}。在离线反思中，与现有 \texttt{personal\_\allowbreak semantic} 锚点矛盾的新事实会把旧条目标为 \texttt{invalidated}；默认检索只返回 \texttt{active} 记录。
+\paragraph{一处真实缺陷：词法 vs.\ 语义检测。}较早的检测器用字符二元组（bigram）Jaccard 相似度对矛盾候选做粗筛。它能可靠捕获强否定（“离开了 Google”），却\emph{漏判属性替换}——当新值与旧值在词法上不相似时（素食 $\rightarrow$ 鱼素）。我们用 embedding 余弦的候选检索替换该粗筛，并在现有个人事实上增加一道“同属性、互斥”的对账（reconciliation）。\S\ref{sec:results} 量化了其 before/after。
 \subsection{命名空间隔离（抗自污染）}
 用户事实存于 \texttt{forUser(uid)}；智能体自述存于 \texttt{forUser(persona:pid)}——一个物理上独立的键空间。检索用户事实时不可能浮现人格内容。
 \subsection{FSRS 风格的遗忘衰减}
@@ -86,9 +88,9 @@ Nemos 是一个可嵌入的记忆内核。此处只描述受测的机制。
 
 \section{实验设置}
 \label{sec:setup}
-所有系统的抽取/反思均用 OpenAI \texttt{gpt-4o}，嵌入用 \texttt{text-embedding-3-small}；评判器为 \texttt{gpt-4o}。每个任务报告 $n=\nItems{}$ 条样本。记忆系统一侧在瞬时错误重试全部失败后按\emph{空检索}计分（其全部探针记为 miss，与外部基线路径一致）；评判器调用重试全部失败则将该探针从比率中剔除并单独上报（冻结跑批中此类失败为零）。每个任务恰好消融受测的那一个机制，从而任何差异都可归因于该机制：
+2026 年 6--7 月冻结跑批中，所有系统的抽取/反思均用 OpenAI \texttt{gpt-4o}，嵌入用 \texttt{text-\allowbreak embedding-\allowbreak 3-\allowbreak small}；评判器为 \texttt{gpt-4o}。这些是历史跑批标识，不是当前模型推荐；替换任一模型都应视为一次新的、不可直接横比的实验。每个合成任务报告 $n=\nItems{}$ 条样本。记忆系统一侧在瞬时错误重试全部失败后按\emph{空检索}计分（其全部探针记为 miss，与外部基线路径一致）；评判器调用重试全部失败则将该探针从比率中剔除并单独上报（冻结跑批中此类失败为零）。每个任务只改变一个具名机制，并保持本地 runner 配置不变；观测差异是在此冻结设置下与该机制一致的证据，不是可外推的普遍因果估计：
 \begin{itemize}
-  \item BUC：\texttt{语义}（完整）vs.\ \texttt{词法}（已发布）vs.\ 关闭失效。
+  \item BUC：\texttt{语义}（当前配置）vs.\ \texttt{词法}（较早配置）vs.\ 关闭失效。
   \item ASP：命名空间隔离 vs.\ 共享存储。
   \item FOR：开启衰减 vs.\ 关闭衰减。为隔离衰减，两侧均关闭反思，并取冷却阈值 $0.3$、休眠 $0$、保留期 120 天；重要事实在保留期内被访问（建模“显著事实会被重访”）。
 \end{itemize}
@@ -104,8 +106,8 @@ Nemos 是一个可嵌入的记忆内核。此处只描述受测的机制。
 \midrule
 mem0（外部）\footnotemark{}     & \bucUAmemo{} & \bucSLRmemo{} \\
 关闭失效（下界）                & \bucUAnone{} & \bucSLRnone{} \\
-词法检测器（已发布）            & \bucUAvone{} & \bucSLRvone{} \\
-语义检测器（本工作）            & \bucUAfull{} & \bucSLRfull{} \\
+词法检测器（较早配置）          & \bucUAvone{} & \bucSLRvone{} \\
+语义检测器（受测配置）          & \bucUAfull{} & \bucSLRfull{} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -128,7 +130,7 @@ mem0（外部）\footnotemark{}     & \bucUAmemo{} & \bucSLRmemo{} \\
 \end{tabular}
 \end{table}
 
-\paragraph{信念更新（BUC）。}旧值泄漏沿消融阶梯单调下降：关闭失效 \bucSLRnone{}\%，已发布词法检测器 \bucSLRvone{}\%，语义检测器 \bucSLRfull{}\%——矛盾机制把旧值答案削减了一半以上；而仅词法$\rightarrow$语义这一改动，又通过捕获词法粗筛漏掉的属性替换更新，再去掉约三分之一的泄漏。该收益并非免费：更新准确率从 \bucUAnone{}\%（下界）降到 \bucUAfull{}\%（语义），即激进失效偶尔会把仍然有效的事实也退役掉。因此 BUC 暴露出另两个任务所没有的精度/召回旋钮；我们认为其工作点是\emph{可调的}（候选相似度阈值、对账保守度），而非固定。外部系统 mem0 会把被矛盾的事实与其替代值同时保留为 active（它只追加而不失效旧值），使其泄漏接近“关闭失效”的下界。
+\paragraph{信念更新（BUC）。}旧值泄漏沿消融阶梯单调下降：关闭失效 \bucSLRnone{}\%，较早的词法检测器 \bucSLRvone{}\%，语义检测器 \bucSLRfull{}\%——矛盾机制把旧值答案削减了一半以上；而仅词法$\rightarrow$语义这一改动，又通过捕获词法粗筛漏掉的属性替换更新，再去掉约三分之一的泄漏。该收益并非免费：更新准确率从 \bucUAnone{}\%（下界）降到 \bucUAfull{}\%（语义），即激进失效偶尔会把仍然有效的事实也退役掉。因此 BUC 暴露出另两个任务所没有的精度/召回旋钮；我们认为其工作点是\emph{可调的}（候选相似度阈值、对账保守度），而非固定。外部系统 mem0 会把被矛盾的事实与其替代值同时保留为 active（它只追加而不失效旧值），使其泄漏接近“关闭失效”的下界。
 
 \paragraph{外部交叉锚点（LongMemEval）。}同样的效应也出现在标准基准上：在 LongMemEval 知识更新子集的 \lmeN{} 题切片上（问答准确率，先生成再评判），开启语义失效把准确率从 \lmeAccNone{}\% 提升到 \lmeAccFull{}\%——这 $+10$ 个百分点完全归因于失效消融。其绝对水平不高（Nemos 在此是对 oracle 证据会话从零构建记忆，且未针对 LongMemEval 做任何调优），故我们读\emph{差值}而非绝对值：即便在以召回为主的外部数据上，信念维护也有帮助。
 
@@ -140,6 +142,8 @@ mem0（外部）\footnotemark{}     & \bucUAmemo{} & \bucSLRmemo{} \\
 \label{sec:limits}
 \paragraph{对 LLM 评判器的依赖。}渲染与评分都用 LLM；我们以集合成员式评判器（不生成答案）、低温度、并辅以人工抽检来缓解。
 \paragraph{合成数据。}样本为合成；我们只在相同数据下报告\emph{相对}差异，并加入一个标准基准切片（LongMemEval）作为交叉锚点。
+
+\paragraph{冻结实现快照。}本文只报告 \texttt{bench/results/manifest.json} 所列的已提交评测产物。后续 SDK 版本加入了结构化事实对账和更广的召回改进；这些变化不会被悄悄并入本文表格，必须通过新的 benchmark 版本重新评测。
 \paragraph{FOR 的隔离选择。}关闭反思并采用较激进的衰减参数，能干净地隔离衰减，但并不代表完整系统的默认配置；我们已显式说明。
 \paragraph{残余泄漏。}语义检测器在生成的困难样本上（值对在词法与语义上都很接近）未能将旧值泄漏降到零；其 BUC 的召回代价（UA \bucUAnone{}~$\rightarrow$~\bucUAfull{}\%）表明该工作点应当随用例调整。
 

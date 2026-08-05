@@ -1,73 +1,47 @@
-# arXiv 投稿手把手指南
+# arXiv 投稿前检查
 
-> 我（助手）无法替你点"提交"——arXiv 需要你本人的账号，且首次投稿通常需要**背书
-> (endorsement)**。下面每一步照做即可。投稿包已备好：**`paper/arxiv-en.tar.gz`**
-> （含 `main.tex` + `refs.bib` + `main.bbl`，根级无子目录，本文无图片）。
+复核日期：2026-08-06
 
-## 一句实话（先看）
-这是一篇**工作草稿**：单作者、合成 benchmark、n=50。作为 **preprint** 发 arXiv 完全可以；
-若你之后想投会议/期刊，建议先找一位同行/导师过一遍。要不要现在就发，由你决定。
+投稿包：`paper/arxiv-en.tar.gz`。包内仅包含英文论文需要的 `main.tex`、`refs.bib` 和 `main.bbl`。
 
-## 步骤
+## 先确认论文边界
 
-### 1. 注册并登录 arXiv
-- 打开 https://arxiv.org/ → Login → 没账号就 Register（建议用机构邮箱；可绑定 ORCID）。
+- 这是工作草稿，尚未经过同行评审。
+- BUC、ASP、FOR 各使用 50 条合成任务；ASP 为 250 个 probe，FOR 为 146 个 probe。
+- LongMemEval 交叉锚点使用 30 个知识更新问题。
+- 论文数字属于冻结实验配置，不代表当前 SDK 的总体性能。
+- 作者姓名、顺序和机构由投稿人最终确认；仓库不保存私人邮箱。
 
-### 2. 背书（endorsement，首次投 cs 类常需要）
-- 新用户在 cs 分类下投稿，arXiv 可能要求一位已有投稿资格的人给你背书。
-- 登录后开始投稿时若提示需要背书，arXiv 会给你一个 endorsement code，发给一位
-  在 **cs.CL / cs.AI** 有投稿记录的同行，请其到 https://arxiv.org/auth/endorse 输入码即可。
-- 如果系统没要求背书，跳过本步。
+## 官方流程
 
-### 3. 开始投稿
-- 顶部 **Submit** → Start New Submission。
-- **License**：推荐 `CC BY 4.0`（最开放，便于被引）；保守可选 arXiv 默认的非独占授权。
-- **Primary category**：`cs.CL`（Computation and Language）。
-- **Cross-list**：`cs.AI`（建议加，记忆/智能体读者多）。
+1. 使用投稿人自己的 arXiv 账号开始新投稿。官方说明：<https://info.arxiv.org/help/submit/index.html>
+2. 如果系统要求背书，按官方背书流程处理：<https://info.arxiv.org/help/endorsement.html>
+3. 根据论文主题选择分类。当前内容可考虑 `cs.CL` 为主分类、`cs.AI` 为交叉分类，但最终由作者判断。
+4. 选择授权前阅读官方说明，并同时考虑未来会议或期刊的授权要求：<https://info.arxiv.org/help/license/index.html>
+5. 上传 `arxiv-en.tar.gz`。arXiv 会识别编译器；若识别错误，应在提交界面调整并查看编译日志。
+6. 逐页检查生成的 PDF：标题、作者、摘要、表格、引用、页码和超链接都必须正确。
+7. 填写元数据时，标题、作者顺序和摘要必须与最终 PDF 一致。
+8. 提交前再次下载或预览 arXiv 生成的 PDF，不以本地编译成功代替在线核验。
 
-### 4. 上传源码（关键）
-- 选择 **Upload files** → 上传 **`arxiv-en.tar.gz`**。
-- arXiv 会自动用 TeX 编译。本文用 **pdfLaTeX**，已附 `main.bbl`，不依赖 arXiv 跑 bibtex。
-- 若编译报错，看 arXiv 的日志；常见是缺包——本文只用标准包
-  (microtype, lmodern, fontenc, booktabs, amsmath, graphicx, hyperref, xcolor, geometry)，
-  arXiv 的 TeX Live 都有，正常情况一次过。
-- 预览生成的 PDF，确认与本地 `main.pdf` 一致（6 页）。
+## 建议元数据
 
-### 5. 填元数据
-- **Title**：
-  `MnemoBench: Evaluating Belief Update, Self-Pollution Resistance, and Forgetting in Long-Lived Memory Systems`
-- **Authors**：`Shen Wei`（如要显示汉字可写 `Shen Wei (魏申)`）
-- **Abstract**：粘贴下面《纯文本摘要》整段。
-- **Comments（可选）**：`Working draft; benchmark and code: https://github.com/mmlong818/nemos`
+标题：
 
-### 6. 提交
-- 检查无误 → **Submit**。
-- arXiv 有审核+挂出延迟（工作日通常隔天 20:00 ET 后挂出）。挂出后会给你
-  `arXiv:XXXX.XXXXX` 编号。
+`MnemoBench: Evaluating Belief Update, Self-Pollution Resistance, and Forgetting in Long-Lived Memory Systems`
 
----
+摘要：
 
-## 纯文本摘要（粘进 arXiv 的 Abstract 框）
+> Persistent memory layers for LLM agents are typically evaluated on recall: can the system retrieve what was said earlier? We argue that in long-lived use the dominant failure modes are not recall but maintenance: (1) failing to revise a belief when a fact changes, (2) letting the agent's own generated or imagined content pollute the user's fact base, and (3) never forgetting, so that stale trivia degrades precision over time. We introduce MnemoBench, a reproducible benchmark with three task families targeting exactly these behaviours, with ground truth fixed by a generator rather than judged post hoc. We evaluate Nemos, an embeddable memory kernel with bitemporal contradiction invalidation, namespace isolation between user facts and agent self-narrative, and FSRS-based decay. On belief update, contradiction invalidation cuts stale-answer leakage from 80.0% to 34.0%, at a moderate recall cost (update accuracy 92.0% to 76.0%) that exposes a precision/recall knob; we further show that the earlier lexical contradiction detector misses attribute-replacement updates and that a semantic detector recovers them (leakage 50.0% to 34.0%). Namespace isolation reduces self-pollution from 96.8% to 1.6% with no recall loss. Decay suppresses stale-trivia leakage from 100.0% to 16.4% while retaining important facts. We release MnemoBench and all harness code.
 
-Persistent memory layers for LLM agents are typically evaluated on recall: can the system
-retrieve what was said earlier? We argue that in long-lived use the dominant failure modes
-are not recall but maintenance: (1) failing to revise a belief when a fact changes, (2)
-letting the agent's own generated or imagined content pollute the user's fact base, and (3)
-never forgetting, so that stale trivia degrades precision over time. We introduce MnemoBench,
-a reproducible benchmark with three task families targeting exactly these behaviours, with
-ground truth fixed by a generator rather than judged post hoc. We evaluate Nemos, an
-embeddable memory kernel with bitemporal contradiction invalidation, namespace isolation
-between user facts and agent self-narrative, and FSRS-based decay. On belief update,
-contradiction invalidation cuts stale-answer leakage from 80.0% to 34.0%, at a moderate
-recall cost (update accuracy 92.0 -> 76.0%) that exposes a precision/recall knob; we further
-show that the shipped lexical contradiction detector misses attribute-replacement updates and
-that a semantic detector recovers them (leakage 50.0 -> 34.0%). Namespace isolation reduces
-self-pollution from 71.2% to 1.6% with no recall loss. Decay suppresses stale-trivia leakage
-from 96.0% to 17.4% while retaining important facts. We release MnemoBench and all harness code.
+## 本地提交前检查
 
----
+```text
+论文源码和结果 manifest 一致
+中英文 PDF 均由当前源码重新生成
+引用无缺失，编译日志无 undefined reference
+投稿包可独立编译
+隐私扫描未发现邮箱、密钥或本机路径
+作者与机构信息已由投稿人确认
+```
 
-## 中文版（可选）
-`main-zh.tex` 用 **XeLaTeX**（ctex + Fandol）。arXiv 支持 XeLaTeX，但中文论文在 arXiv
-较少见、读者面窄；一般建议**英文版投 arXiv**，中文版自用/留档。若仍要投中文版，单独打包
-`main-zh.tex + refs.bib + main-zh.bbl`，并在上传后确认 arXiv 用 XeLaTeX 编译通过。
+中文版用于项目留档。若未来单独提交中文版，应重新制作独立源码包，并在 arXiv 在线环境确认 XeLaTeX 编译结果。

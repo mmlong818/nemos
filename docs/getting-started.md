@@ -1,76 +1,74 @@
-# Getting Started
+# 快速开始
 
-> **Status**: Pre-Alpha — 引用实现待 Round 2 落地。本文档目前是占位 + 未来章节大纲。
+更新：2026-08-06
 
----
+## 运行小丑鱼
 
-## 目前能做什么（Round 1 完成时）
+需要 Node.js 20 或更高版本。
 
-- 阅读 [`spec/`](../spec/) 了解 Nemos 协议设计
-- 阅读 [RFC 0001](../rfcs/0001-nemos-design-principles.md) 理解核心设计原则
-- 在 issue 提反馈、提议新 RFC
-- Star + Watch 跟踪进度
+~~~powershell
+cd sdk\typescript
+npm install
+npm run companion
+~~~
 
-## 还不能做什么（等 Round 2）
+打开 <http://localhost:8787>。
 
-- 跑一个真实的 Nemos server
-- 用 SDK 集成到你的 AI 应用
-- 测试 MCP server 接入
+可选配置：
 
----
+~~~powershell
+$env:PORT="8791"
+$env:CLOWNFISH_HOME="D:\clownfish-data"
+npm run companion
+~~~
 
-## 未来章节大纲（Round 2+ 完成后填）
+首次启动后，在 **设置 → 模型连接** 中选择服务商、模型名称和 API Key。也可以保持离线模式。
 
-### 5 分钟 Quickstart
+## 验证代码
 
-待 self-host binary 发布后补：
-- `nemos init` 创建配置
-- `nemos serve` 启动
-- 用 curl 写第一条 memory
-- 用 SDK 读出来
+~~~powershell
+cd sdk\typescript
+npm run build
+npm test
+~~~
 
-### Self-host 完整 setup
+## 构建 Windows 便携版
 
-- 系统要求
-- 配置 walkthrough
-- 数据迁移自其他工具
+~~~powershell
+cd sdk\typescript
+powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-Clownfish.ps1
+~~~
 
-### Cloud signup
+构建过程会联网下载并校验 WebView2、Node 沙箱运行时和 Python 嵌入式运行时。
 
-待引用云上线后：
-- 注册 / 验证邮箱
-- 生成 API key
-- AI app 集成首步
+## 在其他 TypeScript 应用中使用记忆
 
-### SDK example
+~~~typescript
+import { Nemos } from "@nemos/sdk";
 
-`packages/sdk-typescript/examples/` 和 `packages/sdk-python/examples/` 待 SDK 实施后补真实运行样例。
+const nemos = new Nemos({
+  storage: { type: "sqlite", path: "./memory.db" },
+  llm,
+});
 
-### MCP server setup
+const memory = nemos.forUser(authenticatedUserId);
+await memory.ingest("用户说：我偏好简洁中文");
 
-Claude Code / Cursor / 其他 MCP client 的配置 snippet 待 mcp-server 实施后补。
+const packet = await memory.recall("用户偏好什么表达方式？", {
+  maxResults: 8,
+  maxTokens: 1200,
+});
 
-### 跨 SKU 迁移
+await nemos.close();
+~~~
 
-从 a → b → c 或反向，待迁移工具落地后补。
+集成方必须自己处理登录和授权。不要直接使用客户端提交的 userId。
 
----
+## 文档状态
 
-## 现阶段最有价值的参与
+- **sdk/typescript/README.md** 描述当前公开 API；
+- **sdk/typescript/docs/nemos-memory-v0.7-design.md** 描述 v0.7 生命周期和边界；
+- **spec/** 是早期协议草案；
+- **rfcs/** 是设计决策记录。
 
-如果你想现在就深度参与：
-
-1. **读 spec 和 RFC**，反馈设计层问题
-2. **提 RFC 提议**新原则或修改现有原则（走 [rfcs/](../rfcs/) 流程）
-3. **share 你的集成需求**——你打算把 Nemos 集成进什么 AI 应用？什么 persona？开 issue 让我们知道
-4. **报告 spec 内部矛盾**——75 份研究合流可能有遗漏的矛盾，找到一处就开 issue
-5. **翻译**（如果你愿意）—— RFC 0001 + architecture-overview 的英文版尤其需要
-
----
-
-## 不确定从哪开始？
-
-开一个 GitHub issue 自我介绍：
-- 你想用 Nemos 解决什么
-- 你能贡献什么类型（设计 / 代码 / 文档 / 用户研究）
-- 你期待 Round 2 优先看到什么
+遇到文档冲突时，以当前类型定义、测试和 SDK README 为准。

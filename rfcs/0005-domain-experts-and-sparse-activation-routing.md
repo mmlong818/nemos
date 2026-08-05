@@ -3,9 +3,9 @@ rfc_number: 0005
 title: Domain Experts & Sparse Activation Routing
 authors:
   - nemos team
-status: accepted
+status: implemented
 created_at: 2026-06-15
-updated_at: 2026-06-22
+updated_at: 2026-08-06
 discussion_url: ROADMAP.md
 implementation_pr: merged（已并入 main；实现状态见正文「实现现状」注）
 supersedes: []
@@ -14,6 +14,8 @@ supersedes: []
 # Summary
 
 在现有 5 层功能存储之上叠加一个正交的**领域轴**：把记忆按主题/学科组织成大量细粒度"领域专家"，借鉴 LLM 的 MoE（Mixture-of-Experts）思路，用**路由 + 稀疏激活**保证每次检索只点亮"共享层 + 少量高相关领域"，从而既能容纳全世界所有领域，又避免艺术与医疗之间的名词/概念/模式互相污染。
+
+> 当前说明（2026-08-06）：领域存储、路由、稀疏激活、演化和跨域关联已并入 SDK；规模化性能仍需单独基准验证。
 
 # Motivation
 

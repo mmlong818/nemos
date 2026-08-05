@@ -3,9 +3,9 @@ rfc_number: 0008
 title: Companion Memory Topology — Relational Visibility & Persona Self-State
 authors:
   - nemos team
-status: accepted
+status: implemented
 created_at: 2026-06-20
-updated_at: 2026-06-22
+updated_at: 2026-08-06
 discussion_url: ROADMAP.md
 implementation_pr: merged（已并入 main；核心拓扑已实现，未决项见正文）
 supersedes: []
@@ -14,6 +14,8 @@ supersedes: []
 # Summary
 
 为「多人格 AI 陪伴 / IM」这一旗舰应用确立 Nemos 之上的**记忆拓扑约定**：一个人类用户的真相只存一份（`forUser(human)`），多个 AI 好友通过 **scope = 会话** 实现「在场才知道」的关系级可见性；每个角色的虚构自我（轻倾诉的「近况」）存于**独立 namespace**（`forUser('persona:<id>')`），与用户事实**硬隔离**以守住防自污染。绝大部分能力复用既有原语（`scope` 多过滤、`origin_agent`、`scenario`、`arousal`、`sensitive`、`belief_state`），仅少量 SDK 增补，并显式依赖 RFC 0007（矛盾失效）与 RFC 0004（衰减/唤起）。
+
+> 当前说明（2026-08-06）：用户事实、会话 scope、专家私有 namespace 和关系可见性核心拓扑已实现。产品已从固定人格命名转为“小丑鱼 + 按需专家”，但隔离原则不变。
 
 # Motivation
 

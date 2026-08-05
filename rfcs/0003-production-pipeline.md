@@ -3,11 +3,11 @@ rfc_number: 0003
 title: Production Pipeline — Background Queue + Multi-Perspective + Cross-Memory Linking
 authors:
   - nemos founding team
-status: accepted
+status: implemented
 created_at: 2026-06-05
-updated_at: 2026-06-05
+updated_at: 2026-08-06
 discussion_url: ROADMAP.md
-implementation_pr: TBD (v0.3 dispatch)
+implementation_pr: merged in sdk/typescript
 supersedes: []
 ---
 
@@ -18,11 +18,13 @@ supersedes: []
 - **B4 多视角抽取**：取代单一 prompt 双 pass，改为多个专注角度（事实/情绪/方法论/决策）并行抽 + 合并
 - **B5 跨 memory 自动连接**：写入时识别 entity，自动填 `related` 字段，检索时支持 spreading activation
 
+> 当前说明（2026-08-06）：后台队列、多视角抽取、实体连接和扩散召回已实现；本文仍保留当时的版本规划语境。
+
 # Motivation
 
 v0.2 后 SDK 已可用，但生产场景暴露三个真实问题：
 
-1. **ingest 慢**：长内容 + 双 pass + scenario 合并 = 5-30s 才返回；朋友的 AI 产品 hot-path 不能等
+1. **ingest 慢**：长内容 + 双 pass + scenario 合并 = 5-30s 才返回；集成方的 AI 产品 hot-path 不能等
 2. **同一 prompt 双 pass 是冗余而不是深度**：跑两次同样的 prompt 抗噪有限，不会找到第一次漏掉的维度
 3. **memory 之间没有显式关系**：第 100 条提到的「项目 X」和第 7 条的「项目 X」是同一个，但 SDK 不知道，检索时各自独立
 
@@ -57,7 +59,7 @@ const status = await userMem.getIngestStatus(handle.id);
 - **失败**：3 次重试 backoff（1s/4s/16s），最后失败标 status='failed' + last_error
 - **可见性**：`mem.listPendingIngests(userId)` / `userMem.getIngestStatus(id)`
 - **持久化**：进程重启后 queue 留存，worker 自动 resume
-- **手动控制**：朋友可选 `manualWorker: true` 自己调 `mem.runWorkerTick()`（适合 serverless）
+- **手动控制**：集成方可选 `manualWorker: true` 自己调 `mem.runWorkerTick()`（适合 serverless）
 
 ### Archival immutability 不变
 
@@ -96,7 +98,7 @@ archival 仍 sync 写入。background 仅延后 derived。这守住「即便 der
 | **`decision`** | 决定、承诺、行动项、转折 | episodic（高 surprise）/ personal_semantic |
 | **`temporal`** | 时间线、事件序列 | episodic（带 event_at） |
 
-朋友配置：
+集成方配置：
 
 ```typescript
 new Nemos({
@@ -194,7 +196,7 @@ ingest()
 
 # Drawbacks
 
-- 后台模式让朋友处理"derived 还没好怎么办"——需要文档清楚
+- 后台模式要求集成方正确处理 derived 尚未完成的状态——必须在文档中说明
 - 多视角 = 4-5 次 LLM 调用，比 v0.2 双 pass（3 次）贵
 - entity 抽取增加 1 次 LLM 调用
 - worker 在 serverless 环境需要 manual tick（已设计 `manualWorker` 选项）
@@ -205,7 +207,7 @@ ingest()
 ## A. 不做 background，纯靠双 pass 优化
 - 优：API 简单
 - 劣：长内容 hot-path 永远慢
-- **拒绝**：朋友生产场景必需
+- **拒绝**：生产集成需要后台能力
 
 ## B. 不做多视角，只优化双 pass prompt
 - 优：复杂度低
@@ -224,17 +226,17 @@ ingest()
 
 # Unresolved Questions
 
-1. **Worker 失败 3 次后**：dead-letter queue？让朋友能手动重试？
+1. **Worker 失败 3 次后**：dead-letter queue？让集成方能手动重试？
    - 决议：v0.3 仅标 failed + 日志；v0.4 加 dead-letter queue + manual retry API
 
 2. **Entity 抽取的标准化**：人名 "张三" / "Zhang San" / "@zhangsan" 是否合并？
    - 决议：v0.3 字符串精确匹配；v0.4 加 entity 别名表
 
 3. **跨 scope linking 的产品哲学**：scope:work 的 "项目 X" 应该 link 到 scope:personal 的 "项目 X" 吗？
-   - 决议：v0.3 默认 link（不分 scope），朋友可关闭 `crossScopeLink: false`
+   - 决议：v0.3 默认 link（不分 scope），集成方可关闭 `crossScopeLink: false`
 
-4. **多视角的 schema 暴露**：朋友是否需要看到 `perspectives` 数组？
-   - 决议：暴露，作为可选 debug 字段，朋友可忽略
+4. **多视角的 schema 暴露**：集成方是否需要看到 `perspectives` 数组？
+   - 决议：暴露，作为可选 debug 字段，集成方可忽略
 
 5. **Background queue 持久化的崩溃恢复**：worker 跑到一半 crash 怎么办？
    - 决议：worker 启动时把 status='analyzing' 的 task 重置为 'queued'，靠 attempts 字段防无限重试
@@ -290,14 +292,14 @@ ingest()
 
 # FAQ
 
-**Q**：朋友的 AI 产品在 serverless 环境（每请求 spawn 新 process）能用 background 吗？
-A：能。配 `manualWorker: true` 让朋友在每个请求结尾调一次 `mem.runWorkerTick()`，或起 cron 跑 tick。文档会说明。
+**Q**：集成方的 AI 产品在 serverless 环境（每请求 spawn 新 process）能用 background 吗？
+A：能。配 `manualWorker: true` 让集成方在每个请求结尾调一次 `mem.runWorkerTick()`，或起 cron 跑 tick。文档会说明。
 
 **Q**：升 v0.3 后旧 v0.2 数据怎么处理？
 A：自动 migration 加 `ingest_queue` 表 + Memory 加 `entities` 字段。旧 memory `entities = []` 默认；不会自动补抽（避免重跑 LLM 烧 token）。可选 `mem.backfillEntities()` 手动跑。
 
 **Q**：多视角默认开吗？
-A：默认关。`features.perspectives` 不传 = v0.2 行为（doubleCheck=true）。朋友显式开 perspectives 才启用。
+A：默认关。`features.perspectives` 不传 = v0.2 行为（doubleCheck=true）。集成方显式开 perspectives 才启用。
 
-**Q**：entity 抽取也走朋友的 LLM key 吗？
+**Q**：entity 抽取也走集成方的 LLM key 吗？
 A：是。entity 抽取是 LLM 调用，走配置的 provider。每条 memory 多 ~100 token。
