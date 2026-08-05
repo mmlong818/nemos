@@ -291,8 +291,8 @@ h1, h2 { margin-top: 0; color: var(--ink); font-family: inherit; letter-spacing:
   scroll-margin-top: 70px;
 }
 .launch-layout { margin-top: 20px; }
-.launch-form > label:not(.file-drop), .field-row label { display: grid; gap: 7px; color: var(--ink-soft); font-size: 12px; font-weight: 650; }
-.launch-form textarea, select {
+.launch-form > label:not(.file-drop), .field-row label, .developer-fields > label { display: grid; gap: 7px; color: var(--ink-soft); font-size: 12px; font-weight: 650; }
+.launch-form textarea, .launch-form input[type="text"], select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -300,7 +300,11 @@ h1, h2 { margin-top: 0; color: var(--ink); font-family: inherit; letter-spacing:
   background: var(--paper);
 }
 .launch-form textarea { min-height: 150px; resize: vertical; padding: 12px; font-size: 14px; line-height: 1.55; }
-.launch-form textarea:focus, select:focus { border-color: var(--accent); }
+.launch-form textarea:focus, .launch-form input[type="text"]:focus, select:focus { border-color: var(--accent); }
+.developer-fields { margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #f7f4ee; }
+.developer-fields input[type="text"] { width: 100%; min-height: 42px; padding: 0 12px; }
+.developer-fields .field-row { margin-top: 12px; }
+.field-help { margin: 10px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.55; }
 .file-drop {
   min-height: 82px;
   display: grid;

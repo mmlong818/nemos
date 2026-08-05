@@ -176,8 +176,7 @@ export const PERSONAS: Persona[] = ALL_CORES.map((c) => ({
   persona: c.core,
   tag: c.tag,
   voice: c.voice,
-  // 所有角色对话统一用旗舰 glm-5.2：弱模型(air/4.6)不听人设指令、易退化、乱调工具。质量优先于首 token 速度。
-  chatModel: "glm-5.2",
+  // 不在角色层绑定服务商模型：日常对话由服务端选择轻量模型，专家和任务使用用户连接的主模型。
   verbosity: c.verbosity ?? "normal",
   seedBio: c.seedBio,
   // 灵宠近乎失语，prompt 压不住，硬上限兜底（约一两个拟声+小动作）。

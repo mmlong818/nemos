@@ -4,8 +4,10 @@ import test from "node:test";
 import type { AgentTool } from "../../src/index.js";
 import { resolveLLM } from "../../examples/companion/llm.js";
 import {
+  dailyChatModelForConnection,
   modelConnectionEndpoint,
   normalizeCompanionModelConnection,
+  selectCompanionConversationModel,
 } from "../../examples/companion/model-connection.js";
 
 test("model connection applies provider presets and protects remote transport", () => {
@@ -23,6 +25,45 @@ test("model connection applies provider presets and protects remote transport", 
     baseUrl: "http://example.com/v1",
     model: "test-model",
   }), /远程 API 必须使用 HTTPS/);
+});
+
+test("daily conversations use provider chat models while experts and explicit overrides keep the main route", () => {
+  const connection = normalizeCompanionModelConnection({ provider: "zhipu", apiKey: "test-key" });
+  assert.equal(dailyChatModelForConnection(connection), "glm-5.2");
+  assert.equal(selectCompanionConversationModel({
+    connection,
+    target: { kind: "persona", id: "clownfish" },
+    expertPersonaIds: new Set(["product_advisor"]),
+  }), "glm-5.2");
+  assert.equal(selectCompanionConversationModel({
+    connection,
+    target: { kind: "persona", id: "clownfish" },
+    instruction: "帮我分析这份报告并生成演示文稿",
+  }), undefined);
+  assert.equal(selectCompanionConversationModel({
+    connection,
+    target: { kind: "persona", id: "clownfish" },
+    instruction: "今天还在加班，有点累",
+  }), "glm-5.2");
+  assert.equal(selectCompanionConversationModel({
+    connection,
+    target: { kind: "persona", id: "clownfish" },
+    forceTaskModel: true,
+  }), undefined);
+  assert.equal(selectCompanionConversationModel({
+    connection,
+    target: { kind: "persona", id: "product_advisor" },
+    expertPersonaIds: new Set(["product_advisor"]),
+  }), undefined);
+  assert.equal(selectCompanionConversationModel({
+    connection,
+    requestedModel: "glm-5.2",
+    target: { kind: "persona", id: "clownfish" },
+  }), "glm-5.2");
+  assert.equal(selectCompanionConversationModel({
+    connection,
+    target: { kind: "group", id: "expert_group" },
+  }), undefined);
 });
 
 test("custom OpenAI-compatible connection uses its configured endpoint", async () => {
