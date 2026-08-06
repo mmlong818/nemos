@@ -102,6 +102,9 @@ export function ensureMemoryQualityMetadata(memory: Memory): Memory {
     memory.evidence_count !== coverage.count;
   memory.evidence_coverage = coverage.state;
   memory.evidence_count = coverage.count;
+  const promotion = determinePromotion(memory, coverage);
+  memory.promotion_state = promotion.state;
+  memory.promotion_reason = promotion.reason;
   if (
     coverageChanged ||
     !memory.salience ||
@@ -112,6 +115,31 @@ export function ensureMemoryQualityMetadata(memory: Memory): Memory {
   return memory;
 }
 
+export function determinePromotion(
+  memory: Memory,
+  coverage: EvidenceCoverage = deriveEvidenceCoverage(memory),
+): { state: "candidate" | "promoted"; reason: string } {
+  if (memory.layer === "archival") return { state: "promoted", reason: "authoritative_source_event" };
+  if (memory.source.origin === "clownfish-memory-ui") return { state: "promoted", reason: "explicit_user_preference" };
+  if (coverage.state === "corroborated") return { state: "promoted", reason: "independent_evidence" };
+
+  const inferredConfidence = memory.source.confidence;
+  const isInference = inferredConfidence === "medium" || inferredConfidence === "conflict";
+  const isTransient = memory.specificity === "temporary";
+  const isNonLiteral = !!memory.utterance_mode && memory.utterance_mode !== "literal";
+  const isEmotionSignal = memory.layer === "episodic" && (
+    memory.source.origin.includes("emotion") ||
+    memory.source.perspectives?.includes("emotion")
+  );
+  if (isNonLiteral) return { state: "candidate", reason: "non_literal_utterance" };
+  if (isTransient) return { state: "candidate", reason: "temporary_fact" };
+  if (isInference) return { state: "candidate", reason: "low_confidence_inference" };
+  if (isEmotionSignal) return { state: "candidate", reason: "single_emotion_signal" };
+  const structured = !!memory.claim_key && !!memory.predicate && !!memory.subject_id;
+  if (!structured) return { state: "candidate", reason: "unstructured_derivation" };
+  if (coverage.state === "unverified") return { state: "candidate", reason: "missing_source_evidence" };
+  return { state: "promoted", reason: "literal_supported_fact" };
+}
 export function hasDurableSalience(memory: Memory): boolean {
   const quality = ensureMemoryQualityMetadata(memory);
   return quality.salience!.score >= LONG_TERM_SALIENCE_THRESHOLD;

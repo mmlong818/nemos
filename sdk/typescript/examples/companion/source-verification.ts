@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { matchSourceConnectors } from "./source-connectors.js";
 
 export type SourceVerificationStatus =
@@ -17,6 +18,17 @@ export interface SourceVerificationCard {
   nextIntegration: string;
 }
 
+export type SourceAvailability = "available" | "no-results" | "network-failure" | "not-checked";
+
+export interface SourceFreshnessReceipt {
+  checkedAt: string;
+  availability: SourceAvailability;
+  contentDigest?: string;
+  freshness: "fresh" | "stale" | "unknown";
+  freshUntil?: string;
+  errorKind?: "network" | "no-results";
+}
+
 export interface SourceVerificationReport {
   relevant: boolean;
   checkedAt: string;
@@ -25,6 +37,7 @@ export interface SourceVerificationReport {
   cards: SourceVerificationCard[];
   unresolved: string[];
   artifactRules: string[];
+  freshnessReceipt: SourceFreshnessReceipt;
 }
 
 const SOURCE_INTENT_TERMS = [
@@ -64,6 +77,7 @@ export function buildSourceVerificationReport(instruction: string): SourceVerifi
     summary: summaryFor(status),
     cards,
     unresolved: unresolvedFor(cards),
+    freshnessReceipt: createSourceFreshnessReceipt({ availability: "not-checked" }),
     artifactRules: [
       "实时价格、库存、余票、房态、营业时间、菜单、排队、行情等，必须标注查询时间和来源等级。",
       "没有真实接口或官方页面结果时，只能给待核验方案，不能写成已确认事实。",
@@ -199,4 +213,36 @@ function adapterDowngradeRule(id: string): string {
   if (id === "restaurant-booking") return "没有商家或平台确认时，营业时间、菜单、排队和可订座只能标为待核验。";
   if (id === "market-briefing") return "没有交易所、公司公告或可信行情源时，行情和新闻只能作为线索，不构成投资建议。";
   return "没有可靠来源时，只输出来源地图、核验入口和下一步接入方案。";
+}
+
+export function createSourceFreshnessReceipt(input: {
+  availability: SourceAvailability;
+  content?: string | Uint8Array;
+  checkedAt?: Date;
+  maxAgeMs?: number;
+}): SourceFreshnessReceipt {
+  const checkedAt = input.checkedAt ?? new Date();
+  const maxAgeMs = Math.max(1, input.maxAgeMs ?? 15 * 60_000);
+  if (input.availability === "network-failure") {
+    return { checkedAt: checkedAt.toISOString(), availability: input.availability, freshness: "unknown", errorKind: "network" };
+  }
+  if (input.availability === "no-results") {
+    return { checkedAt: checkedAt.toISOString(), availability: input.availability, freshness: "unknown", errorKind: "no-results" };
+  }
+  if (input.availability !== "available" || input.content === undefined) {
+    return { checkedAt: checkedAt.toISOString(), availability: input.availability, freshness: "unknown" };
+  }
+  const digest = createHash("sha256").update(input.content).digest("hex");
+  return {
+    checkedAt: checkedAt.toISOString(),
+    availability: "available",
+    contentDigest: digest,
+    freshness: "fresh",
+    freshUntil: new Date(checkedAt.getTime() + maxAgeMs).toISOString(),
+  };
+}
+
+export function sourceReceiptFreshness(receipt: SourceFreshnessReceipt, now = new Date()): SourceFreshnessReceipt["freshness"] {
+  if (receipt.availability !== "available" || !receipt.freshUntil) return "unknown";
+  return now.getTime() <= Date.parse(receipt.freshUntil) ? "fresh" : "stale";
 }

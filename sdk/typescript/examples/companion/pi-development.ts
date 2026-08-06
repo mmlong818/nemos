@@ -1,9 +1,16 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { Type } from "typebox";
+import {
+  DevelopmentProposalStore,
+  type DevelopmentProposal,
+  type DevelopmentProposalSession,
+  type DevelopmentProposalState,
+} from "./development-proposals.js";
 import type { CompanionModelConnection } from "./model-connection.js";
 
 const execFileAsync = promisify(execFile);
@@ -19,6 +26,7 @@ export interface PiDevelopmentInput {
   agentDir: string;
   signal?: AbortSignal;
   onProgress?: (message: string, percent: number) => void;
+  proposalStore?: DevelopmentProposalStore;
 }
 
 export interface PiDevelopmentResult {
@@ -26,7 +34,40 @@ export interface PiDevelopmentResult {
   workspacePath: string;
   accessMode: DevelopmentAccessMode;
   changedFiles: string[];
+  baseRevision?: string;
+  fileReceipts: DevelopmentFileReceipt[];
+  checks: DevelopmentCheckReceipt[];
+  contextReceipts: DevelopmentContextReceipt[];
+  unverifiedRisks: string[];
+  proposal?: DevelopmentProposalSummary;
   toolCalls: number;
+}
+
+export interface DevelopmentProposalSummary {
+  id: string;
+  state: DevelopmentProposalState;
+  files: Array<{ path: string; operation: "create" | "update"; proposedHash: string; byteLength: number }>;
+}
+
+export interface DevelopmentFileReceipt {
+  path: string;
+  state: "present" | "deleted";
+  sha256?: string;
+  byteLength?: number;
+}
+
+export interface DevelopmentContextReceipt {
+  kind: "directory" | "file-lines" | "text-search";
+  path: string;
+  anchor: string;
+  confidence: "exact";
+  truncated: boolean;
+}
+export interface DevelopmentCheckReceipt {
+  command: DevelopmentCheck;
+  passed: boolean;
+  output: string;
+  checkedAt: string;
 }
 
 type PiModule = typeof import("@earendil-works/pi-coding-agent");
@@ -34,7 +75,12 @@ type PiModule = typeof import("@earendil-works/pi-coding-agent");
 export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDevelopmentResult> {
   if (Number(process.versions.node.split(".")[0]) < 22) throw new Error("开发能力需要 Node.js 22.19 或更高版本。");
   const workspace = validateDevelopmentWorkspace(input.workspacePath);
+  const baseRevision = await currentRevision(workspace);
+  const checks: DevelopmentCheckReceipt[] = [];
+  const contextReceipts: DevelopmentContextReceipt[] = [];
   mkdirSync(input.agentDir, { recursive: true });
+  const proposalStore = input.proposalStore ?? new DevelopmentProposalStore(join(input.agentDir, "proposals"));
+  const proposalSession = input.accessMode === "develop" ? proposalStore.begin(workspace, baseRevision) : undefined;
   input.onProgress?.("正在读取项目规则和目录", 12);
 
   const pi = await nativeImport<PiModule>("@earendil-works/pi-coding-agent");
@@ -75,7 +121,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     model,
     thinkingLevel: "medium",
     noTools: "builtin",
-    customTools: createDevelopmentTools(workspace, input.accessMode) as never,
+    customTools: createDevelopmentTools(workspace, input.accessMode, checks, contextReceipts, proposalSession) as never,
     resourceLoader,
     sessionManager: pi.SessionManager.inMemory(workspace),
   });
@@ -95,7 +141,26 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     const reply = lastAssistantText(session.messages);
     if (!reply) throw new Error("开发能力没有生成可交付结果。");
     input.onProgress?.("正在整理修改和验证结果", 88);
-    return { reply, workspacePath: workspace, accessMode: input.accessMode, changedFiles: await changedFiles(workspace), toolCalls };
+    const staged = proposalSession?.finalize();
+    const changed = staged ? staged.files.map((file) => file.path) : await changedFiles(workspace);
+    return {
+      reply,
+      workspacePath: workspace,
+      accessMode: input.accessMode,
+      changedFiles: changed,
+      baseRevision,
+      fileReceipts: staged
+        ? staged.files.map((file) => ({ path: file.path, state: "present" as const, sha256: file.proposedHash, byteLength: file.byteLength }))
+        : changed.map((path) => developmentFileReceipt(workspace, path)),
+      checks,
+      contextReceipts,
+      unverifiedRisks: developmentRisks(input.accessMode, checks),
+      proposal: staged ? developmentProposalSummary(staged) : undefined,
+      toolCalls,
+    };
+  } catch (error) {
+    proposalSession?.fail(error);
+    throw error;
   } finally {
     input.signal?.removeEventListener("abort", abort);
     unsubscribe();
@@ -113,25 +178,46 @@ export function validateDevelopmentWorkspace(value: string): string {
   return workspace;
 }
 
-function createDevelopmentTools(workspace: string, accessMode: DevelopmentAccessMode): Array<Record<string, unknown>> {
+function createDevelopmentTools(
+  workspace: string,
+  accessMode: DevelopmentAccessMode,
+  receipts: DevelopmentCheckReceipt[],
+  contextReceipts: DevelopmentContextReceipt[],
+  proposal?: DevelopmentProposalSession,
+): Array<Record<string, unknown>> {
   const readOnlyTools = [
     {
       name: "list_files", label: "查看文件",
       description: "List project files under a relative directory. Dependencies and build outputs are skipped.",
       parameters: Type.Object({ path: Type.Optional(Type.String()), depth: Type.Optional(Type.Number({ minimum: 1, maximum: 5 })) }),
-      execute: async (_id: string, params: { path?: string; depth?: number }) => textResult(listWorkspaceFiles(workspace, params.path || ".", params.depth || 3)),
+      execute: async (_id: string, params: { path?: string; depth?: number }) => {
+        const path = params.path || ".";
+        const depth = params.depth || 3;
+        const output = listWorkspaceFiles(workspace, path, depth);
+        contextReceipts.push({ kind: "directory", path, anchor: `depth:${depth}`, confidence: "exact", truncated: output.split(/\r?\n/).length >= 500 });
+        return textResult(output);
+      },
     },
     {
       name: "read_file", label: "读取文件",
       description: "Read a UTF-8 text file inside the selected project.",
       parameters: Type.Object({ path: Type.String(), startLine: Type.Optional(Type.Number({ minimum: 1 })), endLine: Type.Optional(Type.Number({ minimum: 1 })) }),
-      execute: async (_id: string, params: { path: string; startLine?: number; endLine?: number }) => textResult(readWorkspaceFile(workspace, params)),
+      execute: async (_id: string, params: { path: string; startLine?: number; endLine?: number }) => {
+        const receipt = readContextReceipt(workspace, params);
+        contextReceipts.push(receipt);
+        return textResult(readWorkspaceFile(workspace, params));
+      },
     },
     {
       name: "search_text", label: "搜索代码",
       description: "Search text in project files and return matching file names and line numbers.",
       parameters: Type.Object({ query: Type.String({ minLength: 1 }), path: Type.Optional(Type.String()) }),
-      execute: async (_id: string, params: { query: string; path?: string }) => textResult(searchWorkspaceText(workspace, params.query, params.path || ".")),
+      execute: async (_id: string, params: { query: string; path?: string }) => {
+        const path = params.path || ".";
+        const output = searchWorkspaceText(workspace, params.query, path);
+        contextReceipts.push({ kind: "text-search", path, anchor: `query:${params.query.slice(0, 120)}`, confidence: "exact", truncated: output.split(/\r?\n/).length >= 200 });
+        return textResult(output);
+      },
     },
     {
       name: "run_check", label: "运行检查",
@@ -140,7 +226,11 @@ function createDevelopmentTools(workspace: string, accessMode: DevelopmentAccess
         Type.Literal("git_status"), Type.Literal("git_diff"), Type.Literal("npm_test"), Type.Literal("npm_build"), Type.Literal("npm_typecheck"), Type.Literal("npm_check"),
         Type.Literal("pnpm_test"), Type.Literal("pnpm_build"), Type.Literal("pnpm_typecheck"), Type.Literal("pnpm_check"), Type.Literal("pytest"), Type.Literal("dotnet_test"), Type.Literal("cargo_test"), Type.Literal("cargo_check"),
       ]) }),
-      execute: async (_id: string, params: { command: DevelopmentCheck }) => textResult(await runDevelopmentCheck(workspace, params.command)),
+      execute: async (_id: string, params: { command: DevelopmentCheck }) => {
+        const receipt = await runDevelopmentCheck(workspace, params.command);
+        receipts.push(receipt);
+        return textResult(receipt.output);
+      },
     },
   ];
   if (accessMode === "inspect") return readOnlyTools;
@@ -149,13 +239,13 @@ function createDevelopmentTools(workspace: string, accessMode: DevelopmentAccess
       name: "edit_file", label: "修改文件",
       description: "Replace one exact, unique text block in a project file. Use this for precise edits.",
       parameters: Type.Object({ path: Type.String(), oldText: Type.String({ minLength: 1 }), newText: Type.String() }),
-      execute: async (_id: string, params: { path: string; oldText: string; newText: string }) => textResult(editWorkspaceFile(workspace, params)),
+      execute: async (_id: string, params: { path: string; oldText: string; newText: string }) => textResult(editWorkspaceFile(workspace, params, proposal)),
     },
     {
       name: "write_file", label: "写入文件",
       description: "Create or fully replace one text file inside the selected project. Prefer edit_file for existing files.",
       parameters: Type.Object({ path: Type.String(), content: Type.String() }),
-      execute: async (_id: string, params: { path: string; content: string }) => textResult(writeWorkspaceFile(workspace, params.path, params.content)),
+      execute: async (_id: string, params: { path: string; content: string }) => textResult(writeWorkspaceFile(workspace, params.path, params.content, proposal)),
     },
   ];
 }
@@ -167,6 +257,7 @@ function developmentSystemPrompt(workspace: string, mode: DevelopmentAccessMode)
     `权限：${mode === "develop" ? "允许读取、精确修改、创建文本文件并运行受控检查" : "只读检查，不得修改文件"}。`,
     "先阅读项目规则与相关文件，再定位根因或实现位置；保持修改精准，不重写无关代码。",
     "必须使用工具取得证据，不能假装读取、修改、构建或测试过。",
+    "引用代码时使用文件路径和行号；工具截断的内容要明确说明。推断只能标为推断，不能写成已读取事实。",
     "不得访问项目范围外的路径，不得读取密钥文件，不得删除文件、改写 Git 历史、推送、发布、部署或发送外部消息。",
     "开发模式下，完成修改后运行最相关的检查。检查失败时继续修复，直到通过或说明真实阻碍。",
     "最终用中文交付：完成了什么、关键修改、验证结果、未验证项和剩余风险。不要输出寒暄。",
@@ -243,6 +334,23 @@ function readWorkspaceFile(workspace: string, params: { path: string; startLine?
   return lines.slice(start - 1, end).map((line, index) => `${start + index}: ${line}`).join("\n").slice(0, 120_000);
 }
 
+function readContextReceipt(
+  workspace: string,
+  params: { path: string; startLine?: number; endLine?: number },
+): DevelopmentContextReceipt {
+  const file = resolveWorkspacePath(workspace, params.path);
+  const lineCount = readFileSync(file, "utf8").split(/\r?\n/).length;
+  const start = Math.max(1, params.startLine || 1);
+  const requestedEnd = params.endLine || Math.min(lineCount, start + 499);
+  const end = Math.min(lineCount, requestedEnd);
+  return {
+    kind: "file-lines",
+    path: relative(workspace, file).replace(/\\/g, "/"),
+    anchor: `L${start}-L${end}`,
+    confidence: "exact",
+    truncated: end < lineCount && params.endLine === undefined,
+  };
+}
 function searchWorkspaceText(workspace: string, query: string, path: string): string {
   const start = resolveWorkspacePath(workspace, path);
   const results: string[] = [];
@@ -270,7 +378,7 @@ function searchWorkspaceText(workspace: string, query: string, path: string): st
   return results.join("\n") || "没有找到匹配内容。";
 }
 
-function editWorkspaceFile(workspace: string, params: { path: string; oldText: string; newText: string }): string {
+function editWorkspaceFile(workspace: string, params: { path: string; oldText: string; newText: string }, proposal?: DevelopmentProposalSession): string {
   const file = resolveWorkspacePath(workspace, params.path);
   const raw = readFileSync(file, "utf8");
   const first = raw.indexOf(params.oldText);
@@ -278,21 +386,25 @@ function editWorkspaceFile(workspace: string, params: { path: string; oldText: s
   if (raw.indexOf(params.oldText, first + params.oldText.length) >= 0) throw new Error("要替换的原文出现多次，请提供更完整的唯一片段。");
   const next = raw.slice(0, first) + params.newText + raw.slice(first + params.oldText.length);
   if (next.length > 2_000_000) throw new Error("修改后的文件过大，已停止写入。");
-  writeFileSync(file, next, "utf8");
+  if (proposal) proposal.write(file, next);
+  else writeFileSync(file, next, "utf8");
   return `已修改 ${relative(workspace, file).replace(/\\/g, "/")}`;
 }
 
-function writeWorkspaceFile(workspace: string, path: string, content: string): string {
+function writeWorkspaceFile(workspace: string, path: string, content: string, proposal?: DevelopmentProposalSession): string {
   if (content.length > 500_000) throw new Error("单次写入内容过大。");
   const file = resolveWorkspacePath(workspace, path, true);
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, content, "utf8");
+  if (proposal) proposal.write(file, content);
+  else {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, content, "utf8");
+  }
   return `已写入 ${relative(workspace, file).replace(/\\/g, "/")}`;
 }
 
-type DevelopmentCheck = "git_status" | "git_diff" | "npm_test" | "npm_build" | "npm_typecheck" | "npm_check" | "pnpm_test" | "pnpm_build" | "pnpm_typecheck" | "pnpm_check" | "pytest" | "dotnet_test" | "cargo_test" | "cargo_check";
+export type DevelopmentCheck = "git_status" | "git_diff" | "npm_test" | "npm_build" | "npm_typecheck" | "npm_check" | "pnpm_test" | "pnpm_build" | "pnpm_typecheck" | "pnpm_check" | "pytest" | "dotnet_test" | "cargo_test" | "cargo_check";
 
-async function runDevelopmentCheck(workspace: string, command: DevelopmentCheck): Promise<string> {
+async function runDevelopmentCheck(workspace: string, command: DevelopmentCheck): Promise<DevelopmentCheckReceipt> {
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
   const commands: Record<DevelopmentCheck, [string, string[]]> = {
@@ -304,11 +416,48 @@ async function runDevelopmentCheck(workspace: string, command: DevelopmentCheck)
   const [file, args] = commands[command];
   try {
     const result = await execFileAsync(file, args, { cwd: workspace, windowsHide: true, timeout: 120_000, maxBuffer: 1_500_000 });
-    return [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "检查通过（无额外输出）。";
+    return { command, passed: true, output: [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "检查通过（无额外输出）。", checkedAt: new Date().toISOString() };
   } catch (error) {
     const detail = error as Error & { stdout?: string; stderr?: string };
-    return [`检查失败：${detail.message}`, detail.stdout, detail.stderr].filter(Boolean).join("\n").slice(0, 1_500_000);
+    return { command, passed: false, output: [`检查失败：${detail.message}`, detail.stdout, detail.stderr].filter(Boolean).join("\n").slice(0, 1_500_000), checkedAt: new Date().toISOString() };
   }
+}
+
+async function currentRevision(workspace: string): Promise<string | undefined> {
+  try {
+    const result = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace, windowsHide: true, timeout: 10_000, maxBuffer: 100_000 });
+    return result.stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function developmentFileReceipt(workspace: string, path: string): DevelopmentFileReceipt {
+  const file = resolve(workspace, path);
+  if (!existsSync(file) || !statSync(file).isFile()) return { path, state: "deleted" };
+  const content = readFileSync(file);
+  return { path, state: "present", sha256: createHash("sha256").update(content).digest("hex"), byteLength: content.byteLength };
+}
+
+function developmentRisks(mode: DevelopmentAccessMode, checks: DevelopmentCheckReceipt[]): string[] {
+  const verification = checks.filter((item) => !["git_status", "git_diff"].includes(item.command));
+  const risks: string[] = [];
+  if (mode === "develop" && verification.length === 0) risks.push("未运行构建、测试或类型检查，修改尚未通过项目级验证。");
+  if (verification.some((item) => !item.passed)) risks.push("至少一项项目检查失败，结果不能视为已验证完成。");
+  return risks;
+}
+
+function developmentProposalSummary(proposal: DevelopmentProposal): DevelopmentProposalSummary {
+  return {
+    id: proposal.id,
+    state: proposal.state,
+    files: proposal.files.map((file) => ({
+      path: file.path,
+      operation: file.operation,
+      proposedHash: file.proposedHash,
+      byteLength: file.byteLength,
+    })),
+  };
 }
 
 async function changedFiles(workspace: string): Promise<string[]> {

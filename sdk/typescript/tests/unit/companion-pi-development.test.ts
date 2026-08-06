@@ -49,6 +49,11 @@ test("开发能力可通过 Pi Agent SDK 使用现有兼容模型连接", async 
     assert.equal(result.reply, "已检查测试项目。");
     assert.equal(result.accessMode, "inspect");
     assert.equal(result.toolCalls, 1);
+    assert.deepEqual(result.changedFiles, []);
+    assert.deepEqual(result.fileReceipts, []);
+    assert.deepEqual(result.checks, []);
+    assert.deepEqual(result.contextReceipts, [{ kind: "directory", path: ".", anchor: "depth:1", confidence: "exact", truncated: false }]);
+    assert.deepEqual(result.unverifiedRisks, []);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     rmSync(workspace, { recursive: true, force: true });

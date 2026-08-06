@@ -62,6 +62,14 @@ import {
   type CapabilityTaskExpertAssignment,
   type CapabilityTaskStorylineStatus,
 } from "./capabilities.js";
+import {
+  createCapabilityHandoffEnvelope,
+  receiveCapabilityHandoff,
+  renderCapabilityHandoffContext,
+  returnCapabilityHandoff,
+  type CapabilityHandoffEnvelope,
+  type CapabilityHandoffInput,
+} from "./capability-handoff.js";
 import { createDefaultCapabilityToolRegistry } from "./capability-tools.js";
 import { createCompanionAgentToolProvider } from "./companion-agent-tools.js";
 import {
@@ -76,6 +84,7 @@ import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.j
 import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
+import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
 import {
   importWeChatPrivateSource,
   loadPrivateSourcesConfig,
@@ -147,6 +156,27 @@ function broadcastAgentSse(name: "job" | "run" | "approval", event: unknown): vo
 
 function broadcastAgentEvent(event: AgentJobQueueEvent): void {
   broadcastAgentSse("job", event);
+  queueMicrotask(() => {
+    try {
+      const job = agentJobQueue.get(event.job.id);
+      const taskId = String(job?.metadata?.workTaskId || "");
+      if (!job || !taskId) return;
+      const checkpoint = job.checkpoints[job.checkpoints.length - 1];
+      const artifactId = job.result?.artifactRefs?.find((item) => item.startsWith("artifact:"))?.slice("artifact:".length);
+      capabilities.projectTaskExecution({
+        taskId,
+        jobId: job.id,
+        status: job.status,
+        progress: checkpoint?.progress,
+        label: checkpoint?.status,
+        artifactId,
+        error: job.error,
+        updatedAt: job.updatedAt,
+      });
+    } catch {
+      // 任务投影失败不能影响权威作业记录或事件投递。
+    }
+  });
 }
 
 function broadcastApprovalEvent(event: AgentApprovalStoreEvent): void {
@@ -281,6 +311,7 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
     return searchWeb(key, query, signal);
   },
 });
+const developmentProposals = new DevelopmentProposalStore(join(DATA_DIR, "development-proposals"));
 const capabilities = new CapabilityRuntime({
   dataDir: DATA_DIR,
   personas: () => engine.listPersonas().map((p) => ({
@@ -296,8 +327,9 @@ const capabilities = new CapabilityRuntime({
       ...input,
       connection: modelConnection,
       agentDir: join(DATA_DIR, "pi-development"),
+      proposalStore: developmentProposals,
     });
-    return { reply: result.reply };
+    return result;
   },
   notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode) => {
     const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode });
@@ -390,12 +422,16 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     if (!personaId || !capabilityId || !instruction) {
       throw new Error("Agent job is missing personaId, capabilityId, or instruction");
     }
-    context.checkpoint("正在执行临时任务", 10);
+    const handoff = job.payload.handoff && typeof job.payload.handoff === "object"
+      ? job.payload.handoff as CapabilityHandoffEnvelope
+      : undefined;
+    const handoffReceipt = handoff ? receiveCapabilityHandoff(handoff) : undefined;
+    context.checkpoint(handoff ? "已接收上一步上下文" : "正在执行临时任务", 10, handoffReceipt);
     const notification = await capabilities.runAdHocTask({
       title: String(job.payload.title || "后台任务"),
       personaId,
       capabilityId,
-      instruction,
+      instruction: handoff ? `${instruction}\n\n${renderCapabilityHandoffContext(handoff)}` : instruction,
       format: normalizeAgentJobFormat(job.payload.format),
       trigger: "agent-job",
       runId: `agent-job/${job.id}`,
@@ -413,6 +449,9 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
         conversationKey: String(job.payload.conversationKey || ""),
         parentJobId: String(job.payload.parentJobId || ""),
         handoffChain: Array.isArray(job.payload.handoffChain) ? job.payload.handoffChain : [],
+        handoffReceipt: handoffReceipt
+          ? returnCapabilityHandoff(handoffReceipt, notification.artifact.id)
+          : undefined,
       },
     };
   },
@@ -489,6 +528,7 @@ function enqueueDueCapabilityTasks(trigger: "time" | "turn") {
       payload: { taskId: due.taskId, trigger },
       metadata: {
         userId: USER,
+        workTaskId: due.taskId,
         personaId: due.personaId,
         capabilityId: due.capabilityId,
         scheduled: "true",
@@ -1625,6 +1665,13 @@ function groupReplyRoute(groupId: string, text: string) {
   return resolveGroupReplyRoute(groupId, text, engine.groupMembers(groupId), ADVISORY_GROUP_ID);
 }
 
+function memoryDisplayContent(content: string): string {
+  return content
+    .replace(/^用户:self\s*/i, "")
+    .replace(/^用户(?:偏好|喜欢)\s*/i, "偏好")
+    .replace(/^用户(?:想要|想|希望)\s*/i, "希望")
+    .trim();
+}
 async function maybeUpdatePersonaNicknameFromText(target: ChatBody["target"], text: string): Promise<void> {
   if (!target || target.kind !== "persona") return;
   if (!userProfile.displayName) return;
@@ -1977,6 +2024,7 @@ interface ChatBody {
   voice?: boolean;
   image?: string; // base64 data URL（识图）
   sessionId?: string;
+  messageId?: string;
   model?: string;
   reasoning?: "fast" | "balanced" | "deep";
   toolMode?: "auto" | "read-only" | "off";
@@ -1984,6 +2032,7 @@ interface ChatBody {
 
 function conversationSendOptions(body: ChatBody): {
   sessionId?: string;
+  sourceMessageId?: string;
   model?: string;
   toolMode: "auto" | "read-only" | "off";
   runtimeLimits: { maxRounds: number; maxToolRounds: number; maxTotalTokens: number; maxOutputChars: number };
@@ -2000,6 +2049,7 @@ function conversationSendOptions(body: ChatBody): {
     : undefined;
   return {
     sessionId: body.sessionId ? String(body.sessionId).slice(0, 120) : undefined,
+    sourceMessageId: body.messageId && /^[a-z0-9:_-]{1,160}$/i.test(body.messageId) ? body.messageId : undefined,
     model: selectCompanionConversationModel({
       connection: modelConnection,
       requestedModel,
@@ -2292,6 +2342,7 @@ function maybeBlockOfflineWriteFromChat(b: ChatBody, text: string): ReturnType<t
 }
 
 function maybeExplainSkillFromChat(b: ChatBody, text: string): ReturnType<typeof capabilityReply> | null {
+  if (hasNegatedCapabilityIntent(text)) return null;
   const target = resolveWorkTarget(b);
   if (!target) return null;
   if (!/(skill|技能|能力|调用|什么时候|什么情况|怎么用|用途|能做什么|这个)/i.test(text)) return null;
@@ -2491,7 +2542,7 @@ function hasCreateCapabilityIntent(text: string): boolean {
 }
 
 function hasNegatedCapabilityIntent(text: string): boolean {
-  return /(不要|别|不用|无需|不是|先别).{0,8}(创建|生成|新增|登记|注册).{0,8}(能力|任务)/.test(text);
+  return /(不要|别|不用|无需|不需要|不是|先别).{0,10}(创建|生成|新增|登记|注册|调用|使用|启用|运行)?.{0,8}(能力|技能|skill|任务)/i.test(text);
 }
 
 function hasWorkRequestIntent(text: string): boolean {
@@ -2936,6 +2987,7 @@ const server = createServer(async (req, res) => {
         accessMode?: DevelopmentAccessMode;
         parentJobId?: string;
         handoffChain?: string[];
+        handoff?: CapabilityHandoffInput;
         format?: ArtifactFormat;
         idempotencyKey?: string;
         timeoutMs?: number;
@@ -2955,10 +3007,20 @@ const server = createServer(async (req, res) => {
         catch (error) { send(res, 400, { error: error instanceof Error ? error.message : String(error) }); return; }
       }
       const parentJobId = String(body.parentJobId || "").trim();
-      if (parentJobId) {
-        const parent = agentJobQueue.get(parentJobId);
-        if (!parent || parent.status !== "succeeded") { send(res, 400, { error: "上一步能力结果不存在或尚未完成" }); return; }
+      const parentJob = parentJobId ? agentJobQueue.get(parentJobId) : null;
+      if (parentJobId && (!parentJob || parentJob.status !== "succeeded")) {
+        send(res, 400, { error: "上一步能力结果不存在或尚未完成" });
+        return;
       }
+      const handoff = body.kind === "capability-adhoc" && body.handoff
+        ? createCapabilityHandoffEnvelope({
+            ...body.handoff,
+            source: parentJob ? "capability" : body.handoff.source,
+            sourceJobId: parentJob?.id || body.handoff.sourceJobId,
+            sourceCapabilityId: parentJob ? String(parentJob.payload.capabilityId || "") : body.handoff.sourceCapabilityId,
+            chain: Array.isArray(body.handoff.chain) ? body.handoff.chain : body.handoffChain,
+          }, String(body.capabilityId || ""))
+        : undefined;
       if (body.kind !== "capability-task" && body.kind !== "capability-adhoc") {
         send(res, 400, { error: "unsupported Agent job kind" });
         return;
@@ -2992,13 +3054,17 @@ const server = createServer(async (req, res) => {
                 workspacePath: body.capabilityId === "project-development" ? validateDevelopmentWorkspace(String(body.workspacePath || "")) : "",
                 accessMode: body.accessMode === "inspect" ? "inspect" : "develop",
                 parentJobId,
+                handoff,
                 handoffChain: Array.isArray(body.handoffChain)
                   ? body.handoffChain.map((item) => String(item).trim()).filter(Boolean).slice(0, 12)
                   : [],
                 format: body.format,
                 memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
               },
-          metadata: { userId: USER },
+          metadata: {
+            userId: USER,
+            ...(body.kind === "capability-task" && body.taskId ? { workTaskId: body.taskId } : {}),
+          },
           deliveryRequired: true,
           sideEffectRisk: true,
           maxAttempts: 1,
@@ -3100,6 +3166,38 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, job: action.value, auditRunId: action.runId });
       return;
     }
+    if (req.method === "POST" && url === "/api/agent/job/reconcile") {
+      const body = (await readBody(req)) as {
+        id?: string;
+        outcome?: "succeeded" | "not_applied";
+        note?: string;
+        summary?: string;
+      };
+      if (!body.id || !body.outcome || !body.note?.trim()) {
+        send(res, 400, { error: "id, outcome and reconciliation note are required" });
+        return;
+      }
+      if (body.outcome !== "succeeded" && body.outcome !== "not_applied") {
+        send(res, 400, { error: "unsupported reconciliation outcome" });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "agent_job_reconcile",
+        description: "人工核对可能已经产生副作用的后台任务，避免重复执行",
+        arguments: { jobId: body.id, outcome: body.outcome, noteChars: body.note.trim().length },
+        execute: () => agentJobQueue.reconcile(
+          body.id!,
+          body.outcome!,
+          body.note!.trim(),
+          body.outcome === "succeeded" && body.summary?.trim()
+            ? { summary: body.summary.trim() }
+            : undefined,
+        ),
+        summarizeResult: (job) => ({ ok: true, jobId: job.id, status: job.status }),
+      });
+      send(res, 200, { ok: true, job: action.value, auditRunId: action.runId });
+      return;
+    }
     if (req.method === "GET" && url === "/api/agent/extensions") {
       const configuredSandboxNode = process.env.NEMOS_MCP_SANDBOX_NODE?.trim();
       const configuredSandboxVersion = process.env.NEMOS_MCP_SANDBOX_NODE_VERSION?.trim();
@@ -3146,13 +3244,14 @@ const server = createServer(async (req, res) => {
           requiresUnsandboxedConfirmation: requiresUnsandboxedExecutionApproval(body.manifest),
           sandboxType: body.manifest.runtime.sandbox?.type ?? null,
           installed: Boolean(installed),
+          permissionExpansion: agentExtensions.accessExpansion(body.manifest),
           currentVersion: installed?.manifest.version ?? null,
         },
       });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/extension/install") {
-      const body = (await readBody(req)) as { manifest?: AgentExtensionManifest; confirmExecutable?: boolean; confirmUnsandboxed?: boolean };
+      const body = (await readBody(req)) as { manifest?: AgentExtensionManifest; confirmExecutable?: boolean; confirmUnsandboxed?: boolean; confirmPermissionExpansion?: boolean };
       if (!body.manifest) { send(res, 400, { error: "missing extension manifest" }); return; }
       const validationErrors = validateAgentExtensionManifest(body.manifest);
       if (validationErrors.length > 0) {
@@ -3191,7 +3290,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/agent/extension/upgrade") {
-      const body = (await readBody(req)) as { manifest?: AgentExtensionManifest; confirmExecutable?: boolean; confirmUnsandboxed?: boolean };
+      const body = (await readBody(req)) as { manifest?: AgentExtensionManifest; confirmExecutable?: boolean; confirmUnsandboxed?: boolean; confirmPermissionExpansion?: boolean };
       if (!body.manifest) { send(res, 400, { error: "missing extension manifest" }); return; }
       const validationErrors = validateAgentExtensionManifest(body.manifest);
       if (validationErrors.length > 0) {
@@ -3222,7 +3321,10 @@ const server = createServer(async (req, res) => {
         execute: () => {
           const current = agentExtensions.get(manifest.id);
           const provider = current?.enabled ? createExtensionProvider(manifest) : undefined;
-          const extension = agentExtensions.upgrade(manifest, provider, { allowUnsandboxed });
+          const extension = agentExtensions.upgrade(manifest, provider, {
+            allowUnsandboxed,
+            approvePermissionExpansion: body.confirmPermissionExpansion === true,
+          });
           if (!current?.enabled) agentExtensionRuntimeErrors.delete(manifest.id);
           return extension;
         },
@@ -3441,7 +3543,7 @@ const server = createServer(async (req, res) => {
             id: m.id,
             layer,
             scope: m.scope,
-            content: m.content,
+            content: memoryDisplayContent(m.content),
             created_at: m.created_at,
           })));
         }
@@ -3706,6 +3808,47 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, report: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
     }
+    if (req.method === "GET" && url.split("?")[0] === "/api/development/proposal/preview") {
+      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
+      const proposal = id ? developmentProposals.get(id) : undefined;
+      if (!proposal) send(res, 404, { error: "development proposal not found" });
+      else send(res, 200, renderDevelopmentProposalHtml(proposal), "text/html");
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/proposal/apply") {
+      const body = (await readBody(req)) as { id?: string };
+      if (!body.id) { send(res, 400, { error: "missing proposal id" }); return; }
+      const proposal = developmentProposals.apply(body.id);
+      const artifact = capabilities.updateDevelopmentProposalState(proposal.id, proposal.state, proposal.conflicts);
+      if (proposal.state === "conflicted") {
+        send(res, 409, { error: "项目文件在提案生成后发生了变化，未自动覆盖。", proposal, artifact });
+      } else {
+        send(res, 200, { ok: true, proposal, artifact, snapshot: capabilities.snapshot() });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/proposal/reject") {
+      const body = (await readBody(req)) as { id?: string };
+      if (!body.id) { send(res, 400, { error: "missing proposal id" }); return; }
+      const proposal = developmentProposals.reject(body.id);
+      const artifact = capabilities.updateDevelopmentProposalState(proposal.id, proposal.state);
+      send(res, 200, { ok: true, proposal, artifact, snapshot: capabilities.snapshot() });
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact/workspace") {
+      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
+      const state = capabilities.artifactWorkspace(id);
+      if (!state) send(res, 404, { error: "artifact workspace not found" });
+      else send(res, 200, { ok: true, state });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capabilities/artifact/workspace") {
+      const body = (await readBody(req)) as { id?: string; action?: "save" | "version" | "restore"; current?: unknown; versionId?: string; expectedRevision?: number };
+      if (!body.id || !body.action) { send(res, 400, { error: "missing artifact workspace action" }); return; }
+      const state = capabilities.updateArtifactWorkspace({ id: body.id, action: body.action, current: body.current, versionId: body.versionId, expectedRevision: body.expectedRevision });
+      send(res, 200, { ok: true, state, snapshot: capabilities.snapshot() });
+      return;
+    }
     if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact/preview") {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id");
       if (!capabilities.previewArtifact(res, id)) send(res, 404, { error: "artifact not found" });
@@ -3899,15 +4042,30 @@ const server = createServer(async (req, res) => {
       const b = (await readBody(req)) as { id?: string };
       if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
       const task = capabilities.snapshot().tasks.find((item) => item.id === b.id);
+      if (!task) { send(res, 404, { error: "task not found" }); return; }
       const action = await agentUserActions.execute({
         name: "capability_task_run",
-        description: "运行用户在任务管理页选中的常规任务并保存交付物",
-        arguments: { taskId: b.id, personaId: task?.personaId, capabilityId: task?.capabilityId },
-        metadata: task?.personaId ? { personaId: task.personaId } : undefined,
-        execute: (signal) => capabilities.runTask(b.id!, "manual", signal),
-        summarizeResult: (notification) => ({ ok: true, artifactId: notification.artifact.id, taskId: b.id }),
+        description: "把用户选中的常规任务加入持久队列",
+        arguments: { taskId: task.id, personaId: task.personaId, capabilityId: task.capabilityId },
+        metadata: { personaId: task.personaId },
+        execute: () => agentJobQueue.enqueue({
+          type: "capability-task",
+          payload: { taskId: task.id, trigger: "manual" },
+          metadata: { userId: USER, workTaskId: task.id },
+          deliveryRequired: true,
+          sideEffectRisk: true,
+          maxAttempts: 1,
+          idempotencyKey: `capability-task:${task.id}:${Date.now()}`,
+        }),
+        summarizeResult: (job) => ({ ok: true, jobId: job.id, taskId: task.id, status: job.status }),
       });
-      send(res, 200, { ok: true, notification: capabilityReply(action.value), auditRunId: action.runId, snapshot: capabilities.snapshot() });
+      capabilities.projectTaskExecution({
+        taskId: task.id,
+        jobId: action.value.id,
+        status: action.value.status,
+        updatedAt: action.value.updatedAt,
+      });
+      send(res, 202, { ok: true, job: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
     }
     if (req.method === "POST" && url === "/api/capabilities/adhoc/run") {
@@ -4122,11 +4280,30 @@ const server = createServer(async (req, res) => {
       const qWho = new URLSearchParams(url.split("?")[1] || "").get("who") || USER;
       const who = qWho === USER || PERSONAS.some((p) => personaNamespace(p.id) === qWho) ? qWho : USER;
       const store = mem.forUser(who);
-      const facts: Array<{ id: string; layer: string; who: string; content: string; created: string }> = [];
+      const archivalItems = await store.listByLayer("archival", { limit: 500 });
+      const archivalById = new Map(archivalItems.map((item) => [item.id, item]));
+      const facts: Array<{
+        id: string;
+        layer: string;
+        who: string;
+        content: string;
+        created: string;
+        correctable: boolean;
+        source: {
+          origin: string;
+          sourceMessageId?: string;
+          speakerId?: string;
+          subjectId?: string;
+          conversationId?: string;
+          archivalId?: string;
+          excerpt?: string;
+        };
+      }> = [];
       // archival=原文/归档；其余为分类后的记忆层
       for (const layer of ["personal_semantic", "semantic", "episodic", "procedural", "archival"]) {
-        const items = await store.listByLayer(layer as never, { limit: 500 });
+        const items = layer === "archival" ? archivalItems : await store.listByLayer(layer as never, { limit: 500 });
         for (const m of items) {
+          if (layer !== "archival" && (m.promotion_state ?? determinePromotion(m).state) !== "promoted") continue;
           if (who.startsWith("persona:")
             && layer !== "archival"
             && !["persona-bio", "persona-self"].includes(m.source.origin)) continue;
@@ -4136,7 +4313,24 @@ const server = createServer(async (req, res) => {
           const speaker = who === USER
             ? (userProfile.displayName || "我")
             : (ownerPersona?.name ?? "角色");
-          facts.push({ id: m.id, layer, who: speaker, content: m.content, created: m.created_at });
+          const archival = m.layer === "archival" ? m : (m.archival_ref ? archivalById.get(m.archival_ref) : undefined);
+          facts.push({
+            id: m.id,
+            layer,
+            who: speaker,
+            content: memoryDisplayContent(m.content),
+            created: m.created_at,
+            correctable: layer !== "archival" && !!m.claim_key && !!m.predicate && !!m.subject_id,
+            source: {
+              origin: m.source.origin,
+              sourceMessageId: archival?.source.source_message_id || m.source.source_message_id,
+              speakerId: archival?.source.speaker_id || m.source.speaker_id,
+              subjectId: archival?.source.subject_id || m.source.subject_id,
+              conversationId: archival?.source.conversation_id || m.source.conversation_id,
+              archivalId: archival?.id,
+              excerpt: archival?.content.slice(0, 500),
+            },
+          });
         }
       }
       facts.sort((a, b) => b.created.localeCompare(a.created));
@@ -4164,6 +4358,32 @@ const server = createServer(async (req, res) => {
         summarizeResult: (memory) => ({ ok: true, memoryId: memory.id }),
       });
       send(res, 200, { ok: true, memory: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/memory/correct") {
+      const body = (await readBody(req)) as { id?: string; content?: string };
+      const id = String(body.id || "").trim();
+      const correction = String(body.content || "").trim();
+      if (!id || !correction || correction.length > 1000) {
+        send(res, 400, { error: "请选择可修正的记忆，并填写 1 至 1000 个字符的新内容" });
+        return;
+      }
+      const store = mem.forUser(USER);
+      const layers = ["personal_semantic", "semantic", "episodic", "procedural"] as const;
+      const candidates = (await Promise.all(layers.map((layer) => store.listByLayer(layer, { limit: 100000 })))).flat();
+      const target = candidates.find((item) => item.id === id);
+      if (!target || !target.claim_key || !target.predicate || !target.subject_id) {
+        send(res, 400, { error: "这条内容不是可修正的结构化记忆；可以选择忘记它，原始对话仍会保留" });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "memory_item_correct",
+        description: "用用户在记忆页面明确填写的新内容修正一条结构化记忆",
+        arguments: { memoryId: id, correctionChars: correction.length, archivalPreserved: true },
+        execute: () => store.correct(id, correction),
+        summarizeResult: (operation) => ({ ok: true, operationId: operation.id, memoryId: id }),
+      });
+      send(res, 200, { ok: true, operationId: action.value.id, auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/memory/forget") {

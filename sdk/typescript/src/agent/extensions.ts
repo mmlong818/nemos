@@ -61,6 +61,8 @@ export interface AgentExtensionManifest {
     sandbox?: AgentExtensionSandbox;
   };
   permissions: AgentExtensionPermission[];
+  /** 可由该能力请求的模型标识；空数组表示不能自行选择模型。 */
+  models?: string[];
   activation: string[];
   tools: AgentExtensionToolHint[];
 }
@@ -90,6 +92,7 @@ export type AgentExtensionExecutionSecurity =
 
 export interface AgentExtensionExecutionApproval {
   allowUnsandboxed?: boolean;
+  approvePermissionExpansion?: boolean;
 }
 
 export interface AgentExtensionRecord {
@@ -185,6 +188,13 @@ export class AgentExtensionRegistry {
       rejectProvider(
         provider,
         "Agent extension upgrade must increase the version: " + current.manifest.version + " -> " + manifest.version,
+      );
+    }
+    const expandedAccess = permissionExpansion(current.manifest, manifest);
+    if (expandedAccess.length > 0 && approval.approvePermissionExpansion !== true) {
+      rejectProvider(
+        provider,
+        "Agent extension upgrade expands declared access and requires explicit approval: " + expandedAccess.join(", "),
       );
     }
     const unsafeExecutionApproved = approval.allowUnsandboxed === true;
@@ -283,6 +293,17 @@ export class AgentExtensionRegistry {
     return record ? publicRecord(record) : null;
   }
 
+  accessExpansion(manifest: AgentExtensionManifest): string[] {
+    const current = this.entries.get(manifest.id);
+    return current ? permissionExpansion(current.manifest, manifest) : [];
+  }
+  assertModelAccess(id: string, modelId: string): void {
+    const record = this.require(id);
+    const allowed = record.manifest.models ?? [];
+    if (!allowed.includes(modelId)) {
+      throw new Error(`Extension ${id} is not allowed to use model ${modelId}; update the manifest and approve the expanded access`);
+    }
+  }
   async toolsForRequest(
     query: string,
     options: { signal?: AbortSignal; limit?: number } = {},
@@ -525,7 +546,16 @@ export function validateAgentExtensionManifest(manifest: AgentExtensionManifest)
     if (!permissionTypes.includes(permission)) errors.push(`permission is invalid: ${permission}`);
   }
   if (new Set(permissions).size !== permissions.length) errors.push("permissions must not contain duplicates");
-  if (!Array.isArray(manifest?.activation) || manifest.activation.length === 0) errors.push("activation must contain at least one cue");
+  if (manifest?.models !== undefined) {
+    if (!Array.isArray(manifest.models) || manifest.models.length > 16) {
+      errors.push("models must contain up to 16 model ids");
+    } else {
+      if (manifest.models.some((model) => typeof model !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(model))) {
+        errors.push("models contains an invalid model id");
+      }
+      if (new Set(manifest.models).size !== manifest.models.length) errors.push("models must not contain duplicates");
+    }
+  }  if (!Array.isArray(manifest?.activation) || manifest.activation.length === 0) errors.push("activation must contain at least one cue");
   if ((manifest?.activation?.length ?? 0) > 32) errors.push("activation exceeds the 32 cue limit");
   for (const cue of manifest?.activation ?? []) {
     if (typeof cue !== "string" || !cue.trim() || cue.length > 80) errors.push("activation cues must be non-empty strings up to 80 characters");
@@ -695,6 +725,27 @@ function validateLoadedTool(
   }
 }
 
+function permissionExpansion(
+  current: AgentExtensionManifest,
+  next: AgentExtensionManifest,
+): string[] {
+  const expanded: string[] = [];
+  const currentPermissions = new Set(current.permissions);
+  for (const permission of next.permissions) {
+    if (!currentPermissions.has(permission)) expanded.push("permission:" + permission);
+  }
+  const currentModels = new Set(current.models ?? []);
+  for (const model of next.models ?? []) {
+    if (!currentModels.has(model)) expanded.push("model:" + model);
+  }
+  const currentTools = new Map(current.tools.map((tool) => [tool.name, tool.effect]));
+  for (const tool of next.tools) {
+    const previous = currentTools.get(tool.name);
+    if (!previous) expanded.push("tool:" + tool.name);
+    else if (previous === "read" && tool.effect === "write") expanded.push("tool-write:" + tool.name);
+  }
+  return expanded;
+}
 function hasWritePermission(permissions: readonly AgentExtensionPermission[]): boolean {
   return permissions.some((permission) => permission === "filesystem-write" || permission === "memory-write" || permission === "external-write");
 }

@@ -750,7 +750,7 @@ function admissionFailure(memory: Memory, plan: QueryPlan, options: RecallOption
   ) {
     return "utterance_" + memory.utterance_mode;
   }
-  if (plan.intent === "current_fact" && memory.subject_resolution === "ambiguous") {
+if (plan.intent === "current_fact" && memory.subject_resolution === "ambiguous") {
     return "subject_ambiguous";
   }
   const state = memory.belief_state ?? "active";

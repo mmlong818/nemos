@@ -7,7 +7,7 @@ const CATALOG = [
   { id: "marketBrief", backendId: "market-briefing", name: "查港股资料", icon: "trend", summary: "读取公告、行情快照并整理盘前盘后简报", description: "按股票代码读取港交所官方公告和带查询时间的第三方行情快照；明确延迟、来源和待核验项，不提供交易指令。", use: "自选股、公告核验、盘前盘后复盘", deliverable: "带来源与时间戳的市场资料简报", format: "html", detail: "读取关注代码、官方公告、行情快照和风险边界" },
   { id: "thinking", backendId: "thinking-workbench", name: "梳理复杂问题", icon: "lightbulb", summary: "把模糊问题变成可操作的思考工作台", description: "分开事实、假设、矛盾和未知，保留多个选项，形成可以勾选和补充的验证计划。", use: "问题拆解、创意探索、复盘", deliverable: "可交互思考工作台", format: "html", featured: true, detail: "梳理问题、假设、选择和验证办法" },
   { id: "product", backendId: "product-design", name: "设计产品界面", icon: "layout", summary: "从用户任务形成页面和交互方案", description: "先理清真实用户路径，再产出信息结构、关键界面、交互说明和验收要点。", use: "新功能、界面改版、产品方案", deliverable: "产品设计说明", format: "html", featured: true, detail: "形成用户流程、页面结构与设计说明" },
-  { id: "developer", backendId: "project-development", name: "开发项目", icon: "code", summary: "读取本地项目、修改代码并运行验证", description: "使用独立开发执行器，在你指定的项目文件夹内真实读取、修改和验证代码。", use: "开发功能、修复问题、项目检查", deliverable: "项目修改、可运行结果与验证记录", format: "md", featured: true, detail: "读取项目规则、实施修改并运行受控检查" },
+  { id: "developer", backendId: "project-development", name: "开发项目", icon: "code", summary: "读取本地项目，生成可核对的修改提案", description: "在你指定的项目文件夹内真实读取、开发和验证；修改先作为提案保存，由你确认后再写入项目。", use: "开发功能、修复问题、项目检查", deliverable: "修改提案、可运行结果与验证记录", format: "md", featured: true, detail: "读取项目规则、实施修改、运行检查，再由你确认写入" },
   { id: "meeting", backendId: "meeting-minutes", name: "整理会议纪要", icon: "checklist", summary: "从记录中提炼结论和行动项", description: "把会议文字整理成摘要、决定、责任人、截止时间、风险和未决问题。", use: "会议记录、访谈、讨论复盘", deliverable: "纪要与行动表", format: "doc", featured: true, detail: "提炼决定、行动项与未决问题" },
   { id: "web", backendId: "html-report", name: "做网页报告", icon: "globe", summary: "把内容制作成独立网页", description: "生成不依赖外部服务、可直接在浏览器打开的单页内容。", use: "报告、说明页、互动展示", deliverable: "独立 HTML 网页", format: "html", detail: "制作可直接打开的独立网页" },
   { id: "decision", backendId: "decision-brief", name: "比较方案", icon: "scale", summary: "比较证据、风险与行动条件", description: "把零散信息整理成可判断的选择，说明收益、代价、风险和什么时候应该改变决定。", use: "选型、取舍、优先级判断", deliverable: "决策简报", format: "md", detail: "比较方案、风险和行动条件" },
@@ -97,7 +97,7 @@ const ICON_TONES = {
   ability: "#a24f58",
 };
 
-const STATUS_TEXT = { queued: "等待开始", running: "正在执行", succeeded: "已完成", failed: "执行失败", cancelled: "已取消" };
+const STATUS_TEXT = { queued: "等待开始", running: "正在执行", succeeded: "已完成", failed: "执行失败", cancelled: "已取消", uncertain: "等待核对" };
 const FORMAT_LABELS = { pptx: "可编辑 PowerPoint", html: "可交互网页", doc: "可编辑 Word", pdf: "PDF", xlsx: "Excel", md: "可编辑文稿", json: "结构化数据", txt: "纯文本" };
 
 function migrateStorageKey(codes, target, storage) {
@@ -129,7 +129,10 @@ const state = {
   handoffApplied: false,
   handoffContext: "",
   handoffSummary: "",
+  handoffConversation: [],
   handoffMessageCount: 0,
+  handoffSource: "",
+  handoffSourceCapabilityId: "",
   returnConversationKey: "",
   returnUrl: "/",
   parentJobId: "",
@@ -348,6 +351,11 @@ function saveDraft() {
     accessMode: $("#accessModeSelect").value,
     parentJobId: state.parentJobId,
     handoffChain: state.handoffChain,
+    handoffSummary: state.handoffSummary,
+    handoffConversation: state.handoffConversation,
+    handoffSource: state.handoffSource,
+    handoffSourceCapabilityId: state.handoffSourceCapabilityId,
+    returnConversationKey: state.returnConversationKey,
     updatedAt: new Date().toISOString(),
   };
   localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -369,7 +377,7 @@ function restoreLast() {
   if (!draft?.goal && !draft?.instruction) return showToast("没有可继续的内容", true);
 
   state.selectedId = CATALOG.some((item) => item.id === draft.selectedId) ? draft.selectedId : "document";
-  state.materials = Array.isArray(draft.materials) ? draft.materials.slice(0, 1) : [];
+  state.materials = Array.isArray(draft.materials) ? draft.materials.slice(-8) : [];
   $("#goalInput").value = draft.goal || "";
   $("#instructionInput").value = draft.instruction || "";
   $("#memoryToggle").checked = draft.memoryMode !== "off";
@@ -377,6 +385,12 @@ function restoreLast() {
   $("#accessModeSelect").value = draft.accessMode === "inspect" ? "inspect" : "develop";
   state.parentJobId = String(draft.parentJobId || "");
   state.handoffChain = Array.isArray(draft.handoffChain) ? draft.handoffChain.slice(0, 12) : [];
+  state.handoffSummary = String(draft.handoffSummary || "");
+  state.handoffConversation = Array.isArray(draft.handoffConversation) ? draft.handoffConversation.slice(-120) : [];
+  state.handoffMessageCount = state.handoffConversation.length;
+  state.handoffSource = draft.handoffSource === "capability" ? "capability" : draft.handoffSource === "chat" ? "chat" : "";
+  state.handoffSourceCapabilityId = String(draft.handoffSourceCapabilityId || "");
+  state.returnConversationKey = String(draft.returnConversationKey || "");
   renderCatalog();
   renderMaterials();
   openCapability();
@@ -392,7 +406,10 @@ function resetDraft() {
   state.materials = [];
   state.handoffContext = "";
   state.handoffSummary = "";
+  state.handoffConversation = [];
   state.handoffMessageCount = 0;
+  state.handoffSource = "";
+  state.handoffSourceCapabilityId = "";
   state.returnConversationKey = "";
   state.parentJobId = "";
   state.handoffChain = [];
@@ -413,13 +430,20 @@ async function startTask() {
   const button = $("#startTask");
   button.disabled = true;
   button.textContent = "正在加入任务…";
-  const summaryContext = state.handoffSummary
-    ? "\n\n【对话提要】\n" + state.handoffSummary
-    : "";
-  const conversationContext = state.handoffContext
-    ? "\n\n【完整对话原文】\n以下内容是原始依据。提要与原文冲突时以原文为准；请继承其中已经确认的目标、限制、判断和材料，不要要求用户重复说明。\n--- 对话开始 ---\n" + state.handoffContext + "\n--- 对话结束 ---"
-    : "";
-  const materials = state.materials.length ? `\n\n用户提供的材料：\n--- ${state.materials[0].name} ---\n${state.materials[0].text}` : "";
+  const hasHandoff = Boolean(state.handoffSummary || state.handoffConversation.length || state.parentJobId);
+  const materials = !hasHandoff && state.materials.length ? `\n\n用户提供的材料：\n--- ${state.materials[0].name} ---\n${state.materials[0].text}` : "";
+  const handoff = hasHandoff ? {
+    source: state.handoffSource || (state.parentJobId ? "capability" : "chat"),
+    sourceConversationKey: state.returnConversationKey,
+    sourceJobId: state.parentJobId,
+    sourceCapabilityId: state.handoffSourceCapabilityId,
+    goal,
+    summary: state.handoffSummary,
+    conversation: state.handoffConversation,
+    materials: state.materials,
+    decisions: [], constraints: [], unresolved: [],
+    chain: state.handoffChain,
+  } : undefined;
   try {
     const response = await api("/api/agent/job", {
       method: "POST",
@@ -428,7 +452,8 @@ async function startTask() {
         title: (goal || instruction).slice(0, 60),
         personaId: "clownfish",
         capabilityId: item.backendId,
-        instruction: `${instruction}${summaryContext}${conversationContext}${materials}`,
+        instruction: `${instruction}${materials}`,
+        handoff,
         conversationKey: state.returnConversationKey,
         workspacePath: item.id === "developer" ? $("#workspaceInput").value.trim() : "",
         accessMode: item.id === "developer" && $("#accessModeSelect").value === "inspect" ? "inspect" : "develop",
@@ -470,7 +495,9 @@ function latestCheckpoint(job) {
 }
 
 function artifactFromJob(job) {
-  return job.result?.data?.artifact || null;
+  const recorded = job.result?.data?.artifact || null;
+  if (!recorded) return null;
+  return (state.snapshot.artifacts || []).find((artifact) => artifact.id === recorded.id) || recorded;
 }
 
 function artifactLinks(artifact, compact = false) {
@@ -482,6 +509,21 @@ function artifactLinks(artifact, compact = false) {
   return preview + download;
 }
 
+function developmentProposalActions(artifact) {
+  const proposal = artifact?.metadata?.development?.proposal;
+  if (!proposal) return "";
+  const preview = `<a href="/api/development/proposal/preview?id=${encodeURIComponent(proposal.id)}" target="_blank" rel="noopener">查看修改</a>`;
+  if (proposal.state === "pending") return `${preview}<button type="button" data-apply-proposal="${escapeHtml(proposal.id)}">写入项目</button><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
+  if (proposal.state === "conflicted") return `${preview}<span class="proposal-state">项目已变化，未覆盖</span><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
+  if (proposal.state === "applied") return `<span class="proposal-state">修改已写入</span>${preview}`;
+  if (proposal.state === "rejected") return `<span class="proposal-state">提案已放弃</span>`;
+  if (proposal.state === "failed") return `<span class="proposal-state">提案生成失败</span>`;
+  return preview;
+}
+
+function artifactProofLabel(artifact) {
+  return ({ produced: "已生成", validated: "已校验", verified: "已核验", approved: "已确认" })[artifact?.proof?.level] || "未检查";
+}
 function chatHref() {
   const url = new URL(state.returnUrl || "/", location.origin);
   return `${url.pathname}${url.hash}`;
@@ -521,7 +563,7 @@ async function cancelJob(id) {
 }
 
 function renderHistory() {
-  const jobs = state.jobs.filter((job) => ["succeeded", "failed", "cancelled"].includes(job.status));
+  const jobs = state.jobs.filter((job) => ["succeeded", "failed", "cancelled", "uncertain"].includes(job.status));
   $("#historyEmpty").hidden = jobs.length > 0;
   $("#historyList").innerHTML = jobs.map((job) => {
     const item = jobCapability(job);
@@ -530,11 +572,26 @@ function renderHistory() {
     const installed = artifact?.metadata?.generatedAbilityId ? " · 已加入能力库" : "";
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
-      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p></div>
-      <div class="task-actions">${job.status === "succeeded" ? `<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${open}</div>
+      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p></div>
+      <div class="task-actions">${job.status === "succeeded" ? `<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}${open}</div>
     </article>`;
   }).join("");
   $$('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
+  $$('[data-apply-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.applyProposal, "apply")));
+  $$('[data-reject-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.rejectProposal, "reject")));
+}
+
+async function decideDevelopmentProposal(id, action) {
+  const applying = action === "apply";
+  if (!window.confirm(applying ? "确认将这份修改提案写入正式项目？" : "确认放弃这份修改提案？项目文件不会改变。")) return;
+  try {
+    await api(`/api/development/proposal/${action}`, { method: "POST", body: JSON.stringify({ id }) });
+    await refreshData();
+    showToast(applying ? "修改已写入项目" : "修改提案已放弃");
+  } catch (error) {
+    await refreshData();
+    showToast(error.message || "操作未完成", true);
+  }
 }
 
 async function handoffJob(id) {
@@ -547,9 +604,14 @@ async function handoffJob(id) {
     const text = String(context.text || artifact.summary || "").slice(0, 160000);
     state.parentJobId = job.id;
     state.handoffChain = [...(Array.isArray(job.payload?.handoffChain) ? job.payload.handoffChain : []), sourceCapability.backendId].slice(-12);
-    state.materials = [{ name: `${jobTitle(job)}-上一步结果.md`, size: new Blob([text]).size, text, kind: "handoff" }];
+    const inheritedMaterials = Array.isArray(job.payload?.handoff?.materials) ? job.payload.handoff.materials.slice(-7) : [];
+    state.materials = [...inheritedMaterials, { name: `${jobTitle(job)}-上一步结果.md`, size: new Blob([text]).size, text, kind: "handoff", artifactId: artifact.id }];
     state.handoffSummary = `上一步由「${sourceCapability.name}」完成。请选择下一项能力，并说明要继续完成什么。`;
-    state.handoffContext = "";
+    state.handoffConversation = Array.isArray(job.payload?.handoff?.conversation) ? job.payload.handoff.conversation.slice(-120) : [];
+    state.handoffMessageCount = state.handoffConversation.length;
+    state.handoffSource = "capability";
+    state.handoffSourceCapabilityId = sourceCapability.backendId;
+    state.handoffContext = state.handoffConversation.map((entry) => `${entry.speaker}：${entry.text}`).join("\n\n");
     $("#goalInput").value = "";
     $("#instructionInput").value = "";
     $("#launchPanel").hidden = true;
@@ -581,7 +643,7 @@ function renderFiles() {
     const capability = capabilityForBackend(latest.capabilityId);
     return `<article class="file-card">
       <div class="file-card-top"><div><h2>${escapeHtml(latest.title || "未命名文件")}</h2><p>${capability.name} · ${versions.length > 1 ? `${versions.length} 个版本` : displayDate(latest.createdAt)}</p></div><span class="file-type">${escapeHtml(String(latest.format || "file").toUpperCase())}</span></div>
-      <div class="versions">${versions.slice(0, 5).map((file, index) => `<div class="version-row"><span>${versions.length > 1 ? `版本 ${versions.length - index}` : "最新结果"} · ${displayDate(file.createdAt)}</span><span class="version-actions">${artifactLinks(file, true)}</span></div>`).join("")}</div>
+      <div class="versions">${versions.slice(0, 5).map((file, index) => `<div class="version-row"><span>${versions.length > 1 ? `版本 ${versions.length - index}` : "最新结果"} · ${artifactProofLabel(file)} · ${displayDate(file.createdAt)}</span><span class="version-actions">${artifactLinks(file, true)}</span></div>`).join("")}</div>
     </article>`;
   }).join("");
 }
@@ -660,10 +722,14 @@ function loadHandoffConversation(handoff, chatName) {
     } catch {}
   }
   if (!messages.length && Array.isArray(handoff.conversation)) messages = handoff.conversation;
-  return messages.filter((entry) => entry && typeof entry.text === "string" && entry.text.trim()).map((entry) => {
+  return messages.filter((entry) => entry && typeof entry.text === "string" && entry.text.trim()).map((entry, index) => {
     const persona = entry.pid ? state.personas.find((item) => item.id === entry.pid) : null;
+    const role = entry.side === "me" || entry.side === "user" ? "user" : "assistant";
+    const speakerId = role === "user" ? "user:current" : `agent:${entry.pid || persona?.id || "clownfish"}`;
     return {
-      speaker: String(entry.speaker || (entry.side === "me" || entry.side === "user" ? "用户" : entry.who || persona?.name || chatName)).slice(0, 60),
+      sourceMessageId: String(entry.id || `${key || "conversation"}:${index + 1}`).slice(0, 160),
+      role, speakerId, subjectId: speakerId,
+      speaker: String(entry.speaker || (role === "user" ? "用户" : entry.who || persona?.name || chatName)).slice(0, 60),
       text: entry.text,
     };
   });
@@ -678,16 +744,19 @@ function applyChatHandoff() {
   const goal = String(handoff.goal || "").trim().slice(0, 2000);
   const chatName = String(handoff.chatName || "当前对话").slice(0, 40);
   const incomingConversation = loadHandoffConversation(handoff, chatName);
+  state.handoffConversation = incomingConversation;
   state.handoffContext = incomingConversation.map((entry) => `${entry.speaker}：${entry.text}`).join("\n\n");
   state.handoffSummary = String(handoff.summary || goal).trim();
   state.handoffMessageCount = incomingConversation.length;
+  state.handoffSource = "chat";
+  state.handoffSourceCapabilityId = "";
   state.returnConversationKey = /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(handoff.conversationKey || ""))
     ? String(handoff.conversationKey)
     : "";
   const fromChat = handoff.source === "chat";
 
   const incomingMaterials = Array.isArray(handoff.materials)
-    ? handoff.materials.filter((item) => item && typeof item.name === "string" && typeof item.text === "string" && item.text.trim()).slice(0, 1).map((item) => ({
+    ? handoff.materials.filter((item) => item && typeof item.name === "string" && typeof item.text === "string" && item.text.trim()).slice(0, 8).map((item) => ({
       name: item.name.slice(0, 160),
       size: Math.max(0, Number(item.size || 0)),
       text: item.text.slice(0, 120000),

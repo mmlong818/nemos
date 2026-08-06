@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const NATIVE_CAPABILITY_IDS = [
   "research-brief",
   "presentation-builder",
@@ -51,6 +53,7 @@ export function parseNativeCapabilityPayload(id: NativeCapabilityId, raw: string
   const title = asText(root.title, "title");
   const summary = asText(root.summary, "summary");
   const data = asRecord(root.data, "data");
+  if (id === "research-brief") normalizeResearchAnchors(data);
   if (id === "ability-builder" && !Array.isArray(data.testCases)) {
     const spec = asRecord(data.spec, "data.spec");
     if (Array.isArray(spec.testCases)) data.testCases = spec.testCases;
@@ -109,7 +112,7 @@ export function generatedAbilitySpec(payload: NativeCapabilityPayload): Generate
 function contractFor(id: NativeCapabilityId): string {
   switch (id) {
     case "research-brief":
-      return "结构：{kind,title,summary,data:{question,plan:string[],sources:[{id,title,url,publisher,tier:1|2|3|4,score:0-100,checkedAt,claims:string[]}],findings:[{claim,evidenceIds:string[],confidence:0-1,status:\"confirmed\"|\"partial\"|\"unverified\"}],conclusion,limitations:string[],nextSteps:string[]}}。至少 3 个研究步骤；有联网资料时至少 2 个来源；每条已确认结论必须引用 evidenceIds。";
+      return "结构：{kind,title,summary,data:{question,plan:string[],sources:[{id,title,url,publisher,tier:1|2|3|4,score:0-100,checkedAt,claims:string[],anchors:[{id,page?:string,span?:string,quote:string}]}],findings:[{claim,evidenceIds:string[],anchorIds:string[],confidence:0-1,status:\"confirmed\"|\"partial\"|\"unverified\"}],conclusion,limitations:string[],nextSteps:string[]}}。至少 3 个研究步骤；有联网资料时至少 2 个来源；锚点必须给出页码或章节/段落位置和短引文。每条已确认结论必须同时引用 evidenceIds 和 anchorIds；系统会为引文生成 quoteHash，缺少可定位证据的结论会自动降级。";
     case "presentation-builder":
       return "结构：{kind,title,summary,data:{audience,purpose,theme:\"sand\"|\"ink\"|\"forest\",slides:[{title,keyMessage,layout:\"title\"|\"statement\"|\"two-column\"|\"timeline\"|\"comparison\"|\"chart\"|\"visual\"|\"closing\",bullets:string[],imageData?:\"data:image/...\",speakerNotes}]}}。slides 为 3-30 页，每页只表达一个主观点。";
     case "thinking-workbench":
@@ -119,12 +122,44 @@ function contractFor(id: NativeCapabilityId): string {
     case "business-deal":
       return "结构：{kind,title,summary,data:{accountContext,mutualValue,stakeholders:[{name,role,influence,interest,status}],evidence:string[],assumptions:string[],objections:[{objection,response,evidenceNeeded}],boundaries:string[],agenda:string[],followUps:[{channel,message}],nextActions:string[]}}。不得虚构承诺、预算、权限或回复。";
     case "market-opportunity":
-      return "结构：{kind,title,summary,data:{targetUser,problem,alternatives:string[],signals:[{signal,evidence,status}],assumptions:[{name,low,base,high,unit}],scenarios:[{name,description,demandScore:0-100,competitionScore:0-100,executionScore:0-100}],thesis,invalidation:string[],experiments:[{name,cost,duration,successSignal}],risks:string[]}}。至少 3 个情景和 2 个可验证实验，估计值必须列入 assumptions。";
+      return "结构：{kind,title,summary,data:{targetUser,problem,evidence:[{id,source,checkedAt,claim}],conflicts:string[],alternatives:string[],signals:[{signal,evidence,status}],assumptions:[{name,low,base,high,unit}],scenarios:[{name,description,demandScore:0-100,competitionScore:0-100,executionScore:0-100}],modelVersion,applicability:string[],thesis,invalidation:string[],experiments:[{name,cost,duration,successSignal}],risks:string[]}}。至少 3 个情景和 2 个可验证实验；估计值必须列入 assumptions；明确证据、冲突、模型版本和适用边界。示例估值或情景模型不得表述为生产批准。";
     case "ability-builder":
       return "结构：{kind,title,summary,data:{qualification:{shouldBuild:boolean,reason,repeatSignals:string[]},spec:{name,description,defaultFormat:\"md\"|\"html\"|\"txt\"|\"json\"|\"doc\",triggerExamples:string[],nonTriggerExamples:string[],inputs:string[],steps:string[],decisionRules:string[],outputs:string[],exceptions:string[],checks:string[],prompt},testCases:[{request,shouldTrigger:boolean,reason}]}}。仅当任务可重复且边界清晰时 shouldBuild=true；至少 3 个正触发、2 个负触发和 5 个测试。";
   }
 }
 
+function normalizeResearchAnchors(data: Record<string, unknown>): void {
+  const anchorIds = new Set<string>();
+  for (const source of asRecordList(data.sources, "data.sources", 0)) {
+    const sourceId = String(source.id || "").trim();
+    const anchors = Array.isArray(source.anchors) ? source.anchors : [];
+    source.anchors = anchors.map((value, index) => {
+      const anchor = asRecord(value, `data.sources[${sourceId}].anchors[${index}]`);
+      const quote = String(anchor.quote || "").trim().slice(0, 1200);
+      const id = String(anchor.id || `${sourceId}-A${index + 1}`).trim();
+      const page = String(anchor.page || "").trim().slice(0, 80);
+      const span = String(anchor.span || "").trim().slice(0, 160);
+      if (!id || !quote || (!page && !span) || anchorIds.has(id)) return null;
+      anchorIds.add(id);
+      return {
+        id,
+        ...(page ? { page } : {}),
+        ...(span ? { span } : {}),
+        quote,
+        quoteHash: createHash("sha256").update(quote).digest("hex"),
+      };
+    }).filter(Boolean);
+  }
+  for (const finding of asRecordList(data.findings, "data.findings", 1)) {
+    const referenced = Array.isArray(finding.anchorIds)
+      ? finding.anchorIds.map(String).filter((id) => anchorIds.has(id))
+      : [];
+    finding.anchorIds = [...new Set(referenced)];
+    if (finding.status === "confirmed" && finding.anchorIds.length === 0) {
+      finding.status = "partial";
+    }
+  }
+}
 function validateData(id: NativeCapabilityId, data: Record<string, unknown>): void {
   switch (id) {
     case "research-brief":
@@ -164,6 +199,10 @@ function validateData(id: NativeCapabilityId, data: Record<string, unknown>): vo
       break;
     case "market-opportunity":
       asText(data.targetUser, "data.targetUser");
+      asRecordList(data.evidence, "data.evidence", 1);
+      asTextList(data.conflicts, "data.conflicts", 0);
+      asText(data.modelVersion, "data.modelVersion");
+      asTextList(data.applicability, "data.applicability", 1);
       asRecordList(data.scenarios, "data.scenarios", 3);
       asRecordList(data.experiments, "data.experiments", 2);
       asTextList(data.invalidation, "data.invalidation", 1);

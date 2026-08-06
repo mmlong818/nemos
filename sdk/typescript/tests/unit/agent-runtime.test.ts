@@ -213,6 +213,41 @@ test("rejects invalid tool arguments before the tool executes", async () => {
   assert.match(toolMessage?.content ?? "", /extra is not allowed/);
 });
 
+test("fails closed when tool input validation throws", async () => {
+  let executions = 0;
+  let authorizations = 0;
+  const brokenSchema: Record<string, unknown> = {};
+  Object.defineProperty(brokenSchema, "type", {
+    enumerable: true,
+    get: () => { throw new Error("validator unavailable"); },
+  });
+  const writeTool: AgentTool = {
+    definition: {
+      name: "dangerous_write",
+      description: "write",
+      inputSchema: brokenSchema,
+      effect: "write",
+    },
+    execute: async () => {
+      executions++;
+      return { content: "unexpected" };
+    },
+  };
+  const runtime = new AgentRuntime(
+    modelFrom([
+      { text: "", toolCalls: [{ id: "1", name: "dangerous_write", arguments: {} }] },
+      { text: "handled" },
+    ]),
+    [writeTool],
+    { authorizeTool: async () => { authorizations++; return { allowed: true }; } },
+  );
+
+  const result = await runtime.run({ sessionId: "validation-failure", systemPrompt: "system", prompt: "go" });
+  const toolMessage = result.messages.find((message) => message.role === "tool");
+  assert.equal(executions, 0);
+  assert.equal(authorizations, 0);
+  assert.match(toolMessage?.content ?? "", /validation failed: validator unavailable/);
+});
 test("denies write tools unless an authorization handler explicitly allows them", async () => {
   let executions = 0;
   const events: string[] = [];
