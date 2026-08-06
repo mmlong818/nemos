@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import { CapabilityRuntime } from "../../examples/companion/capabilities.js";
@@ -94,7 +94,7 @@ test("开发项目作为独立能力执行，并保存可继续交接的完整�
       notify: async () => { throw new Error("开发能力不应走普通角色回复"); },
       runDeveloper: async (input) => {
         received = { workspacePath: input.workspacePath, instruction: input.instruction, accessMode: input.accessMode };
-        return { reply: "已完成项目修改。\n\n测试通过。" };
+        return { reply: "已完成项目修改。\n\n测试通过。", workspacePath: input.workspacePath, accessMode: input.accessMode, changedFiles: ["src/app.ts"], fileReceipts: [{ path: "src/app.ts", state: "present", sha256: "a".repeat(64), byteLength: 120 }], checks: [{ command: "npm_test", passed: true, output: "通过", checkedAt: "2026-08-06T00:00:00.000Z" }], unverifiedRisks: [], proposal: { id: "devprop-test", state: "pending", files: [{ path: "src/app.ts", operation: "update", proposedHash: "a".repeat(64), byteLength: 120 }] }, toolCalls: 3 };
       },
     });
     const notification = await runtime.runAdHocTask({
@@ -108,12 +108,43 @@ test("开发项目作为独立能力执行，并保存可继续交接的完整�
     assert.deepEqual(received, { workspacePath: workspace, instruction: "修复页面跳动，并运行测试。", accessMode: "develop" });
     const handoff = runtime.artifactHandoff(notification.artifact.id);
     assert.equal(handoff?.text, "已完成项目修改。\n\n测试通过。");
+    assert.equal(notification.artifact.proof?.level, "validated");
+    assert.equal(notification.artifact.metadata?.development?.checks[0]?.command, "npm_test");
+    assert.equal(notification.artifact.metadata?.development?.proposal?.state, "pending");
+    assert.equal(runtime.updateDevelopmentProposalState("devprop-test", "applied")?.metadata?.development?.proposal?.state, "applied");
+    assert.equal(new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "", facts: [] }) }).snapshot().artifacts[0]?.metadata?.development?.proposal?.state, "applied");
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });
   }
 });
 
+test("生成能力更新时递增版本、记录内容指纹并保留可回滚快照", () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-skill-lifecycle-"));
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: "完成", facts: [] }),
+    });
+    const first = runtime.learnFromWork({ personaId: "clownfish", name: "周报整理", description: "整理周报", goal: "整理本周进展", learnedKey: "weekly-report" });
+    const skillFile = runtime.auditSkills().items.find((item) => item.abilityId === first.id)?.skillFile;
+    assert.ok(skillFile);
+    const firstManifest = JSON.parse(readFileSync(join(dirname(skillFile!), "manifest.json"), "utf8")) as Record<string, unknown>;
+    assert.equal(firstManifest.version, "0.1.0");
+
+    runtime.learnFromWork({ personaId: "clownfish", name: "周报整理", description: "整理项目周报", goal: "整理本周项目进展和风险", learnedKey: "weekly-report" });
+    const secondManifest = JSON.parse(readFileSync(join(dirname(skillFile!), "manifest.json"), "utf8")) as { version: string; integrity: { contentHash: string; byteLength: number }; rollback: { previousVersion: string; historyPath: string } };
+    assert.equal(secondManifest.version, "0.1.1");
+    assert.match(secondManifest.integrity.contentHash, /^[a-f0-9]{64}$/);
+    assert.ok(secondManifest.integrity.byteLength > 100);
+    assert.equal(secondManifest.rollback.previousVersion, "0.1.0");
+    assert.ok(existsSync(join(dirname(skillFile!), secondManifest.rollback.historyPath, "SKILL.md")));
+    assert.ok(existsSync(join(dirname(skillFile!), secondManifest.rollback.historyPath, "manifest.json")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 test("长期任务脉络会保存进展、专家职责、决定替代关系和协作记录", () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-task-storyline-"));
   try {
@@ -220,9 +251,11 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   assert.match(capabilityScript, /handoffSummary/);
   assert.match(capabilityScript, /function loadHandoffConversation/);
   assert.match(capabilityScript, /clownfish-conversation-trees-v1/);
-  assert.match(capabilityScript, /conversationContext/);
-  assert.match(capabilityScript, /【完整对话原文】/);
-  assert.match(capabilityScript, /【对话提要】/);
+  assert.match(capabilityScript, /handoffConversation/);
+  assert.match(capabilityScript, /sourceMessageId/);
+  assert.match(capabilityScript, /subjectId/);
+  assert.match(serverSource, /renderCapabilityHandoffContext/);
+  assert.match(serverSource, /handoffReceipt/);
   assert.match(capabilityScript, /conversationKey: state\.returnConversationKey/);
   assert.match(serverSource, /conversationKey: String\(job\.payload\.conversationKey/);
   assert.match(serverSource, /capabilityPersonaId = body\.kind === "capability-adhoc" \? "clownfish"/);
@@ -270,6 +303,10 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.match(script, /focusInput: true/);
   assert.match(script, /classList\.add\("is-launching"\)/);
   assert.match(script, /button\.disabled = !status\.ready \|\| !hasInstruction \|\| !hasWorkspace/);
+  assert.match(script, /查看修改/);
+  assert.match(script, /data-apply-proposal/);
+  assert.match(script, /data-reject-proposal/);
+  assert.match(script, /修改先作为提案保存/);
   assert.match(script, /const ICON_TONES =/);
   assert.match(script, /function updateLaunchState\(\)/);
   assert.doesNotMatch(html, /picker-action/);
@@ -294,4 +331,40 @@ test("Companion 主界面的弹窗和可点击列表具备基础无障碍语义"
   assert.match(html, /id="composerTool"/);
   assert.doesNotMatch(html, /id="railDesktop"/);
   assert.match(html, /id="settingsbtn"[^>]*data-icon="settings"/);
+});
+
+test("常规任务的界面状态由持久作业投影，且重启后仍可恢复", () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-task-execution-"));
+  try {
+    const options = {
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: "完成", facts: [] }),
+    };
+    const runtime = new CapabilityRuntime(options);
+    const task = runtime.createTask({
+      title: "真实状态任务",
+      personaId: "clownfish",
+      capabilityId: "document-draft",
+      instruction: "整理资料",
+    });
+    runtime.projectTaskExecution({
+      taskId: task.id,
+      jobId: "job-1",
+      status: "running",
+      progress: 35,
+      label: "正在读取材料",
+      updatedAt: "2026-08-06T10:00:00.000Z",
+    });
+    const restored = new CapabilityRuntime(options).snapshot().tasks.find((item) => item.id === task.id);
+    assert.deepEqual(restored?.execution, {
+      jobId: "job-1",
+      status: "running",
+      progress: 35,
+      label: "正在读取材料",
+      updatedAt: "2026-08-06T10:00:00.000Z",
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

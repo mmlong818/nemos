@@ -1,4 +1,5 @@
 import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, join, resolve } from "node:path";
 import type { ServerResponse } from "node:http";
 import type { AgentExtensionManifest } from "../../src/index.js";
@@ -27,6 +28,8 @@ import {
 } from "./native-capability-contracts.js";
 import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
 import { exportOfficeDocument } from "./office-export.js";
+import { ArtifactWorkspaceStore, type ArtifactWorkspaceState } from "./artifact-workspace.js";
+import { assessProfessionalArtifact, type ProfessionalArtifactReceipt } from "./professional-artifact-gate.js";
 
 const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -111,6 +114,16 @@ export interface CapabilityTaskStoryline {
   events: CapabilityTaskStorylineEvent[];
 }
 
+export interface CapabilityTaskExecution {
+  jobId: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "uncertain";
+  progress?: number;
+  label?: string;
+  artifactId?: string;
+  error?: string;
+  updatedAt: string;
+}
+
 export interface CapabilityTask {
   id: string;
   title: string;
@@ -124,6 +137,7 @@ export interface CapabilityTask {
   updatedAt: string;
   lastRunAt?: string;
   lastRunKey?: string;
+  execution?: CapabilityTaskExecution;
   storyline: CapabilityTaskStoryline;
 }
 
@@ -142,8 +156,49 @@ export interface CapabilityArtifact {
     native?: boolean;
     generatedAbilityId?: string;
     contextFile?: string;
+    validationChecks?: CapabilityArtifactValidationCheck[];
+    development?: CapabilityDevelopmentReceipt;
+    workspace?: { status: "draft" | "review" | "done"; updatedAt: string; versionCount: number };
+    presentationVersion?: { state: "validated" | "needs-review"; lastGoodArtifactId?: string };
+    professionalReceipt?: ProfessionalArtifactReceipt;
   };
+  proof?: CapabilityArtifactProof;
   verification?: SourceVerificationReport;
+}
+
+export interface CapabilityArtifactValidationCheck {
+  id: string;
+  label: string;
+  status: "passed" | "failed" | "not-run";
+  detail?: string;
+}
+
+export interface CapabilityDevelopmentReceipt {
+  workspacePath: string;
+  accessMode: "inspect" | "develop";
+  changedFiles: string[];
+  baseRevision?: string;
+  fileReceipts: Array<{ path: string; state: "present" | "deleted"; sha256?: string; byteLength?: number }>;
+  checks: Array<{ command: string; passed: boolean; output: string; checkedAt: string }>;
+  contextReceipts?: Array<{ kind: "directory" | "file-lines" | "text-search"; path: string; anchor: string; confidence: "exact"; truncated: boolean }>;
+  unverifiedRisks: string[];
+  proposal?: {
+    id: string;
+    state: "staging" | "pending" | "applied" | "rejected" | "conflicted" | "failed";
+    files: Array<{ path: string; operation: "create" | "update"; proposedHash: string; byteLength: number }>;
+    conflicts?: string[];
+  };
+  toolCalls: number;
+}
+
+export interface CapabilityArtifactProof {
+  version: 1;
+  level: "produced" | "validated" | "verified" | "approved";
+  algorithm: "sha256";
+  contentHash: string;
+  byteLength: number;
+  checkedAt: string;
+  checks: CapabilityArtifactValidationCheck[];
 }
 
 export interface CapabilityDueTaskRun {
@@ -239,7 +294,7 @@ export interface CapabilityRuntimeOptions {
     accessMode: "inspect" | "develop";
     signal?: AbortSignal;
     onProgress?: (message: string, percent: number) => void;
-  }) => Promise<{ reply: string }>;
+  }) => Promise<{ reply: string } & CapabilityDevelopmentReceipt>;
 }
 
 export interface CapabilityRuntimeLimits {
@@ -266,6 +321,7 @@ export class CapabilityRuntime {
   private readonly skillsDir: string;
   private readonly skillUsageFile: string;
   private readonly artifactFeedbackFile: string;
+  private readonly artifactWorkspaceStore: ArtifactWorkspaceStore;
   private generatedAbilities: Capability[] = [];
   private tasks: CapabilityTask[] = [];
   private artifacts: CapabilityArtifact[] = [];
@@ -281,6 +337,7 @@ export class CapabilityRuntime {
     this.skillsDir = join(root, "skills");
     this.skillUsageFile = join(this.skillsDir, ".usage.json");
     this.artifactFeedbackFile = join(root, "artifact-feedback.json");
+    this.artifactWorkspaceStore = new ArtifactWorkspaceStore(join(root, "artifact-workspaces.json"));
     mkdirSync(this.artifactDir, { recursive: true });
     mkdirSync(this.skillsDir, { recursive: true });
     this.load();
@@ -867,6 +924,23 @@ export class CapabilityRuntime {
     this.saveTasks();
   }
 
+  projectTaskExecution(input: CapabilityTaskExecution & { taskId: string }): CapabilityTask | null {
+    const task = this.tasks.find((item) => item.id === input.taskId);
+    if (!task) return null;
+    task.execution = {
+      jobId: text(input.jobId, "", 160),
+      status: input.status,
+      progress: Number.isFinite(input.progress) ? Math.max(0, Math.min(100, Number(input.progress))) : undefined,
+      label: text(input.label, "", 320) || undefined,
+      artifactId: text(input.artifactId, "", 160) || undefined,
+      error: text(input.error, "", 1_000) || undefined,
+      updatedAt: input.updatedAt,
+    };
+    task.updatedAt = input.updatedAt;
+    this.saveTasks();
+    return task;
+  }
+
   recordPersonaTurn(personaId: string): void {
     let changed = false;
     for (const task of this.tasks) {
@@ -943,7 +1017,16 @@ export class CapabilityRuntime {
     persona: CapabilityPersona,
     reply: string,
   ): Promise<CapabilityNotification> {
-    const artifact = await this.writeArtifact(task, ability, reply);
+    const artifact = withArtifactProof(await this.writeArtifact(task, ability, reply));
+    if (ability.id === "presentation-builder") {
+      const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level === "validated");
+      artifact.metadata = {
+        ...artifact.metadata,
+        presentationVersion: artifact.proof?.level === "validated"
+          ? { state: "validated", lastGoodArtifactId: artifact.id }
+          : { state: "needs-review", lastGoodArtifactId: previousGood?.id },
+      };
+    }
     task.lastRunAt = artifact.createdAt;
     task.lastRunKey = runKey(task, new Date());
     if (task.schedule.mode === "turns") task.schedule.lastTurnRun = task.schedule.turnCount ?? 0;
@@ -989,7 +1072,7 @@ export class CapabilityRuntime {
     const now = new Date().toISOString();
     const task: CapabilityTask = {
       id: uniqueId("adhoc"),
-      title: text(input.title, ability.name, 60),
+      title: meaningfulTaskTitle(input.title, ability.name),
       personaId: input.personaId,
       capabilityId: ability.id,
       instruction: text(input.instruction, "按用户要求完成一次任务。", 160000),
@@ -1008,8 +1091,15 @@ export class CapabilityRuntime {
     const reply = ability.id === "project-development"
       ? result.reply
       : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress });
+    const runtimeMetadata = ability.id === "project-development"
+      ? {
+          development: result,
+          validationChecks: developmentValidationChecks(result),
+          professionalReceipt: developmentProfessionalReceipt(result),
+        }
+      : undefined;
     input.onProgress?.("正在生成并保存交付物", 85);
-    return this.finishAdHocRun(task, ability, persona, reply);
+    return this.finishAdHocRun(task, ability, persona, reply, runtimeMetadata);
   }
 
   async runAdHocTaskStream(input: {
@@ -1145,7 +1235,7 @@ export class CapabilityRuntime {
     const now = new Date().toISOString();
     const task: CapabilityTask = {
       id: uniqueId("adhoc"),
-      title: text(input.title, ability.name, 60),
+      title: meaningfulTaskTitle(input.title, ability.name),
       personaId: input.personaId,
       capabilityId: ability.id,
       instruction: text(input.instruction, "按用户要求完成一次任务。", 160000),
@@ -1163,7 +1253,7 @@ export class CapabilityRuntime {
     input: { workspacePath?: string; accessMode?: "inspect" | "develop"; onProgress?: (message: string, percent: number) => void },
     task: CapabilityTask,
     signal?: AbortSignal,
-  ): Promise<{ reply: string; facts: string[] }> {
+  ): Promise<({ reply: string; facts: string[] } & CapabilityDevelopmentReceipt)> {
     if (!this.opts.runDeveloper) throw new Error("开发能力尚未完成运行连接。");
     const result = await this.opts.runDeveloper({
       workspacePath: String(input.workspacePath || ""),
@@ -1172,7 +1262,7 @@ export class CapabilityRuntime {
       signal,
       onProgress: input.onProgress,
     });
-    return { reply: result.reply, facts: [] };
+    return { ...result, checks: result.checks.map((check) => ({ ...check, output: check.output.slice(0, 12_000) })), facts: [] };
   }
 
   private async finishAdHocRun(
@@ -1180,8 +1270,20 @@ export class CapabilityRuntime {
     ability: Capability,
     persona: CapabilityPersona,
     reply: string,
+    runtimeMetadata?: NonNullable<CapabilityArtifact["metadata"]>,
   ): Promise<CapabilityNotification> {
     const artifact = await this.writeArtifact(task, ability, reply);
+    if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
+    withArtifactProof(artifact);
+    if (ability.id === "presentation-builder") {
+      const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level === "validated");
+      artifact.metadata = {
+        ...artifact.metadata,
+        presentationVersion: artifact.proof?.level === "validated"
+          ? { state: "validated", lastGoodArtifactId: artifact.id }
+          : { state: "needs-review", lastGoodArtifactId: previousGood?.id },
+      };
+    }
     this.artifacts.push(artifact);
     this.saveArtifacts();
     return {
@@ -1190,6 +1292,78 @@ export class CapabilityRuntime {
       text: this.notificationText(persona.name, task, artifact, reply),
       artifact,
     };
+  }
+
+  artifactWorkspace(id: string | null): ArtifactWorkspaceState | null {
+    if (!id) return null;
+    const artifact = this.artifacts.find((item) => item.id === id);
+    if (!artifact) return null;
+    if (artifact.capabilityId === "research-brief" && artifact.metadata?.contextFile && existsSync(artifact.metadata.contextFile)) {
+      try {
+        const payload = parseNativeCapabilityPayload("research-brief", readFileSync(artifact.metadata.contextFile, "utf8"));
+        const sources = Array.isArray(payload.data.sources) ? payload.data.sources : [];
+        const findings = Array.isArray(payload.data.findings) ? payload.data.findings : [];
+        const evidence = { sources };
+        const evidenceText = JSON.stringify(evidence);
+        const initialBody = [
+          ...findings.map((item) => {
+            const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
+            return `- ${String(record.claim || "").trim()}`;
+          }).filter((item) => item !== "- "),
+          "",
+          String(payload.data.conclusion || "").trim(),
+        ].join("\n").trim();
+        return this.artifactWorkspaceStore.initializeEvidence(id, {
+          hash: createHash("sha256").update(evidenceText).digest("hex"),
+          sourceCount: sources.length,
+          anchorCount: sources.reduce((count, source) => {
+            const record = source && typeof source === "object" ? source as Record<string, unknown> : {};
+            return count + (Array.isArray(record.anchors) ? record.anchors.length : 0);
+          }, 0),
+          capturedAt: artifact.createdAt,
+        }, initialBody);
+      } catch {
+        // 旧研究产物仍可使用普通工作台，证据包不会伪造。
+      }
+    }
+    return this.artifactWorkspaceStore.get(id);
+  }
+
+  updateArtifactWorkspace(input: {
+    id: string;
+    action: "save" | "version" | "restore";
+    current?: unknown;
+    versionId?: string;
+    expectedRevision?: number;
+  }): ArtifactWorkspaceState {
+    const artifact = this.artifacts.find((item) => item.id === input.id);
+    if (!artifact || artifact.metadata?.native !== true || (artifact.format !== "html" && !artifact.previewFile)) {
+      throw new Error("这个结果没有可保存的交互工作台。");
+    }
+    const state = input.action === "restore"
+      ? this.artifactWorkspaceStore.restoreVersion(input.id, String(input.versionId || ""), input.expectedRevision)
+      : input.action === "version"
+        ? this.artifactWorkspaceStore.saveVersion(input.id, input.current, input.expectedRevision)
+        : this.artifactWorkspaceStore.saveCurrent(input.id, input.current, input.expectedRevision);
+    artifact.metadata = {
+      ...artifact.metadata,
+      workspace: { status: state.status, updatedAt: state.updatedAt, versionCount: state.versions.length },
+    };
+    this.saveArtifacts();
+    return state;
+  }
+  updateDevelopmentProposalState(
+    proposalId: string,
+    state: NonNullable<CapabilityDevelopmentReceipt["proposal"]>["state"],
+    conflicts?: string[],
+  ): CapabilityArtifact | null {
+    const artifact = this.artifacts.find((item) => item.metadata?.development?.proposal?.id === proposalId);
+    const proposal = artifact?.metadata?.development?.proposal;
+    if (!artifact || !proposal) return null;
+    proposal.state = state;
+    proposal.conflicts = conflicts?.length ? [...conflicts] : undefined;
+    this.saveArtifacts();
+    return structuredClone(artifact);
   }
 
   sendArtifact(res: ServerResponse, id: string | null, disposition: "inline" | "attachment" = "inline"): boolean {
@@ -1213,10 +1387,11 @@ export class CapabilityRuntime {
     if (!artifact) return null;
     const root = resolve(this.artifactDir);
     const contextFile = artifact.metadata?.contextFile ? resolve(artifact.metadata.contextFile) : "";
+    const workspaceContext = this.artifactWorkspaceStore.context(artifact.id);
     if (!contextFile || !contextFile.startsWith(root) || !existsSync(contextFile) || !statSync(contextFile).isFile()) {
-      return { artifact, text: artifact.summary };
+      return { artifact, text: [artifact.summary, workspaceContext].filter(Boolean).join("\n\n") };
     }
-    return { artifact, text: readFileSync(contextFile, "utf8").slice(0, 160000) };
+    return { artifact, text: [readFileSync(contextFile, "utf8").slice(0, 160000), workspaceContext].filter(Boolean).join("\n\n") };
   }
 
   previewArtifact(res: ServerResponse, id: string | null): boolean {
@@ -1531,12 +1706,13 @@ ${task.instruction}`,
   private writeSkillFile(ability: Capability, goal: string, origin: "manual" | "learned" | "installed"): void {
     const dir = this.skillDirPath(ability);
     mkdirSync(dir, { recursive: true });
+    const lifecycle = this.snapshotSkillVersion(dir);
     const now = new Date().toISOString();
     const md = [
       "---",
       `name: ${skillSlug(ability)}`,
       `description: ${yamlString(ability.description)}`,
-      "version: 0.1.0",
+      `version: ${nextSkillVersion(lifecycle?.version)}`,
       `origin: ${origin}`,
       `persona: ${ability.ownerPersonaId || "shared"}`,
       `capability_id: ${ability.id}`,
@@ -1570,20 +1746,26 @@ ${task.instruction}`,
       ability.prompt,
       "```",
     ].join("\n");
-    writeFileSync(join(dir, "SKILL.md"), md, "utf8");
-    this.writeSkillManifest(ability, origin, now);
-    this.updateSkillUsage(ability, { origin, touchedAt: now });
+    try {
+      writeFileSync(join(dir, "SKILL.md"), md, "utf8");
+      this.writeSkillManifest(ability, origin, now, undefined, lifecycle);
+      this.updateSkillUsage(ability, { origin, touchedAt: now });
+    } catch (error) {
+      this.restoreSkillVersion(dir, lifecycle);
+      throw error;
+    }
   }
 
   private writeInstalledSkillFile(ability: Capability, installed: InstalledSkillContent, sourceLabel: string): void {
     const dir = this.skillDirPath(ability);
     mkdirSync(dir, { recursive: true });
+    const lifecycle = this.snapshotSkillVersion(dir);
     const now = new Date().toISOString();
     const md = [
       "---",
       `name: ${skillSlug(ability)}`,
       `description: ${yamlString(ability.description)}`,
-      "version: 0.1.0",
+      `version: ${nextSkillVersion(lifecycle?.version)}`,
       "origin: installed",
       `persona: ${ability.ownerPersonaId || "shared"}`,
       `capability_id: ${ability.id}`,
@@ -1602,9 +1784,14 @@ ${task.instruction}`,
       "",
       installed.content.trim(),
     ].filter((line) => line !== "").join("\n");
-    writeFileSync(join(dir, "SKILL.md"), md, "utf8");
-    this.writeSkillManifest(ability, "installed", now, installed.sourceUrl || installed.sourcePath);
-    this.updateSkillUsage(ability, { origin: "installed", touchedAt: now });
+    try {
+      writeFileSync(join(dir, "SKILL.md"), md, "utf8");
+      this.writeSkillManifest(ability, "installed", now, installed.sourceUrl || installed.sourcePath, lifecycle);
+      this.updateSkillUsage(ability, { origin: "installed", touchedAt: now });
+    } catch (error) {
+      this.restoreSkillVersion(dir, lifecycle);
+      throw error;
+    }
   }
 
   private writeSkillManifest(
@@ -1612,17 +1799,19 @@ ${task.instruction}`,
     origin: "manual" | "learned" | "installed",
     updatedAt: string,
     originalSource?: string,
+    lifecycle?: { version: string; historyPath: string },
   ): void {
     const dir = this.skillDirPath(ability);
     const activation = [ability.name, ability.learnedKey, ...ability.description.split(/[，。；,.\s]+/)]
       .map((item) => item?.trim())
       .filter((item): item is string => !!item && item.length >= 2)
       .slice(0, 12);
-    const manifest: AgentExtensionManifest & { capabilityId: string; personaId: string; origin: string; updatedAt: string } = {
+    const skillContent = readFileSync(join(dir, "SKILL.md"));
+    const manifest: AgentExtensionManifest & { capabilityId: string; personaId: string; origin: string; updatedAt: string; integrity: { algorithm: "sha256"; contentHash: string; byteLength: number }; rollback?: { previousVersion: string; historyPath: string } } = {
       schemaVersion: 1,
       id: `skill.${ability.id.toLowerCase().replace(/[^a-z0-9._-]/g, "-")}`,
       name: ability.name,
-      version: "0.1.0",
+      version: nextSkillVersion(lifecycle?.version),
       description: ability.description,
       kind: "skill",
       source: {
@@ -1637,10 +1826,32 @@ ${task.instruction}`,
       personaId: ability.ownerPersonaId || "shared",
       origin,
       updatedAt,
+      integrity: { algorithm: "sha256", contentHash: createHash("sha256").update(skillContent).digest("hex"), byteLength: skillContent.byteLength },
+      rollback: lifecycle ? { previousVersion: lifecycle.version, historyPath: `history/${basename(lifecycle.historyPath)}` } : undefined,
     };
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
   }
 
+  private snapshotSkillVersion(dir: string): { version: string; historyPath: string } | undefined {
+    const skillFile = join(dir, "SKILL.md");
+    const manifestFile = join(dir, "manifest.json");
+    if (!existsSync(skillFile) || !existsSync(manifestFile)) return undefined;
+    const previous = readJson<{ version?: string }>(manifestFile, {});
+    const version = /^\d+\.\d+\.\d+$/.test(String(previous.version || "")) ? String(previous.version) : "0.1.0";
+    const historyPath = join(dir, "history", `${new Date().toISOString().replace(/[:.]/g, "-")}-${version}`);
+    mkdirSync(historyPath, { recursive: true });
+    writeFileSync(join(historyPath, "SKILL.md"), readFileSync(skillFile));
+    writeFileSync(join(historyPath, "manifest.json"), readFileSync(manifestFile));
+    return { version, historyPath };
+  }
+
+  private restoreSkillVersion(dir: string, lifecycle?: { historyPath: string }): void {
+    if (!lifecycle) return;
+    const skillFile = join(lifecycle.historyPath, "SKILL.md");
+    const manifestFile = join(lifecycle.historyPath, "manifest.json");
+    if (existsSync(skillFile)) writeFileSync(join(dir, "SKILL.md"), readFileSync(skillFile));
+    if (existsSync(manifestFile)) writeFileSync(join(dir, "manifest.json"), readFileSync(manifestFile));
+  }
   private markSkillUsed(ability: Capability): void {
     if (ability.kind !== "generated") return;
     this.updateSkillUsage(ability, { usedAt: new Date().toISOString() });
@@ -1709,7 +1920,7 @@ ${task.instruction}`,
         raw,
         requestedFormat: task.format,
         fileBase,
-        metadata: { generatedAbilityId },
+        metadata: { generatedAbilityId, artifactId: id },
       });
       return {
         id,
@@ -1722,7 +1933,7 @@ ${task.instruction}`,
         previewFile: rendered.previewFile,
         createdAt,
         summary: rendered.summary,
-        metadata: { native: true, generatedAbilityId, contextFile },
+        metadata: { native: true, generatedAbilityId, contextFile, validationChecks: rendered.validationChecks },
         verification: verification?.relevant ? verification : undefined,
       };
     }
@@ -1821,6 +2032,63 @@ ${task.instruction}`,
     const installed = artifact.metadata?.generatedAbilityId ? "\n新能力已通过检查并加入本机能力库。" : "";
     return `${personaName}已经完成「${task.title}」。\n\n${visible}${installed}\n\n---\n产物格式：${format}\n保存位置：${artifact.file}`;
   }
+}
+
+function withArtifactProof(artifact: CapabilityArtifact): CapabilityArtifact {
+  const content = readFileSync(artifact.file);
+  const validationChecks = artifact.metadata?.validationChecks ?? [];
+  const checks: CapabilityArtifactValidationCheck[] = [{
+    id: "content-integrity",
+    label: "交付文件已生成内容指纹",
+    status: content.byteLength > 0 ? "passed" : "failed",
+    detail: `${content.byteLength} bytes`,
+  }, ...validationChecks];
+  artifact.proof = {
+    version: 1,
+    level: validationChecks.length > 0 && validationChecks.every((item) => item.status === "passed") ? "validated" : "produced",
+    algorithm: "sha256",
+    contentHash: createHash("sha256").update(content).digest("hex"),
+    byteLength: content.byteLength,
+    checkedAt: artifact.createdAt,
+    checks,
+  };
+  return artifact;
+}
+
+function developmentValidationChecks(result: CapabilityDevelopmentReceipt): CapabilityArtifactValidationCheck[] {
+  const substantive = result.checks.filter((item) => !["git_status", "git_diff"].includes(item.command));
+  if (substantive.length === 0) return [{ id: "project-checks", label: "项目构建、测试或类型检查", status: "not-run", detail: "本次没有运行项目级检查" }];
+  return substantive.map((item, index) => ({
+    id: `project-check-${index + 1}`,
+    label: item.command,
+    status: item.passed ? "passed" : "failed",
+    detail: item.output.slice(0, 500),
+  }));
+}
+
+function developmentProfessionalReceipt(result: CapabilityDevelopmentReceipt): ProfessionalArtifactReceipt {
+  const substantive = result.checks.filter((item) => !["git_status", "git_diff"].includes(item.command));
+  return assessProfessionalArtifact({
+    domain: "software",
+    artifactExists: result.accessMode === "inspect" || result.fileReceipts.length > 0,
+    structuredInput: true,
+    intermediateArtifact: (result.contextReceipts?.length ?? 0) > 0,
+    renderedArtifact: result.accessMode === "inspect" || result.fileReceipts.length > 0,
+    version: result.baseRevision || "unversioned",
+    checks: substantive.map((item) => ({
+      id: item.command,
+      label: item.command,
+      required: true,
+      passed: item.passed,
+      detail: item.output.slice(0, 500),
+    })),
+  });
+}
+
+function nextSkillVersion(previous?: string): string {
+  if (!previous) return "0.1.0";
+  const [major, minor, patch] = previous.split(".").map(Number);
+  return [major, minor, patch + 1].join(".");
 }
 
 function currentTimeBlock(): string {
@@ -2375,6 +2643,12 @@ function normalizeTaskStoryline(input: unknown, createdAt: string): CapabilityTa
   };
 }
 
+function meaningfulTaskTitle(value: string | undefined, fallback: string): string {
+  const title = text(value, fallback, 60);
+  return /^(可以|好|好的|行|没问题|继续|就这样|看起来可以|我没想好|不知道|随便)[。！!？?，,\s]*$/.test(title)
+    ? fallback
+    : title;
+}
 function text(value: string | undefined, fallback: string, max: number): string {
   const out = (value || "").trim() || fallback;
   return out.slice(0, max);

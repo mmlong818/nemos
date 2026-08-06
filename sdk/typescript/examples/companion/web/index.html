@@ -5040,7 +5040,7 @@ function waitForStreamMessage(ms) {
 }
 
 // 单人回复按空行拆成独立消息；前一条出现后，再逐条展示后续消息。
-async function streamPersona(key, text, voice, image) {
+async function streamPersona(key, text, voice, image, messageId) {
   const { inner, bub } = addTyping();
   const pid = state.target.id;
   let acc = "", started = false, facts = null, artifact = null;
@@ -5069,7 +5069,7 @@ async function streamPersona(key, text, voice, image) {
     }
   }
   try {
-    const resp = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: { kind: "persona", id: state.target.id }, text, voice, image, ...conversationRequestOptions(key) }) });
+    const resp = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: { kind: "persona", id: state.target.id }, text, voice, image, messageId, ...conversationRequestOptions(key) }) });
     if (!resp.ok) {
       let detail = "";
       try { detail = await resp.text(); } catch {}
@@ -5151,11 +5151,11 @@ function expertLongformTitle(text) {
 }
 
 // 群聊：普通闲聊保留气泡；专家任务整合为可阅读、可复制的长文。
-async function sendRegular(key, text, voice, image) {
+async function sendRegular(key, text, voice, image, messageId) {
   const { row } = addTyping();
   const isGroup = key.indexOf("group:") === 0;
   try {
-    const data = await api("/api/chat", { target: { kind: state.target.kind, id: state.target.id }, text, voice, image, ...conversationRequestOptions(key) });
+    const data = await api("/api/chat", { target: { kind: state.target.kind, id: state.target.id }, text, voice, image, messageId, ...conversationRequestOptions(key) });
     row.remove();
     const replies = data.replies || [];
     if (shouldRenderExpertLongform(replies)) {
@@ -5197,15 +5197,16 @@ async function sendMsg(voiceFlag, overrideText) {
   document.body.classList.add("is-busy");
   const key = logKey();
   const voice = !!voiceFlag;
+  const messageId = "message-" + crypto.randomUUID();
   const utext = (image ? "[图片] " : "") + (text || "（图片）");
   addRow("me", null, utext, { voice });
-  record(key, { side: "me", who: null, text: utext, voice });
+  record(key, { id: messageId, side: "me", who: null, text: utext, voice });
   setPendingImage(null); $("#imgfile").value = "";
   const per = state.target.kind === "persona" ? state.personas.find((x) => x.id === state.target.id) : null;
   lastReply = { pid: null, text: "", live: false };
   try {
-    if (state.target.kind === "persona") await streamPersona(key, text, voice, image);
-    else await sendRegular(key, text, voice, image);
+    if (state.target.kind === "persona") await streamPersona(key, text, voice, image, messageId);
+    else await sendRegular(key, text, voice, image, messageId);
   } finally {
     sending = false;
     $("#send").disabled = false;
@@ -6642,6 +6643,7 @@ async function submitAgentExtensionManifest() {
     const checked = await validateAgentExtensionEditor();
     let confirmExecutable = false;
     let confirmUnsandboxed = false;
+    let confirmPermissionExpansion = false;
     if (checked.validation.requiresExecutableConfirmation) {
       confirmExecutable = confirm("这个扩展会启动本机程序。小丑鱼会按清单声明的权限和沙箱配置运行它。仅安装你信任的代码。继续吗？");
       if (!confirmExecutable) {
@@ -6656,13 +6658,23 @@ async function submitAgentExtensionManifest() {
         return;
       }
     }
-    const endpoint = checked.validation.installed
+    if (Array.isArray(checked.validation.permissionExpansion) && checked.validation.permissionExpansion.length > 0) {
+      confirmPermissionExpansion = confirm(
+        "这次升级扩大了能力权限：" + checked.validation.permissionExpansion.join("、") +
+        "。只有确认后才会升级，继续吗？",
+      );
+      if (!confirmPermissionExpansion) {
+        setAgentExtensionStatus("已取消权限扩大的升级。");
+        return;
+      }
+    }    const endpoint = checked.validation.installed
       ? "/api/agent/extension/upgrade"
       : "/api/agent/extension/install";
     const saved = await api(endpoint, {
       manifest: checked.manifest,
       confirmExecutable,
-      confirmUnsandboxed
+      confirmUnsandboxed,
+      confirmPermissionExpansion
     });
     const nextExtension = { ...saved.extension, runtimeError: null };
     agentOpsMutationVersion++;
@@ -7239,7 +7251,7 @@ async function runCapabilityTask(id) {
   const data = await api("/api/capabilities/task/run", { id });
   capState = data.snapshot || capState;
   renderCapabilityLists();
-  await pushCapabilityNotifications([data.notification]);
+  await refreshAgentOps();
 }
 async function runOperatorWorkspace() {
   const goal = $("#operatorGoal").value.trim();
@@ -7334,6 +7346,7 @@ function openCapabilityPanel(options = {}) {
     personaId,
     chatName: chatName || "小丑鱼",
     goal,
+    conversation,
     createdAt: Date.now(),
   }));
   window.location.href = "/capabilities";

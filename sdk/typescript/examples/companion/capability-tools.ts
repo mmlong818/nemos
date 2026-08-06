@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolEffect } from "../../src/index.js";
 import { buildSourceConnectorGuide, listSourceConnectors, matchSourceConnectors } from "./source-connectors.js";
-import { buildSourceVerificationReport, sourceVerificationPromptBlock } from "./source-verification.js";
+import { buildSourceVerificationReport, createSourceFreshnessReceipt, sourceVerificationPromptBlock, type SourceFreshnessReceipt } from "./source-verification.js";
 import { buildMarketSnapshotText, createMarketDataAdapter, type MarketDataAdapter } from "./market-data-adapter.js";
 
 export interface CapabilityToolContext {
@@ -16,6 +16,7 @@ export interface CapabilityToolResult {
   data?: unknown;
   checkedAt: string;
   needsVerification?: boolean;
+  freshness?: SourceFreshnessReceipt;
 }
 
 export interface CapabilityTool {
@@ -310,6 +311,7 @@ export function createDefaultCapabilityToolRegistry(
         text: sourceVerificationPromptBlock(report) || buildSourceConnectorGuide(query),
         data: { matches: matches.map((item) => ({ id: item.connector.id, score: item.score })), report },
         needsVerification: report.status !== "live-adapter-ready",
+        freshness: report.freshnessReceipt,
       };
     },
   });
@@ -348,15 +350,28 @@ export function createDefaultCapabilityToolRegistry(
               symbols: Array.isArray(args.symbols) ? args.symbols.map(String) : undefined,
               announcementLimit: Number(args.announcementLimit || 3),
             }, context.signal);
+            const text = buildMarketSnapshotText(snapshot);
+            const hasResults = snapshot.symbols.some((item) => item.quote || item.announcements.length > 0);
             return {
               ok: true,
               checkedAt: snapshot.queriedAt,
-              text: buildMarketSnapshotText(snapshot),
+              text,
               data: snapshot,
               needsVerification: snapshot.symbols.some((item) => !item.quote || item.errors.length > 0),
+              freshness: createSourceFreshnessReceipt({
+                availability: hasResults ? "available" : "no-results",
+                content: hasResults ? text : undefined,
+                checkedAt: new Date(snapshot.queriedAt),
+              }),
             };
           } catch (error) {
-            return { ok: false, checkedAt: new Date().toISOString(), text: error instanceof Error ? error.message : String(error), needsVerification: true };
+            return {
+              ok: false,
+              checkedAt: new Date().toISOString(),
+              text: error instanceof Error ? error.message : String(error),
+              needsVerification: true,
+              freshness: createSourceFreshnessReceipt({ availability: "network-failure" }),
+            };
           }
         },
       });
@@ -378,6 +393,7 @@ export function createDefaultCapabilityToolRegistry(
           text: sourceVerificationPromptBlock(report),
           data: { connector, report },
           needsVerification: report.status !== "live-adapter-ready",
+          freshness: report.freshnessReceipt,
         };
       },
     });

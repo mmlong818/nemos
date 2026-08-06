@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import PptxGenJS from "pptxgenjs";
 
 import type { ArtifactFormat } from "./capabilities.js";
@@ -11,6 +11,14 @@ import {
 
 export interface NativeArtifactMetadata {
   generatedAbilityId?: string;
+  artifactId?: string;
+}
+
+export interface NativeArtifactValidationCheck {
+  id: string;
+  label: string;
+  status: "passed" | "failed" | "not-run";
+  detail?: string;
 }
 
 export interface NativeRenderedArtifact {
@@ -18,6 +26,7 @@ export interface NativeRenderedArtifact {
   file: string;
   previewFile?: string;
   summary: string;
+  validationChecks: NativeArtifactValidationCheck[];
 }
 
 export async function writeNativeCapabilityArtifact(input: {
@@ -33,8 +42,8 @@ export async function writeNativeCapabilityArtifact(input: {
     const file = `${input.fileBase}.pptx`;
     const previewFile = `${input.fileBase}-preview.html`;
     await writePresentation(file, payload);
-    writeFileSync(previewFile, renderPresentation(payload), "utf8");
-    return { format: "pptx", file, previewFile, summary: payload.summary };
+    writeFileSync(previewFile, renderPresentation(payload, input.metadata), "utf8");
+    return finalizeNativeArtifact({ format: "pptx", file, previewFile, summary: payload.summary }, payload);
   }
 
   if (input.requestedFormat === "doc" || input.requestedFormat === "pdf" || input.requestedFormat === "xlsx") {
@@ -49,26 +58,72 @@ export async function writeNativeCapabilityArtifact(input: {
     writeFileSync(file, exported.data);
     const previewFile = input.fileBase + "-preview.html";
     writeFileSync(previewFile, renderWorkbench(payload, input.metadata), "utf8");
-    return { format: input.requestedFormat, file, previewFile, summary: payload.summary };
+    return finalizeNativeArtifact({ format: input.requestedFormat, file, previewFile, summary: payload.summary }, payload);
   }
 
   if (input.requestedFormat === "html" || nativeDefaultIsWorkbench(input.capabilityId, input.requestedFormat)) {
     const file = `${input.fileBase}.html`;
     writeFileSync(file, renderWorkbench(payload, input.metadata), "utf8");
-    return { format: "html", file, summary: payload.summary };
+    return finalizeNativeArtifact({ format: "html", file, summary: payload.summary }, payload);
   }
 
   if (input.requestedFormat === "json") {
     const file = `${input.fileBase}.json`;
     writeFileSync(file, JSON.stringify(payload, null, 2), "utf8");
-    return { format: "json", file, summary: payload.summary };
+    return finalizeNativeArtifact({ format: "json", file, summary: payload.summary }, payload);
   }
 
   const format = input.requestedFormat === "txt" ? "txt" : input.requestedFormat === "doc" ? "doc" : "md";
   const extension = format === "txt" ? "txt" : "md";
   const file = `${input.fileBase}.${extension}`;
   writeFileSync(file, renderMarkdown(payload), "utf8");
-  return { format, file, summary: payload.summary };
+  return finalizeNativeArtifact({ format, file, summary: payload.summary }, payload);
+}
+
+function finalizeNativeArtifact(
+  artifact: Omit<NativeRenderedArtifact, "validationChecks">,
+  payload: NativeCapabilityPayload,
+): NativeRenderedArtifact {
+  const content = readFileSync(artifact.file);
+  const checks: NativeArtifactValidationCheck[] = [{
+    id: "artifact-readable",
+    label: "交付文件可读取且非空",
+    status: content.byteLength > 32 ? "passed" : "failed",
+    detail: `${content.byteLength} bytes`,
+  }];
+  if (artifact.previewFile) {
+    const previewBytes = statSync(artifact.previewFile).size;
+    checks.push({ id: "preview-readable", label: "预览文件可读取且非空", status: previewBytes > 32 ? "passed" : "failed", detail: `${previewBytes} bytes` });
+  }
+  if (payload.kind === "presentation-builder" && artifact.format === "pptx") {
+    const slides = records(payload.data.slides);
+    const warnings = presentationWarnings(slides);
+    const layouts = new Set(slides.map((slide) => text(slide.layout) || "statement"));
+    const notesCount = slides.filter((slide) => !!text(slide.speakerNotes)).length;
+    checks.push({ id: "pptx-signature", label: "PowerPoint 文件结构有效", status: content.subarray(0, 2).toString() === "PK" ? "passed" : "failed" });
+    checks.push({ id: "slide-contract", label: "页数和逐页主旨符合约定", status: slides.length >= 3 && slides.length <= 30 && slides.every((slide) => !!text(slide.title) && !!text(slide.keyMessage)) ? "passed" : "failed", detail: `${slides.length} 页` });
+    checks.push({ id: "slide-density", label: "逐页文字密度适合放映", status: warnings.length === 0 ? "passed" : "failed", detail: warnings.length ? warnings.join(" ") : "未发现溢出风险" });
+    checks.push({ id: "slide-layout-variety", label: "版式具有必要变化", status: layouts.size >= Math.min(3, slides.length) ? "passed" : "failed", detail: `${layouts.size} 种版式` });
+    checks.push({ id: "speaker-notes", label: "演讲备注覆盖主要页面", status: notesCount >= Math.ceil(slides.length * 0.6) ? "passed" : "failed", detail: `${notesCount}/${slides.length} 页` });
+  }
+  if (payload.kind === "research-brief") checks.push(researchEvidenceCheck(payload));
+  return { ...artifact, validationChecks: checks };
+}
+
+function researchEvidenceCheck(payload: NativeCapabilityPayload): NativeArtifactValidationCheck {
+  const sourceIds = new Set(records(payload.data.sources).map((source) => text(source.id)).filter(Boolean));
+  const findings = records(payload.data.findings);
+  const invalid = findings.filter((finding) => {
+    const status = text(finding.status);
+    const evidenceIds = strings(finding.evidenceIds);
+    return status === "confirmed" && (evidenceIds.length === 0 || evidenceIds.some((id) => !sourceIds.has(id)));
+  });
+  return {
+    id: "research-evidence-links",
+    label: "已确认结论均可追溯到来源",
+    status: invalid.length === 0 ? "passed" : "failed",
+    detail: invalid.length === 0 ? `${findings.length} 条发现` : `${invalid.length} 条已确认结论缺少有效来源`,
+  };
 }
 
 function payloadToOfficeBlocks(payload: NativeCapabilityPayload): Array<{ title: string; text: string }> {
@@ -201,17 +256,17 @@ function presentationPalette(theme: string): { background: string; surface: stri
 }
 
 function renderWorkbench(payload: NativeCapabilityPayload, metadata?: NativeArtifactMetadata): string {
-  if (payload.kind === "presentation-builder") return renderPresentation(payload);
+  if (payload.kind === "presentation-builder") return renderPresentation(payload, metadata);
   const content = renderWorkbenchContent(payload, metadata) + renderWorkbenchState();
   const script = workbenchScript(payload.kind);
-  return pageShell(payload.title, payload.summary, content, script, payload);
+  return pageShell(payload.title, payload.summary, content, script, payload, "workbench", metadata);
 }
 
 function renderWorkbenchState(): string {
-  return '<section class="panel workbench-state"><div class="section-head"><div><p class="kicker">持续工作</p><h2>工作台状态</h2></div><label>进度 <select id="workbenchStatus"><option value="draft">整理中</option><option value="review">待复核</option><option value="done">已确认</option></select></label></div><textarea id="workbenchNotes" placeholder="补充决定、证据、风险或下一步"></textarea><div class="workbench-actions"><button id="workbenchSaveVersion" type="button">保存版本</button><select id="workbenchVersions" aria-label="历史版本"><option value="">尚未保存版本</option></select><button id="workbenchRestoreVersion" type="button">恢复所选版本</button><span id="workbenchDiff">内容会自动保存在当前浏览器。</span></div></section>';
+  return '<section class="panel workbench-state"><div class="section-head"><div><p class="kicker">持续工作</p><h2>工作台状态</h2></div><label>进度 <select id="workbenchStatus"><option value="draft">整理中</option><option value="review">待复核</option><option value="done">已确认</option></select></label></div><textarea id="workbenchNotes" placeholder="补充决定、证据、风险或下一步"></textarea><div class="workbench-actions"><button id="workbenchSaveVersion" type="button">保存版本</button><select id="workbenchVersions" aria-label="历史版本"><option value="">尚未保存版本</option></select><button id="workbenchRestoreVersion" type="button">恢复所选版本</button><span id="workbenchDiff">内容会自动保存到本机。</span></div></section>';
 }
 
-function renderPresentation(payload: NativeCapabilityPayload): string {
+function renderPresentation(payload: NativeCapabilityPayload, metadata?: NativeArtifactMetadata): string {
   const slides = records(payload.data.slides);
   const warnings = presentationWarnings(slides);
   const content = (warnings.length ? '<section class="notice"><strong>版面检查</strong><span>' + escapeHtml(warnings.join(" ")) + '</span></section>' : "") + `<main class="deck" aria-label="演示文稿">${slides.map((slide, index) => {
@@ -224,9 +279,13 @@ function renderPresentation(payload: NativeCapabilityPayload): string {
       ${bullets.length ? `<ul>${bullets.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
       ${text(slide.speakerNotes) ? `<details><summary>演讲备注</summary><p>${escapeHtml(text(slide.speakerNotes))}</p></details>` : ""}
     </article>`;
-  }).join("")}</main><nav class="deck-nav"><button id="prev" type="button">上一页</button><span id="position">1 / ${slides.length}</span><button id="next" type="button">下一页</button></nav>`;
-  const script = `let current=0;const slides=[...document.querySelectorAll('.slide')];const show=(n)=>{current=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,i)=>s.classList.toggle('is-active',i===current));document.getElementById('position').textContent=(current+1)+' / '+slides.length;};document.getElementById('prev').onclick=()=>show(current-1);document.getElementById('next').onclick=()=>show(current+1);addEventListener('keydown',e=>{if(e.key==='ArrowLeft')show(current-1);if(e.key==='ArrowRight'||e.key===' ')show(current+1);});`;
-  return pageShell(payload.title, payload.summary, content, script, payload, "presentation");
+  }).join("")}</main><nav class="deck-nav"><button id="prev" type="button">上一页</button><span id="position">1 / ${slides.length}</span><button id="next" type="button">下一页</button><button id="openDeckReview" type="button">审阅记录</button></nav>${renderPresentationReview()}`;
+  const script = `let current=0;const slides=[...document.querySelectorAll('.slide')];const show=(n)=>{current=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,i)=>s.classList.toggle('is-active',i===current));document.getElementById('position').textContent=(current+1)+' / '+slides.length;};document.getElementById('prev').onclick=()=>show(current-1);document.getElementById('next').onclick=()=>show(current+1);addEventListener('keydown',e=>{if(document.getElementById('deckReviewDialog')?.open)return;if(e.key==='ArrowLeft')show(current-1);if(e.key==='ArrowRight'||e.key===' ')show(current+1);});document.getElementById('openDeckReview').onclick=()=>document.getElementById('deckReviewDialog').showModal();document.getElementById('closeDeckReview').onclick=()=>document.getElementById('deckReviewDialog').close();` + workbenchScript("presentation-builder");
+  return pageShell(payload.title, payload.summary, content, script, payload, "presentation", metadata);
+}
+
+function renderPresentationReview(): string {
+  return `<dialog class="deck-review" id="deckReviewDialog"><section class="panel workbench-state"><div class="section-head"><div><p class="kicker">审阅记录</p><h2>这份演示是否可以交付</h2></div><label>进度 <select id="workbenchStatus"><option value="draft">整理中</option><option value="review">待复核</option><option value="done">已确认</option></select></label></div><textarea id="workbenchNotes" placeholder="记录需要调整的页面、讲述重点或最终决定"></textarea><div class="workbench-actions"><button id="workbenchSaveVersion" type="button">保存审阅版本</button><select id="workbenchVersions" aria-label="历史版本"><option value="">尚未保存版本</option></select><button id="workbenchRestoreVersion" type="button">恢复所选版本</button><button id="closeDeckReview" type="button">关闭</button><span id="workbenchDiff">内容会自动保存到本机。</span></div></section></dialog>`;
 }
 
 function renderWorkbenchContent(payload: NativeCapabilityPayload, metadata?: NativeArtifactMetadata): string {
@@ -252,11 +311,13 @@ function renderResearch(payload: NativeCapabilityPayload): string {
   const data = payload.data;
   const sources = records(data.sources);
   const findings = records(data.findings);
+  const anchors = sources.flatMap((source) => records(source.anchors).map((anchor) => ({ ...anchor, source })));
   const chart = svgChart("结论置信度", findings.map((item) => text(item.claim).slice(0, 12)), findings.map((item) => Math.round(number(item.confidence) * 100)), "bar");
   return `${heroBlock("研究问题", text(data.question), ["分阶段研究", "来源分级", "结论核验"])}
     <section class="panel"><h2>研究路径</h2>${ordered(strings(data.plan))}</section>
-    <section class="panel"><div class="section-head"><h2>关键结论</h2><span>${findings.length} 条</span></div><div class="card-grid">${findings.map((item) => `<article class="finding"><span class="status ${escapeHtml(text(item.status))}">${statusLabel(text(item.status))}</span><h3>${escapeHtml(text(item.claim))}</h3><p>置信度 ${Math.round(number(item.confidence) * 100)}% · 证据 ${strings(item.evidenceIds).map(escapeHtml).join("、") || "待补充"}</p></article>`).join("")}</div></section>
+    <section class="panel"><div class="section-head"><h2>关键结论</h2><span>${findings.length} 条</span></div><div class="card-grid">${findings.map((item) => `<article class="finding"><span class="status ${escapeHtml(text(item.status))}">${statusLabel(text(item.status))}</span><h3>${escapeHtml(text(item.claim))}</h3><p>置信度 ${Math.round(number(item.confidence) * 100)}% · 来源 ${strings(item.evidenceIds).map(escapeHtml).join("、") || "待补充"}</p><p class="anchor-links">${strings(item.anchorIds).map((id) => `<a href="#evidence-${escapeAttribute(id)}">${escapeHtml(id)}</a>`).join(" ") || "没有可定位证据"}</p></article>`).join("")}</div></section>
     <section class="panel"><div class="section-head"><h2>来源台账</h2><span>${sources.length} 个来源</span></div><div class="table-wrap"><table><thead><tr><th>来源</th><th>等级</th><th>评分</th><th>核验时间</th></tr></thead><tbody>${sources.map((source) => `<tr><td>${sourceLink(source)}</td><td>Tier ${escapeHtml(String(source.tier || "-"))}</td><td>${escapeHtml(String(source.score ?? "-"))}</td><td>${escapeHtml(text(source.checkedAt) || "待确认")}</td></tr>`).join("")}</tbody></table></div></section>
+    <section class="panel"><div class="section-head"><h2>证据定位</h2><span>${anchors.length} 个锚点</span></div>${anchors.map(({ source, ...anchor }) => `<article class="evidence-anchor" id="evidence-${escapeAttribute(text(anchor.id))}"><h3>${escapeHtml(text(anchor.id))} · ${escapeHtml(text(source.title) || text(source.publisher))}</h3><p>${escapeHtml(text(anchor.page) || text(anchor.span))}</p><blockquote>${escapeHtml(text(anchor.quote))}</blockquote><small>SHA-256 ${escapeHtml(text(anchor.quoteHash).slice(0, 16))}…</small></article>`).join("") || "<p>暂无可定位证据，相关结论不能标为已核验。</p>"}</section>
     ${textBlock("结论", text(data.conclusion))}${chart}${listBlock("限制与待确认", strings(data.limitations))}${listBlock("下一步", strings(data.nextSteps))}`;
 }
 
@@ -298,6 +359,8 @@ function renderMarket(payload: NativeCapabilityPayload): string {
   return `${heroBlock("机会假设", text(data.thesis), [text(data.targetUser), "三情景模拟", "含失效条件"])}${textBlock("需要解决的问题", text(data.problem))}
     <section class="panel"><h2>情景权重</h2><div class="weights"><label>需求 <input id="demandWeight" type="range" min="0" max="100" value="45"><span>45%</span></label><label>执行 <input id="executionWeight" type="range" min="0" max="100" value="35"><span>35%</span></label><label>竞争压力 <input id="competitionWeight" type="range" min="0" max="100" value="20"><span>20%</span></label></div><div class="scenario-grid">${scenarios.map((item, index) => `<article data-scenario="${index}" data-demand="${number(item.demandScore)}" data-execution="${number(item.executionScore)}" data-competition="${number(item.competitionScore)}"><div class="score-ring"><strong>0</strong><small>综合</small></div><h3>${escapeHtml(text(item.name))}</h3><p>${escapeHtml(text(item.description))}</p><div class="metric"><span>需求 ${number(item.demandScore)}</span><span>执行 ${number(item.executionScore)}</span><span>竞争 ${number(item.competitionScore)}</span></div></article>`).join("")}</div></section>
     <section class="panel"><h2>核心假设</h2><div class="table-wrap"><table><thead><tr><th>变量</th><th>低</th><th>基准</th><th>高</th><th>单位</th></tr></thead><tbody>${records(data.assumptions).map((item) => `<tr><td>${escapeHtml(text(item.name))}</td><td>${escapeHtml(String(item.low ?? ""))}</td><td>${escapeHtml(String(item.base ?? ""))}</td><td>${escapeHtml(String(item.high ?? ""))}</td><td>${escapeHtml(text(item.unit))}</td></tr>`).join("")}</tbody></table></div></section>
+    <section class="panel"><h2>模型边界</h2><p><strong>版本：</strong>${escapeHtml(text(data.modelVersion))}</p>${unordered(strings(data.applicability))}</section>
+    <section class="panel"><h2>证据与冲突</h2><div class="card-grid">${records(data.evidence).map((item) => `<article><h3>${escapeHtml(text(item.id))}</h3><p>${escapeHtml(text(item.claim))}</p><small>${escapeHtml(text(item.source))} · ${escapeHtml(text(item.checkedAt))}</small></article>`).join("")}</div>${listBlock("相互冲突的信息", strings(data.conflicts))}</section>
     ${chart}${listBlock("当前替代方案", strings(data.alternatives))}${listBlock("失效条件", strings(data.invalidation))}<section class="panel"><h2>验证实验</h2>${records(data.experiments).map((item) => `<article class="experiment"><h3>${escapeHtml(text(item.name))}</h3><p>成本 ${escapeHtml(text(item.cost))} · 周期 ${escapeHtml(text(item.duration))}</p><small>成功信号：${escapeHtml(text(item.successSignal))}</small></article>`).join("")}</section>${listBlock("主要风险", strings(data.risks))}`;
 }
 
@@ -353,9 +416,11 @@ function renderAbility(payload: NativeCapabilityPayload, metadata?: NativeArtifa
     <section class="panel"><h2>触发测试</h2><div class="table-wrap"><table><thead><tr><th>请求</th><th>预期</th><th>原因</th></tr></thead><tbody>${records(data.testCases).map((item) => `<tr><td>${escapeHtml(text(item.request))}</td><td>${item.shouldTrigger === true ? "触发" : "不触发"}</td><td>${escapeHtml(text(item.reason))}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
 
-function pageShell(title: string, summary: string, content: string, script: string, payload: NativeCapabilityPayload, mode = "workbench"): string {
+function pageShell(title: string, summary: string, content: string, script: string, payload: NativeCapabilityPayload, mode = "workbench", metadata?: NativeArtifactMetadata): string {
   const safeJson = JSON.stringify(payload).replace(/</g, "\\u003c");
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>${artifactCss()}</style></head><body class="${mode}"><header class="artifact-header"><div><span class="brand-mark">鱼</span><span>小丑鱼能力结果</span></div><button type="button" id="printButton">打印 / 导出 PDF</button></header><div class="artifact-wrap"><header class="title-block"><p>已完成</p><h1>${escapeHtml(title)}</h1><span>${escapeHtml(summary)}</span></header>${content}<footer>由小丑鱼在本机生成 · 具体要求优先于记忆偏好</footer></div><script type="application/json" id="artifactData">${safeJson}</script><script>document.getElementById('printButton').onclick=()=>print();${script}</script></body></html>`;
+  const artifactId = escapeAttribute(metadata?.artifactId || "");
+  const workspaceScript = artifactId ? '<script src="/assets/artifact-workspace.js"></script>' : "";
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>${artifactCss()}</style></head><body class="${mode}" data-artifact-id="${artifactId}"><header class="artifact-header"><div><span class="brand-mark">鱼</span><span>小丑鱼能力结果</span></div><button type="button" id="printButton">打印 / 导出 PDF</button></header><div class="artifact-wrap"><header class="title-block"><p>已完成</p><h1>${escapeHtml(title)}</h1><span>${escapeHtml(summary)}</span></header>${content}<footer>由小丑鱼在本机生成 · 具体要求优先于记忆偏好</footer></div><script type="application/json" id="artifactData">${safeJson}</script><script>document.getElementById('printButton').onclick=()=>print();${script}</script>${workspaceScript}</body></html>`;
 }
 
 function workbenchScript(kind: NativeCapabilityId): string {
@@ -387,7 +452,7 @@ function flat(value: unknown): string {
 }
 
 function artifactCss(): string {
-  return `:root{--bg:#f2eee5;--surface:#fffdf8;--text:#292823;--muted:#716c63;--line:#d9d0c3;--accent:#b85c38;--accent-soft:#f3dfd4;--ok:#326a53;--warn:#9a5a22;font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:var(--text);background:var(--bg)}*{box-sizing:border-box}body{margin:0;line-height:1.65}.artifact-header{height:58px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:rgba(242,238,229,.92);position:sticky;top:0;z-index:10;backdrop-filter:blur(12px)}.artifact-header>div{display:flex;gap:10px;align-items:center;font-size:13px;letter-spacing:.02em}.brand-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--text);color:#fff}.artifact-header button,.deck-nav button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;color:var(--text);cursor:pointer}.artifact-wrap{width:min(1120px,calc(100% - 32px));margin:0 auto;padding:64px 0}.title-block{max-width:850px;margin-bottom:48px}.title-block>p,.kicker{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700}.title-block h1{font-family:Georgia,"Songti SC",serif;font-size:clamp(36px,6vw,72px);line-height:1.04;letter-spacing:-.03em;margin:12px 0}.title-block>span{display:block;max-width:68ch;color:var(--muted);font-size:17px}.hero-card{padding:36px;border-radius:22px;background:var(--text);color:#f8f5ed;margin-bottom:24px}.hero-card p{color:#c8c3b8}.tag-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}.tag-row span{border:1px solid #5b584f;border-radius:999px;padding:6px 11px;font-size:12px}.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px;margin:18px 0;box-shadow:0 14px 40px rgba(54,45,33,.04)}.panel h2{font-family:Georgia,"Songti SC",serif;margin:0 0 18px;font-size:24px}.panel h3{margin:0 0 8px}.panel p{color:var(--muted)}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:center}.section-head>span{font-size:12px;color:var(--muted)}.card-grid,.scenario-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}.card-grid article,.scenario-grid article,.finding{border:1px solid var(--line);border-radius:14px;padding:18px;background:#fff}.split{display:grid;grid-template-columns:1fr 1fr;gap:18px}.status{display:inline-block;font-size:11px;border-radius:999px;padding:4px 8px;background:#eee}.status.confirmed{background:#dcebe3;color:var(--ok)}.status.partial{background:#f3e7d7;color:var(--warn)}.status.unverified{background:#eee5df;color:#794837}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:11px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}a{color:var(--accent)}ol,ul{padding-left:22px}.check-row{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.check-row input{width:18px;height:18px;margin-top:3px;accent-color:var(--accent)}.check-row span{display:grid}.check-row small,.save-hint{color:var(--muted)}textarea{width:100%;min-height:140px;border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit;background:#fff}.timeline{display:grid;gap:14px}.timeline article{display:flex;gap:14px}.timeline article>span{display:grid;place-items:center;flex:0 0 34px;height:34px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700}.timeline h3,.timeline p{margin:0}.screen-tabs{display:flex;gap:8px;flex-wrap:wrap}.screen-tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px}.screen-tabs button.is-active{background:var(--text);color:#fff}.screen-preview{display:none;max-width:780px;margin:22px auto;border:1px solid #bdb5a8;border-radius:16px;overflow:hidden;background:#f7f5ef;box-shadow:0 28px 70px rgba(43,40,35,.15)}.screen-preview.is-active{display:block}.screen-top{height:38px;background:#e7e1d7;display:flex;align-items:center;gap:6px;padding:0 14px}.screen-top span{width:8px;height:8px;border-radius:50%;background:#c5b9aa}.screen-body{padding:36px}.screen-body>button{border:0;border-radius:10px;background:var(--accent);color:white;padding:11px 16px}.mock-sections{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:24px 0}.mock-sections div{min-height:74px;border:1px solid var(--line);border-radius:10px;padding:12px;background:white}.state-line{font-size:12px}.message-card{position:relative;border-left:3px solid var(--accent);padding:12px 80px 12px 16px;margin:12px 0;background:#faf7f1}.message-card button{position:absolute;right:12px;top:12px}.notice{display:flex;justify-content:space-between;padding:14px 18px;border-radius:12px;background:#eee5df;margin:18px 0}.notice.success{background:#dcebe3;color:var(--ok)}.definition div{display:grid;grid-template-columns:140px 1fr;padding:10px 0;border-bottom:1px solid var(--line)}.definition dt{color:var(--muted)}.definition dd{margin:0}.weights{display:grid;gap:10px;margin-bottom:20px}.weights label{display:grid;grid-template-columns:90px 1fr 48px;gap:12px;align-items:center}.weights input{accent-color:var(--accent)}.scenario-grid article{display:grid;grid-template-columns:68px 1fr;column-gap:14px}.scenario-grid article>p,.scenario-grid .metric{grid-column:1/-1}.score-ring{width:64px;height:64px;border-radius:50%;background:var(--text);color:white;display:grid;place-items:center;align-content:center}.score-ring strong{font-size:22px;line-height:1}.score-ring small{font-size:9px}.metric{display:flex;gap:8px;flex-wrap:wrap}.metric span{font-size:11px;border-radius:999px;background:var(--accent-soft);padding:4px 8px}.experiment{border-bottom:1px solid var(--line);padding:14px 0}.experiment p{margin:4px 0}.workbench-state label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}.workbench-state select,.workbench-actions button,.workbench-actions select{min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px}.workbench-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}.workbench-actions span{color:var(--muted);font-size:11px}.chart-panel svg{width:100%;height:auto;display:block;overflow:visible}.deck .artifact-wrap{padding-top:20px}.deck{min-height:calc(100vh - 140px);display:grid;place-items:center}.slide{display:none;width:min(1180px,calc(100vw - 48px));aspect-ratio:16/9;padding:clamp(32px,6vw,86px);background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:0 32px 90px rgba(43,40,35,.16);position:relative;overflow:auto}.slide.is-active{display:block}.slide-number{position:absolute;right:28px;top:24px;color:var(--muted);font-size:12px}.slide h1{font-family:Georgia,"Songti SC",serif;font-size:clamp(32px,5vw,64px);line-height:1.08;margin:12px 0}.slide-message{font-size:clamp(18px,2.3vw,28px);max-width:40ch;color:var(--accent)}.slide li{font-size:clamp(15px,1.6vw,21px);margin:10px 0}.deck-nav{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:16px;align-items:center;padding:8px;border:1px solid var(--line);background:rgba(255,253,248,.94);border-radius:999px;box-shadow:0 10px 30px rgba(43,40,35,.12)}footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}@media(max-width:720px){.artifact-header{padding:0 14px}.artifact-wrap{padding:36px 0}.split{grid-template-columns:1fr}.panel,.hero-card{padding:20px}.section-head{align-items:flex-start;flex-direction:column}.definition div{grid-template-columns:1fr}.slide{aspect-ratio:auto;min-height:calc(100vh - 150px)}}@media print{.artifact-header,.deck-nav{display:none}.artifact-wrap{width:100%;padding:0}.panel,.hero-card,.slide{break-inside:avoid;box-shadow:none}.slide{display:block!important;page-break-after:always;width:100%;aspect-ratio:16/9;border:0;border-radius:0}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}`;
+  return `:root{--bg:#f2eee5;--surface:#fffdf8;--text:#292823;--muted:#716c63;--line:#d9d0c3;--accent:#b85c38;--accent-soft:#f3dfd4;--ok:#326a53;--warn:#9a5a22;font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:var(--text);background:var(--bg)}*{box-sizing:border-box}body{margin:0;line-height:1.65}.artifact-header{height:58px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:rgba(242,238,229,.92);position:sticky;top:0;z-index:10;backdrop-filter:blur(12px)}.artifact-header>div{display:flex;gap:10px;align-items:center;font-size:13px;letter-spacing:.02em}.brand-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--text);color:#fff}.artifact-header button,.deck-nav button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;color:var(--text);cursor:pointer}.artifact-wrap{width:min(1120px,calc(100% - 32px));margin:0 auto;padding:64px 0}.title-block{max-width:850px;margin-bottom:48px}.title-block>p,.kicker{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700}.title-block h1{font-family:Georgia,"Songti SC",serif;font-size:clamp(36px,6vw,72px);line-height:1.04;letter-spacing:-.03em;margin:12px 0}.title-block>span{display:block;max-width:68ch;color:var(--muted);font-size:17px}.hero-card{padding:36px;border-radius:22px;background:var(--text);color:#f8f5ed;margin-bottom:24px}.hero-card p{color:#c8c3b8}.tag-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}.tag-row span{border:1px solid #5b584f;border-radius:999px;padding:6px 11px;font-size:12px}.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px;margin:18px 0;box-shadow:0 14px 40px rgba(54,45,33,.04)}.panel h2{font-family:Georgia,"Songti SC",serif;margin:0 0 18px;font-size:24px}.panel h3{margin:0 0 8px}.panel p{color:var(--muted)}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:center}.section-head>span{font-size:12px;color:var(--muted)}.card-grid,.scenario-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}.card-grid article,.scenario-grid article,.finding{border:1px solid var(--line);border-radius:14px;padding:18px;background:#fff}.split{display:grid;grid-template-columns:1fr 1fr;gap:18px}.status{display:inline-block;font-size:11px;border-radius:999px;padding:4px 8px;background:#eee}.status.confirmed{background:#dcebe3;color:var(--ok)}.status.partial{background:#f3e7d7;color:var(--warn)}.status.unverified{background:#eee5df;color:#794837}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:11px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}a{color:var(--accent)}ol,ul{padding-left:22px}.check-row{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.check-row input{width:18px;height:18px;margin-top:3px;accent-color:var(--accent)}.check-row span{display:grid}.check-row small,.save-hint{color:var(--muted)}textarea{width:100%;min-height:140px;border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit;background:#fff}.timeline{display:grid;gap:14px}.timeline article{display:flex;gap:14px}.timeline article>span{display:grid;place-items:center;flex:0 0 34px;height:34px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700}.timeline h3,.timeline p{margin:0}.screen-tabs{display:flex;gap:8px;flex-wrap:wrap}.screen-tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px}.screen-tabs button.is-active{background:var(--text);color:#fff}.screen-preview{display:none;max-width:780px;margin:22px auto;border:1px solid #bdb5a8;border-radius:16px;overflow:hidden;background:#f7f5ef;box-shadow:0 28px 70px rgba(43,40,35,.15)}.screen-preview.is-active{display:block}.screen-top{height:38px;background:#e7e1d7;display:flex;align-items:center;gap:6px;padding:0 14px}.screen-top span{width:8px;height:8px;border-radius:50%;background:#c5b9aa}.screen-body{padding:36px}.screen-body>button{border:0;border-radius:10px;background:var(--accent);color:white;padding:11px 16px}.mock-sections{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:24px 0}.mock-sections div{min-height:74px;border:1px solid var(--line);border-radius:10px;padding:12px;background:white}.state-line{font-size:12px}.message-card{position:relative;border-left:3px solid var(--accent);padding:12px 80px 12px 16px;margin:12px 0;background:#faf7f1}.message-card button{position:absolute;right:12px;top:12px}.notice{display:flex;justify-content:space-between;padding:14px 18px;border-radius:12px;background:#eee5df;margin:18px 0}.notice.success{background:#dcebe3;color:var(--ok)}.definition div{display:grid;grid-template-columns:140px 1fr;padding:10px 0;border-bottom:1px solid var(--line)}.definition dt{color:var(--muted)}.definition dd{margin:0}.weights{display:grid;gap:10px;margin-bottom:20px}.weights label{display:grid;grid-template-columns:90px 1fr 48px;gap:12px;align-items:center}.weights input{accent-color:var(--accent)}.scenario-grid article{display:grid;grid-template-columns:68px 1fr;column-gap:14px}.scenario-grid article>p,.scenario-grid .metric{grid-column:1/-1}.score-ring{width:64px;height:64px;border-radius:50%;background:var(--text);color:white;display:grid;place-items:center;align-content:center}.score-ring strong{font-size:22px;line-height:1}.score-ring small{font-size:9px}.metric{display:flex;gap:8px;flex-wrap:wrap}.metric span{font-size:11px;border-radius:999px;background:var(--accent-soft);padding:4px 8px}.experiment{border-bottom:1px solid var(--line);padding:14px 0}.experiment p{margin:4px 0}.workbench-state label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}.workbench-state select,.workbench-actions button,.workbench-actions select{min-height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px}.workbench-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}.workbench-actions span{color:var(--muted);font-size:11px}.chart-panel svg{width:100%;height:auto;display:block;overflow:visible}.deck .artifact-wrap{padding-top:20px}.deck{min-height:calc(100vh - 140px);display:grid;place-items:center}.slide{display:none;width:min(1180px,calc(100vw - 48px));aspect-ratio:16/9;padding:clamp(32px,6vw,86px);background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:0 32px 90px rgba(43,40,35,.16);position:relative;overflow:auto}.slide.is-active{display:block}.slide-number{position:absolute;right:28px;top:24px;color:var(--muted);font-size:12px}.slide h1{font-family:Georgia,"Songti SC",serif;font-size:clamp(32px,5vw,64px);line-height:1.08;margin:12px 0}.slide-message{font-size:clamp(18px,2.3vw,28px);max-width:40ch;color:var(--accent)}.slide li{font-size:clamp(15px,1.6vw,21px);margin:10px 0}.deck-nav{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:16px;align-items:center;padding:8px;border:1px solid var(--line);background:rgba(255,253,248,.94);border-radius:999px;box-shadow:0 10px 30px rgba(43,40,35,.12)}.deck-review{width:min(720px,calc(100% - 32px));border:0;border-radius:20px;padding:0;background:transparent}.deck-review::backdrop{background:rgba(35,31,27,.46);backdrop-filter:blur(4px)}.deck-review .panel{margin:0;box-shadow:0 30px 90px rgba(30,25,20,.25)}footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}@media(max-width:720px){.artifact-header{padding:0 14px}.artifact-wrap{padding:36px 0}.split{grid-template-columns:1fr}.panel,.hero-card{padding:20px}.section-head{align-items:flex-start;flex-direction:column}.definition div{grid-template-columns:1fr}.slide{aspect-ratio:auto;min-height:calc(100vh - 150px)}}@media print{.artifact-header,.deck-nav{display:none}.artifact-wrap{width:100%;padding:0}.panel,.hero-card,.slide{break-inside:avoid;box-shadow:none}.slide{display:block!important;page-break-after:always;width:100%;aspect-ratio:16/9;border:0;border-radius:0}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}`;
 }
 
 function heroBlock(kicker: string, content: string, tags: string[]): string {

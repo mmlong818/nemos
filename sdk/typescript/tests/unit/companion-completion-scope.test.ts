@@ -12,12 +12,18 @@ test("工作页提供任务、结果、运行和记忆的独立新手入口", ()
   const script = readFileSync(join(root, "assets", "work-center.js"), "utf8");
   const stability = readFileSync(join(root, "assets", "work-stability.css"), "utf8");
   const chat = readFileSync(join(root, "index.html"), "utf8");
+  const server = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
 
   for (const route of ["/tasks", "/artifacts", "/runs", "/memory"]) {
     assert.match(html + script + chat, new RegExp(route.replace("/", "\\/")));
   }
   assert.match(script, /\/api\/memory\/preference/);
   assert.match(script, /\/api\/memory\/forget/);
+  assert.match(script, /\/api\/memory\/correct/);
+  assert.match(script, /data-memory-detail/);
+  assert.match(html, /memoryDetailDialog/);
+  assert.match(server, /\/api\/memory\/correct/);
+  assert.match(server, /sourceMessageId[\s\S]*archivalId[\s\S]*excerpt/);
   assert.match(script, /\/api\/capabilities\/artifact\/feedback/);
   assert.match(script, /history\.pushState/);
   assert.match(script, /window\.addEventListener\("popstate"/);

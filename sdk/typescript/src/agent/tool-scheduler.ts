@@ -63,7 +63,14 @@ export class ToolScheduler {
       this.options.emit({ type: "tool_end", call, result });
       return result;
     }
-    const validationErrors = validateToolInput(tool.definition.inputSchema, call.arguments);
+    let validationErrors: string[];
+    try {
+      validationErrors = validateToolInput(tool.definition.inputSchema, call.arguments);
+    } catch (error) {
+      const result = errorResult(`tool input validation failed: ${errorMessage(error)}`);
+      this.options.emit({ type: "tool_end", call, result });
+      return result;
+    }
     if (validationErrors.length > 0) {
       const result = errorResult(`invalid tool input: ${validationErrors.join("; ")}`);
       this.options.emit({ type: "tool_end", call, result });

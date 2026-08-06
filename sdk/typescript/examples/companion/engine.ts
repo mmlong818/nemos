@@ -10,6 +10,7 @@
 //
 // 依赖注入：engine 不关心用哪个 LLM —— SDK 抽取 LLM 由 Nemos 配置，人格回复由 chat 注入。
 
+import { randomUUID } from "node:crypto";
 import type { Nemos } from "../../src/index.js";
 import { APP_PERSONA_ID, personaIdentityAliases } from "./identity.js";
 import { groupParticipationFor, selectGroupResponderIds, type GroupReplyRoute } from "./group-routing.js";
@@ -83,6 +84,7 @@ export interface VoiceMeta {
   durationSec: number;
 }
 export interface SendOptions {
+  sourceMessageId?: string;
   voice?: VoiceMeta;
   groupRoute?: GroupReplyRoute;
   signal?: AbortSignal;
@@ -639,6 +641,12 @@ export class CompanionEngine {
   ): Promise<void> {
     await this.nemos.forUser(userId).ingest(text, {
       scope,
+      identity: {
+        speakerId: `user:${userId}`,
+        subjectId: `user:${userId}`,
+        conversationId: scope,
+        sourceMessageId: opts.sourceMessageId || `message-${randomUUID()}`,
+      },
       // 语音条走 SDK voice-transcript profile（异步语音的文本侧）；该 profile 不标 sensitive。
       ...(opts.voice ? { scenario: "voice-transcript" } : {}),
       // 在线服务：抽取移后台，回复不等它（记忆下一轮可用）。
@@ -656,6 +664,12 @@ export class CompanionEngine {
     await this.nemos.forUser(personaNamespace(personaId)).ingest(reply, {
       scope,
       originAgent: personaId,
+      identity: {
+        speakerId: `agent:${personaId}`,
+        subjectId: `agent:${personaId}`,
+        conversationId: scope,
+        sourceMessageId: `message-${randomUUID()}`,
+      },
       skipAnalysis: true,
     });
   }

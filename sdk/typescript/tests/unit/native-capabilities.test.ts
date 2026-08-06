@@ -13,10 +13,10 @@ const payloads: Record<string, Record<string, unknown>> = {
     data: {
       question: "目标领域是否值得进入", plan: ["界定问题", "搜索一手来源", "交叉核验"],
       sources: [
-        { id: "S1", title: "官方报告", url: "https://example.com/a", publisher: "示例机构", tier: 1, score: 92, checkedAt: "2026-08-05", claims: ["存在明确需求"] },
-        { id: "S2", title: "行业数据", url: "https://example.com/b", publisher: "示例数据源", tier: 2, score: 80, checkedAt: "2026-08-05", claims: ["竞争正在增加"] },
+        { id: "S1", title: "官方报告", url: "https://example.com/a", publisher: "示例机构", tier: 1, score: 92, checkedAt: "2026-08-05", claims: ["存在明确需求"], anchors: [{ id: "S1-A1", page: "第 12 页", quote: "目标用户存在明确且重复的需求。" }] },
+        { id: "S2", title: "行业数据", url: "https://example.com/b", publisher: "示例数据源", tier: 2, score: 80, checkedAt: "2026-08-05", claims: ["竞争正在增加"], anchors: [{ id: "S2-A1", span: "竞争格局 / 第 3 段", quote: "近一年同类方案数量持续增加。" }] },
       ],
-      findings: [{ claim: "需求存在但仍需小范围验证", evidenceIds: ["S1", "S2"], confidence: 0.82, status: "confirmed" }],
+      findings: [{ claim: "需求存在但仍需小范围验证", evidenceIds: ["S1", "S2"], anchorIds: ["S1-A1", "S2-A1"], confidence: 0.82, status: "confirmed" }],
       conclusion: "建议先做低成本验证。", limitations: ["缺少真实付费数据"], nextSteps: ["访谈五位目标用户"],
     },
   },
@@ -61,10 +61,10 @@ const payloads: Record<string, Record<string, unknown>> = {
   "market-opportunity": {
     kind: "market-opportunity", title: "机会模拟", summary: "用三种情景检验机会。",
     data: {
-      targetUser: "小型团队", problem: "重复整理工作耗时", alternatives: ["人工表格"], signals: [{ signal: "用户主动寻找工具", evidence: "访谈", status: "partial" }],
+      targetUser: "小型团队", problem: "重复整理工作耗时", evidence: [{ id: "E1", source: "目标用户访谈", checkedAt: "2026-08-05", claim: "重复整理每周发生" }], conflicts: ["访谈意愿与实际付费仍不一致"], alternatives: ["人工表格"], signals: [{ signal: "用户主动寻找工具", evidence: "访谈", status: "partial" }],
       assumptions: [{ name: "月活团队", low: 100, base: 500, high: 1200, unit: "个" }],
       scenarios: [{ name: "保守", description: "需求弱", demandScore: 35, competitionScore: 70, executionScore: 75 }, { name: "基准", description: "需求稳定", demandScore: 65, competitionScore: 55, executionScore: 70 }, { name: "积极", description: "需求快速增长", demandScore: 85, competitionScore: 45, executionScore: 65 }],
-      thesis: "先验证高频重复工作。", invalidation: ["访谈中没有高频痛点"], experiments: [{ name: "访谈", cost: "低", duration: "一周", successSignal: "六成用户每周遇到" }, { name: "手工服务", cost: "中", duration: "两周", successSignal: "三家愿意继续" }], risks: ["样本偏差"],
+      modelVersion: "scenario-v1", applicability: ["仅用于早期机会筛选，不代表投资或生产批准"], thesis: "先验证高频重复工作。", invalidation: ["访谈中没有高频痛点"], experiments: [{ name: "访谈", cost: "低", duration: "一周", successSignal: "六成用户每周遇到" }, { name: "手工服务", cost: "中", duration: "两周", successSignal: "三家愿意继续" }], risks: ["样本偏差"],
     },
   },
   "ability-builder": {
@@ -101,9 +101,21 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
       assert.equal(result.artifact.format, format);
       assert.ok(existsSync(result.artifact.file));
       assert.ok(statSync(result.artifact.file).size > 100);
+      assert.equal(result.artifact.proof?.level, "validated");
+      assert.ok(result.artifact.proof?.checks.every((check) => check.status === "passed"));
+      assert.equal(result.artifact.proof?.algorithm, "sha256");
+      assert.equal(result.artifact.proof?.byteLength, statSync(result.artifact.file).size);
+      assert.match(result.artifact.proof?.contentHash || "", /^[a-f0-9]{64}$/);
       if (format === "pptx") {
         assert.equal(readFileSync(result.artifact.file).subarray(0, 2).toString(), "PK");
         assert.ok(result.artifact.previewFile && existsSync(result.artifact.previewFile));
+        const preview = readFileSync(result.artifact.previewFile!, "utf8");
+        assert.match(preview, new RegExp('data-artifact-id="' + result.artifact.id + '"'));
+        assert.match(preview, /审阅记录/);
+        assert.match(preview, /\/assets\/artifact-workspace\.js/);
+        assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-density")?.status, "passed");
+        assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-layout-variety")?.status, "passed");
+        assert.equal(result.artifact.proof?.checks.find((check) => check.id === "speaker-notes")?.status, "passed");
       } else {
         const html = readFileSync(result.artifact.file, "utf8");
         assert.match(html, /小丑鱼能力结果/);
@@ -118,6 +130,68 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
   }
 });
 
+test("研究来源锚点生成稳定哈希，缺少定位的已确认结论自动降级", () => {
+  const valid = parseNativeCapabilityPayload("research-brief", JSON.stringify(payloads["research-brief"]));
+  const source = (valid.data.sources as Array<Record<string, unknown>>)[0]!;
+  const anchor = (source.anchors as Array<Record<string, unknown>>)[0]!;
+  assert.match(String(anchor.quoteHash), /^[a-f0-9]{64}$/);
+
+  const missing = structuredClone(payloads["research-brief"]!);
+  const sources = (missing.data as Record<string, unknown>).sources as Array<Record<string, unknown>>;
+  sources.forEach((item) => { item.anchors = []; });
+  const parsed = parseNativeCapabilityPayload("research-brief", JSON.stringify(missing));
+  const finding = ((parsed.data.findings as Array<Record<string, unknown>>)[0])!;
+  assert.equal(finding.status, "partial");
+  assert.deepEqual(finding.anchorIds, []);
+});
+test("演示文稿文字过密、版式单一或缺少备注时只标记为已生成", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-presentation-quality-"));
+  const invalid = structuredClone(payloads["presentation-builder"]!);
+  const slides = (invalid.data as Record<string, unknown>).slides as Array<Record<string, unknown>>;
+  for (const slide of slides) {
+    slide.layout = "statement";
+    slide.speakerNotes = "";
+  }
+  slides[1]!.bullets = Array.from({ length: 9 }, (_, index) => "这是明显过长的页面要点 " + (index + 1) + "，用于确认放映密度检查不会被忽略。");
+  try {
+    let current = payloads["presentation-builder"]!;
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: JSON.stringify(current), facts: [] }),
+    });
+    const lastGood = await runtime.runAdHocTask({ title: "演示检查", personaId: "clownfish", capabilityId: "presentation-builder", instruction: "生成演示", format: "pptx" });
+    current = invalid;
+    const result = await runtime.runAdHocTask({ title: "演示检查", personaId: "clownfish", capabilityId: "presentation-builder", instruction: "生成演示", format: "pptx" });
+    assert.equal(result.artifact.proof?.level, "produced");
+    assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-density")?.status, "failed");
+    assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-layout-variety")?.status, "failed");
+    assert.equal(result.artifact.proof?.checks.find((check) => check.id === "speaker-notes")?.status, "failed");
+    assert.equal(result.artifact.metadata?.presentationVersion?.state, "needs-review");
+    assert.equal(result.artifact.metadata?.presentationVersion?.lastGoodArtifactId, lastGood.artifact.id);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("研究结论引用不存在的来源时不会被标记为已验证", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "nemos-research-evidence-check-"));
+  const invalid = structuredClone(payloads["research-brief"]!);
+  const findings = (invalid.data as Record<string, unknown>).findings as Array<Record<string, unknown>>;
+  findings[0]!.evidenceIds = ["missing-source"];
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: JSON.stringify(invalid), facts: [] }),
+    });
+    const result = await runtime.runAdHocTask({ title: "研究检查", personaId: "clownfish", capabilityId: "research-brief", instruction: "检查证据", format: "html" });
+    assert.equal(result.artifact.proof?.level, "produced");
+    assert.equal(result.artifact.proof?.checks.find((check) => check.id === "research-evidence-links")?.status, "failed");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 test("生成能力兼容字段完整但少一个结束符的模型结果", () => {
   const payload = structuredClone(payloads["ability-builder"]!);
   const data = payload.data as Record<string, unknown>;
@@ -129,4 +203,44 @@ test("生成能力兼容字段完整但少一个结束符的模型结果", () =>
   const parsed = parseNativeCapabilityPayload("ability-builder", raw);
   assert.equal(parsed.kind, "ability-builder");
   assert.equal(Array.isArray(parsed.data.testCases), true);
+});
+test("交互式能力结果保存状态、版本，并把用户决定带入下一项能力", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-native-workspace-"));
+  const options = {
+    dataDir: dir,
+    personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+    notify: async () => ({ reply: JSON.stringify(payloads["thinking-workbench"]), facts: [] }),
+  };
+  try {
+    const runtime = new CapabilityRuntime(options);
+    const result = await runtime.runAdHocTask({
+      title: "持续思考",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "整理方向",
+      format: "html",
+    });
+    const html = readFileSync(result.artifact.file, "utf8");
+    assert.match(html, new RegExp('data-artifact-id="' + result.artifact.id + '"'));
+    assert.match(html, /\/assets\/artifact-workspace\.js/);
+
+    runtime.updateArtifactWorkspace({
+      id: result.artifact.id,
+      action: "version",
+      current: {
+        notes: { workbenchNotes: "用户确认先验证方案 A" },
+        checks: { "experiment-0": true },
+        status: "done",
+      },
+    });
+
+    const restored = new CapabilityRuntime(options);
+    assert.equal(restored.artifactWorkspace(result.artifact.id)?.status, "done");
+    assert.equal(restored.snapshot().artifacts[0]?.metadata?.workspace?.versionCount, 1);
+    const handoff = restored.artifactHandoff(result.artifact.id);
+    assert.match(handoff?.text || "", /用户确认先验证方案 A/);
+    assert.match(handoff?.text || "", /experiment-0/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
