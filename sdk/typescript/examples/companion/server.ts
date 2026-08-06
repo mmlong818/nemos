@@ -2945,10 +2945,11 @@ const server = createServer(async (req, res) => {
         send(res, 400, { error: "missing taskId" });
         return;
       }
-      if (body.kind === "capability-adhoc" && (!body.personaId || !body.capabilityId || !body.instruction)) {
-        send(res, 400, { error: "missing personaId, capabilityId, or instruction" });
+      if (body.kind === "capability-adhoc" && (!body.capabilityId || !body.instruction)) {
+        send(res, 400, { error: "missing capabilityId or instruction" });
         return;
       }
+      const capabilityPersonaId = body.kind === "capability-adhoc" ? "clownfish" : body.personaId;
       if (body.kind === "capability-adhoc" && body.capabilityId === "project-development") {
         try { validateDevelopmentWorkspace(String(body.workspacePath || "")); }
         catch (error) { send(res, 400, { error: error instanceof Error ? error.message : String(error) }); return; }
@@ -2969,7 +2970,7 @@ const server = createServer(async (req, res) => {
           kind: body.kind,
           taskId: body.taskId,
           title: body.title,
-          personaId: body.personaId,
+          personaId: capabilityPersonaId,
           capabilityId: body.capabilityId,
           format: body.format,
           instructionChars: body.instruction?.length ?? 0,
@@ -2977,14 +2978,14 @@ const server = createServer(async (req, res) => {
           memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
           idempotencyKeyProvided: Boolean(body.idempotencyKey),
         },
-        metadata: body.personaId ? { personaId: body.personaId } : undefined,
+        metadata: capabilityPersonaId ? { personaId: capabilityPersonaId } : undefined,
         execute: () => agentJobQueue.enqueue({
           type: body.kind!,
           payload: body.kind === "capability-task"
             ? { taskId: body.taskId }
             : {
                 title: body.title,
-                personaId: body.personaId,
+                personaId: capabilityPersonaId,
                 capabilityId: body.capabilityId,
                 instruction: body.instruction,
                 conversationKey: /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(body.conversationKey || "")) ? body.conversationKey : "",

@@ -7,7 +7,7 @@ const CATALOG = [
   { id: "marketBrief", backendId: "market-briefing", name: "查港股资料", icon: "trend", summary: "读取公告、行情快照并整理盘前盘后简报", description: "按股票代码读取港交所官方公告和带查询时间的第三方行情快照；明确延迟、来源和待核验项，不提供交易指令。", use: "自选股、公告核验、盘前盘后复盘", deliverable: "带来源与时间戳的市场资料简报", format: "html", detail: "读取关注代码、官方公告、行情快照和风险边界" },
   { id: "thinking", backendId: "thinking-workbench", name: "梳理复杂问题", icon: "lightbulb", summary: "把模糊问题变成可操作的思考工作台", description: "分开事实、假设、矛盾和未知，保留多个选项，形成可以勾选和补充的验证计划。", use: "问题拆解、创意探索、复盘", deliverable: "可交互思考工作台", format: "html", featured: true, detail: "梳理问题、假设、选择和验证办法" },
   { id: "product", backendId: "product-design", name: "设计产品界面", icon: "layout", summary: "从用户任务形成页面和交互方案", description: "先理清真实用户路径，再产出信息结构、关键界面、交互说明和验收要点。", use: "新功能、界面改版、产品方案", deliverable: "产品设计说明", format: "html", featured: true, detail: "形成用户流程、页面结构与设计说明" },
-  { id: "developer", backendId: "project-development", name: "开发项目", icon: "code", summary: "读取本地项目、修改代码并运行验证", description: "使用独立开发执行器，在你指定的项目文件夹内真实读取、修改和验证代码。", use: "开发功能、修复问题、项目检查", deliverable: "项目修改与验证报告", format: "md", featured: true, detail: "读取项目规则、实施修改并运行受控检查" },
+  { id: "developer", backendId: "project-development", name: "开发项目", icon: "code", summary: "读取本地项目、修改代码并运行验证", description: "使用独立开发执行器，在你指定的项目文件夹内真实读取、修改和验证代码。", use: "开发功能、修复问题、项目检查", deliverable: "项目修改、可运行结果与验证记录", format: "md", featured: true, detail: "读取项目规则、实施修改并运行受控检查" },
   { id: "meeting", backendId: "meeting-minutes", name: "整理会议纪要", icon: "checklist", summary: "从记录中提炼结论和行动项", description: "把会议文字整理成摘要、决定、责任人、截止时间、风险和未决问题。", use: "会议记录、访谈、讨论复盘", deliverable: "纪要与行动表", format: "doc", featured: true, detail: "提炼决定、行动项与未决问题" },
   { id: "web", backendId: "html-report", name: "做网页报告", icon: "globe", summary: "把内容制作成独立网页", description: "生成不依赖外部服务、可直接在浏览器打开的单页内容。", use: "报告、说明页、互动展示", deliverable: "独立 HTML 网页", format: "html", detail: "制作可直接打开的独立网页" },
   { id: "decision", backendId: "decision-brief", name: "比较方案", icon: "scale", summary: "比较证据、风险与行动条件", description: "把零散信息整理成可判断的选择，说明收益、代价、风险和什么时候应该改变决定。", use: "选型、取舍、优先级判断", deliverable: "决策简报", format: "md", detail: "比较方案、风险和行动条件" },
@@ -107,12 +107,10 @@ function migrateStorageKey(codes, target, storage) {
   if (source !== target) storage.removeItem(source);
 }
 migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 99, 101, 110, 116, 101, 114, 45, 100, 114, 97, 102, 116, 45, 118, 49], "clownfish-capability-center-draft-v1", localStorage);
-migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 99, 101, 110, 116, 101, 114, 45, 114, 101, 99, 101, 110, 116, 45, 118, 49], "clownfish-capability-center-recent-v1", localStorage);
 migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 97, 99, 116, 105, 118, 105, 116, 121, 45, 118, 49], "clownfish-capability-activity-v1", localStorage);
 migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 104, 97, 110, 100, 111, 102, 102, 45, 118, 49], "clownfish-capability-handoff-v1", sessionStorage);
 
 const DRAFT_KEY = "clownfish-capability-center-draft-v1";
-const RECENT_KEY = "clownfish-capability-center-recent-v1";
 const ACTIVITY_KEY = "clownfish-capability-activity-v1";
 const HANDOFF_KEY = "clownfish-capability-handoff-v1";
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -121,7 +119,6 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const state = {
   view: "start",
   selectedId: "presentation",
-  showAll: false,
   snapshot: { abilities: [], artifacts: [] },
   llm: { live: false },
   jobs: [],
@@ -184,8 +181,9 @@ function renderFormatOptions(item) {
   const select = $("#formatSelect");
   const previous = select.value;
   const formats = supportedFormats(item);
-  select.innerHTML = formats.map((format) => `<option value="${format}">${FORMAT_LABELS[format]}</option>`).join("");
+  select.innerHTML = formats.map((format) => `<option value="${format}">${item.id === "developer" ? "项目修改、可运行结果与验证记录" : FORMAT_LABELS[format]}</option>`).join("");
   select.value = formats.includes(previous) ? previous : item.format;
+  select.disabled = item.id === "developer";
 }
 
 async function api(path, options = {}) {
@@ -208,15 +206,14 @@ function showToast(message, error = false) {
 
 function renderCatalog() {
   const root = $("#capabilityGrid");
-  root.innerHTML = CATALOG.map((item) => `
-    <button class="cap-card${item.id === state.selectedId ? " is-selected" : ""}" type="button" data-capability="${item.id}" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}" ${!state.showAll && !item.featured ? "hidden" : ""}>
+  root.innerHTML = CATALOG.slice(0, 20).map((item) => `
+    <button class="cap-card${item.id === state.selectedId ? " is-selected" : ""}" type="button" data-capability="${item.id}" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">
       <span class="cap-icon" aria-hidden="true">${iconSvg(item.icon)}</span>
       <strong>${item.name}</strong>
       <small>${item.summary}</small>
       <span class="availability">${availability(item).label}</span>
     </button>`).join("");
   $$('[data-capability]', root).forEach((button) => button.addEventListener("click", () => activateCapability(button.dataset.capability)));
-  $("#toggleAll").textContent = state.showAll ? "只看常用" : `查看全部 ${CATALOG.length} 项`;
 }
 
 function renderExecutionState() {
@@ -345,7 +342,6 @@ function saveDraft() {
     instruction: $("#instructionInput").value,
     selectedId: state.selectedId,
     format: $("#formatSelect").value,
-    personaId: $("#personaSelect").value,
     memoryMode: $("#memoryToggle").checked ? "preferences" : "off",
     materials: state.materials,
     workspacePath: $("#workspaceInput").value,
@@ -362,29 +358,16 @@ function loadDraft() {
   try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch { return null; }
 }
 
-function loadRecent() {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "null"); } catch { return null; }
-}
 
 function updateContinueButton() {
   const draft = loadDraft();
-  const recent = loadRecent();
-  const button = $("#continueLast");
-  button.hidden = !draft?.goal && !draft?.instruction && !recent?.goal;
-  button.textContent = draft?.goal || draft?.instruction ? "继续未完成内容" : `再次使用：${String(recent?.goal || "").slice(0, 22)}`;
+  $("#continueLast").hidden = !draft?.goal && !draft?.instruction;
 }
 
 function restoreLast() {
   const draft = loadDraft();
-  if (!draft?.goal && !draft?.instruction) {
-    const recent = loadRecent();
-    if (!recent?.goal) return showToast("没有可继续的内容", true);
-    selectCapability(recent.selectedId);
-    $("#goalInput").value = recent.goal;
-    $("#instructionInput").value = recent.goal;
-    openCapability(recent.goal);
-    return;
-  }
+  if (!draft?.goal && !draft?.instruction) return showToast("没有可继续的内容", true);
+
   state.selectedId = CATALOG.some((item) => item.id === draft.selectedId) ? draft.selectedId : "document";
   state.materials = Array.isArray(draft.materials) ? draft.materials.slice(0, 1) : [];
   $("#goalInput").value = draft.goal || "";
@@ -398,7 +381,6 @@ function restoreLast() {
   renderMaterials();
   openCapability();
   if ([...$("#formatSelect").options].some((option) => option.value === draft.format)) $("#formatSelect").value = draft.format;
-  if ([...$("#personaSelect").options].some((option) => option.value === draft.personaId)) $("#personaSelect").value = draft.personaId;
 }
 
 function resetDraft() {
@@ -444,7 +426,7 @@ async function startTask() {
       body: JSON.stringify({
         kind: "capability-adhoc",
         title: (goal || instruction).slice(0, 60),
-        personaId: $("#personaSelect").value || "clownfish",
+        personaId: "clownfish",
         capabilityId: item.backendId,
         instruction: `${instruction}${summaryContext}${conversationContext}${materials}`,
         conversationKey: state.returnConversationKey,
@@ -458,14 +440,13 @@ async function startTask() {
       }),
     });
     const job = response.job || null;
-    localStorage.setItem(RECENT_KEY, JSON.stringify({ goal: goal || instruction, selectedId: item.id, at: new Date().toISOString() }));
-    if (job) localStorage.setItem(ACTIVITY_KEY, JSON.stringify({ jobId: job.id, title: goal || instruction, personaId: $("#personaSelect").value || "clownfish", startedAt: new Date().toISOString() }));
+    if (job) localStorage.setItem(ACTIVITY_KEY, JSON.stringify({ jobId: job.id, title: goal || instruction, personaId: "clownfish", startedAt: new Date().toISOString() }));
     resetDraft();
     await refreshData();
     if (job) {
       $("#runConversationBridge").hidden = false;
       $("#runConversationLink").href = chatHref(job.id);
-      $("#runConversationText").textContent = "你可以继续聊天；完成后，结果会由执行角色直接送回。";
+      $("#runConversationText").textContent = "你可以继续聊天；完成后，结果会由小丑鱼直接送回。";
     }
     openView("runs");
     showToast("任务已开始；可以回到对话继续，结果会自动送回");
@@ -550,10 +531,9 @@ function renderHistory() {
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
       <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p></div>
-      <div class="task-actions">${job.status === "succeeded" ? `<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${open}<button type="button" data-reuse-job="${escapeHtml(job.id)}">再次使用</button></div>
+      <div class="task-actions">${job.status === "succeeded" ? `<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${open}</div>
     </article>`;
   }).join("");
-  $$('[data-reuse-job]').forEach((button) => button.addEventListener("click", () => reuseJob(button.dataset.reuseJob)));
   $$('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
 }
 
@@ -574,11 +554,8 @@ async function handoffJob(id) {
     $("#instructionInput").value = "";
     $("#launchPanel").hidden = true;
     $(".start-wrap").classList.remove("is-launching");
-    $("#chatContext").hidden = false;
-    $("#chatContextTitle").textContent = `继续处理「${jobTitle(job)}」`;
-    $("#chatContextText").textContent = "上一步的完整结果和提要已经带入；选择下一项能力后会一并交接。";
-    $("#chatContextReturn").textContent = "查看上一步结果";
-    $("#chatContextReturn").href = `/api/capabilities/artifact/preview?id=${encodeURIComponent(artifact.id)}`;
+    $("#chatContext").hidden = true;
+
     renderMaterials();
     saveDraft();
     openView("start");
@@ -587,23 +564,6 @@ async function handoffJob(id) {
   } catch (error) {
     showToast(error.message || "结果交接失败", true);
   }
-}
-
-function reuseJob(id) {
-  const job = state.jobs.find((item) => item.id === id);
-  if (!job) return;
-  const capability = jobCapability(job);
-  state.selectedId = capability.id;
-  $("#goalInput").value = jobTitle(job);
-  $("#instructionInput").value = String(job.payload?.instruction || jobTitle(job));
-  $("#memoryToggle").checked = job.payload?.memoryMode !== "off";
-  state.materials = [];
-  renderMaterials();
-  renderCatalog();
-  openView("start");
-  openCapability(jobTitle(job));
-  if ([...$("#formatSelect").options].some((option) => option.value === job.payload?.format)) $("#formatSelect").value = job.payload.format;
-  showToast("已复制为新任务，原结果不会改变");
 }
 
 function renderFiles() {
@@ -624,14 +584,6 @@ function renderFiles() {
       <div class="versions">${versions.slice(0, 5).map((file, index) => `<div class="version-row"><span>${versions.length > 1 ? `版本 ${versions.length - index}` : "最新结果"} · ${displayDate(file.createdAt)}</span><span class="version-actions">${artifactLinks(file, true)}</span></div>`).join("")}</div>
     </article>`;
   }).join("");
-}
-
-function renderPersonas() {
-  const select = $("#personaSelect");
-  const previous = select.value;
-  select.innerHTML = state.personas.map((persona) => `<option value="${escapeHtml(persona.id)}">${escapeHtml(persona.name)}</option>`).join("");
-  if ([...select.options].some((option) => option.value === previous)) select.value = previous;
-  else if ([...select.options].some((option) => option.value === "clownfish")) select.value = "clownfish";
 }
 
 function openView(view, updateUrl = true) {
@@ -666,7 +618,6 @@ async function refreshData() {
     $("#memorySummary").textContent = state.memoryCount > 0 ? `可轻量参考 ${state.memoryCount} 条写作、排版或格式习惯` : "会轻量参考文笔、排版和格式偏好";
     renderCatalog();
     renderExecutionState();
-    renderPersonas();
     renderRuns();
     renderHistory();
     renderFiles();
@@ -723,8 +674,8 @@ function applyChatHandoff() {
   state.handoffApplied = true;
   const handoff = loadChatHandoff();
   if (!handoff) return;
+  sessionStorage.removeItem(HANDOFF_KEY);
   const goal = String(handoff.goal || "").trim().slice(0, 2000);
-  const personaId = String(handoff.personaId || "");
   const chatName = String(handoff.chatName || "当前对话").slice(0, 40);
   const incomingConversation = loadHandoffConversation(handoff, chatName);
   state.handoffContext = incomingConversation.map((entry) => `${entry.speaker}：${entry.text}`).join("\n\n");
@@ -733,7 +684,8 @@ function applyChatHandoff() {
   state.returnConversationKey = /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(handoff.conversationKey || ""))
     ? String(handoff.conversationKey)
     : "";
-  const fromOffice = handoff.source === "office";
+  const fromChat = handoff.source === "chat";
+
   const incomingMaterials = Array.isArray(handoff.materials)
     ? handoff.materials.filter((item) => item && typeof item.name === "string" && typeof item.text === "string" && item.text.trim()).slice(0, 1).map((item) => ({
       name: item.name.slice(0, 160),
@@ -742,14 +694,14 @@ function applyChatHandoff() {
       kind: String(item.kind || "text").slice(0, 16),
     }))
     : [];
-  $("#chatContext").hidden = false;
-  $("#chatContextTitle").textContent = `从「${chatName}」继续`;
-  $("#chatContextText").textContent = fromOffice
-    ? "工作副本已经带过来，确认能力和结果形式后即可开始。"
-    : state.handoffMessageCount
+  $("#chatContext").hidden = !fromChat;
+  if (fromChat) {
+    $("#chatContextTitle").textContent = `从「${chatName}」继续`;
+    $("#chatContextText").textContent = state.handoffMessageCount
       ? `已带入当前分支的 ${state.handoffMessageCount} 条完整原文和一份上下文提要；两者都会交给能力执行。`
       : goal ? "目标已经带过来，确认做法后即可开始。" : "从对话带来的任务会在这里准备，完成后仍回到原对话。";
-  $("#chatContextReturn").textContent = fromOffice ? "回到文件" : "回到对话";
+    $("#chatContextReturn").textContent = "回到对话";
+  }
   if (incomingMaterials.length) {
     state.materials = incomingMaterials;
     renderMaterials();
@@ -759,13 +711,11 @@ function applyChatHandoff() {
     $("#goalInput").value = goal;
     $("#instructionInput").value = state.handoffSummary || goal;
   }
-  if ([...$("#personaSelect").options].some((option) => option.value === personaId)) $("#personaSelect").value = personaId;
   if (goal) openCapability(goal);
 }
 
 function bindEvents() {
   $$('[data-view-target]').forEach((button) => button.addEventListener("click", () => openView(button.dataset.viewTarget)));
-  $("#toggleAll").addEventListener("click", () => { state.showAll = !state.showAll; renderCatalog(); });
   $("#goalForm").addEventListener("submit", (event) => {
     event.preventDefault();
     const goal = $("#goalInput").value.trim();
@@ -780,7 +730,6 @@ function bindEvents() {
   $("#workspaceInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
   $("#accessModeSelect").addEventListener("change", saveDraft);
   $("#formatSelect").addEventListener("change", saveDraft);
-  $("#personaSelect").addEventListener("change", saveDraft);
   $("#memoryToggle").addEventListener("change", saveDraft);
   $("#materialInput").addEventListener("change", async (event) => { await addMaterial(event.target.files?.[0]); event.target.value = ""; });
   $("#startTask").addEventListener("click", startTask);

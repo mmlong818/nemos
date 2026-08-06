@@ -183,6 +183,10 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   assert.match(script, /name: "开发项目"/);
   assert.match(html, /id="workspaceInput"/);
   assert.match(html, /id="accessModeSelect"/);
+  assert.doesNotMatch(html, /personaSelect|由谁完成/);
+  assert.doesNotMatch(script, /personaSelect/);
+  assert.match(script, /personaId: "clownfish"/);
+  assert.match(script, /项目修改、可运行结果与验证记录/);
   assert.match(script, /format: "pptx"/);
   assert.match(script, /name: "写正式文档"/);
   assert.match(html, /class="rail-secondary" href="\/#settings"/);
@@ -209,6 +213,9 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   assert.match(capabilityHtml, /id="chatContext"/);
   assert.match(capabilityHtml, /id="runConversationBridge"/);
   assert.match(capabilityScript, /function applyChatHandoff/);
+  assert.match(capabilityScript, /fromChat = handoff\.source === "chat"/);
+  assert.match(capabilityScript, /chatContext"\)\.hidden = !fromChat/);
+  assert.match(capabilityScript, /sessionStorage\.removeItem\(HANDOFF_KEY\)/);
   assert.match(capabilityScript, /handoffContext/);
   assert.match(capabilityScript, /handoffSummary/);
   assert.match(capabilityScript, /function loadHandoffConversation/);
@@ -218,6 +225,7 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   assert.match(capabilityScript, /【对话提要】/);
   assert.match(capabilityScript, /conversationKey: state\.returnConversationKey/);
   assert.match(serverSource, /conversationKey: String\(job\.payload\.conversationKey/);
+  assert.match(serverSource, /capabilityPersonaId = body\.kind === "capability-adhoc" \? "clownfish"/);
   assert.match(capabilityScript, /clownfish-capability-activity-v1/);
   assert.match(capabilityScript, /在对话中查看/);
   assert.match(capabilityScript, /function handoffJob/);
@@ -250,7 +258,12 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.match(html, /直接选择能力/);
   assert.match(html, /class="capability-picker" id="capabilityPicker"/);
   assert.match(html, /id="launchPanel"/);
-  assert.match(html, /自动选择并继续/);
+  assert.match(html, /自动选择能力/);
+  assert.match(html, /class="catalog-or">或<\/p>/);
+  assert.match(readFileSync(join(webDir, "assets", "capability-center.css"), "utf8"), /\.hero h1, \.catalog-or \{ font-size: 27px; \}/);
+  assert.doesNotMatch(html, /id="toggleAll"|常用能力|再次使用/);
+  assert.match(script, /CATALOG\.slice\(0, 20\)/);
+  assert.doesNotMatch(script, /showAll|RECENT_KEY|data-reuse-job|function reuseJob/);
   assert.match(html, /id="closeLaunch">更换能力/);
   assert.match(html, /class="launch-submit-row"/);
   assert.match(script, /data-capability[\s\S]*activateCapability/);
