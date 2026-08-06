@@ -67,8 +67,9 @@ test("retries read-only failures but does not automatically replay side-effectin
     const write = fixture.queue.claimNext("worker-a", new Date(base + 3_000));
     assert.equal(write?.id, writeJob.id);
     const writeFailure = fixture.queue.fail(write!.id, "worker-a", new Error("unknown commit state"));
-    assert.equal(writeFailure.status, "failed");
-    assert.throws(() => fixture.queue.retry(write!.id), /explicit confirmation/);
+    assert.equal(writeFailure.status, "uncertain");
+    assert.throws(() => fixture.queue.retry(write!.id), /reconciled/);
+    assert.equal(fixture.queue.reconcile(write!.id, "not_applied", "target record is absent").status, "failed");
     assert.equal(fixture.queue.retry(write!.id, { confirmSideEffect: true }).status, "queued");
   } finally {
     rmSync(fixture.dir, { recursive: true, force: true });
@@ -86,8 +87,8 @@ test("recovers expired leases and keeps side-effecting jobs stopped for manual r
 
     fixture.queue.recoverStale(new Date(base + 2_000));
     assert.equal(fixture.queue.get(read.id)?.status, "queued");
-    assert.equal(fixture.queue.get(write.id)?.status, "failed");
-    assert.match(fixture.queue.get(write.id)?.error ?? "", /manual review/);
+    assert.equal(fixture.queue.get(write.id)?.status, "uncertain");
+    assert.match(fixture.queue.get(write.id)?.error ?? "", /reconcile/);
   } finally {
     rmSync(fixture.dir, { recursive: true, force: true });
   }
@@ -103,13 +104,34 @@ test("recovers jobs immediately when a new queue opens before the old lease expi
 
     const restarted = new FileAgentJobQueue(fixture.file, { leaseMs: 60_000 });
     assert.equal(restarted.get(read.id)?.status, "queued");
-    assert.equal(restarted.get(write.id)?.status, "failed");
-    assert.match(restarted.get(write.id)?.error ?? "", /manual review/);
+    assert.equal(restarted.get(write.id)?.status, "uncertain");
+    assert.match(restarted.get(write.id)?.error ?? "", /reconcile/);
   } finally {
     rmSync(fixture.dir, { recursive: true, force: true });
   }
 });
 
+test("reconciles a side-effecting job as already completed without replaying it", () => {
+  const fixture = temporaryQueue();
+  try {
+    const queued = fixture.queue.enqueue({ type: "write", payload: {}, sideEffectRisk: true });
+    fixture.queue.claimNext("worker-a");
+    fixture.queue.fail(queued.id, "worker-a", new Error("connection lost after commit"));
+
+    const reconciled = fixture.queue.reconcile(
+      queued.id,
+      "succeeded",
+      "verified the target record exists",
+      { summary: "already applied", artifactRefs: ["record://123"] },
+    );
+    assert.equal(reconciled.status, "succeeded");
+    assert.equal(reconciled.result?.summary, "already applied");
+    assert.equal(reconciled.reconciliation?.outcome, "succeeded");
+    assert.throws(() => fixture.queue.retry(queued.id), /failed or cancelled/);
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
 test("cancels a cooperative handler when its execution timeout is reached", async () => {
   const fixture = temporaryQueue();
   try {

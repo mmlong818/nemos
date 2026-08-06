@@ -60,6 +60,8 @@ export type {
   AgentJobHandlerContext,
   AgentJobInput,
   AgentJobQueueEvent,
+  AgentJobReconciliation,
+  AgentJobReconciliationOutcome,
   AgentJobRecord,
   AgentJobResult,
   AgentJobStatus,

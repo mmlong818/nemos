@@ -33,6 +33,7 @@ export {
   deriveEvidenceCoverage,
   computeMemorySalience,
   ensureMemoryQualityMetadata,
+  determinePromotion,
   hasDurableSalience,
 } from "./salience.js";
 

@@ -92,6 +92,8 @@ test("市场资料工具只在市场任务中暴露并返回可核验结果", as
     assert.ok(!registry.listAvailableForInstruction("整理会议纪要").some((tool) => tool.id === "source.market-briefing"));
     const result = await registry.run("source.market-briefing", { symbols: ["00700"] });
     assert.equal(result.ok, true);
+    assert.equal(result.freshness?.availability, "available");
+    assert.equal(result.freshness?.contentDigest?.length, 64);
     assert.match(result.text, /港交所公告/);
     assert.match(result.text, /第三方快照/);
   } finally {

@@ -44,7 +44,7 @@ function toast(message, error = false) {
 const pageCopy = {
   tasks: ["持续工作", "任务", "把需要重复执行的事情留在这里；新用户仍可直接从聊天开始。"],
   artifacts: ["可复用结果", "结果", "所有交付物都保留原版本，可以预览、下载或继续加工。"],
-  runs: ["执行记录", "运行", "查看后台工作、模型调用和中断后可恢复的执行。"],
+  runs: ["执行记录", "运行", "查看后台工作、失败原因和中断后可恢复的执行。"],
   memory: ["由你控制", "记忆", "只保留能让协作更顺手的事实与习惯；原始归档不会被误删。"],
 };
 
@@ -301,10 +301,10 @@ function taskActivity(task) {
       personaId: "clownfish",
       source: "job",
     });
-    if (job.status === "failed" || job.status === "cancelled") items.push({
+    if (["failed", "cancelled", "uncertain"].includes(job.status)) items.push({
       id: `job-${job.id}-ended`,
       type: "error",
-      text: job.status === "cancelled" ? "本次后台工作已取消" : (job.error || "本次后台工作未完成"),
+      text: job.status === "cancelled" ? "本次后台工作已取消" : job.status === "uncertain" ? "执行结果待人工核对，系统不会自动重试" : (job.error || "本次后台工作未完成"),
       createdAt: job.updatedAt,
       personaId: "clownfish",
       source: "job",
@@ -406,13 +406,20 @@ async function runTask(id) {
   await load();
 }
 
+function artifactDisplayTitle(item) {
+  const title = String(item?.title || "").trim();
+  if (!title || /^(可以|好|好的|行|没问题|继续|就这样|看起来可以|我没想好|不知道|随便)[。！!？?，,\s]*$/.test(title)) {
+    return abilityName(item?.capabilityId) || "能力结果";
+  }
+  return title;
+}
 function renderArtifacts() {
   const artifacts = state.snapshot?.artifacts || [];
   $("#content").innerHTML = `<div class="toolbar"><input id="filterInput" placeholder="搜索结果"><a class="button" href="/office">打开办公文件</a></div><div class="list" id="artifactList"></div>`;
   const draw = () => {
     const query = $("#filterInput").value.trim().toLowerCase();
     const visible = artifacts.filter((item) => `${item.title} ${item.summary}`.toLowerCase().includes(query));
-    $("#artifactList").innerHTML = visible.length ? visible.map((item) => `<article class="card"><div><h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.summary || "已生成结果")}</p><div class="meta"><span class="pill ok">已完成</span><span class="pill">${escapeHtml(abilityName(item.capabilityId))}</span><span class="pill">${escapeHtml(String(item.format).toUpperCase())}</span><span class="pill">${date(item.createdAt)}</span></div></div><div class="actions"><a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.id)}" target="_blank">预览</a><a href="/api/capabilities/artifact?id=${encodeURIComponent(item.id)}" download>下载</a><button data-feedback-useful="\${item.id}">有帮助</button><button data-feedback-improve="\${item.id}">需改进</button></div></article>`).join("") : '<div class="empty">完成能力任务后，结果会自动出现在这里。</div>';
+    $("#artifactList").innerHTML = visible.length ? visible.map((item) => `<article class="card"><div><h2>${escapeHtml(artifactDisplayTitle(item))}</h2><p>${escapeHtml(item.summary || "已生成结果")}</p><div class="meta"><span class="pill ok">已完成</span><span class="pill">${escapeHtml(abilityName(item.capabilityId))}</span><span class="pill">${escapeHtml(String(item.format).toUpperCase())}</span><span class="pill">${date(item.createdAt)}</span></div></div><div class="actions"><a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.id)}" target="_blank">预览</a><a href="/api/capabilities/artifact?id=${encodeURIComponent(item.id)}" download>下载</a><button data-feedback-useful="\${item.id}">有帮助</button><button data-feedback-improve="\${item.id}">需改进</button></div></article>`).join("") : '<div class="empty">完成能力任务后，结果会自动出现在这里。</div>';
   };
   draw();
   $("#filterInput").addEventListener("input", draw);
@@ -445,33 +452,89 @@ function statusPill(status) {
   return "warn";
 }
 
+function jobStatusLabel(status) {
+  return {
+    queued: "排队中",
+    running: "执行中",
+    succeeded: "已完成",
+    failed: "未完成",
+    cancelled: "已取消",
+    uncertain: "待核对",
+    completed: "已完成",
+    interrupted: "已中断",
+    paused: "已暂停",
+  }[status] || status;
+}
+
 function renderRuns() {
   const jobs = state.jobs;
   const runs = state.runs;
-  const jobCards = jobs.map((job) => `<article class="card"><div><h2>${escapeHtml(job.payload?.title || job.type || "后台任务")}</h2><p>${escapeHtml(job.result?.summary || job.error?.message || "由小丑鱼在后台执行")}</p>${orchestrationDetail(job)}<div class="meta"><span class="pill ${statusPill(job.status)}">${escapeHtml(job.status)}</span><span class="pill">${date(job.updatedAt || job.createdAt)}</span><span class="pill">尝试 ${job.attempts || 0}/${job.maxAttempts || 1}</span></div></div><div class="actions">${["queued", "running"].includes(job.status) ? `<button data-cancel-job="${job.id}">取消</button>` : ""}${["failed", "cancelled"].includes(job.status) ? `<button data-retry-job="${job.id}">重试</button>` : ""}</div></article>`).join("");
-  const runCards = runs.slice(0, 30).map((run) => `<article class="card"><div><h2>${escapeHtml(run.metadata?.objective || run.prompt?.slice(0, 60) || "模型运行")}</h2><p>${escapeHtml(run.output?.slice(0, 180) || run.error || "保留了执行过程和检查点")}</p><div class="meta"><span class="pill ${statusPill(run.status)}">${escapeHtml(run.status)}</span><span class="pill">${escapeHtml(run.metadata?.model || "默认模型")}</span><span class="pill">${date(run.updatedAt || run.createdAt)}</span></div></div><div class="actions">${["interrupted", "paused", "failed"].includes(run.status) ? `<button data-resume-run="${run.runId}">恢复</button>` : ""}</div></article>`).join("");
+  const jobCards = jobs.map((job) => {
+    const uncertainActions = job.status === "uncertain"
+      ? `<button class="primary" data-reconcile-job="${job.id}" data-outcome="succeeded">确认已执行</button><button data-reconcile-job="${job.id}" data-outcome="not_applied">确认未执行</button>`
+      : "";
+    return `<article class="card"><div><h2>${escapeHtml(job.payload?.title || job.type || "后台任务")}</h2><p>${escapeHtml(job.result?.summary || job.error || (job.status === "uncertain" ? "执行结果无法自动确认，请先核对，系统不会自动重试。" : "由小丑鱼在后台执行"))}</p>${orchestrationDetail(job)}<div class="meta"><span class="pill ${statusPill(job.status)}">${escapeHtml(jobStatusLabel(job.status))}</span><span class="pill">${date(job.updatedAt || job.createdAt)}</span><span class="pill">尝试 ${job.attempts || 0}/${job.maxAttempts || 1}</span></div></div><div class="actions">${["queued", "running"].includes(job.status) ? `<button data-cancel-job="${job.id}">取消</button>` : ""}${["failed", "cancelled"].includes(job.status) ? `<button data-retry-job="${job.id}">重试</button>` : ""}${uncertainActions}</div></article>`;
+  }).join("");
+  const runCards = runs.slice(0, 20).map((run) => `<article class="card"><div><h2>${escapeHtml(run.metadata?.objective || "对话处理")}</h2><p>${escapeHtml(run.output?.slice(0, 180) || run.error || "已保存执行记录，需要时可以恢复或排查。")}</p><div class="meta"><span class="pill ${statusPill(run.status)}">${escapeHtml(jobStatusLabel(run.status))}</span><span class="pill">${date(run.updatedAt || run.createdAt)}</span></div></div><div class="actions">${["interrupted", "paused", "failed"].includes(run.status) ? `<button data-resume-run="${run.runId}">恢复</button>` : ""}</div></article>`).join("");
   $("#content").innerHTML = `<div class="toolbar"><span></span><button id="refreshRuns">刷新</button></div><div class="list">${jobCards || runCards ? jobCards + runCards : '<div class="empty">还没有运行记录。</div>'}</div>`;
   $("#refreshRuns").onclick = load;
   $("#content").onclick = async (event) => {
     const cancel = event.target.closest("[data-cancel-job]");
     const retry = event.target.closest("[data-retry-job]");
+    const reconcile = event.target.closest("[data-reconcile-job]");
     const resume = event.target.closest("[data-resume-run]");
     try {
       if (cancel) await api("/api/agent/job/cancel", { method: "POST", body: JSON.stringify({ id: cancel.dataset.cancelJob }) });
       if (retry) await api("/api/agent/job/retry", { method: "POST", body: JSON.stringify({ id: retry.dataset.retryJob }) });
+      if (reconcile) {
+        const applied = reconcile.dataset.outcome === "succeeded";
+        const note = prompt(applied ? "请填写确认依据，例如目标文件或记录已经存在：" : "请填写确认依据，例如目标内容确实未生成：", "")?.trim();
+        if (!note) return;
+        await api("/api/agent/job/reconcile", {
+          method: "POST",
+          body: JSON.stringify({ id: reconcile.dataset.reconcileJob, outcome: reconcile.dataset.outcome, note }),
+        });
+      }
       if (resume) await api("/api/agent/run/resume", { method: "POST", body: JSON.stringify({ id: resume.dataset.resumeRun }) });
-      if (cancel || retry || resume) { toast("操作已提交"); await load(); }
+      if (cancel || retry || reconcile || resume) { toast("操作已提交"); await load(); }
     } catch (error) { toast(error.message, true); }
   };
 }
 
-const layerNames = { procedural: "习惯与做法", personal_semantic: "个人偏好", semantic: "稳定事实", episodic: "经历与进展", archival: "原始归档" };
+const layerNames = { procedural: "习惯与做法", personal_semantic: "长期偏好", semantic: "稳定事实", episodic: "经历与进展", archival: "原始归档" };
+
+function memorySourceMeta(item) {
+  const source = item.source || {};
+  const parts = [];
+  if (source.sourceMessageId) parts.push("消息 " + source.sourceMessageId);
+  if (source.speakerId) parts.push("说话人 " + source.speakerId);
+  if (source.subjectId) parts.push("主体 " + source.subjectId);
+  if (source.conversationId) parts.push("会话 " + source.conversationId);
+  return parts.join(" · ") || "这条记忆没有可显示的消息标识";
+}
+
+function openMemoryDetail(item) {
+  const source = item.source || {};
+  $("#memoryCorrectionId").value = item.id;
+  $("#memoryDetailTitle").textContent = item.correctable ? "查看来源并修正" : "查看来源";
+  $("#memorySourceExcerpt").textContent = source.excerpt || (item.layer === "archival" ? item.content : "没有找到对应的原始消息片段");
+  $("#memorySourceMeta").textContent = memorySourceMeta(item);
+  $("#memoryCorrectionContent").value = item.content;
+  $("#memoryCorrectionField").hidden = !item.correctable;
+  $("#memoryCorrectionNote").hidden = !item.correctable;
+  $("#submitMemoryCorrection").hidden = !item.correctable;
+  $("#memoryDetailDialog").showModal();
+}
 
 function renderMemory() {
   const groups = Object.entries(layerNames).map(([layer, name]) => {
     const items = state.memories.filter((item) => item.layer === layer);
     if (!items.length) return "";
-    return `<section class="memory-group"><h2>${name}<span>${items.length} 条${layer === "archival" ? " · 受保护" : ""}</span></h2>${items.map((item) => `<article class="memory-item"><div><p>${escapeHtml(item.content)}</p><small>${escapeHtml(item.who)} · ${date(item.created)}</small></div>${layer === "archival" ? "" : `<button data-forget="${escapeHtml(item.id)}">忘记</button>`}</article>`).join("")}</section>`;
+    const cards = items.map((item) => {
+      const actions = `<div class="memory-actions"><button data-memory-detail="${escapeHtml(item.id)}">${item.correctable ? "查看与修正" : "查看来源"}</button>${layer === "archival" ? "" : `<button class="danger" data-forget="${escapeHtml(item.id)}">忘记</button>`}</div>`;
+      return `<article class="memory-item"><div><p>${escapeHtml(item.content)}</p><small>${escapeHtml(item.who)} · ${date(item.created)}${item.source?.sourceMessageId ? " · 有原始来源" : ""}</small></div>${actions}</article>`;
+    }).join("");
+    return `<section class="memory-group"><h2>${name}<span>${items.length} 条${layer === "archival" ? " · 受保护" : ""}</span></h2>${cards}</section>`;
   }).join("");
   $("#content").innerHTML = `<form class="memory-form" id="memoryForm"><textarea id="memoryPreference" maxlength="500" placeholder="例如：正式文档先给结论，段落尽量短；演示稿偏好 16:9 和少量文字。"></textarea><button class="primary" type="submit">记住这项习惯</button></form>${groups || '<div class="empty">还没有可展示的记忆。直接聊天即可，必要内容会逐步沉淀。</div>'}`;
   $("#memoryForm").onsubmit = async (event) => {
@@ -483,6 +546,12 @@ function renderMemory() {
     await load();
   };
   $("#content").onclick = async (event) => {
+    const detail = event.target.closest("[data-memory-detail]");
+    if (detail) {
+      const item = state.memories.find((memory) => memory.id === detail.dataset.memoryDetail);
+      if (item) openMemoryDetail(item);
+      return;
+    }
     const button = event.target.closest("[data-forget]");
     if (!button || !confirm("忘记这条分类记忆？原始对话归档仍会保留。")) return;
     await api("/api/memory/forget", { method: "POST", body: JSON.stringify({ id: button.dataset.forget }) });
@@ -490,6 +559,22 @@ function renderMemory() {
     await load();
   };
 }
+
+$("#closeMemoryDetail").onclick = () => $("#memoryDetailDialog").close();
+$("#memoryCorrectionForm").onsubmit = async (event) => {
+  event.preventDefault();
+  const id = $("#memoryCorrectionId").value;
+  const content = $("#memoryCorrectionContent").value.trim();
+  if (!id || !content) return toast("请填写修正后的内容", true);
+  try {
+    await api("/api/memory/correct", { method: "POST", body: JSON.stringify({ id, content }) });
+    $("#memoryDetailDialog").close();
+    toast("记忆已修正，原始来源仍然保留");
+    await load();
+  } catch (error) {
+    toast(error.message, true);
+  }
+};
 
 $("#taskSchedule").addEventListener("change", () => updateScheduleField());
 $("#taskForm").addEventListener("submit", async (event) => {

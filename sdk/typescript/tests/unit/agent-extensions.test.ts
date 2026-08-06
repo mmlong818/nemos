@@ -202,6 +202,24 @@ test("installs, disables, upgrades, persists, and audits extensions without chan
   }
 });
 
+test("requires renewed approval when an upgrade expands permissions, tools, or models", () => {
+  const registry = new AgentExtensionRegistry();
+  const initial = manifest();
+  initial.models = ["daily-model"];
+  registry.install(initial);
+  registry.assertModelAccess(initial.id, "daily-model");
+  assert.throws(() => registry.assertModelAccess(initial.id, "flagship-model"), /not allowed/);
+
+  const expanded = manifest("1.1.0");
+  expanded.models = ["daily-model", "flagship-model"];
+  expanded.permissions.push("external-write");
+  expanded.tools.push({ name: "weather_publish", description: "Publish weather", effect: "write" });
+
+  assert.throws(() => registry.upgrade(expanded), /requires explicit approval/);
+  const upgraded = registry.upgrade(expanded, undefined, { approvePermissionExpansion: true });
+  assert.deepEqual(upgraded.manifest.models, ["daily-model", "flagship-model"]);
+  registry.assertModelAccess(initial.id, "flagship-model");
+});
 test("disabled executable extensions release and recreate their provider lifecycle", () => {
   const executable = manifest();
   executable.runtime = { type: "mcp", entry: process.execPath, args: ["server.cjs"] };

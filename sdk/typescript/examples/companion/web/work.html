@@ -129,6 +129,24 @@
     </div>
   </dialog>
 
+  <dialog id="memoryDetailDialog">
+    <form class="dialog-card memory-detail-card" id="memoryCorrectionForm">
+      <button class="dialog-close" type="button" id="closeMemoryDetail" aria-label="关闭">×</button>
+      <p class="eyebrow">记忆详情</p>
+      <h2 id="memoryDetailTitle">查看来源</h2>
+      <input id="memoryCorrectionId" type="hidden">
+      <section class="memory-source-card">
+        <strong>原始来源</strong>
+        <p id="memorySourceExcerpt">暂无原始消息片段</p>
+        <small id="memorySourceMeta"></small>
+      </section>
+      <label id="memoryCorrectionField">修正后的内容
+        <textarea id="memoryCorrectionContent" rows="4" maxlength="1000" required></textarea>
+      </label>
+      <p class="memory-correction-note" id="memoryCorrectionNote">修正会生成新版本并保留原始来源，不会静默覆盖历史。</p>
+      <button class="primary" id="submitMemoryCorrection" type="submit">保存修正</button>
+    </form>
+  </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/assets/app-icons.js" defer></script>
   <script src="/assets/work-center.js" defer></script>

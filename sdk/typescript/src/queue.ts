@@ -470,8 +470,21 @@ export class NemosWorker {
         perspectives,
       });
       derived = result.derived.map((memory) => ({ ...memory, archival_ref: row.archival_id, generation: 1 }));
-      this.deps.lifecycle.recordExtraction(row.archival_id, derived);
     }
+    const archival = this.deps.storage.findById(row.tenant_id, row.user_id, row.archival_id);
+    if (archival) {
+      derived = derived.map((memory) => ({
+        ...memory,
+        source: {
+          ...memory.source,
+          speaker_id: archival.source.speaker_id,
+          subject_id: archival.source.subject_id,
+          conversation_id: archival.source.conversation_id,
+          source_message_id: archival.source.source_message_id,
+        },
+      }));
+    }
+    this.deps.lifecycle.recordExtraction(row.archival_id, derived);
     const result = await this.deps.lifecycle.processDerived(row.tenant_id, row.user_id, row.archival_id, derived);
     this.deps.lifecycle.markScheduled(row.archival_id, { background: true });
     if (result.hasConflict && this.features.features?.reflect?.enabled) {

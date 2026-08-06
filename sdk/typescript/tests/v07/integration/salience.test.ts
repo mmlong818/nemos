@@ -84,6 +84,42 @@ test("v0.7.4 evidence coverage and salience update when support grows", () => {
   assert.ok(memory.salience!.score > supportedScore);
 });
 
+test("temporary and inferred facts remain candidates until independently supported", () => {
+  const memory: Memory = {
+    id: "episodic:candidate",
+    layer: "episodic",
+    type: "emotion",
+    scope: "global",
+    content: "The user may be frustrated today",
+    source: {
+      authoritative: false,
+      kind: "derived",
+      origin: "emotion-perspective",
+      chain_depth: 1,
+      confidence: "medium",
+      perspectives: ["emotion"],
+    },
+    arousal: { value: 0.6, signal_sources: ["emotion_words"] },
+    surprise: { value: 0, basis: "test" },
+    ownership: { kind: "self" },
+    created_at: "2026-08-07T00:00:00.000Z",
+    last_accessed: "2026-08-07T00:00:00.000Z",
+    access_count: 0,
+    stability: 1,
+    schema_version: "0.7",
+    specificity: "temporary",
+    source_event_ids: ["event:1"],
+  };
+
+  ensureMemoryQualityMetadata(memory);
+  assert.equal(memory.promotion_state, "candidate");
+  assert.equal(memory.promotion_reason, "temporary_fact");
+
+  memory.source_event_ids!.push("event:2");
+  ensureMemoryQualityMetadata(memory);
+  assert.equal(memory.promotion_state, "promoted");
+  assert.equal(memory.promotion_reason, "independent_evidence");
+});
 test("v0.7.4 sqlite preserves salience and evidence coverage across restart", async () => {
   const path = join(tmpdir(), "nemos-v074-salience-" + process.pid + "-" + Date.now() + ".db");
   cleanup(path);

@@ -110,7 +110,7 @@ export class UserMemory {
     if (!trimmed) throw new Error("[nemos] ingest content is empty");
 
     const profile = resolveScenario(options.scenario);
-    const archival = this.buildArchivalOnly(trimmed, scope, options.originAgent);
+    const archival = this.buildArchivalOnly(trimmed, scope, options.originAgent, options.identity);
     if (options.contentDate) archival.event_at = options.contentDate;
     if (profile?.privacy?.sensitive) archival.sensitive = true;
     if (profile?.name && profile.name !== "default") archival.scenario = profile.name;
@@ -184,7 +184,7 @@ export class UserMemory {
         generation: 1,
         event_at: memory.event_at ?? options.contentDate,
       })),
-    ];
+    ].map((memory) => inheritSourceIdentity(memory, archival.source));
     this.lifecycle.recordExtraction(archival.id, extracted);
     let persisted: Memory[];
     let hasConflict: boolean;
@@ -281,6 +281,10 @@ export class UserMemory {
       chain_depth: input.source.chain_depth ?? (input.source.authoritative ? 0 : 1),
       extractor: input.source.extractor,
       origin_agent: input.source.origin_agent,
+      speaker_id: input.source.speaker_id,
+      subject_id: input.source.subject_id,
+      conversation_id: input.source.conversation_id,
+      source_message_id: input.source.source_message_id,
       pass_count: input.source.pass_count,
       confidence: input.source.confidence,
     };
@@ -672,7 +676,7 @@ export class UserMemory {
       tenantId: this.tenantId,
       userId: this.userId,
       defaultScope: this.config.defaultScope,
-      buildArchival: (content, scope) => this.buildArchivalOnly(content, scope, undefined),
+      buildArchival: (content, scope) => this.buildArchivalOnly(content, scope, undefined, undefined),
       embed: (memory) => this.maybeEmbed(memory),
     });
   }
@@ -767,6 +771,7 @@ export class UserMemory {
     content: string,
     scope: string,
     originAgent: string | undefined,
+    identity: IngestOptions["identity"],
   ): Memory {
     const now = nowIso();
     return {
@@ -782,6 +787,10 @@ export class UserMemory {
         chain_depth: 0,
         extractor: "user_typed",
         origin_agent: originAgent,
+        speaker_id: identity?.speakerId,
+        subject_id: identity?.subjectId,
+        conversation_id: identity?.conversationId,
+        source_message_id: identity?.sourceMessageId,
       },
       arousal: {
         value: estimateArousal(content),
@@ -797,4 +806,15 @@ export class UserMemory {
       generation: 1,
     };
   }
+}
+
+function inheritSourceIdentity(memory: Memory, source: MemorySource): Memory {
+  memory.source = {
+    ...memory.source,
+    speaker_id: source.speaker_id,
+    subject_id: source.subject_id,
+    conversation_id: source.conversation_id,
+    source_message_id: source.source_message_id,
+  };
+  return memory;
 }

@@ -73,6 +73,11 @@ export interface MemorySource {
   extractor?: Extractor;
   /** 发起调用的 agent，便于跨产品记账 */
   origin_agent?: string;
+  /** 原始消息的稳定说话人、默认主体、会话和消息标识。 */
+  speaker_id?: string;
+  subject_id?: string;
+  conversation_id?: string;
+  source_message_id?: string;
 
   // v0.3 新增 -----------------------------------------------------------------
   /**
@@ -263,6 +268,9 @@ export interface Memory {
   /** 原始或派生记忆获得了多少独立来源支持。 */
   evidence_coverage?: EvidenceCoverageState;
   evidence_count?: number;
+  /** 低稳定性或推断性内容先作为候选；获得独立支持后才晋升为长期记忆。 */
+  promotion_state?: "candidate" | "promoted";
+  promotion_reason?: string;
 
   /** spec day-1 必锁字段：派生 record 指回 archival */
   archival_ref?: string;
@@ -422,6 +430,13 @@ export interface ScenarioProfile {
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+export interface IngestIdentity {
+  speakerId: string;
+  subjectId: string;
+  conversationId: string;
+  sourceMessageId: string;
+}
+
 export interface IngestOptions {
   scope?: string;
   originAgent?: string;
@@ -429,6 +444,8 @@ export interface IngestOptions {
   skipAnalysis?: boolean;
   /** 自由扩展，写入 Memory.metadata（保留接口；当前层不参与 query） */
   metadata?: Record<string, unknown>;
+  /** 不改变原文，只为来源审计绑定稳定人物和消息身份。 */
+  identity?: IngestIdentity;
 
   // v0.2 新增
   /** 场景配置：string 引用内置 profile（'chat'/'doc-research'/...），object 自定义。 */

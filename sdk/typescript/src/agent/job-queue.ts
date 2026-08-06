@@ -2,7 +2,15 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
-export type AgentJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type AgentJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "uncertain";
+
+export type AgentJobReconciliationOutcome = "succeeded" | "not_applied";
+
+export interface AgentJobReconciliation {
+  outcome: AgentJobReconciliationOutcome;
+  note: string;
+  reconciledAt: string;
+}
 
 export interface AgentJobInput {
   type: string;
@@ -46,6 +54,8 @@ export interface AgentJobRecord extends AgentJobInput {
   result?: AgentJobResult;
   checkpoints: AgentJobCheckpoint[];
   deliveredAt?: string;
+  uncertainAt?: string;
+  reconciliation?: AgentJobReconciliation;
 }
 
 export interface FileAgentJobQueueOptions {
@@ -56,7 +66,7 @@ export interface FileAgentJobQueueOptions {
 }
 
 export interface AgentJobQueueEvent {
-  action: "enqueued" | "claimed" | "checkpoint" | "completed" | "failed" | "cancelled" | "retried" | "recovered" | "delivered";
+  action: "enqueued" | "claimed" | "checkpoint" | "completed" | "failed" | "cancelled" | "retried" | "recovered" | "uncertain" | "reconciled" | "delivered";
   job: Pick<AgentJobRecord, "id" | "status" | "updatedAt">;
 }
 
@@ -96,7 +106,7 @@ export class FileAgentJobQueue {
     if (input.idempotencyKey) {
       const existing = [...this.jobs.values()].find((job) =>
         job.idempotencyKey === input.idempotencyKey &&
-        (job.status === "queued" || job.status === "running" || job.status === "succeeded"));
+        (job.status === "queued" || job.status === "running" || job.status === "succeeded" || job.status === "uncertain"));
       if (existing) return structuredClone(existing);
     }
     const now = new Date().toISOString();
@@ -174,7 +184,11 @@ export class FileAgentJobQueue {
     job.error = redactText(error instanceof Error ? error.message : String(error));
     job.updatedAt = now.toISOString();
     delete job.leaseUntil;
-    if (!job.cancellationRequested && !job.sideEffectRisk && job.attempts < (job.maxAttempts ?? 1)) {
+    if (!job.cancellationRequested && job.sideEffectRisk) {
+      job.status = "uncertain";
+      job.uncertainAt = now.toISOString();
+      delete job.completedAt;
+    } else if (!job.cancellationRequested && job.attempts < (job.maxAttempts ?? 1)) {
       job.status = "queued";
       const delay = this.options.retryBaseDelayMs * Math.pow(2, Math.max(0, job.attempts - 1));
       job.availableAt = new Date(now.getTime() + delay).toISOString();
@@ -183,7 +197,7 @@ export class FileAgentJobQueue {
       job.completedAt = now.toISOString();
     }
     this.save();
-    this.emitChange("failed", job);
+    this.emitChange(job.status === "uncertain" ? "uncertain" : "failed", job);
     return structuredClone(job);
   }
 
@@ -204,6 +218,7 @@ export class FileAgentJobQueue {
   retry(id: string, options: { confirmSideEffect?: boolean } = {}): AgentJobRecord {
     const job = this.require(id);
     if (job.status !== "failed" && job.status !== "cancelled") {
+      if (job.status === "uncertain") throw new Error("Uncertain jobs must be reconciled before retry");
       throw new Error("Only failed or cancelled jobs can be retried");
     }
     if (job.sideEffectRisk && !options.confirmSideEffect) {
@@ -221,11 +236,40 @@ export class FileAgentJobQueue {
     delete job.result;
     delete job.deliveredAt;
     delete job.error;
+    delete job.uncertainAt;
+    delete job.reconciliation;
     this.save();
     this.emitChange("retried", job);
     return structuredClone(job);
   }
 
+  reconcile(
+    id: string,
+    outcome: AgentJobReconciliationOutcome,
+    note: string,
+    result?: AgentJobResult,
+  ): AgentJobRecord {
+    const job = this.require(id);
+    if (job.status !== "uncertain") throw new Error("Only uncertain jobs can be reconciled");
+    const cleanNote = redactText(note.trim());
+    if (!cleanNote) throw new Error("A reconciliation note is required");
+    const now = new Date().toISOString();
+    job.reconciliation = { outcome, note: cleanNote, reconciledAt: now };
+    job.updatedAt = now;
+    job.completedAt = now;
+    delete job.leaseUntil;
+    if (outcome === "succeeded") {
+      job.status = "succeeded";
+      if (result) job.result = sanitizeValue(result);
+      delete job.error;
+    } else {
+      job.status = "failed";
+      job.error = "Reconciliation confirmed that the side effect was not applied";
+    }
+    this.save();
+    this.emitChange("reconciled", job);
+    return structuredClone(job);
+  }
   recoverStale(now = new Date(), includeUnexpired = false): number {
     let count = 0;
     const recovered: AgentJobRecord[] = [];
@@ -237,11 +281,12 @@ export class FileAgentJobQueue {
       job.updatedAt = now.toISOString();
       delete job.leaseUntil;
       if (job.sideEffectRisk) {
-        job.status = "failed";
-        job.completedAt = now.toISOString();
+        job.status = "uncertain";
+        job.uncertainAt = now.toISOString();
+        delete job.completedAt;
         job.error = includeUnexpired
-          ? "Worker stopped before a side-effecting job finished; manual review is required before retry"
-          : "Worker lease expired after a side-effecting step; manual review is required before retry";
+          ? "Worker stopped before a side-effecting job finished; reconcile the outcome before retry"
+          : "Worker lease expired after a side-effecting step; reconcile the outcome before retry";
       } else {
         job.status = "queued";
         job.availableAt = now.toISOString();

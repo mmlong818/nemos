@@ -69,7 +69,7 @@ function safeProcessing(value) {
     capabilityId: String(value.capabilityId || "document-draft").slice(0, 80),
     format: ["doc", "pptx", "html", "pdf"].includes(value.format) ? value.format : "doc",
     startedAt: String(value.startedAt || now()),
-    status: ["queued", "running", "succeeded", "failed", "cancelled"].includes(value.status) ? value.status : "queued",
+    status: ["queued", "running", "succeeded", "failed", "cancelled", "uncertain"].includes(value.status) ? value.status : "queued",
     artifactId: value.artifactId ? String(value.artifactId) : "",
     artifactFormat: value.artifactFormat ? String(value.artifactFormat) : "",
     summary: value.summary ? String(value.summary).slice(0, 2000) : "",
@@ -295,6 +295,7 @@ function renderProcessingState(current, job = null) {
     succeeded: "处理完成",
     failed: job?.error?.message || job?.error || "处理失败",
     cancelled: "处理已取消",
+    uncertain: "结果待核对，请到运行页面确认是否已经执行",
   }[status] || "正在处理";
   const active = status === "queued" || status === "running";
   startButton.disabled = active || !current;
@@ -569,6 +570,7 @@ async function refreshOfficeJob(jobId) {
       if (job.status === "succeeded") showToast("处理完成，结果已经显示在当前页面");
       else if (job.status === "failed") showToast(job.error?.message || job.error || "处理失败，可以修改要求后重试", true);
       else if (job.status === "cancelled") showToast("处理已取消");
+      else if (job.status === "uncertain") showToast("结果无法自动确认，请到运行页面核对", true);
     }
   } catch {
     document.querySelector("#assistantRunText").textContent = "连接暂时中断，正在重试…";
