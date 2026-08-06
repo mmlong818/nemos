@@ -52,7 +52,7 @@
             <textarea id="goalInput" rows="3" maxlength="2000" placeholder="例如：把这份季度总结做成一套适合汇报的演示稿"></textarea>
             <div class="goal-actions">
               <button class="quiet-button" type="button" id="continueLast" hidden>继续未完成内容</button>
-              <button class="primary-button" type="submit">自动选择并继续</button>
+              <button class="primary-button" type="submit">自动选择能力</button>
             </div>
           </form>
 
@@ -61,11 +61,10 @@
               <section class="catalog-panel" aria-labelledby="catalogTitle">
                 <div class="section-heading">
                   <div>
-                    <p class="eyebrow">常用能力</p>
+                    <p class="catalog-or">或</p>
                     <h2 id="catalogTitle">直接选择能力</h2>
                     <p class="section-help">点击后直接填写任务要求，不再经过中间步骤。</p>
                   </div>
-                  <button class="text-button" type="button" id="toggleAll">查看全部能力</button>
                 </div>
                 <div class="capability-grid" id="capabilityGrid"></div>
               </section>
@@ -119,9 +118,6 @@
                 </div>
                 <details class="task-advanced">
                   <summary>更多设置</summary>
-                  <label>由谁完成
-                    <select id="personaSelect"></select>
-                  </label>
                   <div class="memory-setting">
                     <label class="memory-choice">
                       <input id="memoryToggle" type="checkbox" checked>
@@ -154,7 +150,7 @@
 
       <section class="view" data-view="history">
         <div class="list-page">
-          <header class="page-heading"><div><p class="eyebrow">可继续、可复用</p><h1>已完成</h1><p>每次再次使用都会创建新任务，原结果保持不变。</p></div></header>
+          <header class="page-heading"><div><p class="eyebrow">任务记录</p><h1>已完成</h1><p>完成结果和状态会保留在这里。</p></div></header>
           <div class="empty-state" id="historyEmpty"><span data-empty-icon="history" aria-hidden="true"></span><h2>还没有完成记录</h2><p>完成或取消的任务会留在这里。</p></div>
           <div class="item-list" id="historyList"></div>
         </div>
