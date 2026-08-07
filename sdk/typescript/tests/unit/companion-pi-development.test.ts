@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,13 @@ import { runPiDevelopment, validateDevelopmentWorkspace } from "../../examples/c
 test("开发能力拒绝磁盘根目录和不存在的路径", () => {
   assert.throws(() => validateDevelopmentWorkspace("C:\\"), /整个磁盘/);
   assert.throws(() => validateDevelopmentWorkspace(join(tmpdir(), "missing-clownfish-workspace")), /不存在/);
+});
+
+test("只读检查不向模型提供项目脚本，并在执行层再次拒绝", () => {
+  const source = readFileSync(join(process.cwd(), "examples", "companion", "pi-development.ts"), "utf8");
+  assert.match(source, /accessMode === "inspect"[\s\S]{0,180}Type\.Literal\("git_status"\)[\s\S]{0,80}Type\.Literal\("git_diff"\)/);
+  assert.match(source, /只读检查不会运行项目自带脚本/);
+  assert.match(source, /只读模式只能查看 Git 状态和差异/);
 });
 
 test("开发能力可通过 Pi Agent SDK 使用现有兼容模型连接", async () => {

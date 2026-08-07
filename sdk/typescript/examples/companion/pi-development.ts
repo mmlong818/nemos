@@ -185,6 +185,12 @@ function createDevelopmentTools(
   contextReceipts: DevelopmentContextReceipt[],
   proposal?: DevelopmentProposalSession,
 ): Array<Record<string, unknown>> {
+  const checkCommandSchema = accessMode === "inspect"
+    ? Type.Union([Type.Literal("git_status"), Type.Literal("git_diff")])
+    : Type.Union([
+      Type.Literal("git_status"), Type.Literal("git_diff"), Type.Literal("npm_test"), Type.Literal("npm_build"), Type.Literal("npm_typecheck"), Type.Literal("npm_check"),
+      Type.Literal("pnpm_test"), Type.Literal("pnpm_build"), Type.Literal("pnpm_typecheck"), Type.Literal("pnpm_check"), Type.Literal("pytest"), Type.Literal("dotnet_test"), Type.Literal("cargo_test"), Type.Literal("cargo_check"),
+    ]);
   const readOnlyTools = [
     {
       name: "list_files", label: "查看文件",
@@ -221,12 +227,14 @@ function createDevelopmentTools(
     },
     {
       name: "run_check", label: "运行检查",
-      description: "Run one approved project inspection or verification command in the selected project.",
-      parameters: Type.Object({ command: Type.Union([
-        Type.Literal("git_status"), Type.Literal("git_diff"), Type.Literal("npm_test"), Type.Literal("npm_build"), Type.Literal("npm_typecheck"), Type.Literal("npm_check"),
-        Type.Literal("pnpm_test"), Type.Literal("pnpm_build"), Type.Literal("pnpm_typecheck"), Type.Literal("pnpm_check"), Type.Literal("pytest"), Type.Literal("dotnet_test"), Type.Literal("cargo_test"), Type.Literal("cargo_check"),
-      ]) }),
+      description: accessMode === "inspect"
+        ? "Inspect Git status or diff without running project-owned scripts."
+        : "Run one approved project verification command. Project-owned scripts may execute only because the user selected development mode.",
+      parameters: Type.Object({ command: checkCommandSchema }),
       execute: async (_id: string, params: { command: DevelopmentCheck }) => {
+        if (accessMode === "inspect" && !["git_status", "git_diff"].includes(params.command)) {
+          throw new Error("只读检查不会运行项目自带脚本。请切换到开发模式后再执行构建或测试。");
+        }
         const receipt = await runDevelopmentCheck(workspace, params.command);
         receipts.push(receipt);
         return textResult(receipt.output);
@@ -254,12 +262,14 @@ function developmentSystemPrompt(workspace: string, mode: DevelopmentAccessMode)
   return [
     "你是小丑鱼的独立开发能力，负责在用户明确选择的项目范围内完成真实的软件工作。",
     `项目范围：${workspace}`,
-    `权限：${mode === "develop" ? "允许读取、精确修改、创建文本文件并运行受控检查" : "只读检查，不得修改文件"}。`,
+    `权限：${mode === "develop" ? "允许读取、精确修改、创建文本文件并运行受控检查" : "只读检查，不得修改文件，也不得运行项目自带脚本"}。`,
     "先阅读项目规则与相关文件，再定位根因或实现位置；保持修改精准，不重写无关代码。",
     "必须使用工具取得证据，不能假装读取、修改、构建或测试过。",
     "引用代码时使用文件路径和行号；工具截断的内容要明确说明。推断只能标为推断，不能写成已读取事实。",
     "不得访问项目范围外的路径，不得读取密钥文件，不得删除文件、改写 Git 历史、推送、发布、部署或发送外部消息。",
-    "开发模式下，完成修改后运行最相关的检查。检查失败时继续修复，直到通过或说明真实阻碍。",
+    mode === "develop"
+      ? "开发模式下，完成修改后运行最相关的检查。项目脚本只用于用户明确选择的可信项目；检查失败时继续修复，直到通过或说明真实阻碍。"
+      : "只读模式只能查看 Git 状态和差异，不得运行 npm、pnpm、pytest、dotnet 或 cargo 命令。",
     "最终用中文交付：完成了什么、关键修改、验证结果、未验证项和剩余风险。不要输出寒暄。",
   ].join("\n");
 }

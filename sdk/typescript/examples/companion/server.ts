@@ -86,6 +86,11 @@ import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
 import {
+  assertPublicWebUrl,
+  isAllowedLocalRequest,
+  isPrivateNetworkAddress,
+} from "./local-http-security.js";
+import {
   importWeChatPrivateSource,
   loadPrivateSourcesConfig,
   privateSourcesSummary,
@@ -2038,11 +2043,24 @@ function readBody(req: IncomingMessage, maxBytes = 32 * 1024 * 1024): Promise<un
   });
 }
 
-function readRawBody(req: IncomingMessage): Promise<Buffer> {
+function readRawBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(c as Buffer));
-    req.on("end", () => resolve(Buffer.concat(chunks)));
+    let size = 0;
+    let tooLarge = false;
+    req.on("data", (value) => {
+      if (tooLarge) return;
+      const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+      size += chunk.byteLength;
+      if (size > maxBytes) {
+        tooLarge = true;
+        chunks.length = 0;
+        reject(new Error("请求内容过大"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => { if (!tooLarge) resolve(Buffer.concat(chunks)); });
     req.on("error", reject);
   });
 }
@@ -2214,11 +2232,15 @@ function normalizeWebUrl(raw: string): string | null {
   try {
     const url = new URL(trimmed);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    if (isUnsafeWebHost(url.hostname)) return null;
+    if (isUnsafeWebHost(url.hostname) || (isIPLiteral(url.hostname) && isPrivateNetworkAddress(url.hostname))) return null;
     return url.toString();
   } catch {
     return null;
   }
+}
+
+function isIPLiteral(hostname: string): boolean {
+  return /^[\d.]+$/.test(hostname) || hostname.includes(":");
 }
 
 function isUnsafeWebHost(hostname: string): boolean {
@@ -2230,20 +2252,30 @@ async function readWebPageContext(url: string): Promise<WebPageContext> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), WEB_CONTEXT_TIMEOUT_MS);
   try {
-    const resp = await fetch(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Clownfish/0.2 (+local user requested webpage reading)",
-        "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.3",
-      },
-    });
+    let currentUrl = url;
+    let resp: Response | undefined;
+    for (let redirects = 0; redirects <= 4; redirects += 1) {
+      const safeUrl = await assertPublicWebUrl(currentUrl);
+      resp = await fetch(safeUrl, {
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Clownfish/0.2 (+local user requested webpage reading)",
+          "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.3",
+        },
+      });
+      if (![301, 302, 303, 307, 308].includes(resp.status)) break;
+      const location = resp.headers.get("location");
+      if (!location || redirects === 4) throw new Error("too many or invalid redirects");
+      currentUrl = new URL(location, safeUrl).toString();
+    }
+    if (!resp) throw new Error("web request did not start");
     const contentType = resp.headers.get("content-type") || "";
     if (!resp.ok) return { url, error: `HTTP ${resp.status}` };
     if (!/text\/html|application\/xhtml\+xml|text\/plain|application\/json/i.test(contentType)) {
       return { url, error: `unsupported content type: ${contentType || "unknown"}` };
     }
-    const raw = await resp.text();
+    const raw = await readBoundedResponseText(resp, 1_000_000);
     const extracted = extractReadableWebText(raw, contentType);
     if (!extracted.text) return { url, title: extracted.title, error: "no readable text found" };
     return { url, title: extracted.title, text: extracted.text.slice(0, WEB_CONTEXT_MAX_CHARS) };
@@ -2253,6 +2285,31 @@ async function readWebPageContext(url: string): Promise<WebPageContext> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) throw new Error("web response is too large");
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const output = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(output);
 }
 
 function extractReadableWebText(raw: string, contentType: string): { title?: string; text: string } {
@@ -2728,6 +2785,16 @@ function extensionAuditArguments(
 
 const server = createServer(async (req, res) => {
   try {
+    if (!isAllowedLocalRequest({
+      remoteAddress: req.socket.remoteAddress,
+      host: req.headers.host,
+      origin: typeof req.headers.origin === "string" ? req.headers.origin : undefined,
+      secFetchSite: typeof req.headers["sec-fetch-site"] === "string" ? req.headers["sec-fetch-site"] : undefined,
+      port: PORT,
+    })) {
+      send(res, 403, { error: "仅允许本机同源访问" });
+      return;
+    }
     const url = req.url || "/";
     if (req.method === "GET" && (url === "/" || url === "/index.html")) {
       send(res, 200, readFileSync(join(WEB_DIR, "index.html"), "utf-8"), "text/html");
@@ -4623,7 +4690,7 @@ const server = createServer(async (req, res) => {
       const toolKey = toolZhipuKey();
       if (!toolKey.key && !llm.asr) { send(res, 503, { error: "ASR 不可用：工具智谱 Key 未配置" }); return; }
       const mime = req.headers["content-type"] || "audio/webm";
-      const audio = await readRawBody(req);
+      const audio = await readRawBody(req, 12 * 1024 * 1024);
       const ext = /wav/.test(mime) ? "wav" : /mp3|mpeg/.test(mime) ? "mp3" : /mp4|m4a|aac/.test(mime) ? "m4a" : /ogg/.test(mime) ? "ogg" : "webm";
       try {
         const settings = loadToolSettings();
@@ -4783,7 +4850,8 @@ const server = createServer(async (req, res) => {
     }
     send(res, 404, { error: "not found" });
   } catch (e) {
-    send(res, 500, { error: e instanceof Error ? e.message : String(e) });
+    const message = e instanceof Error ? e.message : String(e);
+    send(res, message === "请求内容过大" ? 413 : 500, { error: message });
   }
 });
 
@@ -4825,7 +4893,7 @@ function artifactDoneText(item: CapabilityNotification): string {
 
 boot().then(() => {
   agentJobWorker.start();
-  server.listen(PORT, () => {
+  server.listen(PORT, "127.0.0.1", () => {
     resumeInterruptedAgentRuns();
     seedPersonaBiosInBackground(engine);
     const startedAt = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
