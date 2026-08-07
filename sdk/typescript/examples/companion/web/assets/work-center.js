@@ -334,7 +334,7 @@ function renderStoryActivity(task) {
   const activity = taskActivity(task);
   const activeJob = taskJobs(task.id).find((job) => job.status === "running" || job.status === "queued");
   $("#activityStatus").textContent = activeJob ? (activeJob.status === "running" ? "正在协作" : "正在排队") : (activity[0] ? date(activity[0].createdAt) : "暂无记录");
-  $("#storyActivity").innerHTML = activity.length ? activity.map((item) => `<li class="${item.type === "error" ? "is-error" : item.type === "result" ? "is-result" : ""}"><strong>${escapeHtml(item.text)}</strong><span>${escapeHtml(personaName(item.personaId))} · ${date(item.createdAt)}</span>${item.artifactId ? `<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.artifactId)}" target="_blank">查看结果</a>` : ""}</li>`).join("") : '<li><strong>还没有协作记录</strong><span>运行任务后会自动记录进度。</span></li>';
+  $("#storyActivity").innerHTML = activity.length ? activity.map((item) => `<li class="${item.type === "error" ? "is-error" : item.type === "result" ? "is-result" : ""}"><strong>${escapeHtml(item.text)}</strong><span>${escapeHtml(personaName(item.personaId))} · ${date(item.createdAt)}</span>${item.artifactId ? `<span class="activity-links"><a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.artifactId)}" target="_blank">查看结果</a><a href="/office?artifact=${encodeURIComponent(item.artifactId)}">继续编辑</a></span>` : ""}</li>`).join("") : '<li><strong>还没有协作记录</strong><span>运行任务后会自动记录进度。</span></li>';
 }
 
 function renderStoryline(task, hydrateForm = true) {

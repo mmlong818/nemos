@@ -555,10 +555,20 @@ function artifactFromJob(job) {
 function artifactLinks(artifact, compact = false) {
   if (!artifact) return "";
   const preview = `<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(artifact.id)}" target="_blank" rel="noopener">${compact ? "预览" : "打开结果"}</a>`;
+  const edit = `<a href="/office?artifact=${encodeURIComponent(artifact.id)}">${compact ? "继续编辑" : "在文件中继续"}</a>`;
   const download = artifact.format === "pptx"
     ? `<a href="/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}&download=1">${compact ? "下载" : "下载 PPTX"}</a>`
     : "";
-  return preview + download;
+  return preview + edit + download;
+}
+
+function jobMemoryUsage(job) {
+  const preferences = Array.isArray(job?.payload?.appliedPreferences)
+    ? job.payload.appliedPreferences.map((item) => String(item).trim()).filter(Boolean).slice(0, 6)
+    : [];
+  if (job?.payload?.memoryMode === "off") return '<p class="task-memory is-off">本次未使用习惯记忆</p>';
+  if (!preferences.length) return "";
+  return `<details class="task-memory"><summary>本次使用了 ${preferences.length} 条习惯</summary><ul>${preferences.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></details>`;
 }
 
 function developmentProposalActions(artifact) {
@@ -613,7 +623,7 @@ function renderRuns() {
     const progress = Math.max(3, Math.min(100, Number(checkpoint?.progress ?? (job.status === "running" ? 12 : 3))));
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
-      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${escapeHtml(checkpoint?.status || item.name)} · ${displayDate(job.updatedAt)}</p>${developmentProgress(job, item, progress)}<div class="progress-track" aria-label="进度 ${progress}%"><span style="width:${progress}%"></span></div></div>
+      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${escapeHtml(checkpoint?.status || item.name)} · ${displayDate(job.updatedAt)}</p>${jobMemoryUsage(job)}${developmentProgress(job, item, progress)}<div class="progress-track" aria-label="进度 ${progress}%"><span style="width:${progress}%"></span></div></div>
       <div class="task-actions"><a href="${escapeHtml(chatHref(job.id))}">回到对话</a><button type="button" data-cancel-job="${escapeHtml(job.id)}">取消任务</button></div>
     </article>`;
   }).join("");
@@ -646,7 +656,7 @@ function renderHistory() {
     const installed = artifact?.metadata?.generatedAbilityId ? " · 已加入能力库" : "";
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
-      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p></div>
+      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p>${jobMemoryUsage(job)}</div>
       ${developmentReceipt(artifact)}
       <div class="task-actions">${job.status === "succeeded" ? `${item.id === "developer" ? `<button type="button" data-revise-job="${escapeHtml(job.id)}">继续调整</button>` : ""}<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}${open}</div>
     </article>`;

@@ -21,11 +21,11 @@ New users do not need to create a project or understand tool names first.
 
 ## Chat: a simple entry with expertise where it belongs
 
-The home screen keeps three clear default one-to-one entries:
+The home screen keeps one clear default one-to-one entry:
 
-- **Clownfish** handles everyday questions, capability calls, expert coordination, and final delivery;
-- **Feifei** provides friend-like conversation;
-- **Teacher Lin** supports concept learning, step-by-step problem solving, review, and transfer practice.
+- **Clownfish** handles everyday questions, capability calls, expert coordination, and final delivery.
+
+Companion and teaching roles such as Feifei and Teacher Lin remain available, but users add them only when needed instead of seeing them on a new home screen.
 
 The first time a role conversation is opened, the page briefly explains what that role can help with and which problems it suits, so users do not need to probe for its purpose.
 
@@ -54,6 +54,7 @@ The file workspace supports DOCX, PPTX, XLSX, and PDF:
 - The original stays local and is never overwritten by editing;
 - PDFs retain their original layout; Office formats receive a structured preview while the original file is retained;
 - Editing, versions, AI progress, and results stay on the same page;
+- Results created in chat or by a capability can open as a local working copy for continued editing;
 - Deleted working files move to a recoverable trash area before permanent deletion;
 - Results can be exported to DOCX, PDF, PPTX, XLSX, HTML, or Markdown.
 
@@ -67,6 +68,7 @@ Clownfish uses the Nemos Memory SDK in this repository. The application currentl
 - Stores source conversation records in a protected archival layer and uses categorized memories for recall;
 - Recalls task-relevant context for normal chat;
 - In preference-only capability mode, searches procedural and personal-semantic memory and applies at most six matching items;
+- Task records show which habits were applied, while a single task can disable preference memory entirely;
 - Lets users add an explicit habit and forget an individual categorized memory;
 - Preserves archival records when categorized memories are forgotten or cleared.
 

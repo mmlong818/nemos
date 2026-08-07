@@ -1,11 +1,11 @@
 export const DEFAULT_CONTACT_IDS = [
   "clownfish",
-  "feifei",
-  "teacher_lin",
 ] as const;
 
 export const CONTACTABLE_PERSONA_IDS = [
   ...DEFAULT_CONTACT_IDS,
+  "feifei",
+  "teacher_lin",
   "azhe",
   "lingling",
 ] as const;

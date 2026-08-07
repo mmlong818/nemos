@@ -386,6 +386,10 @@ select { min-height: 40px; padding: 0 32px 0 10px; font-size: 13px; }
 .task-actions { display: flex; gap: 7px; }
 .task-actions a, .task-actions button { min-height: 34px; display: inline-flex; align-items: center; padding: 0 11px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft); background: var(--paper); font-size: 11.5px; cursor: pointer; }
 .task-actions a:hover, .task-actions button:hover { color: var(--accent); border-color: #c999ad; background: var(--accent-faint); }
+.task-memory { margin: 8px 0 0; color: var(--ink-faint); font-size: 11.5px; }
+.task-memory summary { width: fit-content; cursor: pointer; color: var(--ink-soft); }
+.task-memory ul { margin: 7px 0 0; padding-left: 18px; line-height: 1.65; }
+.task-memory.is-off { margin-top: 7px; }
 
 .file-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .file-card { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
