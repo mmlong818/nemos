@@ -49,6 +49,10 @@
             </label>
           </div>
           <div class="recent-files" id="recentFiles"></div>
+          <details class="trash-panel" id="trashPanel">
+            <summary><span class="trash-label"><i data-office-icon="trash" aria-hidden="true"></i>垃圾桶</span><small id="trashCount">0</small></summary>
+            <div class="trash-files" id="trashFiles"></div>
+          </details>
           <div class="local-note">
             <span data-office-icon="shield" aria-hidden="true"></span>
             <p><strong>内容留在本机</strong><small>这里只保存工作副本和版本记录，原文件不会被覆盖。</small></p>
@@ -79,6 +83,7 @@
                 </div>
               </div>
               <div class="document-actions">
+                <button class="toolbar-button danger" id="deleteDocument" type="button" data-office-icon="trash">删除</button>
                 <button class="toolbar-button" id="saveVersion" type="button" data-office-icon="bookmark">保存版本</button>
                 <label class="export-choice"><span class="sr-only">导出格式</span><select id="exportFormat" aria-label="导出格式"><option value="docx">Word</option><option value="pdf">PDF</option><option value="pptx">PowerPoint</option><option value="xlsx">Excel</option><option value="html">网页</option><option value="md">Markdown</option></select></label>
                 <button class="toolbar-button" id="exportDraft" type="button" data-office-icon="download">导出</button>

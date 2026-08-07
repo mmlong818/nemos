@@ -13,6 +13,8 @@ test("工作页提供任务、结果、运行和记忆的独立新手入口", ()
   const stability = readFileSync(join(root, "assets", "work-stability.css"), "utf8");
   const chat = readFileSync(join(root, "index.html"), "utf8");
   const server = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
+  const capabilityHtml = readFileSync(join(root, "capabilities.html"), "utf8");
+  const capabilityScript = readFileSync(join(root, "assets", "capability-center.js"), "utf8");
 
   for (const route of ["/tasks", "/artifacts", "/runs", "/memory"]) {
     assert.match(html + script + chat, new RegExp(route.replace("/", "\\/")));
@@ -38,6 +40,11 @@ test("工作页提供任务、结果、运行和记忆的独立新手入口", ()
   assert.match(chat, /function splitStreamMessages/);
   assert.match(chat, /STREAM_MESSAGE_REVEAL_DELAY_MS = 180/);
   assert.match(chat, /await revealChain/);
+  assert.match(capabilityHtml, /像和开发同事交代事情一样描述即可/);
+  assert.match(capabilityHtml, /data-access-mode="develop"[\s\S]*data-access-mode="inspect"/);
+  assert.match(capabilityScript, /function developmentProgress/);
+  assert.match(capabilityScript, /function developmentReceipt/);
+  assert.match(capabilityScript, /继续调整/);
 });
 
 test("技能支持固定、停用、陈旧与证据写回", async () => {

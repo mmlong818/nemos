@@ -213,6 +213,9 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   assert.match(script, /name: "生成新能力"/);
   assert.match(script, /name: "开发项目"/);
   assert.match(html, /id="workspaceInput"/);
+  assert.match(html, /id="recentWorkspacePaths"/);
+  assert.match(html, /id="useRecentWorkspace"/);
+  assert.match(script, /clownfish-recent-workspaces-v1/);
   assert.match(html, /id="accessModeSelect"/);
   assert.doesNotMatch(html, /personaSelect|由谁完成/);
   assert.doesNotMatch(script, /personaSelect/);
@@ -233,6 +236,9 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   const serverSource = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
 
   assert.match(chatHtml, /id="composerCapability"/);
+  assert.match(chatHtml, /\$\("#railCap"\)\.onclick = \(\) => \{ window\.location\.href = "\/capabilities"; \};/);
+  assert.match(chatHtml, /\$\("#composerCapability"\)\.onclick = \(\) => openCapabilityPanel\(\{ includeDraft: true \}\);/);
+  assert.doesNotMatch(chatHtml, /\$\("#railCap"\)\.onclick = openCapabilityPanel/);
   assert.match(chatHtml, /id="chatCapabilityBridge"/);
   assert.match(chatHtml, /function renderChatCapabilityBridge/);
   assert.match(chatHtml, /dataset\.viewTarget = completed \? "history" : "runs"/);
@@ -279,6 +285,10 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
   assert.match(workScript, /\/api\/capabilities\/task\/storyline/);
   assert.match(workScript, /\/api\/capabilities\/task\/decision/);
   assert.match(workScript, /data-open-story/);
+  assert.match(workHtml, /id="taskCapability" required/);
+  assert.match(workScript, /请选择能力/);
+  assert.match(workScript, /memoryArchiveExpanded/);
+  assert.match(workScript, /data-toggle-archive/);
   assert.doesNotMatch(chatHtml, /协作进度|executionPanel/);
   assert.doesNotMatch(workHtml, /专家群聊|大群/);
 });
@@ -308,6 +318,7 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.match(script, /data-reject-proposal/);
   assert.match(script, /修改先作为提案保存/);
   assert.match(script, /const ICON_TONES =/);
+  assert.match(script, /function artifactDisplayTitle/);
   assert.match(script, /function updateLaunchState\(\)/);
   assert.doesNotMatch(html, /picker-action/);
   assert.doesNotMatch(html, /任务摘要|开始前检查|previewSheet|task-preview|readiness-list/);

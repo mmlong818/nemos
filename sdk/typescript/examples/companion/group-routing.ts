@@ -17,6 +17,7 @@ export interface GroupParticipation {
 const CASUAL_SIGNAL = /^(你好|嗨|哈喽|在吗|早上好|上午好|中午好|下午好|晚上好|晚安|谢谢|哈哈|嗯+|哦+|好的|收到)[呀啊吗呢吧～~！!。.？?]*$/i;
 
 const EXPERT_TOPIC_RULES: Array<{ ids: string[]; pattern: RegExp }> = [
+  { ids: ["teacher_lin", "critical_thinking"], pattern: /学习|辅导|讲解|概念|知识点|解题|作业|练习|复习|考试|课程|错题|举例|小测/i },
   { ids: ["user_experience", "interface_design"], pattern: /界面|页面|视觉|图标|配色|排版|布局|可用性|用户体验|UI|UX/i },
   { ids: ["interaction_design", "product_lead"], pattern: /交互|流程|路径|操作|新手|onboarding|状态设计/i },
   { ids: ["brand_strategy", "product_lead"], pattern: /品牌|定位|命名|文案|内容|传播|营销|写作|意象|叙事|风格/i },

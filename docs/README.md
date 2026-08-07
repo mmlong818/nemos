@@ -32,6 +32,7 @@
 | [能力设计](../sdk/typescript/examples/companion/docs/capability-center-design.md) | 能力启动、执行和交付流程 |
 | [能力与记忆](../sdk/typescript/examples/companion/docs/capability-center-memory-design.md) | 习惯、格式和任务上下文 |
 | [能力运行系统](../sdk/typescript/examples/companion/docs/capability-os-design.md) | 聊天、能力、文件与任务的共享执行模型 |
+| [网页版十轮真实检查](../sdk/typescript/examples/companion/docs/reviews/2026-08-07-web-true-check-10-rounds.md) | 十类用户路径、发现、修复和未决问题 |
 
 ## 研究与决策记录
 

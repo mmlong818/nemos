@@ -10,6 +10,7 @@ const state = { snapshot: null, jobs: [], runs: [], memories: [] };
 const loadedViews = new Set();
 let loadSequence = 0;
 let activeStoryTaskId = "";
+let memoryArchiveExpanded = false;
 
 function hydrateIcons() {
   window.ClownfishIcons.hydrate({ root: document });
@@ -135,7 +136,14 @@ $(".tabs").addEventListener("click", (event) => {
 window.addEventListener("popstate", () => activateView(viewFromLocation()));
 
 function abilityName(id) {
-  return state.snapshot?.abilities?.find((item) => item.id === id)?.name || id;
+  const labels = {
+    "presentation-builder": "做 PPT", "document-draft": "写正式文档", "research-brief": "深度研究",
+    "market-briefing": "查港股资料", "thinking-workbench": "梳理复杂问题", "product-design": "设计产品界面",
+    "project-development": "开发项目", "meeting-minutes": "整理会议纪要", "html-report": "做网页报告",
+    "decision-brief": "比较方案", "business-deal": "推进商务合作", "market-opportunity": "模拟市场机会",
+    "ability-builder": "生成新能力",
+  };
+  return labels[id] || state.snapshot?.abilities?.find((item) => item.id === id)?.name || id;
 }
 
 function scheduleLabel(task) {
@@ -361,11 +369,11 @@ function refreshOpenStoryline() {
 
 function openTaskDialog(task) {
   const abilities = state.snapshot?.abilities || [];
-  $("#taskCapability").innerHTML = abilities.map((ability) => `<option value="${escapeHtml(ability.id)}">${escapeHtml(ability.name)}</option>`).join("");
+  $("#taskCapability").innerHTML = `<option value="" disabled>请选择能力</option>${abilities.map((ability) => `<option value="${escapeHtml(ability.id)}">${escapeHtml(ability.name)}</option>`).join("")}`;
   $("#taskId").value = task?.id || "";
   $("#taskTitle").value = task?.title || "";
   $("#taskInstruction").value = task?.instruction || "";
-  $("#taskCapability").value = task?.capabilityId || abilities[0]?.id || "";
+  $("#taskCapability").value = task?.capabilityId || "";
   $("#taskFormat").value = task?.format || abilities.find((item) => item.id === $("#taskCapability").value)?.defaultFormat || "html";
   $("#taskSchedule").value = task?.schedule?.mode || "manual";
   $("#taskTime").value = task?.schedule?.time || "09:00";
@@ -530,11 +538,15 @@ function renderMemory() {
   const groups = Object.entries(layerNames).map(([layer, name]) => {
     const items = state.memories.filter((item) => item.layer === layer);
     if (!items.length) return "";
-    const cards = items.map((item) => {
+    const visibleItems = layer === "archival" && !memoryArchiveExpanded ? items.slice(0, 12) : items;
+    const cards = visibleItems.map((item) => {
       const actions = `<div class="memory-actions"><button data-memory-detail="${escapeHtml(item.id)}">${item.correctable ? "查看与修正" : "查看来源"}</button>${layer === "archival" ? "" : `<button class="danger" data-forget="${escapeHtml(item.id)}">忘记</button>`}</div>`;
       return `<article class="memory-item"><div><p>${escapeHtml(item.content)}</p><small>${escapeHtml(item.who)} · ${date(item.created)}${item.source?.sourceMessageId ? " · 有原始来源" : ""}</small></div>${actions}</article>`;
     }).join("");
-    return `<section class="memory-group"><h2>${name}<span>${items.length} 条${layer === "archival" ? " · 受保护" : ""}</span></h2>${cards}</section>`;
+    const archiveToggle = layer === "archival" && items.length > 12
+      ? `<button class="memory-more" type="button" data-toggle-archive>${memoryArchiveExpanded ? "收起原始归档" : `查看其余 ${items.length - 12} 条`}</button>`
+      : "";
+    return `<section class="memory-group"><h2>${name}<span>${items.length} 条${layer === "archival" ? " · 受保护" : ""}</span></h2>${cards}${archiveToggle}</section>`;
   }).join("");
   $("#content").innerHTML = `<form class="memory-form" id="memoryForm"><textarea id="memoryPreference" maxlength="500" placeholder="例如：正式文档先给结论，段落尽量短；演示稿偏好 16:9 和少量文字。"></textarea><button class="primary" type="submit">记住这项习惯</button></form>${groups || '<div class="empty">还没有可展示的记忆。直接聊天即可，必要内容会逐步沉淀。</div>'}`;
   $("#memoryForm").onsubmit = async (event) => {
@@ -546,6 +558,11 @@ function renderMemory() {
     await load();
   };
   $("#content").onclick = async (event) => {
+    if (event.target.closest("[data-toggle-archive]")) {
+      memoryArchiveExpanded = !memoryArchiveExpanded;
+      renderMemory();
+      return;
+    }
     const detail = event.target.closest("[data-memory-detail]");
     if (detail) {
       const item = state.memories.find((memory) => memory.id === detail.dataset.memoryDetail);
