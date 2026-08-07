@@ -571,7 +571,7 @@ function inferPredicates(query: string): string[] {
   const values: string[] = [];
   if (/名字|姓名|叫什么|name/i.test(query)) values.push("identity.name");
   if (/称呼|怎么叫|address me/i.test(query)) values.push("identity.preferred_address");
-  const workplaceIntent = /办公|办公室|工作地点|where.*work|office location|workplace/i.test(query);
+  const workplaceIntent = /办公|办公室|工作地点|where.{0,80}work|office location|workplace/i.test(query);
   if (!workplaceIntent && /住|居住|现居|城市|哪里|哪儿|residen|live/i.test(query)) values.push("residence.current");
   if (workplaceIntent) values.push("workplace.location");
   if (/公司|单位|就职|工作在哪|employ|company/i.test(query)) values.push("employment.organization");
@@ -585,7 +585,7 @@ function inferPredicates(query: string): string[] {
   if (/健身房|gym|fitness/i.test(query)) values.push("membership.gym");
   if (/手机|phone brand|brand of phone/i.test(query)) values.push("device.phone_brand");
   if (/相机|主力机|camera/i.test(query)) values.push("device.camera.primary");
-  if (/护照.*(?:到期|过期|有效期)|passport.*(?:expir|valid)/i.test(query)) values.push("document.passport_expiry");
+  if (/护照.{0,80}(?:到期|过期|有效期)|passport.{0,80}(?:expir|valid)/i.test(query)) values.push("document.passport_expiry");
   if (/紧急联系人|emergency contact/i.test(query)) values.push("contact.emergency");
   if (/通勤|commute|go to work/i.test(query)) values.push("commute.mode");
   if (/汽车|车辆|开什么车|current car|driving/i.test(query)) values.push("possession.vehicle");
@@ -1325,7 +1325,7 @@ function scoreEvidenceSegment(segment: string, terms: string[], query: string): 
   if (isCompositionalQuery(query) && hasFutureSignal(segment) && !hasCompletedEventSignal(segment)) score -= 160;
   if (isTemporalCompositionQuery(query) && hasTemporalSignal(segment)) score += 200;
   const ordinal = referencedOrdinal(query);
-  if (ordinal && new RegExp("(?:^|\\b)" + ordinal + "\\s*[.)\\]:-]").test(segment)) score += 500;
+  if (ordinal && hasOrdinalMarker(segment, ordinal)) score += 500;
   return score;
 }
 
@@ -1358,7 +1358,8 @@ function bestEvidenceWindow(content: string, terms: string[], maxChars: number, 
   }
   const ordinal = referencedOrdinal(query);
   if (ordinal) {
-    for (const match of content.matchAll(new RegExp("(?:^|\\b)" + ordinal + "\\s*[.)\\]:-]", "g"))) {
+    for (const match of content.matchAll(/(?:^|\b)(\d+)\s*[.)\]:-]/g)) {
+      if (match[1] !== ordinal) continue;
       addAnchor(match.index);
     }
   }
@@ -1400,6 +1401,13 @@ function referencedOrdinal(query: string): string | null {
   return query.match(/\b(\d+)(?:st|nd|rd|th)\b/i)?.[1]
     ?? query.match(/\b(?:number|item|parameter|entry)\s+#?(\d+)\b/i)?.[1]
     ?? null;
+}
+
+function hasOrdinalMarker(text: string, ordinal: string): boolean {
+  for (const match of text.matchAll(/(?:^|\b)(\d+)\s*[.)\]:-]/g)) {
+    if (match[1] === ordinal) return true;
+  }
+  return false;
 }
 
 function prefersUserEvidence(query: string): boolean {
