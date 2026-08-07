@@ -45,7 +45,17 @@ test("工作台提供本机自动保存、版本比较与页内处理", () => {
   assert.match(officeJs, /function startOfficeTask/);
   assert.match(officeJs, /\/api\/agent\/job/);
   assert.match(officeJs, /\/api\/capabilities\/artifact\/preview/);
+  assert.match(officeJs, /function importArtifactFromQuery/);
+  assert.match(officeJs, /\/api\/capabilities\/artifact\/context/);
+  assert.match(officeJs, /originArtifactId/);
   assert.doesNotMatch(officeJs, /sessionStorage|capability-handoff|location\.href\s*=\s*"\/capabilities"/);
+});
+
+test("聊天与能力结果可以直接进入文件工作台继续编辑", () => {
+  const capabilityJs = readFileSync(join(webRoot, "assets", "capability-center.js"), "utf8");
+  assert.match(chatHtml, /data-artifact-action="edit"/);
+  assert.match(chatHtml, /\/office\?artifact=/);
+  assert.match(capabilityJs, /\/office\?artifact=/);
 });
 
 test("聊天设置统一提供记忆与数据入口，新用户看到可直接使用的例子", () => {

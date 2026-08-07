@@ -426,17 +426,25 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     const handoff = job.payload.handoff && typeof job.payload.handoff === "object"
       ? job.payload.handoff as CapabilityHandoffEnvelope
       : undefined;
+    const requestedMemoryMode = job.payload.memoryMode === "off" ? "off" : job.payload.memoryMode === "preferences" ? "preferences" : "default";
+    const appliedPreferences = Array.isArray(job.payload.appliedPreferences)
+      ? job.payload.appliedPreferences.map((item) => String(item).trim()).filter(Boolean).slice(0, 6)
+      : [];
+    const pinnedPreferenceContext = requestedMemoryMode === "preferences" && appliedPreferences.length
+      ? `\n\n## 本次交付习惯\n\n${appliedPreferences.map((item) => `- ${item}`).join("\n")}\n\n具体任务要求优先于这些习惯。`
+      : "";
     const handoffReceipt = handoff ? receiveCapabilityHandoff(handoff) : undefined;
     context.checkpoint(handoff ? "已接收上一步上下文" : "正在执行临时任务", 10, handoffReceipt);
     const notification = await capabilities.runAdHocTask({
       title: String(job.payload.title || "后台任务"),
       personaId,
       capabilityId,
-      instruction: handoff ? `${instruction}\n\n${renderCapabilityHandoffContext(handoff)}` : instruction,
+      instruction: `${handoff ? `${instruction}\n\n${renderCapabilityHandoffContext(handoff)}` : instruction}${pinnedPreferenceContext}`,
       format: normalizeAgentJobFormat(job.payload.format),
       trigger: "agent-job",
       runId: `agent-job/${job.id}`,
-      memoryMode: job.payload.memoryMode === "off" ? "off" : job.payload.memoryMode === "preferences" ? "preferences" : "default",
+      // 启动时已经固定下来的习惯直接进入任务上下文，不再做第二次可能漂移的召回。
+      memoryMode: pinnedPreferenceContext ? "off" : requestedMemoryMode,
       workspacePath: String(job.payload.workspacePath || ""),
       accessMode: job.payload.accessMode === "inspect" ? "inspect" : "develop",
       onProgress: (message, percent) => context.checkpoint(message, percent),
@@ -3135,6 +3143,18 @@ const server = createServer(async (req, res) => {
         send(res, 400, { error: "unsupported Agent job kind" });
         return;
       }
+      let appliedPreferences: string[] = [];
+      if (body.kind === "capability-adhoc" && body.memoryMode === "preferences") {
+        try {
+          appliedPreferences = await engine.previewDeliveryPreferences(
+            USER,
+            capabilityPersonaId || "clownfish",
+            `${String(body.title || "")}\n${String(body.instruction || "")}`,
+          );
+        } catch {
+          // 偏好说明失败不能阻止用户启动任务；执行时会按 memoryMode 回退到常规召回。
+        }
+      }
       const action = await agentUserActions.execute({
         name: "agent_job_enqueue",
         description: "把用户提交的后台能力任务加入持久队列",
@@ -3170,6 +3190,7 @@ const server = createServer(async (req, res) => {
                   : [],
                 format: body.format,
                 memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
+                appliedPreferences,
               },
           metadata: {
             userId: USER,

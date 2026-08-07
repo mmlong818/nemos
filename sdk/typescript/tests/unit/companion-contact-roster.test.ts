@@ -22,12 +22,18 @@ const personas = [
   "system_architecture",
 ];
 
-test("默认通讯录只显示核心角色，并把小丑鱼放在首位", () => {
+test("默认通讯录只显示小丑鱼，降低首次使用负担", () => {
   assert.deepEqual(visibleContactIds(personas, []), [...DEFAULT_CONTACT_IDS]);
+  assert.deepEqual(DEFAULT_CONTACT_IDS, ["clownfish"]);
 });
 
-test("林老师作为学习入口默认出现在通讯录", () => {
-  assert.equal(visibleContactIds(personas, []).includes("teacher_lin"), true);
+test("生活与学习角色保留为可选联系人", () => {
+  assert.equal(visibleContactIds(personas, []).includes("feifei"), false);
+  assert.equal(visibleContactIds(personas, []).includes("teacher_lin"), false);
+  assert.deepEqual(
+    normalizeAddedContactIds(personas, ["feifei", "teacher_lin"]),
+    ["feifei", "teacher_lin"],
+  );
 });
 
 test("团子和功能型专家不占用一对一联系人入口", () => {
@@ -57,7 +63,7 @@ test("添加角色时过滤默认角色、未知角色和重复项", () => {
 
 test("已添加角色按角色库顺序出现在默认联系人之后", () => {
   assert.deepEqual(
-    visibleContactIds(personas, ["long_term_strategy", "azhe", "lingling"]),
-    [...DEFAULT_CONTACT_IDS, "azhe", "lingling"],
+    visibleContactIds(personas, ["long_term_strategy", "feifei", "teacher_lin", "azhe", "lingling"]),
+    [...DEFAULT_CONTACT_IDS, "feifei", "azhe", "teacher_lin", "lingling"],
   );
 });

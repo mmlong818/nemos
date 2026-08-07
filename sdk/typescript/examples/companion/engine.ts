@@ -574,6 +574,16 @@ export class CompanionEngine {
   }
 
   private async recallPreferences(userId: string, personaId: string, query: string): Promise<string> {
+    const selected = await this.previewDeliveryPreferences(userId, personaId, query);
+    if (selected.length === 0) return "";
+    return ["## User delivery preferences", "", ...selected.map((content) => `- ${content}`)].join("\n");
+  }
+
+  /**
+   * 返回本次交付真正会使用的少量习惯，供任务记录向用户解释。
+   * 与 recallPreferences 共用同一选择逻辑，避免界面声明和实际提示不一致。
+   */
+  async previewDeliveryPreferences(userId: string, personaId: string, query: string): Promise<string[]> {
     const candidates = await this.nemos.forUser(userId).search(query, {
       layers: ["procedural", "personal_semantic"],
       scopes: this.visibleScopes(userId, personaId),
@@ -583,8 +593,7 @@ export class CompanionEngine {
     const selected = candidates
       .filter((memory) => memory.layer === "procedural" || preferenceCue.test(memory.content))
       .slice(0, 6);
-    if (selected.length === 0) return "";
-    return ["## User delivery preferences", "", ...selected.map((memory) => `- ${memory.content}`)].join("\n");
+    return [...new Set(selected.map((memory) => memory.content.trim()).filter(Boolean))];
   }
 
   /** 离线整合：沉淀事实 + 矛盾失效（需 SDK features.reflect / invalidation 开）。 */
