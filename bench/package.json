@@ -10,6 +10,6 @@
   "dependencies": {
     "https-proxy-agent": "^9.1.0",
     "openai": "^4.104.0",
-    "undici": "^6.27.0"
+    "undici": "^6.28.0"
   }
 }
