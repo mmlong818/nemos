@@ -149,7 +149,7 @@ test("Companion extension API closes the install, trust, and provider lifecycle"
 
     const invalid = await request(baseUrl, "/api/agent/extension/validate", { manifest: {} });
     assert.equal(invalid.status, 400);
-    assert.equal(invalid.data.error, "扩展清单校验失败");
+    assert.equal(invalid.data.error, "请求无法完成，请检查输入后重试。");
     assert(Array.isArray(invalid.data.details));
     assert(invalid.data.details.length > 0);
 

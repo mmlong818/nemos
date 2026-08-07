@@ -1988,9 +1988,7 @@ function send(res: ServerResponse, code: number, body: unknown, type = "applicat
       ...body,
       error: code >= 500
         ? "内部处理暂时失败，请稍后重试。"
-        : typeof body.error === "string"
-          ? body.error.split(/\r?\n/, 1)[0]!.slice(0, 300)
-          : "请求无法完成，请检查输入后重试。",
+        : "请求无法完成，请检查输入后重试。",
     }
     : body;
   const data = typeof publicBody === "string" ? publicBody : JSON.stringify(publicBody);
@@ -2309,12 +2307,7 @@ function extractReadableWebText(raw: string, contentType: string): { title?: str
     firstMatch(raw, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i)
       || firstMatch(raw, /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["'][^>]*>/i),
   );
-  const withoutNoise = raw
-    .replace(/<script(?:\s[^>]*)?>[\s\S]*?<\/script\s*>/gi, " ")
-    .replace(/<style(?:\s[^>]*)?>[\s\S]*?<\/style\s*>/gi, " ")
-    .replace(/<noscript(?:\s[^>]*)?>[\s\S]*?<\/noscript\s*>/gi, " ")
-    .replace(/<svg(?:\s[^>]*)?>[\s\S]*?<\/svg\s*>/gi, " ")
-    .replace(/<iframe(?:\s[^>]*)?>[\s\S]*?<\/iframe\s*>/gi, " ");
+  const withoutNoise = removeHtmlElementBlocks(raw, ["script", "style", "noscript", "svg", "iframe"]);
   const body = firstMatch(withoutNoise, /<body[^>]*>([\s\S]*?)<\/body>/i) || withoutNoise;
   const text = collapseReadableText(decodeHtmlEntities(
     body
@@ -2322,6 +2315,23 @@ function extractReadableWebText(raw: string, contentType: string): { title?: str
       .replace(/<[^>]+>/g, " "),
   ));
   return { title: title || metaDescription || undefined, text };
+}
+
+function removeHtmlElementBlocks(input: string, tags: string[]): string {
+  let output = input;
+  for (const tag of tags) {
+    for (let count = 0; count < 256; count += 1) {
+      const lower = output.toLowerCase();
+      const start = lower.indexOf(`<${tag}`);
+      if (start < 0) break;
+      const openEnd = lower.indexOf(">", start + tag.length + 1);
+      const closeStart = openEnd < 0 ? -1 : lower.indexOf(`</${tag}`, openEnd + 1);
+      const closeEnd = closeStart < 0 ? -1 : lower.indexOf(">", closeStart + tag.length + 2);
+      const end = closeEnd < 0 ? output.length : closeEnd + 1;
+      output = `${output.slice(0, start)} ${output.slice(end)}`;
+    }
+  }
+  return output;
 }
 
 function firstMatch(text: string, re: RegExp): string {
