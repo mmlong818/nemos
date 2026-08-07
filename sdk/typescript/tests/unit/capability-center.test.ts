@@ -287,8 +287,8 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
   assert.match(workScript, /data-open-story/);
   assert.match(workHtml, /id="taskCapability" required/);
   assert.match(workScript, /请选择能力/);
-  assert.match(workScript, /memoryArchiveExpanded/);
-  assert.match(workScript, /data-toggle-archive/);
+  assert.doesNotMatch(workScript, /memoryArchiveExpanded|data-toggle-archive|原始归档/);
+  assert.match(workScript, /这里只显示小丑鱼整理出的事实、经历与习惯/);
   assert.doesNotMatch(chatHtml, /协作进度|executionPanel/);
   assert.doesNotMatch(workHtml, /专家群聊|大群/);
 });

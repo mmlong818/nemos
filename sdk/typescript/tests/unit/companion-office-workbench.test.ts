@@ -106,7 +106,12 @@ test("文件页保持操作连续，不暴露内部页面结构", () => {
   assert.match(officeHtml, /id="startOfficeTask"[^>]*>开始处理<\/button>/);
   assert.match(officeHtml, /id="processingResultFrame"/);
   assert.doesNotMatch(officeHtml, /带入能力页|继续到能力页/);
-  assert.match(officeHtml, /<details class="version-card">/);
+  assert.match(officeHtml, /id="openAssistantPanel"[^>]*>小丑鱼处理<\/button>/);
+  assert.match(officeHtml, /id="openVersionPanel"[^>]*>版本<\/button>/);
+  assert.match(officeHtml, /id="assistantPanel"[^>]+aria-hidden="true"[^>]+inert/);
+  assert.match(officeJs, /function openAssistantPanel\(mode\)/);
+  assert.match(officeCss, /\.assistant-panel\.is-open/);
+  assert.match(officeCss, /grid-template-columns:\s*236px minmax\(460px, 1fr\);/);
   assert.match(officeCss, /white-space:\s*nowrap/);
 });
 
