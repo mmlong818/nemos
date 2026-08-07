@@ -463,8 +463,7 @@ function inferCommuteMode(text: string): string | null {
 function canonicalVehicle(value: string): string {
   return value
     .toLowerCase()
-    .replace(/\b\w/g, (character) => character.toUpperCase())
-    .replace("Tesla Model 3", "Tesla Model 3");
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 function inferUtteranceMode(content: string): UtteranceMode {
   const text = normalizeText(content);
