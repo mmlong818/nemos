@@ -515,7 +515,6 @@ async function startTask() {
     await refreshData();
     if (job) {
       $("#runConversationBridge").hidden = false;
-      $("#runConversationLink").href = chatHref(job.id);
       $("#runConversationText").textContent = "你可以继续聊天；完成后，结果会由小丑鱼直接送回。";
     }
     openView("runs");
@@ -622,7 +621,6 @@ function renderRuns() {
   const bridge = $("#runConversationBridge");
   bridge.hidden = jobs.length === 0;
   if (jobs[0]) {
-    $("#runConversationLink").href = chatHref(jobs[0].id);
     $("#runConversationText").textContent = `「${jobTitle(jobs[0])}」正在进行；完成后会直接送回对话。`;
   }
   const badge = $("#runningCount");
@@ -790,8 +788,12 @@ function configureReturnLinks() {
   const handoff = loadChatHandoff();
   const requestedReturn = handoff?.returnTo || "/";
   state.returnUrl = requestedReturn.startsWith("/") && !requestedReturn.startsWith("//") ? requestedReturn : "/";
+  const returnTarget = new URL(state.returnUrl, location.origin);
   $$('a[href="/"]').forEach((link) => {
-    if (link.id === "runConversationLink" || link.id === "chatContextReturn" || link.classList.contains("back-chat") || link.classList.contains("brand")) link.href = state.returnUrl;
+    if (link.id === "runConversationLink" || link.id === "chatContextReturn" || link.classList.contains("back-chat") || link.classList.contains("brand")) {
+      link.pathname = returnTarget.pathname;
+      link.hash = returnTarget.hash;
+    }
   });
 }
 

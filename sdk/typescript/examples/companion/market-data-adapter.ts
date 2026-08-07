@@ -89,15 +89,12 @@ export function normalizeHongKongSymbol(value: string): { symbol: string; provid
 }
 
 function decodeHtml(value: string): string {
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_match, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)))
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">");
+  const named: Record<string, string> = { nbsp: " ", amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" };
+  return value.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(nbsp|amp|quot|apos|lt|gt));/gi, (_match, decimal, hex, name) => {
+    if (name) return named[String(name).toLowerCase()] ?? "";
+    const code = hex ? Number.parseInt(hex, 16) : Number(decimal);
+    return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
+  });
 }
 
 function htmlText(value: string): string {
