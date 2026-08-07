@@ -82,29 +82,41 @@
             </div>
             <div class="launch-layout">
               <div class="launch-form">
-                <label for="instructionInput">任务要求</label>
+                <label id="instructionLabel" for="instructionInput">任务要求</label>
                 <textarea id="instructionInput" rows="7" maxlength="16000" placeholder="说清楚要完成什么，也可以补充受众、重点、语气或页数"></textarea>
                 <section class="developer-fields" id="developerFields" hidden>
-                  <label for="workspaceInput">项目文件夹</label>
-                  <input id="workspaceInput" type="text" maxlength="1000" spellcheck="false" placeholder="例如：C:\\Users\\你\\Documents\\我的项目">
-                  <div class="field-row single">
-                    <label>执行方式
-                      <select id="accessModeSelect">
-                        <option value="develop">开发并验证</option>
-                        <option value="inspect">只检查，不修改</option>
-                      </select>
-                    </label>
+                  <div class="developer-intro">
+                    <span class="developer-intro-icon" data-app-icon="code" aria-hidden="true"><span></span></span>
+                    <div><strong>像和开发同事交代事情一样描述即可</strong><small>小丑鱼会先理解项目，再修改并运行检查；你不需要打开终端或输入命令。</small></div>
                   </div>
-                  <p class="field-help">开发能力只能访问这个文件夹；不会读取密钥、删除文件、推送、发布或部署。</p>
+                  <ol class="developer-flow" id="developerFlow" aria-label="开发过程">
+                    <li><span>1</span>理解项目</li><li><span>2</span>完成修改</li><li><span>3</span>运行检查</li><li><span>4</span>交付结果</li>
+                  </ol>
+                  <label for="workspaceInput">项目在哪个文件夹</label>
+                  <div class="workspace-path-row">
+                    <input id="workspaceInput" type="text" maxlength="1000" spellcheck="false" autocomplete="off" list="recentWorkspacePaths" placeholder="例如：C:\Users\你\Documents\我的项目">
+                    <button id="useRecentWorkspace" type="button" hidden>最近使用</button>
+                  </div>
+                  <datalist id="recentWorkspacePaths"></datalist>
+                  <small class="workspace-path-help">第一次使用时，可在资源管理器地址栏复制文件夹路径；以后会保留最近使用的项目。</small>
+                  <fieldset class="developer-mode-field">
+                    <legend>希望小丑鱼怎么处理</legend>
+                    <div class="developer-mode-options">
+                      <button class="developer-mode is-selected" type="button" data-access-mode="develop" aria-pressed="true"><strong>完成修改</strong><small>先生成可核对的修改，确认后再写入项目</small></button>
+                      <button class="developer-mode" type="button" data-access-mode="inspect" aria-pressed="false"><strong>只帮我检查</strong><small>分析问题并给出结论，不修改任何文件</small></button>
+                    </div>
+                    <input id="accessModeSelect" type="hidden" value="develop">
+                  </fieldset>
+                  <p class="field-help">只会处理这个文件夹。不会读取密钥、删除文件、推送、发布或部署。</p>
                 </section>
-                <label class="file-drop" for="materialInput">
+                <label class="file-drop" id="materialDrop" for="materialInput">
                   <span class="file-drop-icon" aria-hidden="true">＋</span>
                   <strong>加入参考材料</strong>
                   <small>支持文字、Word、PowerPoint、Excel 和 PDF；办公文件不超过 8 MB</small>
                   <input id="materialInput" type="file" accept=".txt,.md,.markdown,.csv,.json,.html,.htm,.docx,.pptx,.xlsx,.pdf,text/plain,text/markdown,text/csv,application/json,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf">
                 </label>
                 <div class="material-list" id="materialList"></div>
-                <div class="field-row single">
+                <div class="field-row single" id="formatField">
                   <label>结果形式
                     <select id="formatSelect">
                       <option value="pptx">可编辑 PowerPoint</option>
@@ -116,7 +128,7 @@
                     </select>
                   </label>
                 </div>
-                <details class="task-advanced">
+                <details class="task-advanced" id="advancedSettings">
                   <summary>更多设置</summary>
                   <div class="memory-setting">
                     <label class="memory-choice">

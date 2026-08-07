@@ -121,7 +121,11 @@ export function determinePromotion(
 ): { state: "candidate" | "promoted"; reason: string } {
   if (memory.layer === "archival") return { state: "promoted", reason: "authoritative_source_event" };
   if (memory.source.origin === "clownfish-memory-ui") return { state: "promoted", reason: "explicit_user_preference" };
-  if (coverage.state === "corroborated") return { state: "promoted", reason: "independent_evidence" };
+  const isHedgedInference = memory.source.kind === "derived" && /(?:可能|也许|或许|似乎|大概|推测|不确定|可能指|may\b|might\b|perhaps\b|possibly\b)/i.test(memory.content);
+  if (coverage.state === "corroborated") {
+    if (isHedgedInference) return { state: "candidate", reason: "hedged_inference" };
+    return { state: "promoted", reason: "independent_evidence" };
+  }
 
   const inferredConfidence = memory.source.confidence;
   const isInference = inferredConfidence === "medium" || inferredConfidence === "conflict";
@@ -135,6 +139,7 @@ export function determinePromotion(
   if (isTransient) return { state: "candidate", reason: "temporary_fact" };
   if (isInference) return { state: "candidate", reason: "low_confidence_inference" };
   if (isEmotionSignal) return { state: "candidate", reason: "single_emotion_signal" };
+  if (isHedgedInference) return { state: "candidate", reason: "hedged_inference" };
   const structured = !!memory.claim_key && !!memory.predicate && !!memory.subject_id;
   if (!structured) return { state: "candidate", reason: "unstructured_derivation" };
   if (coverage.state === "unverified") return { state: "candidate", reason: "missing_source_evidence" };

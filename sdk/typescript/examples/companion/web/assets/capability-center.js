@@ -1,5 +1,7 @@
 "use strict";
 
+const RECENT_WORKSPACES_KEY = "clownfish-recent-workspaces-v1";
+
 const CATALOG = [
   { id: "presentation", backendId: "presentation-builder", name: "做 PPT", icon: "presentation", summary: "生成可放映、可继续编辑的演示文稿", description: "先梳理受众和叙事主线，再生成有版式变化、演讲备注和网页预览的 PowerPoint。", use: "汇报、提案、课程分享、路演", deliverable: "可编辑 PPTX 与网页预览", format: "pptx", featured: true, detail: "生成页面结构、版式、备注和可编辑文件" },
   { id: "document", backendId: "document-draft", name: "写正式文档", icon: "document", summary: "起草、改写和整理正式内容", description: "根据目标和材料生成结构完整的文稿，也能沿用你的常用文笔与排版习惯。", use: "方案、总结、说明、长文", deliverable: "可编辑文稿", format: "doc", featured: true, detail: "形成结构清楚、可以继续编辑的文稿" },
@@ -150,6 +152,42 @@ function displayDate(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
+function setDevelopmentMode(mode, persist = true) {
+  const value = mode === "inspect" ? "inspect" : "develop";
+  $("#accessModeSelect").value = value;
+  $$('[data-access-mode]').forEach((button) => {
+    const selected = button.dataset.accessMode === value;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  const labels = value === "inspect" ? ["理解项目", "检查问题", "核对证据", "整理结论"] : ["理解项目", "完成修改", "运行检查", "交付结果"];
+  $$("#developerFlow li").forEach((item, index) => { const marker = item.querySelector("span"); item.textContent = labels[index]; if (marker) item.prepend(marker); });
+  updateLaunchState();
+  if (persist) saveDraft();
+}
+
+function recentWorkspaces() {
+  try {
+    const paths = JSON.parse(localStorage.getItem(RECENT_WORKSPACES_KEY) || "[]");
+    return Array.isArray(paths) ? paths.filter((item) => typeof item === "string" && item.trim()).slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function renderRecentWorkspaces() {
+  const paths = recentWorkspaces();
+  $("#recentWorkspacePaths").innerHTML = paths.map((path) => `<option value="${escapeHtml(path)}"></option>`).join("");
+  $("#useRecentWorkspace").hidden = !paths.length;
+}
+
+function rememberWorkspace(path) {
+  const normalized = String(path || "").trim();
+  if (!normalized) return;
+  const paths = [normalized, ...recentWorkspaces().filter((item) => item.toLowerCase() !== normalized.toLowerCase())].slice(0, 5);
+  localStorage.setItem(RECENT_WORKSPACES_KEY, JSON.stringify(paths));
+  renderRecentWorkspaces();
+}
 function selectedCapability() {
   return CATALOG.find((item) => item.id === state.selectedId) || CATALOG[0];
 }
@@ -226,7 +264,7 @@ function renderExecutionState() {
   const hasInstruction = Boolean($("#goalInput").value.trim() || $("#instructionInput").value.trim());
   const hasWorkspace = item.id !== "developer" || Boolean($("#workspaceInput").value.trim());
   button.disabled = !status.ready || !hasInstruction || !hasWorkspace;
-  button.textContent = !status.ready ? status.action : !hasInstruction ? "先填写任务要求" : !hasWorkspace ? "先填写项目文件夹" : "开始执行";
+  button.textContent = !status.ready ? status.action : !hasInstruction ? "先说清楚想完成什么" : !hasWorkspace ? "先填写项目文件夹" : item.id === "developer" ? ($("#accessModeSelect").value === "inspect" ? "让小丑鱼开始检查" : "让小丑鱼开始开发") : "开始执行";
   $(".run-note").textContent = !status.ready
     ? "请先在设置中配置模型；任务不会用离线回声生成假结果。"
     : hasInstruction && hasWorkspace
@@ -259,8 +297,14 @@ function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
   }
   $("#launchTitle").textContent = item.name;
   $("#launchSummary").textContent = item.summary;
+  $("#instructionLabel").textContent = item.id === "developer" ? "想让小丑鱼完成什么" : "任务要求";
   $("#instructionInput").placeholder = EXAMPLE_PROMPTS[item.id] || "说清楚要完成什么，也可以补充受众、重点、语气或格式";
   $("#developerFields").hidden = item.id !== "developer";
+  $("#formatField").hidden = item.id === "developer";
+  $("#materialDrop").hidden = item.id === "developer";
+  $("#materialList").hidden = item.id === "developer";
+  $("#advancedSettings").hidden = item.id === "developer";
+  $("#launchPanel").classList.toggle("is-developer", item.id === "developer");
   renderFormatOptions(item);
   $("#formatSelect").value = item.format;
   $("#launchPanel").hidden = false;
@@ -382,7 +426,7 @@ function restoreLast() {
   $("#instructionInput").value = draft.instruction || "";
   $("#memoryToggle").checked = draft.memoryMode !== "off";
   $("#workspaceInput").value = draft.workspacePath || "";
-  $("#accessModeSelect").value = draft.accessMode === "inspect" ? "inspect" : "develop";
+  setDevelopmentMode(draft.accessMode, false);
   state.parentJobId = String(draft.parentJobId || "");
   state.handoffChain = Array.isArray(draft.handoffChain) ? draft.handoffChain.slice(0, 12) : [];
   state.handoffSummary = String(draft.handoffSummary || "");
@@ -402,7 +446,7 @@ function resetDraft() {
   $("#goalInput").value = "";
   $("#instructionInput").value = "";
   $("#workspaceInput").value = "";
-  $("#accessModeSelect").value = "develop";
+  setDevelopmentMode("develop", false);
   state.materials = [];
   state.handoffContext = "";
   state.handoffSummary = "";
@@ -426,10 +470,11 @@ async function startTask() {
   const instruction = details || goal;
   if (!instruction) return showToast("先写下想完成的事情", true);
   if (item.id === "developer" && !$("#workspaceInput").value.trim()) return showToast("先填写项目文件夹", true);
+  if (item.id === "developer") rememberWorkspace($("#workspaceInput").value);
   if (!isAvailable(item)) return showToast(availability(item).action, true);
   const button = $("#startTask");
   button.disabled = true;
-  button.textContent = "正在加入任务…";
+  button.textContent = item.id === "developer" ? "正在理解项目…" : "正在加入任务…";
   const hasHandoff = Boolean(state.handoffSummary || state.handoffConversation.length || state.parentJobId);
   const materials = !hasHandoff && state.materials.length ? `\n\n用户提供的材料：\n--- ${state.materials[0].name} ---\n${state.materials[0].text}` : "";
   const handoff = hasHandoff ? {
@@ -486,6 +531,14 @@ function jobTitle(job) {
   return String(job.payload?.title || job.result?.data?.artifact?.title || "未命名任务");
 }
 
+function artifactDisplayTitle(artifact) {
+  const title = String(artifact?.title || "").trim();
+  if (!title || /^(可以|好|好的|行|没问题|继续|就这样|看起来可以|我没想好|不知道|随便)[。！!？?，,\s]*$/.test(title)) {
+    return capabilityForBackend(artifact?.capabilityId).name || "能力结果";
+  }
+  return title;
+}
+
 function jobCapability(job) {
   return capabilityForBackend(job.payload?.capabilityId || job.result?.data?.artifact?.capabilityId);
 }
@@ -513,9 +566,9 @@ function developmentProposalActions(artifact) {
   const proposal = artifact?.metadata?.development?.proposal;
   if (!proposal) return "";
   const preview = `<a href="/api/development/proposal/preview?id=${encodeURIComponent(proposal.id)}" target="_blank" rel="noopener">查看修改</a>`;
-  if (proposal.state === "pending") return `${preview}<button type="button" data-apply-proposal="${escapeHtml(proposal.id)}">写入项目</button><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
+  if (proposal.state === "pending") return `${preview}<button type="button" data-apply-proposal="${escapeHtml(proposal.id)}">应用修改</button><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
   if (proposal.state === "conflicted") return `${preview}<span class="proposal-state">项目已变化，未覆盖</span><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
-  if (proposal.state === "applied") return `<span class="proposal-state">修改已写入</span>${preview}`;
+  if (proposal.state === "applied") return `<span class="proposal-state">修改已应用</span>${preview}`;
   if (proposal.state === "rejected") return `<span class="proposal-state">提案已放弃</span>`;
   if (proposal.state === "failed") return `<span class="proposal-state">提案生成失败</span>`;
   return preview;
@@ -529,6 +582,29 @@ function chatHref() {
   return `${url.pathname}${url.hash}`;
 }
 
+function developmentProgress(job, item, progress) {
+  if (item.id !== "developer") return "";
+  const labels = job.payload?.accessMode === "inspect"
+    ? ["理解项目", "检查问题", "核对证据", "整理结论"]
+    : ["理解项目", "完成修改", "运行检查", "交付结果"];
+  const current = job.status === "queued" ? 0 : Math.min(3, Math.max(0, Math.floor(progress / 25)));
+  return `<div class="development-steps" aria-label="开发进度">${labels.map((label, index) => `<span class="development-step${index < current ? " is-done" : index === current ? " is-current" : ""}">${escapeHtml(label)}</span>`).join("")}</div>`;
+}
+
+function developmentReceipt(artifact) {
+  const receipt = artifact?.metadata?.development;
+  if (!receipt) return "";
+  const files = (receipt.proposal?.files || receipt.changedFiles || []).map((item) => typeof item === "string" ? item : item.path).filter(Boolean);
+  const checks = Array.isArray(receipt.checks) ? receipt.checks : [];
+  const passed = checks.filter((check) => check.passed).length;
+  const risks = Array.isArray(receipt.unverifiedRisks) ? receipt.unverifiedRisks.filter(Boolean) : [];
+  const mode = receipt.accessMode === "inspect" ? "只读检查" : "修改提案";
+  return `<section class="development-receipt" aria-label="开发结果摘要">
+    <div class="development-receipt-summary"><span>${mode}</span><span>${files.length} 个文件</span><span>${checks.length ? `${passed}/${checks.length} 项检查通过` : "未运行自动检查"}</span></div>
+    ${files.length ? `<ul class="development-file-list">${files.slice(0, 8).map((file) => `<li title="${escapeHtml(file)}">${escapeHtml(file)}</li>`).join("")}${files.length > 8 ? `<li>另有 ${files.length - 8} 个文件</li>` : ""}</ul>` : ""}
+    ${risks.length ? `<p class="development-risk">仍需注意：${escapeHtml(risks[0])}${risks.length > 1 ? `，另有 ${risks.length - 1} 项` : ""}</p>` : ""}
+  </section>`;
+}
 function renderRuns() {
   const jobs = state.jobs.filter((job) => job.status === "queued" || job.status === "running");
   $("#runsEmpty").hidden = jobs.length > 0;
@@ -538,7 +614,7 @@ function renderRuns() {
     const progress = Math.max(3, Math.min(100, Number(checkpoint?.progress ?? (job.status === "running" ? 12 : 3))));
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
-      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${escapeHtml(checkpoint?.status || item.name)} · ${displayDate(job.updatedAt)}</p><div class="progress-track" aria-label="进度 ${progress}%"><span style="width:${progress}%"></span></div></div>
+      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${escapeHtml(checkpoint?.status || item.name)} · ${displayDate(job.updatedAt)}</p>${developmentProgress(job, item, progress)}<div class="progress-track" aria-label="进度 ${progress}%"><span style="width:${progress}%"></span></div></div>
       <div class="task-actions"><a href="${escapeHtml(chatHref(job.id))}">回到对话</a><button type="button" data-cancel-job="${escapeHtml(job.id)}">取消任务</button></div>
     </article>`;
   }).join("");
@@ -573,27 +649,41 @@ function renderHistory() {
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
       <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p></div>
-      <div class="task-actions">${job.status === "succeeded" ? `<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}${open}</div>
+      ${developmentReceipt(artifact)}
+      <div class="task-actions">${job.status === "succeeded" ? `${item.id === "developer" ? `<button type="button" data-revise-job="${escapeHtml(job.id)}">继续调整</button>` : ""}<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}${open}</div>
     </article>`;
   }).join("");
   $$('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
+  $$('[data-revise-job]').forEach((button) => button.addEventListener("click", () => continueDevelopment(button.dataset.reviseJob)));
   $$('[data-apply-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.applyProposal, "apply")));
   $$('[data-reject-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.rejectProposal, "reject")));
 }
 
 async function decideDevelopmentProposal(id, action) {
   const applying = action === "apply";
-  if (!window.confirm(applying ? "确认将这份修改提案写入正式项目？" : "确认放弃这份修改提案？项目文件不会改变。")) return;
+  if (!window.confirm(applying ? "确认应用这份修改？小丑鱼会先检查项目是否发生变化。" : "确认放弃这份修改提案？项目文件不会改变。")) return;
   try {
     await api(`/api/development/proposal/${action}`, { method: "POST", body: JSON.stringify({ id }) });
     await refreshData();
-    showToast(applying ? "修改已写入项目" : "修改提案已放弃");
+    showToast(applying ? "修改已应用到项目" : "修改提案已放弃");
   } catch (error) {
     await refreshData();
     showToast(error.message || "操作未完成", true);
   }
 }
 
+async function continueDevelopment(id) {
+  const job = state.jobs.find((item) => item.id === id);
+  if (!job) return showToast("没有找到这次开发记录", true);
+  await handoffJob(id);
+  selectCapability("developer");
+  $("#workspaceInput").value = String(job.payload?.workspacePath || "");
+  $("#instructionInput").value = "";
+  $("#instructionInput").placeholder = "继续告诉小丑鱼要调整什么，例如：按钮还是会抖动，请检查原因并修复";
+  setDevelopmentMode(job.payload?.accessMode, false);
+  openCapability("", { focusInput: true });
+  saveDraft();
+}
 async function handoffJob(id) {
   const job = state.jobs.find((item) => item.id === id);
   const artifact = artifactFromJob(job || {});
@@ -633,7 +723,7 @@ function renderFiles() {
   artifacts.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const groups = new Map();
   for (const artifact of artifacts) {
-    const key = `${artifact.capabilityId || "file"}:${artifact.title || artifact.taskId || artifact.id}`;
+    const key = `${artifact.capabilityId || "file"}:${artifactDisplayTitle(artifact) || artifact.taskId || artifact.id}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(artifact);
   }
@@ -642,7 +732,7 @@ function renderFiles() {
     const latest = versions[0];
     const capability = capabilityForBackend(latest.capabilityId);
     return `<article class="file-card">
-      <div class="file-card-top"><div><h2>${escapeHtml(latest.title || "未命名文件")}</h2><p>${capability.name} · ${versions.length > 1 ? `${versions.length} 个版本` : displayDate(latest.createdAt)}</p></div><span class="file-type">${escapeHtml(String(latest.format || "file").toUpperCase())}</span></div>
+      <div class="file-card-top"><div><h2>${escapeHtml(artifactDisplayTitle(latest))}</h2><p>${capability.name} · ${versions.length > 1 ? `${versions.length} 个版本` : displayDate(latest.createdAt)}</p></div><span class="file-type">${escapeHtml(String(latest.format || "file").toUpperCase())}</span></div>
       <div class="versions">${versions.slice(0, 5).map((file, index) => `<div class="version-row"><span>${versions.length > 1 ? `版本 ${versions.length - index}` : "最新结果"} · ${artifactProofLabel(file)} · ${displayDate(file.createdAt)}</span><span class="version-actions">${artifactLinks(file, true)}</span></div>`).join("")}</div>
     </article>`;
   }).join("");
@@ -797,7 +887,14 @@ function bindEvents() {
   $("#goalInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
   $("#instructionInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
   $("#workspaceInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
-  $("#accessModeSelect").addEventListener("change", saveDraft);
+  $("#useRecentWorkspace").addEventListener("click", () => {
+    const path = recentWorkspaces()[0];
+    if (!path) return;
+    $("#workspaceInput").value = path;
+    updateLaunchState();
+    saveDraft();
+  });
+  $$('[data-access-mode]').forEach((button) => button.addEventListener("click", () => setDevelopmentMode(button.dataset.accessMode)));
   $("#formatSelect").addEventListener("change", saveDraft);
   $("#memoryToggle").addEventListener("change", saveDraft);
   $("#materialInput").addEventListener("change", async (event) => { await addMaterial(event.target.files?.[0]); event.target.value = ""; });
@@ -810,6 +907,7 @@ async function init() {
   renderStaticIcons();
   configureReturnLinks();
   bindEvents();
+  renderRecentWorkspaces();
   renderCatalog();
   renderMaterials();
   updateContinueButton();

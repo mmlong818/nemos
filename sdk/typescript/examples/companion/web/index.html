@@ -415,6 +415,21 @@
     flex-direction:column;
     gap:16px;
   }
+  .starter-prompts {
+    align-self:flex-start;
+    max-width:min(680px,100%);
+    display:grid;
+    gap:9px;
+    padding:14px;
+    border:1px solid #d8d1c6;
+    border-radius:12px;
+    background:rgba(255,252,247,.86);
+  }
+  .starter-prompts strong { font-size:13px; }
+  .starter-prompts span { color:#77736b; font-size:12px; }
+  .starter-prompt-actions { display:flex; flex-wrap:wrap; gap:7px; }
+  .starter-prompt-actions button { min-height:34px; padding:0 11px; border:1px solid #d8d1c6; border-radius:7px; color:#45463f; background:#fff; font-size:12px; cursor:pointer; }
+  .starter-prompt-actions button:hover { border-color:#b33f72; color:#8f2854; background:#fff7fa; }
   .row {
     display:flex;
     max-width:min(86%,860px);
@@ -978,7 +993,7 @@
     backdrop-filter:blur(18px);
     -webkit-backdrop-filter:blur(18px);
   }
-  #vbtn, #imgbtn {
+  #vbtn, #imgbtn, #filebtn {
     width:44px;
     height:44px;
     border:1px solid var(--line);
@@ -989,8 +1004,8 @@
     box-shadow:var(--shadow-sm);
     transition:transform .15s ease,background .15s ease,box-shadow .15s ease;
   }
-  #vbtn:hover, #imgbtn:hover { transform:translateY(-1px); box-shadow:0 12px 24px rgba(19,43,51,.12); }
-  #vbtn.on, #imgbtn.on { background:var(--grad); }
+  #vbtn:hover, #imgbtn:hover, #filebtn:hover { transform:translateY(-1px); box-shadow:0 12px 24px rgba(19,43,51,.12); }
+  #vbtn.on, #imgbtn.on, #filebtn.on { background:var(--grad); }
   #txt {
     flex:1;
     height:46px;
@@ -1736,7 +1751,7 @@
     .chat-character-banner .character-stage { margin:-70px auto -26px; }
     .empty-copy h2 { font-size:28px; }
     #composer { padding:12px 10px; gap:7px; }
-    #vbtn, #imgbtn { width:40px; height:40px; border-radius:13px; }
+    #vbtn, #imgbtn, #filebtn { width:40px; height:40px; border-radius:13px; }
     #txt { min-width:0; height:42px; padding:0 12px; }
     #send { min-width:70px; height:42px; padding:0 15px; }
   }
@@ -2185,7 +2200,17 @@
     min-height:54px;
     padding-top:7px;
   }
-  #vbtn, #imgbtn, #shotbtn {
+  .attachment-preview { display:none; align-items:center; gap:9px; margin:9px 10px 0; padding:8px 9px; border:1px solid #ded7cd; border-radius:8px; background:#f8f5ef; }
+  .attachment-preview.on { display:flex; }
+  .attachment-preview > span { width:30px; height:34px; flex:0 0 30px; display:grid; place-items:center; border:1px solid #d8d1c6; border-radius:6px; color:#8f2f59; background:#fffefa; }
+  .attachment-preview > span svg { width:16px; height:16px; }
+  .attachment-preview-copy { min-width:0; display:grid; gap:2px; }
+  .attachment-preview-copy strong { overflow:hidden; color:#31332f; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+  .attachment-preview-copy small { color:#777970; font-size:10.5px; }
+  .attachment-preview button { width:24px; height:24px; margin-left:auto; border:0; border-radius:5px; color:#69707a; background:transparent; cursor:pointer; }
+  .attachment-preview button:hover { color:#8f2f59; background:#f3e9ed; }
+  #txtWrap.has-attachment #txt { min-height:54px; padding-top:7px; }
+  #vbtn, #imgbtn, #shotbtn, #filebtn {
     width:34px;
     height:34px;
     border:0;
@@ -2195,8 +2220,8 @@
     font-size:18px;
     color:#4b5563;
   }
-  #vbtn:hover, #imgbtn:hover, #shotbtn:hover { transform:none; background:#e9e9e9; box-shadow:none; }
-  #vbtn.on, #imgbtn.on, #shotbtn.on { background:#dff4e8; color:#07c160; }
+  #vbtn:hover, #imgbtn:hover, #shotbtn:hover, #filebtn:hover { transform:none; background:#e9e9e9; box-shadow:none; }
+  #vbtn.on, #imgbtn.on, #shotbtn.on, #filebtn.on { background:#dff4e8; color:#07c160; }
   #send {
     min-width:58px;
     height:34px;
@@ -2403,7 +2428,7 @@
     min-height:80px;
     color:#221c2f;
   }
-  #vbtn, #imgbtn, #shotbtn {
+  #vbtn, #imgbtn, #shotbtn, #filebtn {
     color:#554c63;
     border-radius:4px;
   }
@@ -2421,7 +2446,8 @@
   #topActions .ui-icon,
   #vbtn .ui-icon,
   #imgbtn .ui-icon,
-  #shotbtn .ui-icon { width:18px; height:18px; margin:auto; }
+  #shotbtn .ui-icon,
+  #filebtn .ui-icon { width:18px; height:18px; margin:auto; }
   #quickGroup .ui-icon { width:18px; height:18px; margin:auto; }
   #wechatSearch .search-icon {
     position:absolute;
@@ -2436,8 +2462,8 @@
     line-height:1;
     color:currentColor;
   }
-  #vbtn:hover, #imgbtn:hover, #shotbtn:hover { background:#efe8f6; color:#9b5cf6; }
-  #vbtn.on, #imgbtn.on, #shotbtn.on { background:rgba(155,92,246,.13); color:#9b5cf6; }
+  #vbtn:hover, #imgbtn:hover, #shotbtn:hover, #filebtn:hover { background:#efe8f6; color:#9b5cf6; }
+  #vbtn.on, #imgbtn.on, #shotbtn.on, #filebtn.on { background:rgba(155,92,246,.13); color:#9b5cf6; }
   .image-preview img { border-color:#e2d8ed; }
   #send {
     background:var(--grad);
@@ -2487,8 +2513,8 @@
   .contact-search-empty { padding:28px 14px; color:#777970; font-size:12px; line-height:1.6; text-align:center; }
   #topbar, #composer { background:#fffcf7; border-color:#ddd7cd; }
   #header .hname, #txt, .row.other .bub { color:#20221f; }
-  #topActions button, .top-icon, #vbtn, #imgbtn, #shotbtn { color:#5d6059; }
-  #topActions button:hover, .top-icon:hover, #vbtn:hover, #imgbtn:hover, #shotbtn:hover { color:#8f2f59; background:#f3e9ed; }
+  #topActions button, .top-icon, #vbtn, #imgbtn, #shotbtn, #filebtn { color:#5d6059; }
+  #topActions button:hover, .top-icon:hover, #vbtn:hover, #imgbtn:hover, #shotbtn:hover, #filebtn:hover { color:#8f2f59; background:#f3e9ed; }
   .row.other .bub { background:#fffcf7; border:1px solid #e2dbd0; }
   .row.me .bub, .msg-avatar.me-avatar, #callbtn.on { color:#fff; background:#b33f72; }
   .expert-longform-row {
@@ -2909,7 +2935,7 @@
     .msg-body { max-width:calc(100vw - 84px); }
     #composer { min-height:104px; padding:8px; }
     #txtWrap { min-height:58px; }
-    #vbtn, #imgbtn, #shotbtn { width:36px; height:36px; }
+    #vbtn, #imgbtn, #shotbtn, #filebtn { width:36px; height:36px; }
     #composerTool, #composerCapability { width:36px; min-width:36px; padding:0; border-left:0; }
     #composerTool span:last-child, #composerCapability span:last-child { display:none; }
     #chatCapabilityBridge { grid-template-columns:30px minmax(0,1fr); margin:8px 10px 0; }
@@ -3054,6 +3080,7 @@
         <button class="smitem" id="sm-avatar" type="button"><span class="smitem-icon" data-icon="image"></span><span><b>我的头像</b><small>更换自己的聊天头像</small></span></button>
         <button class="smitem" id="sm-model" type="button"><span class="smitem-icon" data-icon="link"></span><span><b>模型连接</b><small id="sm-model-summary">选择服务商、模型与 API Key</small></span></button>
         <button class="smitem" id="sm-persona" type="button"><span class="smitem-icon" data-icon="user"></span><span><b>专家与角色</b><small>调整专家和陪伴角色的表达</small></span></button>
+        <button class="smitem" id="sm-data" type="button"><span class="smitem-icon" data-icon="brain"></span><span><b>记忆与数据</b><small>查看、纠正和删除本机保存的信息</small></span></button>
         <button class="smitem dev-only" id="sm-sources" type="button"><span class="smitem-icon" data-icon="database"></span><span><b>内容来源</b><small>维护本机来源与连接</small></span></button>
         <button class="smitem dev-only" id="sm-toolsettings" type="button"><span class="smitem-icon" data-icon="settings"></span><span><b>工具设置</b><small>调整翻译、转写和润色</small></span></button>
         <button class="smitem dev-only" id="sm-memview" type="button"><span class="smitem-icon" data-icon="brain"></span><span><b>查看记忆</b><small>核对本机保存的信息</small></span></button>
@@ -3583,6 +3610,11 @@
     <div id="msgs"></div>
       <div id="composer">
         <div id="txtWrap">
+          <div id="attachmentPreview" class="attachment-preview" aria-live="polite">
+            <span data-icon="file" aria-hidden="true"></span>
+            <span class="attachment-preview-copy"><strong id="attachmentName"></strong><small id="attachmentMeta"></small></span>
+            <button id="attachmentClear" type="button" title="移除文件" aria-label="移除文件" data-icon="x"></button>
+          </div>
           <div id="imagePreview" class="image-preview" aria-live="polite">
             <img id="imagePreviewImg" alt="待发送图片" />
             <button id="imageClear" type="button" title="移除图片" aria-label="移除图片" data-icon="x"></button>
@@ -3595,6 +3627,8 @@
             <button id="shotbtn" title="截屏" data-icon="scissors"></button>
             <button id="imgbtn" title="发图片（识图）" data-icon="image"></button>
             <input type="file" id="imgfile" accept="image/*" style="display:none" />
+            <button id="filebtn" type="button" title="上传文件" aria-label="上传文件" data-icon="file"></button>
+            <input type="file" id="chatfile" accept=".docx,.pptx,.xlsx,.pdf,.txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" style="display:none" />
             <button id="composerTool" type="button" title="翻译、语音转写和文字润色" aria-label="打开小工具"><span data-icon="wrench" aria-hidden="true"></span><span>小工具</span></button>
             <button id="composerCapability" type="button" title="把当前目标交给能力" aria-label="把当前目标交给能力"><span data-icon="boxes" aria-hidden="true"></span><span>交给能力</span></button>
           </div>
@@ -3859,11 +3893,16 @@ const AV = {
     hair: ["#3f3f46", "#71717a"], cloth: ["#581c87", "#a855f7"], coat: ["#fafafa", "#f3e8ff"],
     sign: "创", line: "检验早期需求、增长信号和最小验证。"
   },
+  teacher_lin: {
+    e: "教", g: "linear-gradient(135deg,#365c55,#b85c72)",
+    hair: ["#3f4643", "#6b756f"], cloth: ["#365c55", "#b85c72"], coat: ["#f6f2e8", "#dce9e3"],
+    sign: "教", line: "一步一步理解，最后把方法变成自己的。"
+  },
 };
 const CHARACTER_ASSETS = new Set(["feifei", "azhe", "tuanzi", "lingling"]);
 const EXPERT_MARKS = {
   first_principles: "原", product_lead: "产", decision_analysis: "决", critical_thinking: "问", long_term_strategy: "长", system_architecture: "架", user_experience: "用", interface_design: "界", interaction_design: "互",
-  lean_engineering: "简", quality_testing: "测", release_operations: "发", industry_analysis: "业", pricing_finance: "价", brand_strategy: "牌", sales_growth: "销", startup_validation: "创",
+  lean_engineering: "简", quality_testing: "测", release_operations: "发", industry_analysis: "业", pricing_finance: "价", brand_strategy: "牌", sales_growth: "销", startup_validation: "创", teacher_lin: "教",
 };
 const GROUP_AV = {
   e: "专", g: "linear-gradient(135deg,#0f766e,#f97316)",
@@ -3879,6 +3918,7 @@ const ROLE_BADGES = {
   product_lead: { icon: "role-product", bg: "#eadce3", ink: "#7f3154" },
   decision_analysis: { icon: "role-decision", bg: "#e8dfd2", ink: "#735032" },
   critical_thinking: { icon: "role-think", bg: "#e3dfe9", ink: "#59496c" },
+  teacher_lin: { icon: "role-guide", bg: "#dce9e3", ink: "#365c55" },
   long_term_strategy: { icon: "role-strategy", bg: "#eee0c8", ink: "#765326" },
   system_architecture: { icon: "role-architecture", bg: "#dbe5e8", ink: "#365e6b" },
   user_experience: { icon: "role-user", bg: "#eadfd7", ink: "#83513a" },
@@ -3991,7 +4031,7 @@ function chatCharacterBannerHtml() {
     + '<div class="chat-character-copy"><strong>' + esc(meta.name) + '</strong><span>' + esc(v.line || "") + '</span></div>'
     + '</section>';
 }
-let state = { personas: [], contactIds: [], groups: [], relationships: [], relationOf: {}, avatars: { personas: {} }, profile: null, target: null, voice: false, pendingImage: null };
+let state = { personas: [], contactIds: [], contactCandidateIds: [], groups: [], relationships: [], relationOf: {}, avatars: { personas: {} }, profile: null, target: null, voice: false, pendingImage: null, pendingFile: null };
 
 async function api(path, body) {
   const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { cache: "no-store" });
@@ -4314,6 +4354,40 @@ function setPendingImage(dataUrl) {
   if ($("#imgbtn")) $("#imgbtn").classList.toggle("on", has);
   if ($("#shotbtn")) $("#shotbtn").classList.toggle("on", has);
 }
+function formatAttachmentSize(bytes) {
+  return bytes >= 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + " MB" : Math.max(1, Math.round(bytes / 1024)) + " KB";
+}
+function setPendingFile(file) {
+  state.pendingFile = file || null;
+  const has = !!state.pendingFile;
+  $("#txtWrap").classList.toggle("has-attachment", has);
+  $("#attachmentPreview").classList.toggle("on", has);
+  $("#filebtn").classList.toggle("on", has);
+  $("#attachmentName").textContent = has ? state.pendingFile.name : "";
+  $("#attachmentMeta").textContent = has ? `${state.pendingFile.kind.toUpperCase()} · ${formatAttachmentSize(state.pendingFile.size)}${state.pendingFile.truncated ? " · 内容较长，已截取" : ""}` : "";
+}
+async function chatFileToBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return btoa(binary);
+}
+async function prepareChatFile(file) {
+  const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || "";
+  const office = ["docx", "pptx", "xlsx", "pdf"].includes(extension);
+  const textFile = ["txt", "md", "csv", "json"].includes(extension);
+  if (!office && !textFile) throw new Error("支持 Word、PowerPoint、Excel、PDF、TXT、Markdown、CSV 和 JSON 文件");
+  const limit = office ? 8 * 1024 * 1024 : 2 * 1024 * 1024;
+  if (!file.size || file.size > limit) throw new Error(office ? "办公文件不能超过 8 MB" : "文本文件不能超过 2 MB");
+  if (office) {
+    const response = await api("/api/files/extract", { name: file.name, dataBase64: await chatFileToBase64(file) });
+    return { name: file.name, kind: response.extraction.kind, text: response.extraction.text, truncated: response.extraction.truncated, size: file.size };
+  }
+  const raw = (await file.text()).replace(/\0/g, "").trim();
+  if (!raw) throw new Error("文件中没有可读取的文字内容");
+  const truncated = raw.length > 120000;
+  return { name: file.name, kind: extension, text: raw.slice(0, 120000), truncated, size: file.size };
+}
 function requestNativeScreenshot() {
   const btn = $("#shotbtn");
   if (btn) btn.classList.add("on");
@@ -4476,7 +4550,7 @@ function renderLog() {
   const m = $("#msgs"); m.innerHTML = "";
   ensureConversationTree(logKey());
   const log = chatLogs[logKey()] || [];
-  if (!log.length) { m.innerHTML = emptyStateHtml(); m.scrollTop = 0; return; }
+  if (!log.length) { m.innerHTML = emptyStateHtml(); renderStarterPrompts(log); m.scrollTop = 0; return; }
   m.innerHTML = "";
   for (const e of log) {
     if (e.longform && isSubstantialExpertLongform(e.longform.sections)) {
@@ -4489,12 +4563,28 @@ function renderLog() {
       addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact });
     }
   }
+  renderStarterPrompts(log);
   m.scrollTop = m.scrollHeight;
+}
+
+function renderStarterPrompts(log) {
+  const isClownfish = state.target?.kind === "persona" && state.target.id === APP_PERSONA_ID;
+  if (!isClownfish || log.some((entry) => entry.side === "me" || entry.side === "user")) return;
+  const card = document.createElement("section");
+  card.className = "starter-prompts";
+  card.setAttribute("aria-label", "第一次可以这样开始");
+  card.innerHTML = '<strong>第一次可以从一件小事开始</strong><span>点一个例子，再补充你的具体内容。</span><div class="starter-prompt-actions"><button type="button" data-starter="帮我整理这段文字：">整理一段文字</button><button type="button" data-starter="帮我做一份工作汇报，主题是：">做一份汇报</button><button type="button" data-starter="帮我梳理这个问题：">梳理一个问题</button></div>';
+  card.querySelectorAll("[data-starter]").forEach((button) => button.addEventListener("click", () => {
+    $("#txt").value = button.dataset.starter;
+    $("#txt").focus();
+    $("#txt").setSelectionRange($("#txt").value.length, $("#txt").value.length);
+  }));
+  $("#msgs").appendChild(card);
 }
 
 async function loadState() {
   const s = await api("/api/state");
-  state.personas = s.personas; state.contactIds = s.contactIds || state.personas.map((p) => p.id); state.groups = s.groups;
+  state.personas = s.personas; state.contactIds = s.contactIds || state.personas.map((p) => p.id); state.contactCandidateIds = s.contactCandidateIds || state.contactIds; state.groups = s.groups;
   state.relationships = s.relationships || []; state.relationOf = s.relationOf || {};
   state.avatars = s.avatars || { personas: {} };
   state.profile = s.profile || null;
@@ -4548,6 +4638,7 @@ async function completeOnboarding() {
       record(key, { side: "other", who: null, text: msg, pid: APP_PERSONA_ID });
       if (i < messages.length - 1) await sleep(onboardingBubbleDelay(msg, i));
     }
+    renderLog();
   } catch (error) {
     $("#onboardError").textContent = error && error.message ? error.message : "保存失败。";
   } finally {
@@ -4591,7 +4682,8 @@ function visiblePersonas() {
 
 function addablePersonas() {
   const visibleIds = new Set(state.contactIds || []);
-  return state.personas.filter((p) => !visibleIds.has(p.id));
+  const candidateIds = new Set(state.contactCandidateIds || []);
+  return state.personas.filter((p) => candidateIds.has(p.id) && !visibleIds.has(p.id));
 }
 
 function renderContacts() {
@@ -5040,7 +5132,7 @@ function waitForStreamMessage(ms) {
 }
 
 // 单人回复按空行拆成独立消息；前一条出现后，再逐条展示后续消息。
-async function streamPersona(key, text, voice, image, messageId) {
+async function streamPersona(key, text, voice, image, attachment, messageId) {
   const { inner, bub } = addTyping();
   const pid = state.target.id;
   let acc = "", started = false, facts = null, artifact = null;
@@ -5069,7 +5161,7 @@ async function streamPersona(key, text, voice, image, messageId) {
     }
   }
   try {
-    const resp = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: { kind: "persona", id: state.target.id }, text, voice, image, messageId, ...conversationRequestOptions(key) }) });
+    const resp = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: { kind: "persona", id: state.target.id }, text, voice, image, attachment, messageId, ...conversationRequestOptions(key) }) });
     if (!resp.ok) {
       let detail = "";
       try { detail = await resp.text(); } catch {}
@@ -5151,11 +5243,11 @@ function expertLongformTitle(text) {
 }
 
 // 群聊：普通闲聊保留气泡；专家任务整合为可阅读、可复制的长文。
-async function sendRegular(key, text, voice, image, messageId) {
+async function sendRegular(key, text, voice, image, attachment, messageId) {
   const { row } = addTyping();
   const isGroup = key.indexOf("group:") === 0;
   try {
-    const data = await api("/api/chat", { target: { kind: state.target.kind, id: state.target.id }, text, voice, image, messageId, ...conversationRequestOptions(key) });
+    const data = await api("/api/chat", { target: { kind: state.target.kind, id: state.target.id }, text, voice, image, attachment, messageId, ...conversationRequestOptions(key) });
     row.remove();
     const replies = data.replies || [];
     if (shouldRenderExpertLongform(replies)) {
@@ -5190,7 +5282,8 @@ async function sendMsg(voiceFlag, overrideText) {
   if (sending) return;
   const text = (overrideText != null ? overrideText : $("#txt").value).trim();
   const image = state.pendingImage;
-  if ((!text && !image) || !state.target) return;
+  const attachment = state.pendingFile;
+  if ((!text && !image && !attachment) || !state.target) return;
   sending = true;
   if (overrideText == null) $("#txt").value = "";
   $("#send").disabled = true;
@@ -5198,15 +5291,17 @@ async function sendMsg(voiceFlag, overrideText) {
   const key = logKey();
   const voice = !!voiceFlag;
   const messageId = "message-" + crypto.randomUUID();
-  const utext = (image ? "[图片] " : "") + (text || "（图片）");
+  const attachmentLabel = attachment ? `【文件：${attachment.name}】 ` : "";
+  const utext = (image ? "[图片] " : "") + attachmentLabel + (text || (attachment ? "请查看这个文件" : "（图片）"));
   addRow("me", null, utext, { voice });
-  record(key, { id: messageId, side: "me", who: null, text: utext, voice });
+  record(key, { id: messageId, side: "me", who: null, text: utext, voice, attachment });
   setPendingImage(null); $("#imgfile").value = "";
+  setPendingFile(null); $("#chatfile").value = "";
   const per = state.target.kind === "persona" ? state.personas.find((x) => x.id === state.target.id) : null;
   lastReply = { pid: null, text: "", live: false };
   try {
-    if (state.target.kind === "persona") await streamPersona(key, text, voice, image, messageId);
-    else await sendRegular(key, text, voice, image, messageId);
+    if (state.target.kind === "persona") await streamPersona(key, text, voice, image, attachment, messageId);
+    else await sendRegular(key, text, voice, image, attachment, messageId);
   } finally {
     sending = false;
     $("#send").disabled = false;
@@ -5686,6 +5781,7 @@ $("#callbtn").onclick = () => (callMode ? stopCall() : startCall());
 $("#callend").onclick = stopCall;
 
 $("#imgbtn").onclick = () => $("#imgfile").click();
+$("#filebtn").onclick = () => $("#chatfile").click();
 $("#shotbtn").onclick = requestNativeScreenshot;
 $("#imageClear").onclick = () => { setPendingImage(null); $("#imgfile").value = ""; $("#txt").focus(); };
 $("#imgfile").onchange = (e) => {
@@ -5694,6 +5790,22 @@ $("#imgfile").onchange = (e) => {
   const r = new FileReader();
   r.onload = () => setPendingImage(r.result);
   r.readAsDataURL(f);
+};
+$("#attachmentClear").onclick = () => { setPendingFile(null); $("#chatfile").value = ""; $("#txt").focus(); };
+$("#chatfile").onchange = async (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  $("#filebtn").disabled = true;
+  try {
+    setPendingFile(await prepareChatFile(file));
+    $("#txt").focus();
+  } catch (error) {
+    setPendingFile(null);
+    event.target.value = "";
+    alert(error instanceof Error ? error.message : "文件读取失败");
+  } finally {
+    $("#filebtn").disabled = false;
+  }
 };
 window.addEventListener("nemos-native-screenshot", (e) => {
   const dataUrl = e.detail;
@@ -7313,10 +7425,11 @@ function openCapabilityPanel(options = {}) {
   const sourceMessages = activeConversation(conversationKey)?.messages || chatLogs[conversationKey] || [];
   const conversation = sourceMessages.map((entry) => {
     const persona = entry.pid ? state.personas.find((item) => item.id === entry.pid) : null;
+    const attachmentText = entry.attachment?.text ? `\n\n【附件原文：${entry.attachment.name || "文件"}】\n${String(entry.attachment.text).slice(0, 120000)}` : "";
     return {
       speaker: entry.side === "me" ? "用户" : (entry.who || persona?.name || chatName),
       side: entry.side === "me" ? "user" : "assistant",
-      text: String(entry.text || ""),
+      text: String(entry.text || "") + attachmentText,
     };
   }).filter((entry) => entry.text.trim());
   const draft = options.includeDraft ? $("#txt").value.trim().slice(0, 2000) : "";
@@ -7347,6 +7460,7 @@ function openCapabilityPanel(options = {}) {
     chatName: chatName || "小丑鱼",
     goal,
     conversation,
+    materials: state.pendingFile ? [{ name: state.pendingFile.name, size: state.pendingFile.size, text: state.pendingFile.text, kind: state.pendingFile.kind }] : [],
     createdAt: Date.now(),
   }));
   window.location.href = "/capabilities";
@@ -7788,7 +7902,7 @@ document.addEventListener("keydown", (event) => {
   setQuickCreateMenu(false);
   if ($("#contactmodal").classList.contains("show")) $("#contactmodal").classList.remove("show");
 });
-$("#railCap").onclick = openCapabilityPanel;
+$("#railCap").onclick = () => { window.location.href = "/capabilities"; };
 $("#railOffice").onclick = () => { window.location.href = "/office"; };
 $("#railWork").onclick = () => { window.location.href = "/tasks"; };
 $("#composerTool").onclick = openToolModal;
@@ -7802,6 +7916,7 @@ $("#railUserAvatar").onclick = () => openAppIfNeeded();
 $("#sm-group").onclick = () => smRun(openGroupModal);
 $("#sm-avatar").onclick = () => smRun(() => openPersonaModal("me"));
 $("#sm-model").onclick = openModelModal;
+$("#sm-data").onclick = () => { window.location.href = "/memory"; };
 $("#sm-sources").onclick = () => smRun(openSourceModal);
 $("#sm-toolsettings").onclick = () => smRun(openToolSettings);
 $("#sm-persona").onclick = () => smRun(openPersonaModal);

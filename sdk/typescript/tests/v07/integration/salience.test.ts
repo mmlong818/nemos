@@ -84,7 +84,7 @@ test("v0.7.4 evidence coverage and salience update when support grows", () => {
   assert.ok(memory.salience!.score > supportedScore);
 });
 
-test("temporary and inferred facts remain candidates until independently supported", () => {
+test("temporary and hedged facts remain candidates even when repeated", () => {
   const memory: Memory = {
     id: "episodic:candidate",
     layer: "episodic",
@@ -117,8 +117,35 @@ test("temporary and inferred facts remain candidates until independently support
 
   memory.source_event_ids!.push("event:2");
   ensureMemoryQualityMetadata(memory);
-  assert.equal(memory.promotion_state, "promoted");
-  assert.equal(memory.promotion_reason, "independent_evidence");
+  assert.equal(memory.promotion_state, "candidate");
+  assert.equal(memory.promotion_reason, "hedged_inference");
+});
+
+test("hedged derived memories do not become long-term preferences", () => {
+  const memory: Memory = {
+    id: "semantic:hedged-style",
+    layer: "semantic",
+    type: "preference",
+    scope: "global",
+    content: "用户可能偏好方文山的词风，也可能只是举例。",
+    source: { authoritative: false, kind: "derived", origin: "semantic-analysis", chain_depth: 1, confidence: "high" },
+    arousal: { value: 0, signal_sources: [] },
+    surprise: { value: 0, basis: "test" },
+    ownership: { kind: "self" },
+    created_at: "2026-08-07T00:00:00.000Z",
+    last_accessed: "2026-08-07T00:00:00.000Z",
+    access_count: 0,
+    stability: 1,
+    schema_version: "0.7",
+    subject_id: "user",
+    predicate: "prefers_style",
+    claim_key: "user:prefers_style",
+    source_event_ids: ["event:1", "event:2"],
+  };
+
+  ensureMemoryQualityMetadata(memory);
+  assert.equal(memory.promotion_state, "candidate");
+  assert.equal(memory.promotion_reason, "hedged_inference");
 });
 test("v0.7.4 sqlite preserves salience and evidence coverage across restart", async () => {
   const path = join(tmpdir(), "nemos-v074-salience-" + process.pid + "-" + Date.now() + ".db");

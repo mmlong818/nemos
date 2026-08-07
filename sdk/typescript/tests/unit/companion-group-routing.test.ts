@@ -42,6 +42,12 @@ test("顾问团按技术主题选择两位专家，保持专家在前、统筹�
   assert.deepEqual(selectGroupResponderIds(members.map((member) => member.id), route), ["system_architecture", "lean_engineering", "clownfish"]);
 });
 
+test("学习主题优先邀请林老师和思考教练", () => {
+  const learningMembers = [...members, { id: "teacher_lin", name: "林老师" }];
+  const route = resolveGroupReplyRoute(advisoryGroupId, "帮我理解这个概念并设计一道练习题", learningMembers, advisoryGroupId);
+  assert.deepEqual(selectGroupResponderIds(learningMembers.map((member) => member.id), route), ["teacher_lin", "critical_thinking", "clownfish"]);
+});
+
 test("顾问团明确 @ 专家时只由被点名专家回复", () => {
   const route = resolveGroupReplyRoute(advisoryGroupId, "@长期战略顾问 看一下长期战略", members, advisoryGroupId);
   assert.deepEqual(selectGroupResponderIds(members.map((member) => member.id), route), ["long_term_strategy"]);
