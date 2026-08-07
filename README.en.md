@@ -12,12 +12,24 @@ Clownfish combines four everyday surfaces:
 
 | Surface | User action | Current implementation |
 |---|---|---|
-| **Chat** | Ask, upload images, speak, and resume past conversations | Conversation branches, role or expert collaboration, and in-chat delivery |
+| **Chat** | Ask, upload images or files, speak, and resume past conversations | A single Clownfish entry, optional companion and teaching roles, expert-group collaboration, and in-chat delivery |
 | **Capabilities** | Describe an outcome or choose a capability directly | Background jobs, live progress, cancellation, retries, previews, and downloads |
 | **Files** | Open Word, PowerPoint, Excel, or PDF files | Original-file retention, local working copies, inline processing, and versions |
 | **Work** | Review tasks, results, runs, and memory | Scheduled tasks, artifacts, execution records, and preference management |
 
 New users do not need to create a project or understand tool names first.
+
+## Chat: a simple entry with expertise where it belongs
+
+The home screen keeps three clear default one-to-one entries:
+
+- **Clownfish** handles everyday questions, capability calls, expert coordination, and final delivery;
+- **Feifei** provides friend-like conversation;
+- **Teacher Lin** supports concept learning, step-by-step problem solving, review, and transfer practice.
+
+The first time a role conversation is opened, the page briefly explains what that role can help with and which problems it suits, so users do not need to probe for its purpose.
+
+Functional experts no longer occupy separate one-to-one contacts. They live in the Clownfish expert group and are not locked after the first turn: every turn is routed from the current topic, follow-ups prefer the previous specialists, topic changes select a new set, and `@expert` can name someone explicitly. Clownfish coordinates the final result. When chat hands work to a capability, both the original conversation text and a distilled task context are transferred instead of only the final sentence.
 
 ## Capabilities: describe the goal or choose directly
 
@@ -30,7 +42,7 @@ Selection opens the task form immediately, without an extra preparation step. Jo
 
 ![Clownfish capabilities](docs/assets/readme/clownfish-capabilities.jpg)
 
-Built-in capabilities cover presentation creation, formal documents, deep research, Hong Kong market briefs, complex-problem framing, product interface design, meeting minutes, web reports, option comparison, business development, market opportunity simulation, and new-capability generation.
+Built-in capabilities cover presentation creation, formal documents, deep research, Hong Kong market briefs, complex-problem framing, product interface design, project development, meeting minutes, web reports, option comparison, business development, market opportunity simulation, and new-capability generation.
 
 Outputs include PPTX, DOCX, PDF, XLSX, HTML, Markdown, and structured data.
 
@@ -42,6 +54,7 @@ The file workspace supports DOCX, PPTX, XLSX, and PDF:
 - The original stays local and is never overwritten by editing;
 - PDFs retain their original layout; Office formats receive a structured preview while the original file is retained;
 - Editing, versions, AI progress, and results stay on the same page;
+- Deleted working files move to a recoverable trash area before permanent deletion;
 - Results can be exported to DOCX, PDF, PPTX, XLSX, HTML, or Markdown.
 
 ![Clownfish office workspace](docs/assets/readme/clownfish-office.jpg)
@@ -67,6 +80,8 @@ See the [TypeScript SDK](sdk/typescript/README.en.md) and the [v0.7 implementati
 
 Choose a provider, model name, and API key under **Settings → Model connection**. Clownfish tests the connection before saving it.
 
+Clownfish follows provider presets when routing models. Providers with a separate daily-chat model use it automatically, while experts, capabilities, file generation, and complex work use the configured task model. When no separate route is defined, both use the same model. A conversation can also override the model explicitly.
+
 ![Clownfish model connection](docs/assets/readme/clownfish-model-connection.jpg)
 
 Presets are available for Zhipu GLM, OpenAI, Anthropic Claude, DeepSeek, Alibaba Qwen, MiniMax, and custom services. OpenAI-compatible and Anthropic-compatible protocols are supported. Vision, web, voice, and embedding support depends on the selected service and model.
@@ -82,7 +97,7 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 
 ## Run locally
 
-Node.js 20 or newer is required.
+Node.js 22.19 or newer is required.
 
 ~~~powershell
 cd sdk\typescript

@@ -66,3 +66,18 @@ test("角色使用功能徽记，右侧操作始终保留固定槽位", () => {
     assert.match(experts, new RegExp(`name: "${name}"`));
   }
 });
+
+test("首次角色对话说明用途，专家配置不再占用全局设置", () => {
+  const page = readFileSync(join(webRoot, "index.html"), "utf8");
+
+  for (const roleId of ["clownfish", "feifei", "teacher_lin", "azhe", "lingling"]) {
+    assert.match(page, new RegExp(`${roleId}: \\{`));
+  }
+  assert.match(page, /每轮按当前问题动态邀请专家/);
+  assert.match(page, /连续追问同一问题时，优先延续上一轮专家/);
+  assert.doesNotMatch(page, /id="sm-persona"/);
+  assert.doesNotMatch(page, />专家与角色</);
+  assert.match(page, /"角色设置"/);
+  assert.match(page, /let onboardingBusy = false/);
+  assert.match(page, /dedupeAppOnboarding\(\);\s*renderLog\(\)/);
+});
