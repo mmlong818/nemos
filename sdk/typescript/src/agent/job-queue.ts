@@ -443,7 +443,6 @@ export class AgentJobWorker {
     const timeout = setTimeout(() => {
       controller.abort(new Error(`Agent job timed out after ${job.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS}ms`));
     }, job.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS);
-    timeout.unref?.();
     try {
       const result = await handler(job, {
         signal: controller.signal,
