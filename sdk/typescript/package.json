@@ -50,7 +50,7 @@
     "better-sqlite3": "^12.10.0",
     "jszip": "^3.10.1",
     "pdfjs-dist": "^5.4.624",
-    "pdfkit": "^0.17.2",
+    "pdfkit": "^0.19.1",
     "pptxgenjs": "^4.0.1",
     "typebox": "^1.1.4"
   },
