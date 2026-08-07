@@ -4867,43 +4867,7 @@ function sanitizeUrl(url) {
   return "";
 }
 function sanitizeHtml(input) {
-  const allowedTags = new Set(["A", "P", "BR", "STRONG", "B", "EM", "I", "U", "S", "UL", "OL", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "PRE", "CODE", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "HR", "DIV", "SPAN"]);
-  const allowedAttrs = new Set(["href", "title", "colspan", "rowspan"]);
-  const parsed = new DOMParser().parseFromString(String(input || ""), "text/html");
-  const cleanNode = (node) => {
-    if (node.nodeType === 8) { node.remove(); return; }
-    if (node.nodeType !== 1) return;
-    const el = node;
-    if (!allowedTags.has(el.tagName)) {
-      const text = document.createTextNode(el.textContent || "");
-      el.replaceWith(text);
-      return;
-    }
-    for (const attr of [...el.attributes]) {
-      const name = attr.name.toLowerCase();
-      if (name.startsWith("on") || name === "style" || name === "srcdoc" || name === "src") {
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      if (!allowedAttrs.has(name)) {
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      if (name === "href") {
-        const safe = sanitizeUrl(attr.value);
-        if (safe) {
-          el.setAttribute("href", safe);
-          el.setAttribute("target", "_blank");
-          el.setAttribute("rel", "noopener noreferrer");
-        } else {
-          el.removeAttribute(attr.name);
-        }
-      }
-    }
-    for (const child of [...el.childNodes]) cleanNode(child);
-  };
-  for (const child of [...parsed.body.childNodes]) cleanNode(child);
-  return parsed.body.innerHTML;
+  return "<pre><code>" + escapeHtmlText(String(input || "")) + "</code></pre>";
 }
 function inlineMarkdown(text) {
   let s = escapeHtmlText(text);
@@ -4973,7 +4937,7 @@ function markdownToHtml(text) {
   }
   if (inCode) out.push("<pre><code>" + escapeHtmlText(code.join("\n")) + "</code></pre>");
   flushPara(); flushList(); flushTable();
-  return sanitizeHtml(out.join(""));
+  return out.join("");
 }
 function renderBubbleContent(bub, text, opts = {}) {
   const raw = String(text || "");

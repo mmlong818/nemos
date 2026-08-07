@@ -209,14 +209,13 @@ export class StdioMcpClientAdapter implements McpClientAdapter {
   private touch(slot: RunSlot, runId: string): void {
     slot.lastUsed = Date.now();
     if (slot.timer) clearTimeout(slot.timer);
-    const idleDelay = Math.max(1_000, Math.min(24 * 60 * 60_000, this.sessionIdleMs));
     slot.timer = setTimeout(() => {
-      if (slot.active > 0) {
+      if (slot.active > 0 || Date.now() - slot.lastUsed < this.sessionIdleMs) {
         this.touch(slot, runId);
         return;
       }
       void this.dropRun(runId, slot);
-    }, idleDelay);
+    }, 5_000);
     slot.timer.unref?.();
   }
 
