@@ -217,6 +217,8 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   assert.match(html, /id="useRecentWorkspace"/);
   assert.match(script, /clownfish-recent-workspaces-v1/);
   assert.match(html, /id="accessModeSelect"/);
+  assert.match(html, /开发模式会运行项目自带的测试或构建脚本/);
+  assert.match(html, /只读检查不会运行这些脚本/);
   assert.doesNotMatch(html, /personaSelect|由谁完成/);
   assert.doesNotMatch(script, /personaSelect/);
   assert.match(script, /personaId: "clownfish"/);
