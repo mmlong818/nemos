@@ -2256,6 +2256,24 @@
     color:#b5b8bf;
     font-size:13px;
   }
+  .role-intro-state { min-height:360px; padding:28px; }
+  .role-intro-card {
+    width:min(520px,100%);
+    padding:22px 24px;
+    border:1px solid #ddd8cf;
+    border-radius:16px;
+    background:#fffdf9;
+    text-align:left;
+    box-shadow:0 10px 30px rgba(58,48,38,.05);
+  }
+  .role-intro-head { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .role-intro-head .avatar { width:42px; height:42px; flex:0 0 42px; border-radius:11px; overflow:hidden; display:grid; place-items:center; }
+  .role-intro-head h2 { margin:0; color:#25231f; font-size:18px; font-weight:760; }
+  .role-intro-card > p { margin:0 0 12px; color:#66625b; font-size:13px; line-height:1.65; }
+  .role-intro-card ul { margin:0; padding:0; list-style:none; display:grid; gap:8px; }
+  .role-intro-card li { position:relative; padding-left:16px; color:#35322d; font-size:13px; line-height:1.55; }
+  .role-intro-card li::before { content:""; position:absolute; left:0; top:.62em; width:5px; height:5px; border-radius:50%; background:#b73870; }
+  .role-intro-hint { margin-top:14px !important; padding-top:12px; border-top:1px solid #ebe6de; color:#8a8379 !important; }
   .empty-prompts span {
     background:#fff;
     border-color:#e5e5e5;
@@ -3079,7 +3097,6 @@
         <button class="smitem" id="sm-group" type="button"><span class="smitem-icon" data-icon="users"></span><span><b>群聊与成员</b><small>发起群聊，或管理当前群聊</small></span></button>
         <button class="smitem" id="sm-avatar" type="button"><span class="smitem-icon" data-icon="image"></span><span><b>我的头像</b><small>更换自己的聊天头像</small></span></button>
         <button class="smitem" id="sm-model" type="button"><span class="smitem-icon" data-icon="link"></span><span><b>模型连接</b><small id="sm-model-summary">选择服务商、模型与 API Key</small></span></button>
-        <button class="smitem" id="sm-persona" type="button"><span class="smitem-icon" data-icon="user"></span><span><b>专家与角色</b><small>调整专家和陪伴角色的表达</small></span></button>
         <button class="smitem" id="sm-data" type="button"><span class="smitem-icon" data-icon="brain"></span><span><b>记忆与数据</b><small>查看、纠正和删除本机保存的信息</small></span></button>
         <button class="smitem dev-only" id="sm-sources" type="button"><span class="smitem-icon" data-icon="database"></span><span><b>内容来源</b><small>维护本机来源与连接</small></span></button>
         <button class="smitem dev-only" id="sm-toolsettings" type="button"><span class="smitem-icon" data-icon="settings"></span><span><b>工具设置</b><small>调整翻译、转写和润色</small></span></button>
@@ -3659,6 +3676,7 @@
 <script>
 const BUILD = "v16 clownfish-identity-migration";
 const APP_PERSONA_ID = "clownfish";
+const ADVISORY_GROUP_ID = "nemos_advisory_group";
 const PERSONA_ID_MIGRATIONS = new Map([
   [String.fromCharCode(...[122, 104, 105, 119, 101, 105]), "clownfish"],
   [String.fromCharCode(...[109, 117, 115, 107]), "first_principles"],
@@ -4125,7 +4143,7 @@ function dedupeAppOnboarding() {
   const canonical = [
     displayName + "，你好，我是小丑鱼。",
     "你可以直接告诉我想聊什么或想完成什么。我会回答、调用能力，并把结果留在这段对话里。",
-    "需要不同专业判断时，我会按需邀请原理工程师、产品主理人、决策分析师等功能型专家；他们不会默认占据你的首页。",
+    "需要不同专业判断时，我会按需邀请可行性顾问、产品顾问、决策顾问等功能型专家；他们不会默认占据你的首页。",
     "你的长期偏好、任务记录和交付物默认保存在本机。你可以随时查看、修正或清除。",
     "现在直接说一件你想完成的事就可以。",
   ];
@@ -4296,8 +4314,61 @@ function toggleDeveloperMode() {
   applyDeveloperMode();
 }
 function chatCount() { return Object.values(chatLogs).reduce((n, arr) => n + (Array.isArray(arr) ? arr.length : 0), 0); }
+const ROLE_INTROS = {
+  clownfish: {
+    lead: "我负责把问题接住，并把事情真正推进到结果。",
+    items: ["直接回答、梳理问题和形成方案", "调用能力处理研究、文档、演示和开发任务", "按当前问题邀请专家，并统一交付结论"],
+    hint: "直接说你正在做什么，或想完成什么。",
+  },
+  feifei: {
+    lead: "我是菲菲，适合轻松、平等地聊生活和感受。",
+    items: ["听你说近况，帮助整理复杂情绪", "一起聊关系、选择和生活中的小困扰", "陪你发散灵感，把模糊感受说清楚"],
+    hint: "可以从今天发生的一件小事开始。",
+  },
+  teacher_lin: {
+    lead: "我是林老师，目标是让你真正理解，并能自己解决同类问题。",
+    items: ["用背景、例子和反例讲清概念", "把题目拆成步骤，卡住时及时示范", "整理复习结构，用小测和迁移练习检查掌握"],
+    hint: "告诉我你在学什么、卡在哪里，或直接把题目发来。",
+  },
+  azhe: {
+    lead: "我是阿哲，擅长把混乱的问题拉回到可执行的事情上。",
+    items: ["澄清真正的问题和目标", "比较选择、代价和关键风险", "把下一步压缩成可以马上行动的方案"],
+    hint: "把你纠结的事情直接说出来。",
+  },
+  lingling: {
+    lead: "我是灵灵，一只用很短回应陪在你身边的小灵宠。",
+    items: ["在你疲惫或低落时安静陪伴", "用声音和小动作回应情绪", "不说教，也不替你做决定"],
+    hint: "不需要组织好语言，发一句现在的感受就可以。",
+  },
+};
+const ADVISORY_GROUP_INTRO = {
+  lead: "这里不是固定的一组人在连续发言，而是每轮按当前问题邀请合适的专家。",
+  items: ["主题变化时，参与专家会随之更换", "连续追问同一问题时，优先延续上一轮专家", "也可以用 @ 点名专家；小丑鱼负责最后统筹"],
+  hint: "直接描述问题即可，不需要先选择专家。",
+};
+
+function targetIntro() {
+  if (!state.target) return null;
+  if (state.target.kind === "group" && state.target.id === ADVISORY_GROUP_ID) return ADVISORY_GROUP_INTRO;
+  if (state.target.kind === "persona") return ROLE_INTROS[state.target.id] || null;
+  return null;
+}
+
 function emptyStateHtml() {
   const picked = !!state.target;
+  const intro = targetIntro();
+  if (intro && state.target) {
+    const av = visualOf(state.target.kind, state.target.id);
+    return ''
+      + '<section class="empty-state role-intro-state">'
+      + '  <article class="role-intro-card">'
+      + '    <header class="role-intro-head"><span class="avatar" style="background:' + av.g + '">' + faceHtml(state.target.kind, state.target.id) + '</span><h2>' + esc(state.target.name) + '</h2></header>'
+      + '    <p>' + esc(intro.lead) + '</p>'
+      + '    <ul>' + intro.items.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul>'
+      + '    <p class="role-intro-hint">' + esc(intro.hint) + '</p>'
+      + '  </article>'
+      + '</section>';
+  }
   const title = picked ? "还没有消息" : "选择一个聊天";
   const desc = picked
     ? "发第一句话后，对话会显示在这里。"
@@ -4316,7 +4387,7 @@ function updateTopMoreButton() {
   if (!btn) return;
   const isApp = state.target && state.target.kind === "persona" && state.target.id === APP_PERSONA_ID;
   setTopActionAvailability(btn, true);
-  const label = state.target && state.target.kind === "group" ? "群管理" : (isApp ? "小丑鱼设置" : "专家设置");
+  const label = state.target && state.target.kind === "group" ? "群管理" : (isApp ? "小丑鱼设置" : "角色设置");
   btn.title = label;
   btn.setAttribute("aria-label", label);
 }
@@ -4619,10 +4690,13 @@ function onboardingBubbleDelay(text, index) {
   return Math.min(5500, Math.max(2400, 1200 + len * 35));
 }
 
+let onboardingBusy = false;
 async function completeOnboarding() {
+  if (onboardingBusy) return;
   const btn = $("#onboardStart");
   const name = ($("#onboardName").value || "").trim();
   if (!name) { $("#onboardError").textContent = "请先输入一个称呼。"; $("#onboardName").focus(); return; }
+  onboardingBusy = true;
   btn.disabled = true;
   $("#onboardError").textContent = "";
   try {
@@ -4638,10 +4712,12 @@ async function completeOnboarding() {
       record(key, { side: "other", who: null, text: msg, pid: APP_PERSONA_ID });
       if (i < messages.length - 1) await sleep(onboardingBubbleDelay(msg, i));
     }
+    dedupeAppOnboarding();
     renderLog();
   } catch (error) {
     $("#onboardError").textContent = error && error.message ? error.message : "保存失败。";
   } finally {
+    onboardingBusy = false;
     btn.disabled = false;
   }
 }
@@ -4696,7 +4772,9 @@ function renderContacts() {
   for (const g of state.groups) {
     const names = g.members.map((id) => (state.personas.find((p) => p.id === id) || {}).name || id).join("、");
     const title = g.name || names;
-    const sub = g.name ? ("群聊 · " + names) : ("群聊 · " + g.members.length + " 人");
+    const sub = g.id === ADVISORY_GROUP_ID
+      ? "群聊 · 每轮按当前问题动态邀请专家"
+      : (g.name ? ("群聊 · " + names) : ("群聊 · " + g.members.length + " 人"));
     if (query && !(title + " " + names).toLowerCase().includes(query)) continue;
     c.appendChild(contactEl("group", g.id, title, sub));
   }
@@ -4749,7 +4827,7 @@ function selectTarget(kind, id, name) {
   state.target = { kind, id, name };
   const av = visualOf(kind, id);
   const per = kind === "persona" ? state.personas.find((x) => x.id === id) : null;
-  let tag = per && per.tag ? per.tag : (kind === "group" ? "群聊" : "");
+  let tag = per && per.tag ? per.tag : (kind === "group" ? (id === ADVISORY_GROUP_ID ? "群聊 · 每轮动态邀请专家" : "群聊") : "");
   if (per && per.familiarity) tag += " · " + per.familiarity; // 熟悉度（随互动量增长）
   $("#header").innerHTML = '<div class="havatar" style="background:' + av.g + '">' + faceHtml(kind, id) + '</div><div><div class="hname">' + esc(name) + "</div>" + (tag ? '<div class="htag">' + esc(tag) + "</div>" : "") + "</div>";
   renderContacts();
@@ -5223,7 +5301,7 @@ function expertLongformSections(replies) {
 }
 
 function shouldRenderExpertLongform(replies) {
-  if (!state.target || state.target.id !== "nemos_advisory_group") return false;
+  if (!state.target || state.target.id !== ADVISORY_GROUP_ID) return false;
   if ((replies || []).some((reply) => reply.artifact)) return false;
   return isSubstantialExpertLongform(expertLongformSections(replies));
 }
@@ -7919,7 +7997,6 @@ $("#sm-model").onclick = openModelModal;
 $("#sm-data").onclick = () => { window.location.href = "/memory"; };
 $("#sm-sources").onclick = () => smRun(openSourceModal);
 $("#sm-toolsettings").onclick = () => smRun(openToolSettings);
-$("#sm-persona").onclick = () => smRun(openPersonaModal);
 $("#sm-memview").onclick = () => smRun(openMemory);
 $("#sm-chathtml").onclick = () => smRun(exportCurrentChatHtml);
 $("#sm-export").onclick = () => smRun(exportBackup);

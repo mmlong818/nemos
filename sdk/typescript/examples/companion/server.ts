@@ -1676,8 +1676,22 @@ function groupDisplayName(group: GroupInfo): string {
   return group.members.map((id) => PERSONAS.find((p) => p.id === id)?.name || id).join("、") || group.id;
 }
 
+const recentAdvisoryExperts = new Map<string, string[]>();
+
 function groupReplyRoute(groupId: string, text: string) {
-  return resolveGroupReplyRoute(groupId, text, engine.groupMembers(groupId), ADVISORY_GROUP_ID);
+  const route = resolveGroupReplyRoute(
+    groupId,
+    text,
+    engine.groupMembers(groupId),
+    ADVISORY_GROUP_ID,
+    APP_PERSONA_ID,
+    recentAdvisoryExperts.get(groupId) ?? [],
+  );
+  if (groupId === ADVISORY_GROUP_ID) {
+    const experts = (route.responderPersonaIds ?? []).filter((id) => id !== APP_PERSONA_ID);
+    if (experts.length > 0) recentAdvisoryExperts.set(groupId, experts);
+  }
+  return route;
 }
 
 function memoryDisplayContent(content: string): string {
