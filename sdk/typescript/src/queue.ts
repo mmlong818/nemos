@@ -352,7 +352,6 @@ export class NemosWorker {
         }
         reject(new Error(`[nemos] waitFor 超时: ${id}`));
       }, timeoutMs);
-      if (typeof timer.unref === "function") timer.unref();
     });
   }
 

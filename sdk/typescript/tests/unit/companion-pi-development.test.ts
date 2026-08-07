@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import test from "node:test";
 
 import { runPiDevelopment, validateDevelopmentWorkspace } from "../../examples/companion/pi-development.js";
 
 test("开发能力拒绝磁盘根目录和不存在的路径", () => {
-  assert.throws(() => validateDevelopmentWorkspace("C:\\"), /整个磁盘/);
+  assert.throws(() => validateDevelopmentWorkspace(parse(process.cwd()).root), /整个磁盘/);
   assert.throws(() => validateDevelopmentWorkspace(join(tmpdir(), "missing-clownfish-workspace")), /不存在/);
 });
 
