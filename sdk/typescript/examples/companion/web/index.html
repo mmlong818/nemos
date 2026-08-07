@@ -4869,8 +4869,7 @@ function sanitizeUrl(url) {
 function sanitizeHtml(input) {
   const allowedTags = new Set(["A", "P", "BR", "STRONG", "B", "EM", "I", "U", "S", "UL", "OL", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "PRE", "CODE", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "HR", "DIV", "SPAN"]);
   const allowedAttrs = new Set(["href", "title", "colspan", "rowspan"]);
-  const template = document.createElement("template");
-  template.innerHTML = String(input || "");
+  const parsed = new DOMParser().parseFromString(String(input || ""), "text/html");
   const cleanNode = (node) => {
     if (node.nodeType === 8) { node.remove(); return; }
     if (node.nodeType !== 1) return;
@@ -4903,8 +4902,8 @@ function sanitizeHtml(input) {
     }
     for (const child of [...el.childNodes]) cleanNode(child);
   };
-  for (const child of [...template.content.childNodes]) cleanNode(child);
-  return template.innerHTML;
+  for (const child of [...parsed.body.childNodes]) cleanNode(child);
+  return parsed.body.innerHTML;
 }
 function inlineMarkdown(text) {
   let s = escapeHtmlText(text);

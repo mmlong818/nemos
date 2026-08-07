@@ -85,11 +85,7 @@ import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.j
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
-import {
-  assertPublicWebUrl,
-  isAllowedLocalRequest,
-  isPrivateNetworkAddress,
-} from "./local-http-security.js";
+import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
 import {
   importWeChatPrivateSource,
   loadPrivateSourcesConfig,
@@ -1987,7 +1983,17 @@ function seedPersonaBiosInBackground(targetEngine: CompanionEngine): void {
 }
 
 function send(res: ServerResponse, code: number, body: unknown, type = "application/json"): void {
-  const data = typeof body === "string" ? body : JSON.stringify(body);
+  const publicBody = code >= 400 && body && typeof body === "object" && "error" in body
+    ? {
+      ...body,
+      error: code >= 500
+        ? "内部处理暂时失败，请稍后重试。"
+        : typeof body.error === "string"
+          ? body.error.split(/\r?\n/, 1)[0]!.slice(0, 300)
+          : "请求无法完成，请检查输入后重试。",
+    }
+    : body;
+  const data = typeof publicBody === "string" ? publicBody : JSON.stringify(publicBody);
   res.writeHead(code, { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache" });
   res.end(data);
 }
@@ -2260,30 +2266,30 @@ async function readWebPageContext(url: string): Promise<WebPageContext> {
   const timer = setTimeout(() => controller.abort(), WEB_CONTEXT_TIMEOUT_MS);
   try {
     let currentUrl = url;
-    let resp: Response | undefined;
+    let resp: Awaited<ReturnType<typeof readPublicWebUrl>> | undefined;
     for (let redirects = 0; redirects <= 4; redirects += 1) {
-      const safeUrl = await assertPublicWebUrl(currentUrl);
-      resp = await fetch(safeUrl, {
-        redirect: "manual",
+      const safeUrl = new URL(currentUrl);
+      resp = await readPublicWebUrl({
+        url: currentUrl,
         signal: controller.signal,
         headers: {
           "User-Agent": "Clownfish/0.2 (+local user requested webpage reading)",
           "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.3",
         },
+        maxBytes: 1_000_000,
       });
       if (![301, 302, 303, 307, 308].includes(resp.status)) break;
-      const location = resp.headers.get("location");
+      const location = resp.headers.location;
       if (!location || redirects === 4) throw new Error("too many or invalid redirects");
       currentUrl = new URL(location, safeUrl).toString();
     }
     if (!resp) throw new Error("web request did not start");
-    const contentType = resp.headers.get("content-type") || "";
-    if (!resp.ok) return { url, error: `HTTP ${resp.status}` };
+    const contentType = resp.headers["content-type"] || "";
+    if (resp.status < 200 || resp.status >= 300) return { url, error: `HTTP ${resp.status}` };
     if (!/text\/html|application\/xhtml\+xml|text\/plain|application\/json/i.test(contentType)) {
       return { url, error: `unsupported content type: ${contentType || "unknown"}` };
     }
-    const raw = await readBoundedResponseText(resp, 1_000_000);
-    const extracted = extractReadableWebText(raw, contentType);
+    const extracted = extractReadableWebText(resp.body, contentType);
     if (!extracted.text) return { url, title: extracted.title, error: "no readable text found" };
     return { url, title: extracted.title, text: extracted.text.slice(0, WEB_CONTEXT_MAX_CHARS) };
   } catch (e) {
@@ -2292,31 +2298,6 @@ async function readWebPageContext(url: string): Promise<WebPageContext> {
   } finally {
     clearTimeout(timer);
   }
-}
-
-async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string> {
-  if (!response.body) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > maxBytes) throw new Error("web response is too large");
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const output = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(output);
 }
 
 function extractReadableWebText(raw: string, contentType: string): { title?: string; text: string } {
@@ -2329,11 +2310,11 @@ function extractReadableWebText(raw: string, contentType: string): { title?: str
       || firstMatch(raw, /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["'][^>]*>/i),
   );
   const withoutNoise = raw
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, " ");
+    .replace(/<script(?:\s[^>]*)?>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style(?:\s[^>]*)?>[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<noscript(?:\s[^>]*)?>[\s\S]*?<\/noscript\s*>/gi, " ")
+    .replace(/<svg(?:\s[^>]*)?>[\s\S]*?<\/svg\s*>/gi, " ")
+    .replace(/<iframe(?:\s[^>]*)?>[\s\S]*?<\/iframe\s*>/gi, " ");
   const body = firstMatch(withoutNoise, /<body[^>]*>([\s\S]*?)<\/body>/i) || withoutNoise;
   const text = collapseReadableText(decodeHtmlEntities(
     body
@@ -2357,21 +2338,12 @@ function collapseReadableText(text: string): string {
 }
 
 function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\d+);/g, (_m, n) => {
-      const code = Number(n);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
-    })
-    .replace(/&#x([0-9a-f]+);/gi, (_m, n) => {
-      const code = Number.parseInt(n, 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
-    });
+  const named: Record<string, string> = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
+  return text.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(nbsp|amp|lt|gt|quot|apos));/gi, (_match, decimal, hex, name) => {
+    if (name) return named[String(name).toLowerCase()] ?? "";
+    const code = hex ? Number.parseInt(hex, 16) : Number(decimal);
+    return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
+  });
 }
 
 function formatWebPageContext(pages: WebPageContext[]): string {
@@ -2533,29 +2505,30 @@ async function fetchSkillMarkdownFromUrl(url: string, signal?: AbortSignal): Pro
   const timer = setTimeout(() => controller.abort(), WEB_CONTEXT_TIMEOUT_MS);
   try {
     let currentUrl = safeUrl;
-    let resp: Response | undefined;
+    let resp: Awaited<ReturnType<typeof readPublicWebUrl>> | undefined;
     for (let redirects = 0; redirects <= 4; redirects += 1) {
-      const checkedUrl = await assertPublicWebUrl(currentUrl);
-      resp = await fetch(checkedUrl, {
-        redirect: "manual",
+      const checkedUrl = new URL(currentUrl);
+      resp = await readPublicWebUrl({
+        url: currentUrl,
         signal: controller.signal,
         headers: {
           "User-Agent": "Clownfish/0.2 (+skill installer)",
           "Accept": "text/markdown,text/plain,text/html;q=0.5,*/*;q=0.2",
         },
+        maxBytes: 512 * 1024,
       });
       if (![301, 302, 303, 307, 308].includes(resp.status)) break;
-      const location = resp.headers.get("location");
+      const location = resp.headers.location;
       if (!location || redirects === 4) throw new Error("too many or invalid redirects");
       currentUrl = new URL(location, checkedUrl).toString();
     }
     if (!resp) throw new Error("Skill URL request did not start");
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const contentType = resp.headers.get("content-type") || "";
+    if (resp.status < 200 || resp.status >= 300) throw new Error(`HTTP ${resp.status}`);
+    const contentType = resp.headers["content-type"] || "";
     if (!/markdown|text\/plain|text\/html|application\/octet-stream/i.test(contentType)) {
       throw new Error(`不支持的内容类型：${contentType || "unknown"}`);
     }
-    const raw = await readBoundedResponseText(resp, 512 * 1024);
+    const raw = resp.body;
     const content = /text\/html/i.test(contentType) ? extractReadableWebText(raw, contentType).text : raw;
     const trimmed = content.replace(/^\uFEFF/, "").trim();
     if (!trimmed) throw new Error("URL 没有返回可安装的 Skill 内容。");

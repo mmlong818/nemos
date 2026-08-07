@@ -7,6 +7,7 @@ import {
   isAllowedLocalRequest,
   isLoopbackAddress,
   isPrivateNetworkAddress,
+  readPublicWebUrl,
 } from "../../examples/companion/local-http-security.js";
 
 test("本机服务只接受回环地址、正确 Host 和同源浏览器请求", () => {
@@ -25,6 +26,7 @@ test("网页读取拒绝常见本机、内网和特殊用途地址", async () =>
   assert.equal(isPrivateNetworkAddress("1.1.1.1"), false);
   await assert.rejects(() => assertPublicWebUrl("http://127.0.0.1/private"), /private network/);
   await assert.rejects(() => assertPublicWebUrl("http://localhost/private"), /local web address/);
+  await assert.rejects(() => readPublicWebUrl({ url: "http://169.254.169.254/latest/meta-data", maxBytes: 1024 }), /private network/);
 });
 
 test("Companion 服务固定监听回环地址并限制原始上传和网页响应", () => {
@@ -32,6 +34,6 @@ test("Companion 服务固定监听回环地址并限制原始上传和网页响�
   assert.match(source, /server\.listen\(PORT, "127\.0\.0\.1"/);
   assert.match(source, /isAllowedLocalRequest\(/);
   assert.match(source, /readRawBody\(req, 12 \* 1024 \* 1024\)/);
-  assert.match(source, /redirect: "manual"/);
-  assert.match(source, /readBoundedResponseText\(resp, 1_000_000\)/);
+  assert.match(source, /readPublicWebUrl\(\{/);
+  assert.match(source, /maxBytes: 1_000_000/);
 });
