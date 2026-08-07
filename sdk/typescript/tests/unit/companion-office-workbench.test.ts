@@ -34,10 +34,37 @@ test("工作台提供本机自动保存、版本比较与页内处理", () => {
   assert.match(officeJs, /function saveVersion/);
   assert.match(officeJs, /function compareVersion/);
   assert.match(officeJs, /function restoreVersion/);
+  assert.match(officeHtml, /id="deleteDocument"/);
+  assert.match(officeJs, /function deleteCurrentDocument/);
+  assert.match(officeJs, /function undoDocumentDeletion/);
+  assert.match(officeHtml, /id="trashPanel"/);
+  assert.match(officeJs, /function restoreTrashDocument/);
+  assert.match(officeJs, /function permanentlyDeleteTrashDocument/);
+  assert.match(officeJs, /trash: state\.trash/);
+  assert.match(officeJs, /10000/);
   assert.match(officeJs, /function startOfficeTask/);
   assert.match(officeJs, /\/api\/agent\/job/);
   assert.match(officeJs, /\/api\/capabilities\/artifact\/preview/);
   assert.doesNotMatch(officeJs, /sessionStorage|capability-handoff|location\.href\s*=\s*"\/capabilities"/);
+});
+
+test("聊天设置统一提供记忆与数据入口，新用户看到可直接使用的例子", () => {
+  assert.match(chatHtml, /id="sm-data"/);
+  assert.match(chatHtml, /window\.location\.href = "\/memory"/);
+  assert.match(chatHtml, /function renderStarterPrompts/);
+  assert.match(chatHtml, /整理一段文字/);
+  assert.match(chatHtml, /做一份汇报/);
+  assert.match(chatHtml, /梳理一个问题/);
+});
+
+test("聊天区可上传文件，并把附件原文传给对话和后续能力", () => {
+  assert.match(chatHtml, /id="filebtn"/);
+  assert.match(chatHtml, /id="chatfile"/);
+  assert.match(chatHtml, /function prepareChatFile/);
+  assert.match(chatHtml, /attachment, messageId/);
+  assert.match(chatHtml, /【附件原文/);
+  assert.match(server, /appendChatAttachmentContext/);
+  assert.match(server, /只作为用户提供的参考资料/);
 });
 
 test("原文件保存在本机并提供格式化预览", () => {
@@ -65,6 +92,14 @@ test("新建文件和打开文件位于最近文件列表上方", () => {
   assert.ok(recentFilesAt > actionsAt);
   assert.match(officeHtml.slice(actionsAt, recentFilesAt), /id="newDocument"[\s\S]+id="officeFileInput"/);
   assert.doesNotMatch(officeHtml, /class="topbar-actions"/);
+  assert.match(officeJs, /const createdDocument = safeDocument/);
+  assert.doesNotMatch(officeJs, /\bconst document = safeDocument/);
+});
+
+test("点选最近文件只切换当前文件，不改变更新时间或列表顺序", () => {
+  assert.match(officeJs, /function persistSelection\(\)/);
+  assert.match(officeJs, /state\.selectedId = button\.dataset\.documentId;[\s\S]{0,180}persistSelection\(\)/);
+  assert.doesNotMatch(officeJs, /state\.selectedId = button\.dataset\.documentId;[\s\S]{0,180}persistState\(/);
 });
 
 test("文件页保持操作连续，不暴露内部页面结构", () => {

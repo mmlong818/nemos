@@ -3,6 +3,7 @@
 const STORAGE_KEY = "clownfish-office-workbench-v1";
 const MAX_STORED_DOCUMENTS = 6;
 const MAX_VERSIONS = 8;
+const MAX_TRASH_DOCUMENTS = 30;
 const JOB_POLL_INTERVAL = 1400;
 
 const ICON_PATHS = {
@@ -105,10 +106,11 @@ function loadState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     const documents = Array.isArray(parsed?.documents) ? parsed.documents.map(safeDocument) : [];
+    const trash = Array.isArray(parsed?.trash) ? parsed.trash.slice(0, MAX_TRASH_DOCUMENTS).map((item) => ({ ...safeDocument(item), deletedAt: String(item?.deletedAt || item?.updatedAt || now()) })) : [];
     const selectedId = documents.some((document) => document.id === parsed?.selectedId) ? parsed.selectedId : documents[0]?.id || null;
-    return { documents, selectedId, saveTimer: 0 };
+    return { documents, trash, selectedId, saveTimer: 0 };
   } catch {
-    return { documents: [], selectedId: null, saveTimer: 0 };
+    return { documents: [], trash: [], selectedId: null, saveTimer: 0 };
   }
 }
 
@@ -117,6 +119,7 @@ state.view = currentDocument()?.sourceSize ? "source" : "edit";
 let toastTimer = 0;
 let jobPollTimer = 0;
 let selectedCapabilityId = "document-draft";
+let pendingDeletion = null;
 
 function currentDocument() {
   return state.documents.find((document) => document.id === state.selectedId) || null;
@@ -146,7 +149,17 @@ function persistState(message = "已保存到本机") {
 }
 
 function writeStoredState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ documents: state.documents, selectedId: state.selectedId }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ documents: state.documents, trash: state.trash, selectedId: state.selectedId }));
+}
+
+function persistSelection() {
+  try {
+    writeStoredState();
+    setSaveState("已打开本机工作副本");
+  } catch {
+    setSaveState("无法保存当前选择");
+  }
+  renderRecentFiles();
 }
 
 function scheduleSave() {
@@ -156,12 +169,97 @@ function scheduleSave() {
 }
 
 function showToast(message, error = false) {
+  finalizePendingDeletion();
   const node = document.querySelector("#officeToast");
   node.textContent = message;
   node.classList.toggle("is-error", error);
+  node.classList.remove("has-action");
   node.classList.add("is-visible");
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => node.classList.remove("is-visible"), 3200);
+}
+
+function finalizePendingDeletion() {
+  if (!pendingDeletion) return;
+  window.clearTimeout(pendingDeletion.timer);
+  pendingDeletion = null;
+}
+
+function showDeletionToast(documentName) {
+  const node = document.querySelector("#officeToast");
+  const label = document.createElement("span");
+  const undo = document.createElement("button");
+  label.textContent = `已移到垃圾桶：「${documentName}」`;
+  undo.type = "button";
+  undo.className = "toast-action";
+  undo.textContent = "撤销";
+  undo.addEventListener("click", undoDocumentDeletion);
+  node.replaceChildren(label, undo);
+  node.classList.remove("is-error");
+  node.classList.add("has-action", "is-visible");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    node.classList.remove("is-visible", "has-action");
+    finalizePendingDeletion();
+  }, 10000);
+}
+
+function deleteCurrentDocument() {
+  const current = currentDocument();
+  if (!current) return;
+  finalizePendingDeletion();
+  const originalIndex = state.documents.findIndex((item) => item.id === current.id);
+  state.documents.splice(originalIndex, 1);
+  state.trash.unshift({ ...current, deletedAt: now() });
+  const expired = state.trash.splice(MAX_TRASH_DOCUMENTS);
+  expired.forEach((item) => void window.ClownfishOfficeSource.remove(item.id).catch(() => {}));
+  state.selectedId = state.documents[Math.min(originalIndex, state.documents.length - 1)]?.id || null;
+  state.view = currentDocument()?.sourceSize ? "source" : "edit";
+  writeStoredState();
+  render();
+  pendingDeletion = { document: current, index: originalIndex, timer: 0 };
+  showDeletionToast(current.name || "未命名文稿");
+}
+
+function undoDocumentDeletion() {
+  if (!pendingDeletion) return;
+  const { document: deleted, index } = pendingDeletion;
+  window.clearTimeout(pendingDeletion.timer);
+  pendingDeletion = null;
+  state.trash = state.trash.filter((item) => item.id !== deleted.id);
+  state.documents.splice(Math.min(index, state.documents.length), 0, deleted);
+  state.selectedId = deleted.id;
+  state.view = deleted.sourceSize ? "source" : "edit";
+  writeStoredState();
+  render();
+  showToast("文件已恢复");
+}
+
+function restoreTrashDocument(id) {
+  const index = state.trash.findIndex((item) => item.id === id);
+  if (index < 0) return;
+  finalizePendingDeletion();
+  const [restored] = state.trash.splice(index, 1);
+  const { deletedAt: _deletedAt, ...document } = restored;
+  document.updatedAt = now();
+  state.documents.unshift(document);
+  state.selectedId = document.id;
+  state.view = document.sourceSize ? "source" : "edit";
+  persistState("文件已从垃圾桶恢复");
+  render();
+  showToast("文件已恢复");
+}
+
+function permanentlyDeleteTrashDocument(id) {
+  const target = state.trash.find((item) => item.id === id);
+  if (!target) return;
+  if (!window.confirm(`永久删除「${target.name}」？此操作无法撤销。`)) return;
+  if (pendingDeletion?.document.id === id) finalizePendingDeletion();
+  state.trash = state.trash.filter((item) => item.id !== id);
+  writeStoredState();
+  renderTrashFiles();
+  void window.ClownfishOfficeSource.remove(id).catch(() => {});
+  showToast("文件已永久删除");
 }
 
 async function api(path, options = {}) {
@@ -204,10 +302,25 @@ function renderRecentFiles() {
   root.querySelectorAll("[data-document-id]").forEach((button) => button.addEventListener("click", () => {
     state.selectedId = button.dataset.documentId;
     state.view = currentDocument()?.sourceSize ? "source" : "edit";
-    persistState("已打开本机工作副本");
+    persistSelection();
     render();
     closeFilePanel();
   }));
+}
+
+function renderTrashFiles() {
+  const root = document.querySelector("#trashFiles");
+  document.querySelector("#trashCount").textContent = String(state.trash.length);
+  if (!state.trash.length) {
+    root.innerHTML = '<div class="trash-empty">垃圾桶是空的</div>';
+    return;
+  }
+  root.innerHTML = state.trash.map((document) => `
+    <div class="trash-row">
+      <span class="trash-row-copy"><strong>${escapeHtml(document.name)}</strong><small>${displayDate(document.deletedAt)}</small></span>
+      <button type="button" data-restore-trash="${escapeHtml(document.id)}">恢复</button>
+      <button type="button" data-delete-forever="${escapeHtml(document.id)}" aria-label="永久删除 ${escapeHtml(document.name)}">永久删除</button>
+    </div>`).join("");
 }
 
 function autoResize(textarea) {
@@ -332,6 +445,7 @@ function renderProcessingState(current, job = null) {
 
 function render() {
   renderRecentFiles();
+  renderTrashFiles();
   const current = currentDocument();
   document.querySelector("#editorEmpty").hidden = Boolean(current);
   document.querySelector("#editorWorkspace").hidden = !current;
@@ -357,7 +471,7 @@ function render() {
 
 function createBlankDocument() {
   const createdAt = now();
-  const document = safeDocument({
+  const createdDocument = safeDocument({
     id: uid("document"),
     name: "未命名文稿",
     kind: "docx",
@@ -368,8 +482,8 @@ function createBlankDocument() {
     blocks: [{ id: uid("block"), title: "正文", text: "" }],
     versions: [],
   });
-  state.documents.unshift(document);
-  state.selectedId = document.id;
+  state.documents.unshift(createdDocument);
+  state.selectedId = createdDocument.id;
   state.view = "edit";
   persistState("空白文稿已建立");
   render();
@@ -398,7 +512,7 @@ async function importFile(file) {
     });
     const extraction = response.extraction;
     const createdAt = now();
-    const document = safeDocument({
+    const importedDocument = safeDocument({
       id: uid("document"),
       name: file.name.replace(/\.(docx|pptx|xlsx|pdf)$/i, ""),
       kind: extraction.kind,
@@ -410,19 +524,19 @@ async function importFile(file) {
       versions: [],
     });
     try {
-      document.sourceStored = await window.ClownfishOfficeSource.save(document.id, file);
+      importedDocument.sourceStored = await window.ClownfishOfficeSource.save(importedDocument.id, file);
     } catch {
-      document.sourceStored = false;
+      importedDocument.sourceStored = false;
     }
-    const replaced = state.documents.filter((item) => item.name === document.name && item.kind === document.kind);
-    state.documents = state.documents.filter((item) => !(item.name === document.name && item.kind === document.kind));
+    const replaced = state.documents.filter((item) => item.name === importedDocument.name && item.kind === importedDocument.kind);
+    state.documents = state.documents.filter((item) => !(item.name === importedDocument.name && item.kind === importedDocument.kind));
     replaced.forEach((item) => void window.ClownfishOfficeSource.remove(item.id).catch(() => {}));
-    state.documents.unshift(document);
-    state.selectedId = document.id;
+    state.documents.unshift(importedDocument);
+    state.selectedId = importedDocument.id;
     state.view = "source";
     persistState(extraction.truncated ? "已读取可处理的前半部分" : "文件已读取");
     render();
-    showToast(extraction.truncated ? "文件较长，已保留原文件和可处理的前半部分" : document.sourceStored ? "文件已打开，原始版本保留在本机" : "文件已打开，工作副本不会覆盖原文件");
+    showToast(extraction.truncated ? "文件较长，已保留原文件和可处理的前半部分" : importedDocument.sourceStored ? "文件已打开，原始版本保留在本机" : "文件已打开，工作副本不会覆盖原文件");
   } catch (error) {
     setSaveState("读取失败");
     showToast(error instanceof Error ? error.message : "文件读取失败", true);
@@ -670,6 +784,7 @@ function bindEvents() {
     scheduleSave();
   });
   document.querySelector("#addBlock").addEventListener("click", addBlock);
+  document.querySelector("#deleteDocument").addEventListener("click", deleteCurrentDocument);
   document.querySelector("#saveVersion").addEventListener("click", saveVersion);
   document.querySelector("#exportDraft").addEventListener("click", exportDraft);
   document.querySelector("#startOfficeTask").addEventListener("click", startOfficeTask);
@@ -682,6 +797,12 @@ function bindEvents() {
     if (restore) restoreVersion(restore.dataset.restoreVersion);
   });
   document.querySelector("#closeDiff").addEventListener("click", () => { document.querySelector("#diffPanel").hidden = true; });
+  document.querySelector("#trashFiles").addEventListener("click", (event) => {
+    const restore = event.target.closest("[data-restore-trash]");
+    const remove = event.target.closest("[data-delete-forever]");
+    if (restore) restoreTrashDocument(restore.dataset.restoreTrash);
+    if (remove) permanentlyDeleteTrashDocument(remove.dataset.deleteForever);
+  });
   document.querySelectorAll("[data-prompt]").forEach((button) => button.addEventListener("click", () => {
     selectedCapabilityId = button.dataset.capability || "document-draft";
     document.querySelector("#assistantPrompt").value = button.dataset.prompt;
@@ -702,6 +823,7 @@ function bindEvents() {
   window.addEventListener("resize", () => { if (window.innerWidth > 720) closeFilePanel(); });
   window.addEventListener("beforeunload", () => {
     window.clearTimeout(jobPollTimer);
+    finalizePendingDeletion();
     window.ClownfishOfficeSource.release();
   });
 }
