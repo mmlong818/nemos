@@ -1361,6 +1361,13 @@ async function completeXOAuth(code: string, state: string): Promise<{ userId: st
 }
 
 function xOAuthCallbackHtml(ok: boolean, detail: string): string {
+  detail = detail.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[character]!);
   const title = ok ? "X 主页时间线已连接" : "X 连接失败";
   return `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:Segoe UI,Arial,sans-serif;background:#f6f2ff;color:#1f2340;display:grid;place-items:center;min-height:100vh;margin:0"><main style="background:#fff;border:1px solid #e4dcff;border-radius:18px;box-shadow:0 24px 60px rgba(31,35,64,.14);padding:28px;max-width:560px"><h1 style="margin:0 0 12px;font-size:22px">${title}</h1><p style="line-height:1.7;color:#657085">${detail}</p><p style="line-height:1.7;color:#657085">可以关闭这个页面，回到 小丑鱼。</p></main><script>setTimeout(()=>window.close(),2500)</script></body>`;
 }
@@ -2525,20 +2532,30 @@ async function fetchSkillMarkdownFromUrl(url: string, signal?: AbortSignal): Pro
   else signal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), WEB_CONTEXT_TIMEOUT_MS);
   try {
-    const resp = await fetch(safeUrl, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Clownfish/0.2 (+skill installer)",
-        "Accept": "text/markdown,text/plain,text/html;q=0.5,*/*;q=0.2",
-      },
-    });
+    let currentUrl = safeUrl;
+    let resp: Response | undefined;
+    for (let redirects = 0; redirects <= 4; redirects += 1) {
+      const checkedUrl = await assertPublicWebUrl(currentUrl);
+      resp = await fetch(checkedUrl, {
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Clownfish/0.2 (+skill installer)",
+          "Accept": "text/markdown,text/plain,text/html;q=0.5,*/*;q=0.2",
+        },
+      });
+      if (![301, 302, 303, 307, 308].includes(resp.status)) break;
+      const location = resp.headers.get("location");
+      if (!location || redirects === 4) throw new Error("too many or invalid redirects");
+      currentUrl = new URL(location, checkedUrl).toString();
+    }
+    if (!resp) throw new Error("Skill URL request did not start");
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const contentType = resp.headers.get("content-type") || "";
     if (!/markdown|text\/plain|text\/html|application\/octet-stream/i.test(contentType)) {
       throw new Error(`不支持的内容类型：${contentType || "unknown"}`);
     }
-    const raw = await resp.text();
+    const raw = await readBoundedResponseText(resp, 512 * 1024);
     const content = /text\/html/i.test(contentType) ? extractReadableWebText(raw, contentType).text : raw;
     const trimmed = content.replace(/^\uFEFF/, "").trim();
     if (!trimmed) throw new Error("URL 没有返回可安装的 Skill 内容。");
@@ -3583,7 +3600,7 @@ const server = createServer(async (req, res) => {
         res.end(xOAuthCallbackHtml(true, `已连接 @${me.username || me.userId}，Home Timeline 会在小丑鱼执行任务时作为私域来源读取。`));
       } catch (e) {
         res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-        res.end(xOAuthCallbackHtml(false, e instanceof Error ? e.message : String(e)));
+        res.end(xOAuthCallbackHtml(false, "授权未完成，请返回设置后重试。"));
       }
       return;
     }

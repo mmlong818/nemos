@@ -60,6 +60,11 @@ const DEFAULT_SESSION_IDLE_MS = 5 * 60_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
 const DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
 
+function boundedInteger(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(value!)));
+}
+
 /**
  * Official MCP stdio client with one child process per Agent run.
  * Environment inheritance is restricted to the SDK safe defaults plus manifest-declared names.
@@ -74,10 +79,10 @@ export class StdioMcpClientAdapter implements McpClientAdapter {
   private readonly credentialProxy?: AgentCredentialProxy;
 
   constructor(private readonly options: StdioMcpClientAdapterOptions) {
-    this.maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
-    this.sessionIdleMs = options.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS;
-    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-    this.maxBufferSize = options.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE;
+    this.maxSessions = boundedInteger(options.maxSessions, DEFAULT_MAX_SESSIONS, 1, 64);
+    this.sessionIdleMs = boundedInteger(options.sessionIdleMs, DEFAULT_SESSION_IDLE_MS, 1_000, 24 * 60 * 60_000);
+    this.requestTimeoutMs = boundedInteger(options.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS, 1_000, 10 * 60_000);
+    this.maxBufferSize = boundedInteger(options.maxBufferSize, DEFAULT_MAX_BUFFER_SIZE, 64 * 1024, 64 * 1024 * 1024);
     this.processSpec = createMcpProcessSpec(options);
     if (options.credentials?.length) {
       this.credentialProxy = new AgentCredentialProxy(options.credentials, {
