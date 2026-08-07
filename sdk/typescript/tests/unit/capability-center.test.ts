@@ -272,6 +272,12 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   assert.match(capabilityScript, /function handoffJob/);
   assert.match(capabilityScript, /artifact\/context/);
   assert.match(capabilityScript, /parentJobId/);
+  assert.match(capabilityScript, /function jobMemoryUsage/);
+  assert.match(capabilityScript, /appliedPreferences/);
+  assert.match(capabilityScript, /\/office\?artifact=/);
+  assert.match(serverSource, /previewDeliveryPreferences/);
+  assert.match(serverSource, /pinnedPreferenceContext/);
+  assert.match(serverSource, /memoryMode: pinnedPreferenceContext \? "off" : requestedMemoryMode/);
 });
 
 test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单一入口", () => {

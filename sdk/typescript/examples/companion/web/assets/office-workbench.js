@@ -90,6 +90,7 @@ function safeDocument(item) {
   })) : [];
   return {
     id: String(item?.id || uid("document")),
+    originArtifactId: String(item?.originArtifactId || "").slice(0, 180),
     name: String(item?.name || "未命名文稿").slice(0, 120),
     kind,
     sourceSize: Math.max(0, Number(item?.sourceSize || 0)),
@@ -544,6 +545,60 @@ async function importFile(file) {
   }
 }
 
+function artifactKind(format) {
+  if (format === "pptx") return "pptx";
+  if (format === "xlsx") return "xlsx";
+  if (format === "pdf") return "pdf";
+  return "docx";
+}
+
+async function importArtifactFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const artifactId = String(params.get("artifact") || "").trim().slice(0, 180);
+  if (!artifactId) return;
+  const cleanUrl = new URL(window.location.href);
+  cleanUrl.searchParams.delete("artifact");
+  try {
+    const existing = state.documents.find((item) => item.originArtifactId === artifactId);
+    if (existing) {
+      state.selectedId = existing.id;
+      state.view = "edit";
+      persistSelection();
+      render();
+      showToast("已打开这个结果的本机工作副本");
+      return;
+    }
+    setSaveState("正在打开任务结果…", true);
+    const response = await api(`/api/capabilities/artifact/context?id=${encodeURIComponent(artifactId)}`);
+    const artifact = response.artifact || {};
+    const kind = artifactKind(String(artifact.format || ""));
+    const createdAt = now();
+    const imported = safeDocument({
+      id: uid("document"),
+      originArtifactId: artifactId,
+      name: String(artifact.title || "任务结果").slice(0, 120),
+      kind,
+      sourceSize: 0,
+      createdAt,
+      updatedAt: createdAt,
+      sourceStored: false,
+      blocks: textToBlocks(String(response.text || artifact.summary || ""), kind),
+      versions: [],
+    });
+    state.documents.unshift(imported);
+    state.selectedId = imported.id;
+    state.view = "edit";
+    persistState("任务结果已保存为工作副本");
+    render();
+    showToast("任务结果已打开，可以继续编辑和生成新版本");
+  } catch (error) {
+    setSaveState("任务结果打开失败");
+    showToast(error instanceof Error ? error.message : "任务结果打开失败", true);
+  } finally {
+    window.history.replaceState(null, "", cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+  }
+}
+
 function addBlock() {
   const current = currentDocument();
   if (!current) return;
@@ -863,3 +918,4 @@ function bindEvents() {
 hydrateIcons();
 bindEvents();
 render();
+void importArtifactFromQuery();

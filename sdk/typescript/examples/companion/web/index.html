@@ -4963,6 +4963,7 @@ function artifactActionsHtml(artifact) {
   if (!artifact || !artifact.id) return "";
   return '<div class="artifact-actions">'
     + '<button type="button" data-artifact-action="preview">预览</button>'
+    + '<button type="button" data-artifact-action="edit">在文件中继续</button>'
     + '<button type="button" data-artifact-action="download">下载</button>'
     + '</div>';
 }
@@ -4970,6 +4971,10 @@ function bindArtifactActions(root, artifact) {
   root.querySelectorAll("[data-artifact-action]").forEach((btn) => {
     btn.onclick = () => {
       const action = btn.dataset.artifactAction;
+      if (action === "edit") {
+        window.location.href = "/office?artifact=" + encodeURIComponent(artifact.id);
+        return;
+      }
       const path = action === "download" ? "/api/capabilities/artifact" : "/api/capabilities/artifact/preview";
       const extra = action === "download" ? "&download=1" : "";
       window.open(path + "?id=" + encodeURIComponent(artifact.id) + extra, "_blank");
