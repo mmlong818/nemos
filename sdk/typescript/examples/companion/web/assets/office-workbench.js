@@ -451,6 +451,7 @@ function render() {
   document.querySelector("#editorWorkspace").hidden = !current;
   document.querySelector("#startOfficeTask").disabled = !current;
   if (!current) {
+    closeAssistantPanel();
     renderVersions(null);
     document.querySelector("#diffPanel").hidden = true;
     renderProcessingState(null);
@@ -761,6 +762,30 @@ function openFilePanel() {
   document.querySelector("#filePanel").classList.add("is-open");
 }
 
+function openAssistantPanel(mode) {
+  if (!currentDocument()) return showToast("先打开一个文件", true);
+  const showingVersions = mode === "versions";
+  document.querySelector("#assistantCard").hidden = showingVersions;
+  document.querySelector("#versionCard").hidden = !showingVersions;
+  document.querySelector("#assistantPanelTitle").textContent = showingVersions ? "版本记录" : "小丑鱼处理";
+  document.querySelector("#assistantPanel").classList.add("is-open");
+  document.querySelector("#assistantPanel").setAttribute("aria-hidden", "false");
+  document.querySelector("#assistantPanel").removeAttribute("inert");
+  document.querySelector("#assistantPanelBackdrop").classList.add("is-open");
+  document.querySelector("#openAssistantPanel").setAttribute("aria-expanded", String(!showingVersions));
+  document.querySelector("#openVersionPanel").setAttribute("aria-expanded", String(showingVersions));
+  document.querySelector("#closeAssistantPanel").focus();
+}
+
+function closeAssistantPanel() {
+  document.querySelector("#assistantPanel").classList.remove("is-open");
+  document.querySelector("#assistantPanel").setAttribute("aria-hidden", "true");
+  document.querySelector("#assistantPanel").setAttribute("inert", "");
+  document.querySelector("#assistantPanelBackdrop").classList.remove("is-open");
+  document.querySelector("#openAssistantPanel").setAttribute("aria-expanded", "false");
+  document.querySelector("#openVersionPanel").setAttribute("aria-expanded", "false");
+}
+
 function bindEvents() {
   document.querySelector("#newDocument").addEventListener("click", createBlankDocument);
   document.querySelector("#newDocumentEmpty").addEventListener("click", createBlankDocument);
@@ -786,6 +811,10 @@ function bindEvents() {
   document.querySelector("#addBlock").addEventListener("click", addBlock);
   document.querySelector("#deleteDocument").addEventListener("click", deleteCurrentDocument);
   document.querySelector("#saveVersion").addEventListener("click", saveVersion);
+  document.querySelector("#openAssistantPanel").addEventListener("click", () => openAssistantPanel("assistant"));
+  document.querySelector("#openVersionPanel").addEventListener("click", () => openAssistantPanel("versions"));
+  document.querySelector("#closeAssistantPanel").addEventListener("click", closeAssistantPanel);
+  document.querySelector("#assistantPanelBackdrop").addEventListener("click", closeAssistantPanel);
   document.querySelector("#exportDraft").addEventListener("click", exportDraft);
   document.querySelector("#startOfficeTask").addEventListener("click", startOfficeTask);
   document.querySelector("#cancelOfficeTask").addEventListener("click", cancelOfficeTask);
@@ -818,7 +847,10 @@ function bindEvents() {
   document.querySelector("#closeFiles").addEventListener("click", closeFilePanel);
   document.querySelector("#filePanelBackdrop").addEventListener("click", closeFilePanel);
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeFilePanel();
+    if (event.key === "Escape") {
+      closeFilePanel();
+      closeAssistantPanel();
+    }
   });
   window.addEventListener("resize", () => { if (window.innerWidth > 720) closeFilePanel(); });
   window.addEventListener("beforeunload", () => {

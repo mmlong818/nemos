@@ -81,10 +81,10 @@ button, a, label { touch-action: manipulation; }
 .office-layout {
   height: calc(100vh - 56px);
   display: grid;
-  grid-template-columns: 236px minmax(460px, 1fr) 318px;
+  grid-template-columns: 236px minmax(460px, 1fr);
   min-width: 0;
 }
-.file-panel, .assistant-panel { min-width: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--office-panel); }
+.file-panel { min-width: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--office-panel); }
 .file-panel { display: flex; flex-direction: column; padding: 22px 14px 16px; border-right: 1px solid var(--office-line); }
 .file-panel-backdrop { display: none; }
 .panel-heading, .version-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
@@ -441,7 +441,57 @@ button, a, label { touch-action: manipulation; }
 .add-block:hover { border-color: var(--office-accent); color: var(--office-accent-dark); background: #fff8fa; }
 .add-block svg { width: 15px; height: 15px; }
 
-.assistant-panel { padding: 16px 14px 28px; border-left: 1px solid var(--office-line); }
+.assistant-panel-backdrop {
+  position: fixed;
+  z-index: 43;
+  inset: 56px 0 0;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: rgba(32, 34, 31, .16);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--office-default) ease;
+}
+.assistant-panel-backdrop.is-open { opacity: 1; pointer-events: auto; }
+.assistant-panel {
+  position: fixed;
+  z-index: 44;
+  top: 68px;
+  right: 14px;
+  bottom: 14px;
+  width: min(356px, calc(100vw - 108px));
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 14px 20px;
+  border: 1px solid var(--office-line);
+  border-radius: 12px;
+  background: var(--office-panel);
+  box-shadow: 0 20px 54px rgba(48, 39, 42, .18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(100% + 28px));
+  transition: opacity var(--office-default) ease, transform var(--office-default) var(--office-ease);
+}
+.assistant-panel.is-open { opacity: 1; pointer-events: auto; transform: none; }
+.assistant-panel-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -14px 14px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--office-line);
+  background: rgba(241, 236, 227, .96);
+  backdrop-filter: blur(12px);
+}
+.assistant-panel-header strong { font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.assistant-panel-close { width: 36px; height: 36px; border: 0; border-radius: 7px; color: var(--office-muted); background: transparent; font-size: 22px; cursor: pointer; }
+.assistant-panel-close:hover { color: var(--office-ink); background: rgba(179, 63, 114, .08); }
 .assistant-card, .version-card {
   padding: 16px;
   border: 1px solid var(--office-line);
@@ -508,13 +558,12 @@ button, a, label { touch-action: manipulation; }
 .memory-note { display: flex; align-items: flex-start; gap: 6px; margin: 10px 0 0; color: var(--office-subtle); font-size: 10.5px; line-height: 1.45; letter-spacing: .012em; }
 .memory-note svg { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 1px; color: var(--office-accent); }
 
-.version-card { margin-top: 12px; }
-.version-heading { align-items: center; list-style: none; cursor: pointer; }
-.version-heading::-webkit-details-marker { display: none; }
+.version-card { margin-top: 0; }
+.version-heading { align-items: center; }
 .version-heading-meta { display: flex; align-items: center; gap: 7px; color: var(--office-subtle); font-size: 10.5px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
-.version-chevron { width: 14px; height: 14px; display: grid; place-items: center; transition: transform var(--office-default) var(--office-ease); }
-.version-chevron svg { width: 12px; height: 12px; }
-.version-card[open] .version-chevron { transform: rotate(180deg); }
+.save-version-panel { width: 100%; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 14px; border: 1px solid #ddc5cf; border-radius: 7px; color: var(--office-accent-dark); background: #fff8fa; font: 650 11.5px/1 inherit; cursor: pointer; }
+.save-version-panel:hover { border-color: var(--office-accent); background: var(--office-accent-soft); }
+.save-version-panel svg { width: 15px; height: 15px; }
 .version-list { display: grid; gap: 6px; margin-top: 12px; }
 .version-empty { padding: 11px 0; color: var(--office-subtle); font-size: 11px; line-height: 1.5; }
 .version-row {
@@ -574,22 +623,12 @@ button, a, label { touch-action: manipulation; }
 .toast-action:hover { background:var(--office-accent-dark); }
 
 @media (max-width: 1180px) {
-  .office-layout { grid-template-columns: 210px minmax(440px, 1fr) 286px; }
-  .assistant-panel { padding-right: 10px; padding-left: 10px; }
-  .assistant-card, .version-card { padding: 13px; }
+  .office-layout { grid-template-columns: 210px minmax(440px, 1fr); }
   .document-actions .toolbar-button { padding: 0 9px; }
 }
 
 @media (max-width: 980px) {
   .office-layout { grid-template-columns: 220px minmax(0, 1fr); }
-  .assistant-panel { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 12px 18px 32px; border-top: 1px solid var(--office-line); border-left: 0; overflow: visible; }
-  .version-card { margin-top: 0; }
-  .editor-pane { overflow: visible; }
-  html, body { overflow: auto; }
-  .office-layout { height: auto; min-height: calc(100vh - 56px); align-items: start; }
-  .file-panel { position: sticky; top: 56px; height: calc(100vh - 56px); }
-  .editor-empty { min-height: 560px; }
-  .source-pdf-frame, .processing-result iframe { height: 720px; }
 }
 
 @media (max-width: 720px) {
@@ -648,8 +687,9 @@ button, a, label { touch-action: manipulation; }
   .processing-result-empty { min-height: 460px; }
   .document-surface { width: calc(100% - 20px); min-height: 520px; margin: 12px auto 24px; padding: 24px 24px 48px 30px; }
   .block-text { font-size: 15px; }
-  .assistant-panel { display: block; padding: 0 10px 30px; }
-  .version-card { margin-top: 10px; }
+  .assistant-panel { top: auto; right: 8px; bottom: 68px; left: 8px; width: auto; max-height: calc(100vh - 92px); padding-right: 10px; padding-left: 10px; transform: translateY(calc(100% + 84px)); }
+  .assistant-panel-header { margin-right: -10px; margin-left: -10px; padding-right: 10px; padding-left: 10px; }
+  .assistant-panel-backdrop { inset: 0 0 60px; }
   .toast { right: 16px; bottom: 76px; }
 }
 

@@ -10,7 +10,6 @@ const state = { snapshot: null, jobs: [], runs: [], memories: [] };
 const loadedViews = new Set();
 let loadSequence = 0;
 let activeStoryTaskId = "";
-let memoryArchiveExpanded = false;
 
 function hydrateIcons() {
   window.ClownfishIcons.hydrate({ root: document });
@@ -46,7 +45,7 @@ const pageCopy = {
   tasks: ["持续工作", "任务", "把需要重复执行的事情留在这里；新用户仍可直接从聊天开始。"],
   artifacts: ["可复用结果", "结果", "所有交付物都保留原版本，可以预览、下载或继续加工。"],
   runs: ["执行记录", "运行", "查看后台工作、失败原因和中断后可恢复的执行。"],
-  memory: ["由你控制", "记忆", "只保留能让协作更顺手的事实与习惯；原始归档不会被误删。"],
+  memory: ["由你控制", "记忆", "这里只显示小丑鱼整理出的事实、经历与习惯，你可以随时修正或忘记。"],
 };
 
 function setPage() {
@@ -509,7 +508,7 @@ function renderRuns() {
   };
 }
 
-const layerNames = { procedural: "习惯与做法", personal_semantic: "长期偏好", semantic: "稳定事实", episodic: "经历与进展", archival: "原始归档" };
+const layerNames = { procedural: "习惯与做法", personal_semantic: "长期偏好", semantic: "稳定事实", episodic: "经历与进展" };
 
 function memorySourceMeta(item) {
   const source = item.source || {};
@@ -525,7 +524,7 @@ function openMemoryDetail(item) {
   const source = item.source || {};
   $("#memoryCorrectionId").value = item.id;
   $("#memoryDetailTitle").textContent = item.correctable ? "查看来源并修正" : "查看来源";
-  $("#memorySourceExcerpt").textContent = source.excerpt || (item.layer === "archival" ? item.content : "没有找到对应的原始消息片段");
+  $("#memorySourceExcerpt").textContent = source.excerpt || "没有找到对应的消息片段";
   $("#memorySourceMeta").textContent = memorySourceMeta(item);
   $("#memoryCorrectionContent").value = item.content;
   $("#memoryCorrectionField").hidden = !item.correctable;
@@ -538,15 +537,11 @@ function renderMemory() {
   const groups = Object.entries(layerNames).map(([layer, name]) => {
     const items = state.memories.filter((item) => item.layer === layer);
     if (!items.length) return "";
-    const visibleItems = layer === "archival" && !memoryArchiveExpanded ? items.slice(0, 12) : items;
-    const cards = visibleItems.map((item) => {
-      const actions = `<div class="memory-actions"><button data-memory-detail="${escapeHtml(item.id)}">${item.correctable ? "查看与修正" : "查看来源"}</button>${layer === "archival" ? "" : `<button class="danger" data-forget="${escapeHtml(item.id)}">忘记</button>`}</div>`;
+    const cards = items.map((item) => {
+      const actions = `<div class="memory-actions"><button data-memory-detail="${escapeHtml(item.id)}">${item.correctable ? "查看与修正" : "查看来源"}</button><button class="danger" data-forget="${escapeHtml(item.id)}">忘记</button></div>`;
       return `<article class="memory-item"><div><p>${escapeHtml(item.content)}</p><small>${escapeHtml(item.who)} · ${date(item.created)}${item.source?.sourceMessageId ? " · 有原始来源" : ""}</small></div>${actions}</article>`;
     }).join("");
-    const archiveToggle = layer === "archival" && items.length > 12
-      ? `<button class="memory-more" type="button" data-toggle-archive>${memoryArchiveExpanded ? "收起原始归档" : `查看其余 ${items.length - 12} 条`}</button>`
-      : "";
-    return `<section class="memory-group"><h2>${name}<span>${items.length} 条${layer === "archival" ? " · 受保护" : ""}</span></h2>${cards}${archiveToggle}</section>`;
+    return `<section class="memory-group"><h2>${name}<span>${items.length} 条</span></h2>${cards}</section>`;
   }).join("");
   $("#content").innerHTML = `<form class="memory-form" id="memoryForm"><textarea id="memoryPreference" maxlength="500" placeholder="例如：正式文档先给结论，段落尽量短；演示稿偏好 16:9 和少量文字。"></textarea><button class="primary" type="submit">记住这项习惯</button></form>${groups || '<div class="empty">还没有可展示的记忆。直接聊天即可，必要内容会逐步沉淀。</div>'}`;
   $("#memoryForm").onsubmit = async (event) => {
@@ -558,11 +553,6 @@ function renderMemory() {
     await load();
   };
   $("#content").onclick = async (event) => {
-    if (event.target.closest("[data-toggle-archive]")) {
-      memoryArchiveExpanded = !memoryArchiveExpanded;
-      renderMemory();
-      return;
-    }
     const detail = event.target.closest("[data-memory-detail]");
     if (detail) {
       const item = state.memories.find((memory) => memory.id === detail.dataset.memoryDetail);
@@ -570,7 +560,7 @@ function renderMemory() {
       return;
     }
     const button = event.target.closest("[data-forget]");
-    if (!button || !confirm("忘记这条分类记忆？原始对话归档仍会保留。")) return;
+    if (!button || !confirm("忘记这条整理后的记忆？聊天记录不会改变。")) return;
     await api("/api/memory/forget", { method: "POST", body: JSON.stringify({ id: button.dataset.forget }) });
     toast("已忘记这条内容");
     await load();
@@ -586,7 +576,7 @@ $("#memoryCorrectionForm").onsubmit = async (event) => {
   try {
     await api("/api/memory/correct", { method: "POST", body: JSON.stringify({ id, content }) });
     $("#memoryDetailDialog").close();
-    toast("记忆已修正，原始来源仍然保留");
+    toast("记忆已修正，聊天记录不会改变");
     await load();
   } catch (error) {
     toast(error.message, true);
