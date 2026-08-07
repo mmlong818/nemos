@@ -15,6 +15,7 @@ export interface GroupParticipation {
 }
 
 const CASUAL_SIGNAL = /^(你好|嗨|哈喽|在吗|早上好|上午好|中午好|下午好|晚上好|晚安|谢谢|哈哈|嗯+|哦+|好的|收到)[呀啊吗呢吧～~！!。.？?]*$/i;
+const CONTINUATION_SIGNAL = /^(继续|接着|往下|展开|详细说说|具体一点|为什么|怎么做|然后呢|这个呢|上一点|刚才那点|第[一二三四五六七八九十\d]+点)/i;
 
 const EXPERT_TOPIC_RULES: Array<{ ids: string[]; pattern: RegExp }> = [
   { ids: ["teacher_lin", "critical_thinking"], pattern: /学习|辅导|讲解|概念|知识点|解题|作业|练习|复习|考试|课程|错题|举例|小测/i },
@@ -29,7 +30,7 @@ const EXPERT_TOPIC_RULES: Array<{ ids: string[]; pattern: RegExp }> = [
   { ids: ["startup_validation", "first_principles"], pattern: /创业|想法|验证|可行性|假设|原理|约束/i },
 ];
 
-function selectAdvisoryExperts(text: string, memberIds: Set<string>): string[] {
+function selectAdvisoryExperts(text: string, memberIds: Set<string>, previousExpertIds: string[]): string[] {
   const selected: string[] = [];
   for (const rule of EXPERT_TOPIC_RULES) {
     if (!rule.pattern.test(text)) continue;
@@ -39,6 +40,10 @@ function selectAdvisoryExperts(text: string, memberIds: Set<string>): string[] {
     }
   }
   if (selected.length > 0) return selected;
+  if (CONTINUATION_SIGNAL.test(text.trim())) {
+    const previous = previousExpertIds.filter((id) => memberIds.has(id)).slice(0, 2);
+    if (previous.length > 0) return previous;
+  }
   // 专家组里的非问候消息都需要真实专家参与；模糊、犹豫和“继续”也属于需要判断的上下文。
   return ["product_lead", "critical_thinking"].filter((id) => memberIds.has(id));
 }
@@ -66,6 +71,7 @@ export function resolveGroupReplyRoute(
   members: GroupRouteMember[],
   advisoryGroupId: string,
   coordinatorPersonaId = "clownfish",
+  previousExpertIds: string[] = [],
 ): GroupReplyRoute {
   const body = text || "";
   const explicitlyMentionedPersonaIds = members
@@ -86,7 +92,7 @@ export function resolveGroupReplyRoute(
     const memberIds = new Set(members.map((member) => member.id));
     const trimmed = body.trim();
     const invitedExperts = trimmed && !CASUAL_SIGNAL.test(trimmed)
-      ? selectAdvisoryExperts(trimmed, memberIds)
+      ? selectAdvisoryExperts(trimmed, memberIds, previousExpertIds)
       : [];
     return {
       // 专家先给出各自判断，小丑鱼最后读取本轮群记录并负责整合。
