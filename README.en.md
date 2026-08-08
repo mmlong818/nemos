@@ -4,7 +4,7 @@
 
 > A local-first AI work application with long-term memory. Start with a new conversation, switch to task completion or guided study when needed, and continue complex work in Capabilities, Files, and Work.
 
-![Clownfish chat](docs/assets/readme/clownfish-chat.jpg)
+![Clownfish chat](docs/assets/readme/clownfish-chat-2026-08-08.jpg)
 
 ## What it does today
 
@@ -40,7 +40,7 @@ The capability page supports two equal paths:
 
 Selection opens the task form immediately, without an extra preparation step. Jobs continue in the background and remain available locally.
 
-![Clownfish capabilities](docs/assets/readme/clownfish-capabilities.jpg)
+![Clownfish capabilities](docs/assets/readme/clownfish-capabilities-2026-08-08.jpg)
 
 Built-in capabilities cover presentation creation, formal documents, deep research, Hong Kong market briefs, complex-problem framing, product interface design, project development, meeting minutes, web reports, option comparison, business development, market opportunity simulation, and new-capability generation.
 
@@ -58,7 +58,7 @@ The file workspace supports DOCX, PPTX, XLSX, and PDF:
 - Deleted working files move to a recoverable trash area before permanent deletion;
 - Results can be exported to DOCX, PDF, PPTX, XLSX, HTML, or Markdown.
 
-![Clownfish office workspace](docs/assets/readme/clownfish-office.jpg)
+![Clownfish office workspace](docs/assets/readme/clownfish-office-2026-08-08.jpg)
 
 ## Work: ongoing tasks and deliverables in one place
 
@@ -71,7 +71,7 @@ Repeated and background work is kept in the Work center:
 
 New users can still begin in a conversation without learning projects or workflow terminology first.
 
-![Clownfish work center](docs/assets/readme/clownfish-work.jpg)
+![Clownfish work center](docs/assets/readme/clownfish-work-2026-08-08.jpg)
 
 ## Memory: focused, visible, and user-controlled
 
@@ -87,7 +87,7 @@ Clownfish uses the Nemos Memory SDK in this repository. The application currentl
 
 Writing, layout, and format preferences supplement the current request; they do not replace it.
 
-![Clownfish memory](docs/assets/readme/clownfish-memory.jpg)
+![Clownfish memory](docs/assets/readme/clownfish-memory-2026-08-08.jpg)
 
 See the [TypeScript SDK](sdk/typescript/README.en.md) and the [v0.7 implementation design](sdk/typescript/docs/nemos-memory-v0.7-design.md) for the memory lifecycle and APIs.
 
@@ -97,7 +97,7 @@ Open **Model connection**, then choose a provider and model name and enter an AP
 
 Clownfish follows provider presets when routing models. Providers with a separate daily-chat model use it automatically, while experts, capabilities, file generation, and complex work use the configured task model. When no separate route is defined, both use the same model.
 
-![Clownfish model connection](docs/assets/readme/clownfish-model-connection.jpg)
+![Clownfish model connection](docs/assets/readme/clownfish-model-connection-2026-08-08.jpg)
 
 Presets are available for Zhipu GLM, OpenAI, Anthropic Claude, DeepSeek, Alibaba Qwen, MiniMax, and custom services. OpenAI-compatible and Anthropic-compatible protocols are supported. Vision, web, and embedding support depends on the selected service and model.
 
