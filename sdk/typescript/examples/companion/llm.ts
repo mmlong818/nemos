@@ -635,9 +635,21 @@ function agentMetadata(
       mode: context.mode,
       memoryScopes: JSON.stringify(context.memoryScopes),
       toolMode: context.toolMode ?? "auto",
+      ...(context.mode === "chat" ? { objective: runObjective(context.instruction) } : {}),
     } : {}),
     ...runtime,
   };
+}
+
+function runObjective(instruction: string): string {
+  const visible = instruction
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith("【") && !line.startsWith("#")) || "对话记录";
+  return visible
+    .replace(/^(?:对方|用户|User)\s*[:：]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
 }
 
 function agentLimits(context: ChatAgentContext | undefined, defaultMaxTokens: number): {

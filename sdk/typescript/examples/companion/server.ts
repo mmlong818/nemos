@@ -105,6 +105,12 @@ const MANIFEST_FILE = resolveManifestPath();
 const APP_MANIFEST = readManifest();
 const MEMORY_CORE_INFO = readMemoryCoreInfo();
 const WEB_DIR = join(__dirname, "web");
+const preparedOfficeExports = new Map<string, {
+  data: Buffer;
+  contentType: string;
+  filename: string;
+  expiresAt: number;
+}>();
 
 
 function migrateStoredPersonaIdentities(root: string): void {
@@ -656,8 +662,14 @@ function approvalReplayConflict(
 function listAgentRuns(limit: number) {
   return agentRunStore.list({ limit }).map((run) => {
     const stored = agentRunStore.get(run.runId);
+    const inferredObjective = stored?.metadata?.mode === "chat"
+      ? runObjectiveFromStoredPrompt(stored.prompt)
+      : "";
+    const titledRun = inferredObjective && !run.metadata?.objective
+      ? { ...run, metadata: { ...run.metadata, objective: inferredObjective } }
+      : run;
     const cost = estimateCompanionModelCost(stored?.metadata?.model, run.usage) ?? undefined;
-    const visible = cost ? { ...run, cost } : run;
+    const visible = cost ? { ...titledRun, cost } : titledRun;
     if (!run.resumable) return visible;
     const recovery = agentRunStore.getResumeState(run.runId);
     const conflict = recovery.checkpoint
@@ -667,6 +679,20 @@ function listAgentRuns(limit: number) {
       ? { ...visible, resumable: false, resumeBlockedReason: conflict }
       : visible;
   });
+}
+
+function runObjectiveFromStoredPrompt(prompt: string): string {
+  const visible = String(prompt || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line
+      && !line.startsWith("【")
+      && !line.startsWith("#")
+      && !/^(Current date|Task delivery mode|Conversation mode|Memory context|用户已说明)/i.test(line));
+  return (visible || "")
+    .replace(/^(?:对方|用户|User)\s*[:：]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
 }
 function resumeInterruptedAgentRuns(): void {
   const waitingRunIds = new Set(
@@ -2053,6 +2079,11 @@ function readBody(req: IncomingMessage, maxBytes = 32 * 1024 * 1024): Promise<un
       if (tooLarge) return;
       try {
         const raw = Buffer.concat(chunks).toString("utf8");
+        const contentType = String(req.headers["content-type"] || "").toLowerCase();
+        if (contentType.includes("application/x-www-form-urlencoded")) {
+          resolve(Object.fromEntries(new URLSearchParams(raw)));
+          return;
+        }
         resolve(raw ? JSON.parse(raw) : {});
       } catch (e) {
         reject(e);
@@ -2858,23 +2889,49 @@ const server = createServer(async (req, res) => {
       return;
     }
     const url = req.url || "/";
-    if (req.method === "GET" && (url === "/" || url === "/index.html")) {
+    const pathname = url.split("?", 1)[0];
+    if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
       send(res, 200, readFileSync(join(WEB_DIR, "index.html"), "utf-8"), "text/html");
       return;
     }
-    if (req.method === "GET" && (url === "/capabilities" || url === "/capabilities.html")) {
+    if (req.method === "GET" && (pathname === "/capabilities" || pathname === "/capabilities.html")) {
       send(res, 200, readFileSync(join(WEB_DIR, "capabilities.html"), "utf-8"), "text/html");
       return;
     }
-    if (req.method === "GET" && (url === "/office" || url === "/office.html")) {
+    if (req.method === "GET" && (pathname === "/office" || pathname === "/office.html")) {
       send(res, 200, readFileSync(join(WEB_DIR, "office.html"), "utf-8"), "text/html");
       return;
-    }    if (req.method === "GET" && ["/tasks", "/artifacts", "/runs", "/memory"].includes(url)) {
+    }
+    if (req.method === "GET" && ["/tasks", "/artifacts", "/runs", "/memory"].includes(pathname)) {
       send(res, 200, readFileSync(join(WEB_DIR, "work.html"), "utf-8"), "text/html");
       return;
     }
-    if (req.method === "POST" && url === "/api/files/export") {
-      const body = (await readBody(req, 5 * 1024 * 1024)) as {
+    if (req.method === "GET" && pathname === "/api/files/export") {
+      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
+      const prepared = preparedOfficeExports.get(id);
+      if (!prepared || prepared.expiresAt < Date.now()) {
+        if (id) preparedOfficeExports.delete(id);
+        send(res, 404, { error: "下载已过期，请重新导出" });
+        return;
+      }
+      preparedOfficeExports.delete(id);
+      res.writeHead(200, {
+        "Content-Type": prepared.contentType,
+        "Content-Length": prepared.data.length,
+        "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(prepared.filename),
+        "Cache-Control": "no-store",
+      });
+      res.end(prepared.data);
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/files/export") {
+      const received = (await readBody(req, 5 * 1024 * 1024)) as {
+        payload?: string;
+        name?: string;
+        format?: OfficeExportFormat;
+        blocks?: Array<{ title?: string; text?: string }>;
+      };
+      const body = (typeof received.payload === "string" ? JSON.parse(received.payload) : received) as {
         name?: string;
         format?: OfficeExportFormat;
         blocks?: Array<{ title?: string; text?: string }>;
@@ -2890,6 +2947,24 @@ const server = createServer(async (req, res) => {
           format: body.format,
           blocks: body.blocks.map((block) => ({ title: String(block.title || ""), text: String(block.text || "") })),
         });
+        const prepare = new URL(url, "http://127.0.0.1").searchParams.get("prepare") === "1";
+        if (prepare) {
+          for (const [id, item] of preparedOfficeExports) {
+            if (item.expiresAt < Date.now()) preparedOfficeExports.delete(id);
+          }
+          const id = randomBytes(18).toString("hex");
+          preparedOfficeExports.set(id, {
+            data: exported.data,
+            contentType: exported.contentType,
+            filename: exported.filename,
+            expiresAt: Date.now() + 2 * 60_000,
+          });
+          send(res, 200, {
+            downloadUrl: `/api/files/export?id=${id}`,
+            warnings: exported.warnings,
+          });
+          return;
+        }
         res.writeHead(200, {
           "Content-Type": exported.contentType,
           "Content-Length": exported.data.length,

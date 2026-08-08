@@ -2885,6 +2885,7 @@
     stroke-linejoin:round;
   }
   .contact .avatar, #header .havatar, .msg-avatar, .avatar-preview { background:#e3dfd7 !important; }
+  [hidden] { display:none !important; }
 
   @media (prefers-reduced-motion: reduce) {
     #topActions button, #topActions .top-icon { transition-duration:.01ms; }
@@ -2892,7 +2893,7 @@
 
   @media (max-width:720px) {
     body { display:flex; flex-direction:column; overflow:hidden; padding-top:0; }
-    #sidebar { width:100%; height:204px; flex-direction:row; }
+    #sidebar { width:100%; height:auto; min-height:204px; max-height:46vh; flex:0 0 auto; flex-direction:row; overflow:hidden; }
     #wechatRail { width:52px; flex-basis:52px; padding:14px 0 10px; }
     .rail-avatar { margin-bottom:12px; }
     #sessionPane { width:calc(100% - 52px); }
@@ -2900,7 +2901,7 @@
     #wechatSearch input { width:calc(100vw - 124px); }
     #contacts { display:flex; min-height:76px; overflow-x:auto; overflow-y:hidden; padding:0 8px 8px; }
     .contact { min-width:176px; min-height:62px; margin:0; border-right:1px solid #ded7cd; border-bottom:0; }
-    #main { height:calc(100vh - 204px); }
+    #main { height:auto; min-height:0; flex:1 1 auto; }
     #topbar { min-height:52px; padding:0 10px; }
     #header .hname { max-width:38vw; }
     #msgs { padding:14px 12px; }
@@ -2983,8 +2984,11 @@
   .thread-search { position:relative; display:none; }
   #wechatSearch.search-open .thread-search { display:block; }
   .thread-search > .ui-icon { position:absolute; top:50%; left:9px; width:14px; height:14px; color:#85877f; transform:translateY(-50%); pointer-events:none; }
-  #wechatSearch .thread-search input { width:100%; height:32px; padding:0 9px 0 29px; border:1px solid #d7cfc4; border-radius:6px; background:#fbf8f2; color:#4f514b; font-size:12px; letter-spacing:.01em; outline:none; }
+  #wechatSearch .thread-search input { width:100%; height:32px; padding:0 36px 0 29px; border:1px solid #d7cfc4; border-radius:6px; background:#fbf8f2; color:#4f514b; font-size:12px; letter-spacing:.01em; outline:none; }
   #wechatSearch .thread-search:focus-within input { border-color:#a66a84; box-shadow:0 0 0 2px rgba(179,63,114,.1); }
+  #closeConversationSearch { position:absolute; top:3px; right:3px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:0; border-radius:5px; color:#777970; background:transparent; cursor:pointer; }
+  #closeConversationSearch:hover, #closeConversationSearch:focus-visible { color:#8f2f59; background:#f0e7ea; }
+  #closeConversationSearch .ui-icon { width:13px; height:13px; }
   #contacts { padding:4px 8px 12px; }
   .task-list-label { padding:8px 9px 5px; color:#8b8d85; font-size:11px; font-weight:500; letter-spacing:.02em; }
   #contacts .contact { width:100%; min-height:36px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:center; margin:1px 0; padding:0 3px 0 0; border:0; border-radius:6px; background:transparent; cursor:pointer; }
@@ -3021,13 +3025,13 @@
         <button class="rail-icon" id="railWork" type="button" title="工作" aria-label="工作" data-icon="work" data-rail-label="工作"></button>
       </nav>
       <div class="rail-spacer"></div>
-      <button class="rail-icon" id="settingsbtn" type="button" title="设置" aria-label="设置" data-icon="settings" data-rail-label="设置"></button>
+      <button class="rail-icon" id="settingsbtn" type="button" title="设置" aria-label="设置" data-icon="settings" data-rail-label="设置" hidden></button>
     </div>
     <div id="sessionPane">
       <div id="brand"><div class="sidebar-header-actions"><button class="sidebar-header-action" id="sidebarSearchToggle" type="button" title="搜索对话" aria-label="搜索对话" aria-expanded="false"><span data-icon="search" aria-hidden="true"></span></button></div><small id="llm">…</small></div>
       <div id="wechatSearch">
         <button id="quickGroup" type="button" title="新对话" aria-label="新对话"><span data-icon="plus-circle" aria-hidden="true"></span><span>新对话</span></button>
-        <label class="thread-search"><span data-icon="search" aria-hidden="true"></span><input id="contactSearch" type="search" placeholder="搜索对话" autocomplete="off" aria-label="搜索对话" /></label>
+        <div class="thread-search"><span data-icon="search" aria-hidden="true"></span><input id="contactSearch" type="search" placeholder="搜索对话" autocomplete="off" aria-label="搜索对话" /><button id="closeConversationSearch" type="button" aria-label="关闭搜索" title="关闭搜索" data-icon="x"></button></div>
       </div>
       <div id="contacts"></div>
       <div id="side-actions">
@@ -3091,7 +3095,7 @@
     <div class="modal-box" style="width:300px">
       <div class="modal-head"><span id="settingsTitle">设置</span><button id="smclose" type="button" aria-label="关闭设置">×</button></div>
       <div class="smlist">
-        <button class="smitem" id="sm-group" type="button"><span class="smitem-icon" data-icon="users"></span><span><b>群聊与成员</b><small>发起群聊，或管理当前群聊</small></span></button>
+        <button class="smitem" id="sm-group" type="button" hidden><span class="smitem-icon" data-icon="users"></span><span><b>群聊与成员</b><small>发起群聊，或管理当前群聊</small></span></button>
         <button class="smitem" id="sm-avatar" type="button"><span class="smitem-icon" data-icon="image"></span><span><b>我的头像</b><small>更换自己的聊天头像</small></span></button>
         <button class="smitem" id="sm-model" type="button"><span class="smitem-icon" data-icon="link"></span><span><b>模型连接</b><small id="sm-model-summary">选择服务商、模型与 API Key</small></span></button>
         <button class="smitem" id="sm-data" type="button"><span class="smitem-icon" data-icon="brain"></span><span><b>记忆与数据</b><small>查看、纠正和删除本机保存的信息</small></span></button>
@@ -3634,7 +3638,7 @@
         </div>
         <div id="composerTools">
           <div class="tool-left">
-            <button id="vbtn" title="切换语音条" data-icon="mic"></button>
+            <button id="vbtn" title="切换语音条" data-icon="mic" hidden></button>
             <button id="shotbtn" title="截屏" data-icon="scissors"></button>
             <button id="imgbtn" title="发图片（识图）" data-icon="image"></button>
             <input type="file" id="imgfile" accept="image/*" style="display:none" />
@@ -7887,6 +7891,10 @@ function setConversationSearchOpen(open) {
   }
 }
 $("#sidebarSearchToggle").onclick = () => setConversationSearchOpen(!$("#wechatSearch").classList.contains("search-open"));
+$("#closeConversationSearch").onclick = () => {
+  setConversationSearchOpen(false);
+  $("#sidebarSearchToggle").focus();
+};
 $("#msgs").addEventListener("click", (event) => {
   const option = event.target.closest("[data-work-mode]");
   if (option) setActiveWorkMode(option.dataset.workMode);
@@ -7894,6 +7902,10 @@ $("#msgs").addEventListener("click", (event) => {
 $("#contactSearch").addEventListener("input", renderContacts);
 $("#contactSearch").addEventListener("keydown", (event) => {
   if (event.key === "Escape") setConversationSearchOpen(false);
+  if (event.key === "Tab" && !event.shiftKey) {
+    event.preventDefault();
+    $("#closeConversationSearch").focus();
+  }
 });
 $("#contacts").addEventListener("click", (event) => {
   const row = event.target.closest(".contact[data-conversation-id]");

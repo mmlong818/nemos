@@ -54,6 +54,7 @@ const MATCH_RULES = [
   ["ability", /(生成|创建|新增|沉淀|锻造).{0,8}(能力|技能)|做成.{0,6}(能力|技能)/i],
   ["presentation", /PPT|演示|汇报|路演|幻灯|提案|课件/i],
   ["meeting", /会议|纪要|访谈|录音|讨论记录/i],
+  ["document", /(?:周报|月报|日报|材料|素材|内容).{0,18}(?:整理|摘要|总结|归纳|提炼)|(?:整理|摘要|总结|归纳|提炼).{0,18}(?:周报|月报|日报|材料|素材|内容)|管理层摘要|正式文档/i],
   ["product", /产品|界面|交互|原型|用户体验|功能设计/i],
   ["developer", /开发|写代码|改代码|修复.{0,6}(问题|bug)|项目检查|构建|测试/i],
   ["business", /商务|合作|销售|客户|谈判|成交|跟进/i],
@@ -555,10 +556,9 @@ function artifactFromJob(job) {
 function artifactLinks(artifact, compact = false) {
   if (!artifact) return "";
   const preview = `<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(artifact.id)}" target="_blank" rel="noopener">${compact ? "预览" : "打开结果"}</a>`;
-  const edit = `<a href="/office?artifact=${encodeURIComponent(artifact.id)}">${compact ? "继续编辑" : "在文件中继续"}</a>`;
-  const download = artifact.format === "pptx"
-    ? `<a href="/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}&download=1">${compact ? "下载" : "下载 PPTX"}</a>`
-    : "";
+  const editUrl = `/office?artifact=${encodeURIComponent(artifact.id)}`;
+  const edit = `<a href="${editUrl}" data-artifact-edit="${editUrl}">${compact ? "继续编辑" : "在文件中继续"}</a>`;
+  const download = `<a href="/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}&download=1" download>${compact ? "下载" : `下载 ${String(artifact.format || "文件").toUpperCase()}`}</a>`;
   return preview + edit + download;
 }
 
@@ -913,6 +913,12 @@ function bindEvents() {
   $("#startTask").addEventListener("click", startTask);
   $("#memoryHelp").addEventListener("click", () => $("#memoryDialog").showModal());
   window.addEventListener("hashchange", () => openView(location.hash.slice(1) || "start", false));
+  document.addEventListener("click", (event) => {
+    const edit = event.target.closest("[data-artifact-edit]");
+    if (!edit || event.defaultPrevented || event.button !== 0) return;
+    event.preventDefault();
+    window.location.assign(edit.dataset.artifactEdit);
+  });
 }
 
 async function init() {
