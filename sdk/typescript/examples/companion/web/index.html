@@ -648,30 +648,6 @@
   }
   .voice { font-style:italic; }
   #vbtn.rec { background:linear-gradient(135deg,#ff5b7f,#ff8a5b); color:#fff; animation:pulse 1s ease-in-out infinite; }
-  #callbtn {
-    margin-left:auto;
-    min-width:74px;
-    border:1px solid rgba(139,92,246,.22);
-    cursor:pointer;
-    font-size:13px;
-    font-weight:800;
-    color:#6b42d8;
-    background:#f4efff;
-    border-radius:999px;
-    padding:8px 15px;
-    transition:transform .15s ease,background .15s ease,box-shadow .15s ease;
-  }
-  #callbtn:hover {
-    transform:translateY(-1px);
-    background:#efe7ff;
-    box-shadow:0 10px 24px rgba(139,92,246,.16);
-  }
-  #callbtn.on { background:linear-gradient(135deg,#8b5cf6,#ec4899); color:#fff; }
-  #callbar { display:none; align-items:center; gap:12px; padding:9px 22px; background:#8b5cf6; color:#fff; font-size:13px; }
-  #callbar.on { display:flex; }
-  #callstatus { font-weight:600; }
-  #callbar #callend { margin-left:auto; border:none; cursor:pointer; background:rgba(255,255,255,.25); color:#fff; border-radius:14px; padding:5px 14px; font-weight:600; }
-  #callbar #callend:hover { background:rgba(255,255,255,.4); }
   .bub.typing, .bub.status { color:var(--muted); font-style:italic; animation:pulse 1.3s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{ opacity:.5; } 50%{ opacity:1; } }
   .hint { color:var(--muted); text-align:center; margin:auto; font-size:14px; line-height:2; }
@@ -2023,22 +1999,6 @@
     letter-spacing:0;
   }
   #header .htag { display:none; }
-  #callbtn {
-    width:32px;
-    min-width:32px;
-    height:32px;
-    padding:0;
-    border:0;
-    border-radius:4px;
-    background:transparent;
-    color:#2f343c;
-    font-size:18px;
-    font-weight:500;
-    box-shadow:none;
-  }
-  #callbtn:hover { transform:none; background:#e9e9e9; box-shadow:none; }
-  #callbtn.on { background:#07c160; color:#fff; }
-  #callbtn[hidden] { display:none; }
   #topActions {
     margin-left:auto;
     display:flex;
@@ -2399,7 +2359,6 @@
   }
   #topActions button:hover,
   .top-icon:hover { background:#efe8f6; color:#9b5cf6; transform:none; box-shadow:none; }
-  #callbtn.on { background:var(--grad); color:#fff; }
   #msgs {
     padding:18px 18px 20px;
     background:#f7f3fb;
@@ -2534,7 +2493,7 @@
   #topActions button, .top-icon, #vbtn, #imgbtn, #shotbtn, #filebtn { color:#5d6059; }
   #topActions button:hover, .top-icon:hover, #vbtn:hover, #imgbtn:hover, #shotbtn:hover, #filebtn:hover { color:#8f2f59; background:#f3e9ed; }
   .row.other .bub { background:#fffcf7; border:1px solid #e2dbd0; }
-  .row.me .bub, .msg-avatar.me-avatar, #callbtn.on { color:#fff; background:#b33f72; }
+  .row.me .bub, .msg-avatar.me-avatar { color:#fff; background:#b33f72; }
   .expert-longform-row {
     align-self:center;
     width:min(840px,100%);
@@ -2861,12 +2820,12 @@
   .rail-icon > .ui-icon-slot, #settingsbtn > .ui-icon-slot { width:22px; height:22px; flex-basis:22px; }
   #topActions {
     display:grid;
-    grid-template-columns:repeat(4,32px);
+    grid-template-columns:repeat(2,32px);
     grid-auto-rows:32px;
     align-items:center;
     gap:2px;
   }
-  #topActions button, #topActions .top-icon, #callbtn {
+  #topActions button, #topActions .top-icon {
     width:32px;
     min-width:32px;
     height:32px;
@@ -2928,7 +2887,7 @@
   .contact .avatar, #header .havatar, .msg-avatar, .avatar-preview { background:#e3dfd7 !important; }
 
   @media (prefers-reduced-motion: reduce) {
-    #topActions button, #topActions .top-icon, #callbtn { transition-duration:.01ms; }
+    #topActions button, #topActions .top-icon { transition-duration:.01ms; }
   }
 
   @media (max-width:720px) {
@@ -3004,7 +2963,49 @@
   .timeline-message span { color:#8f2f59; }
   .timeline-message p { overflow:hidden; margin:0; color:#5f625b; text-overflow:ellipsis; white-space:nowrap; }
   .command-strip { display:flex; flex-wrap:wrap; gap:7px; margin-top:16px; }
+  #brand { min-height:52px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 10px 6px 12px; color:#282923; font-size:14px; font-weight:600; letter-spacing:.01em; }
+  #brand::before { display:none; }
+  #brand small { display:none; }
+  .sidebar-header-actions { display:flex; align-items:center; gap:2px; margin-left:auto; }
+  #wechatRail { padding-top:20px; }
+  #wechatRail .rail-avatar { margin-bottom:3px; }
+  .rail-brand-label { margin-bottom:13px; color:#4f514c; font-size:10px; font-weight:600; line-height:1.25; letter-spacing:.02em; }
+  .sidebar-header-action { width:32px; height:32px; display:grid; place-items:center; padding:0; border:0; border-radius:7px; color:#5f625c; background:transparent; cursor:pointer; }
+  .sidebar-header-action:hover, .sidebar-header-action[aria-expanded="true"] { color:#20221f; background:#e5ded4; }
+  .sidebar-header-action:focus-visible { outline:2px solid #8f2f59; outline-offset:1px; }
+  .sidebar-header-action .ui-icon { width:17px; height:17px; }
+  #wechatSearch { display:grid; gap:6px; padding:0 9px 10px; }
+  #wechatSearch > .search-icon { display:none; }
+  #quickGroup { width:100% !important; height:38px !important; display:flex; align-items:center; gap:9px; padding:0 10px; border-radius:7px !important; color:#20221f !important; background:#e5ded4 !important; font-size:13px !important; font-weight:600; letter-spacing:.01em; text-align:left; }
+  #quickGroup:hover { background:#ddd5ca !important; }
+  #quickGroup:focus-visible { outline:2px solid #8f2f59; outline-offset:1px; }
+  #quickGroup .ui-icon { width:16px; height:16px; margin:0; }
+  .thread-search { position:relative; display:none; }
+  #wechatSearch.search-open .thread-search { display:block; }
+  .thread-search > .ui-icon { position:absolute; top:50%; left:9px; width:14px; height:14px; color:#85877f; transform:translateY(-50%); pointer-events:none; }
+  #wechatSearch .thread-search input { width:100%; height:32px; padding:0 9px 0 29px; border:1px solid #d7cfc4; border-radius:6px; background:#fbf8f2; color:#4f514b; font-size:12px; letter-spacing:.01em; outline:none; }
+  #wechatSearch .thread-search:focus-within input { border-color:#a66a84; box-shadow:0 0 0 2px rgba(179,63,114,.1); }
+  #contacts { padding:4px 8px 12px; }
+  .task-list-label { padding:8px 9px 5px; color:#8b8d85; font-size:11px; font-weight:500; letter-spacing:.02em; }
+  #contacts .contact { width:100%; min-height:36px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:center; margin:1px 0; padding:0 3px 0 0; border:0; border-radius:6px; background:transparent; cursor:pointer; }
+  #contacts .contact:hover { background:#e7e0d6; }
+  #contacts .contact.active { color:#20221f; background:#e3dce0; }
+  #contacts .contact-open { min-width:0; min-height:36px; display:block; padding:7px 6px 7px 9px; border:0; color:inherit; background:transparent; text-align:left; cursor:pointer; }
+  #contacts .contact-open:focus-visible, #contacts .contact-delete:focus-visible { outline:2px solid #8f2f59; outline-offset:0; }
+  #contacts .contact .meta { min-width:0; padding:0; }
+  #contacts .contact .meta b { font-size:13px; font-weight:450; line-height:1.35; }
+  #contacts .contact .meta span, #contacts .contact-time, #contacts .contact-signal { display:none; }
+  #contacts .contact-delete { width:28px; height:28px; display:grid; place-items:center; border:0; border-radius:5px; color:#7b746c; background:transparent; cursor:pointer; opacity:.42; }
+  #contacts .contact:hover .contact-delete, #contacts .contact:focus-within .contact-delete { opacity:1; }
+  #contacts .contact-delete:hover { color:#9d294e; background:#f4e4e7; }
+  #contacts .contact-delete .ui-icon { width:14px; height:14px; }
+  .mode-switch { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:22px; }
+  .mode-switch button { min-height:32px; padding:0 11px; border:1px solid transparent; border-radius:7px; color:#696b65; background:transparent; font-size:12px; font-weight:500; cursor:pointer; }
+  .mode-switch button:hover { background:#f0ebe3; color:#292a26; }
+  .mode-switch button[aria-pressed="true"] { border-color:#d4cbc0; color:#282923; background:#f4efe7; }
+  .mode-switch button:focus-visible { outline:2px solid #8f2f59; outline-offset:2px; }
   @media(max-width:720px){.conversation-layout{grid-template-columns:1fr}.conversation-card{padding:18px}.timeline-message{grid-template-columns:54px minmax(0,1fr)}.timeline-message button{grid-column:2}}
+  @media(max-width:520px){.mode-switch{gap:3px}.mode-switch button{padding:0 8px}#contacts .contact-delete{opacity:1}}
 </style>
   <link rel="stylesheet" href="/assets/app-navigation-labels.css" />
 </head>
@@ -3012,8 +3013,9 @@
   <div id="sidebar">
     <div id="wechatRail">
       <button class="rail-avatar" id="railUserAvatar" type="button" title="小丑鱼" aria-label="回到小丑鱼对话"><img class="avatar-img" alt="" src="/assets/brand/clownfish-mark.svg" /></button>
+      <span class="rail-brand-label">小丑鱼</span>
       <nav class="rail-main-nav" aria-label="主导航">
-        <button class="rail-icon active" type="button" title="聊天" aria-label="聊天" aria-current="page" data-icon="message-circle" data-rail-label="聊天"></button>
+        <button class="rail-icon active" type="button" title="任务" aria-label="任务" aria-current="page" data-icon="message-circle" data-rail-label="任务"></button>
         <button class="rail-icon" id="railCap" type="button" title="能力" aria-label="能力" data-icon="boxes" data-rail-label="能力"></button>
         <button class="rail-icon" id="railOffice" type="button" title="办公文件" aria-label="办公文件" data-icon="file" data-rail-label="文件"></button>
         <button class="rail-icon" id="railWork" type="button" title="工作" aria-label="工作" data-icon="work" data-rail-label="工作"></button>
@@ -3022,15 +3024,10 @@
       <button class="rail-icon" id="settingsbtn" type="button" title="设置" aria-label="设置" data-icon="settings" data-rail-label="设置"></button>
     </div>
     <div id="sessionPane">
-      <div id="brand">小丑鱼<small id="llm">…</small></div>
+      <div id="brand"><div class="sidebar-header-actions"><button class="sidebar-header-action" id="sidebarSearchToggle" type="button" title="搜索对话" aria-label="搜索对话" aria-expanded="false"><span data-icon="search" aria-hidden="true"></span></button></div><small id="llm">…</small></div>
       <div id="wechatSearch">
-        <span class="search-icon" data-icon="search"></span>
-        <input id="contactSearch" type="search" placeholder="搜索联系人" autocomplete="off" aria-label="搜索联系人和群聊" />
-        <button id="quickGroup" type="button" title="更多" aria-haspopup="menu" aria-expanded="false" data-icon="plus-circle"></button>
-        <div id="quickCreateMenu" role="menu" aria-label="新建">
-          <button id="quickAddRole" class="quick-create-item" type="button" role="menuitem"><span class="quick-create-icon" data-icon="user-plus"></span><span>添加角色</span></button>
-          <button id="quickAddGroup" class="quick-create-item" type="button" role="menuitem"><span class="quick-create-icon" data-icon="users"></span><span>发起群聊</span></button>
-        </div>
+        <button id="quickGroup" type="button" title="新对话" aria-label="新对话"><span data-icon="plus-circle" aria-hidden="true"></span><span>新对话</span></button>
+        <label class="thread-search"><span data-icon="search" aria-hidden="true"></span><input id="contactSearch" type="search" placeholder="搜索对话" autocomplete="off" aria-label="搜索对话" /></label>
       </div>
       <div id="contacts"></div>
       <div id="side-actions">
@@ -3598,10 +3595,10 @@
   </div>
   <div id="conversationmodal" role="dialog" aria-modal="true" aria-labelledby="conversationTitle">
     <div class="conversation-card">
-      <div class="conversation-head"><div><p>当前工作线</p><h2 id="conversationTitle">对话与分支</h2></div><button id="conversationClose" type="button" aria-label="关闭">×</button></div>
+      <div class="conversation-head"><div><p>当前任务</p><h2 id="conversationTitle">任务与分支</h2></div><button id="conversationClose" type="button" aria-label="关闭">×</button></div>
       <div class="conversation-layout">
-        <section><div class="conversation-section-head"><h3>对话树</h3><button id="newConversation" type="button">新对话</button></div><div id="conversationTree"></div></section>
-        <section><h3>当前对话设置</h3><label>模型<input id="conversationModel" maxlength="120" placeholder="留空则自动分配快模型或主模型"></label><label>思考深度<select id="conversationReasoning"><option value="fast">快速</option><option value="balanced">均衡</option><option value="deep">深入</option></select></label><label>工具范围<select id="conversationTools"><option value="auto">按需使用</option><option value="read-only">只读工具</option><option value="off">不使用工具</option></select></label><button class="primary" id="saveConversationSettings" type="button">保存当前设置</button></section>
+        <section><div class="conversation-section-head"><h3>任务列表</h3><button id="newConversation" type="button">新建</button></div><div id="conversationTree"></div></section>
+        <section><h3>当前任务设置</h3><label>模型<input id="conversationModel" maxlength="120" placeholder="留空则自动分配快模型或主模型"></label><label>思考深度<select id="conversationReasoning"><option value="fast">快速</option><option value="balanced">均衡</option><option value="deep">深入</option></select></label><label>工具范围<select id="conversationTools"><option value="auto">按需使用</option><option value="read-only">只读工具</option><option value="off">不使用工具</option></select></label><button class="primary" id="saveConversationSettings" type="button">保存当前设置</button></section>
       </div>
       <section class="conversation-timeline"><div class="conversation-section-head"><h3>回到某一步</h3><span>回退前会自动保留备份分支</span></div><div id="conversationTimeline"></div></section>
       <nav class="command-strip" aria-label="快捷操作"><button data-conversation-command="branch">从末尾建立分支</button><button data-conversation-command="capabilities">打开能力</button><button data-conversation-command="office">打开文件</button><button data-conversation-command="tasks">查看任务</button><button data-conversation-command="memory">查看记忆</button></nav>
@@ -3609,16 +3606,13 @@
   </div>
   <div id="main">
     <div id="topbar">
-      <div id="header">和小丑鱼对话</div>
+      <div id="header">新的任务</div>
       <div id="relbar"></div>
       <div id="topActions">
-        <button class="top-icon" id="topChat" type="button" title="聊天历史" aria-label="聊天历史" data-icon="message-circle"></button>
+        <button class="top-icon" id="topChat" type="button" title="任务记录" aria-label="任务记录" data-icon="message-circle"></button>
         <button class="top-icon" id="topDrop" type="button" title="更多选项" aria-label="更多选项" data-icon="chevron-down"></button>
-        <button id="callbtn" title="语音通话" aria-label="语音通话" data-icon="phone"></button>
-        <button class="top-icon" id="topMore" type="button" title="更多" aria-label="更多" data-icon="more-horizontal"></button>
       </div>
     </div>
-    <div id="callbar"><span id="callstatus">在听…</span><button id="callend">挂断</button></div>
     <section id="chatCapabilityBridge" aria-live="polite" hidden>
       <span class="chat-capability-icon" data-icon="boxes" aria-hidden="true"></span>
       <span class="chat-capability-copy"><strong id="chatCapabilityTitle">能力任务正在执行</strong><small id="chatCapabilityStatus">完成后会回到这段对话</small></span>
@@ -3731,6 +3725,7 @@ const ICONS = {
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   link: '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/>',
   database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/>',
+  "book-open": '<path d="M3 5.5c3.5-1 6.5-.2 9 2.1 2.5-2.3 5.5-3.1 9-2.1v13c-3.5-1-6.5-.2-9 2.1-2.5-2.3-5.5-3.1-9-2.1v-13Z"/><path d="M12 7.6v13"/>',
   wrench: '<path d="M14.5 6.5a4 4 0 0 0-5 5L4 17a2.1 2.1 0 0 0 3 3l5.5-5.5a4 4 0 0 0 5-5l-2.3 2.3-3-3 2.3-2.3Z"/>',
   brain: '<path d="M9.5 5a3 3 0 0 0-5 2.2A3.5 3.5 0 0 0 5.2 14a3 3 0 0 0 4.3 4.5V5ZM14.5 5a3 3 0 0 1 5 2.2 3.5 3.5 0 0 1-.7 6.8 3 3 0 0 1-4.3 4.5V5Z"/><path d="M7 9.5h2.5M14.5 9.5H17M7.5 14h2M14.5 14h2"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
@@ -4164,21 +4159,52 @@ dedupeAppOnboarding();
 const CONVERSATION_TREE_KEY = "clownfish-conversation-trees-v1";
 let conversationTrees = {};
 try { conversationTrees = JSON.parse(localStorage.getItem(CONVERSATION_TREE_KEY) || "{}"); } catch { conversationTrees = {}; }
-function conversationDefaults() { return { model: "default", reasoning: "balanced", toolMode: "auto" }; }
+const WORK_MODES = {
+  chat: { label: "直接聊聊", icon: "message-circle", title: "新对话", reasoning: "fast", toolMode: "auto" },
+  task: { label: "完成任务", icon: "work", title: "新任务", reasoning: "balanced", toolMode: "auto" },
+  study: { label: "学习辅导", icon: "book-open", title: "新的学习", reasoning: "balanced", toolMode: "auto" },
+};
+function normalizeWorkMode(value) { return WORK_MODES[value] ? value : "chat"; }
+function conversationDefaults(mode = "chat") {
+  const normalized = normalizeWorkMode(mode);
+  return { model: "default", reasoning: WORK_MODES[normalized].reasoning, toolMode: WORK_MODES[normalized].toolMode, workMode: normalized };
+}
+function makeConversationNode(mode = "chat", messages = []) {
+  const normalizedMode = normalizeWorkMode(mode);
+  const id = "conversation-" + crypto.randomUUID();
+  return { id, title: conversationTitle(messages, WORK_MODES[normalizedMode].title), parentId: null, forkIndex: -1, createdAt: Date.now(), updatedAt: Date.now(), messages: messages.slice(), config: conversationDefaults(normalizedMode) };
+}
 function ensureConversationTree(key) {
   if (!key) return null;
   let tree = conversationTrees[key];
+  let changed = false;
   if (!tree || !tree.nodes || typeof tree.nodes !== "object") {
-    const id = "main";
-    tree = { activeId: id, nodes: {} };
-    tree.nodes[id] = { id, title: "主对话", parentId: null, forkIndex: -1, createdAt: Date.now(), messages: Array.isArray(chatLogs[key]) ? chatLogs[key].slice() : [], config: conversationDefaults() };
+    const node = makeConversationNode("chat", Array.isArray(chatLogs[key]) ? chatLogs[key] : []);
+    tree = { activeId: node.id, nodes: { [node.id]: node } };
     conversationTrees[key] = tree;
+    changed = true;
   }
-  if (!tree.nodes[tree.activeId]) tree.activeId = Object.keys(tree.nodes)[0] || "main";
+  if (tree.nodes.main) {
+    const legacy = tree.nodes.main;
+    const node = { ...legacy, id: "conversation-" + crypto.randomUUID(), title: conversationTitle(legacy.messages, "新对话"), updatedAt: legacy.updatedAt || legacy.createdAt || Date.now() };
+    delete tree.nodes.main;
+    tree.nodes[node.id] = node;
+    for (const child of Object.values(tree.nodes)) if (child.parentId === "main") child.parentId = node.id;
+    if (tree.activeId === "main") tree.activeId = node.id;
+    changed = true;
+  }
+  if (!Object.keys(tree.nodes).length) {
+    const node = makeConversationNode();
+    tree.nodes[node.id] = node;
+    tree.activeId = node.id;
+    changed = true;
+  }
+  if (!tree.nodes[tree.activeId]) tree.activeId = Object.keys(tree.nodes)[0];
   const node = tree.nodes[tree.activeId];
   if (!Array.isArray(node.messages)) node.messages = [];
   node.config = { ...conversationDefaults(), ...(node.config || {}) };
   chatLogs[key] = node.messages;
+  if (changed) saveConversationTrees();
   return tree;
 }
 function activeConversation(key) {
@@ -4192,27 +4218,88 @@ function switchConversation(id) {
   const key = logKey();
   const tree = ensureConversationTree(key);
   if (!tree || !tree.nodes[id]) return;
+  if (tree.activeId === id) {
+    $("#txt")?.focus();
+    return;
+  }
   tree.activeId = id;
   chatLogs[key] = tree.nodes[id].messages;
   saveConversationTrees();
   saveLogs();
   renderLog();
   renderConversationPanel();
+  renderContacts();
+  renderConversationHeader();
+}
+const GENERIC_CONVERSATION_TITLES = new Set(["新对话", "新任务", "新分支", "对话", "直接聊聊", "完成任务", "学习辅导"]);
+function fallbackConversationTitle(text) {
+  const clean = String(text || "")
+    .replace(/\[[^\]]{1,40}\]/g, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/^[\s，。！？!?]*(?:请|麻烦|劳驾|能否|能不能|可以|请你|帮我|帮忙|我想|我需要|想要)+[\s，。！？!?]*/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const firstClause = clean.split(/[。！？!?；;\n]/, 1)[0]?.replace(/[，,:：]+$/u, "").trim() || "";
+  if (!firstClause) return "新对话";
+  return firstClause.length > 18 ? firstClause.slice(0, 18) : firstClause;
 }
 function conversationTitle(messages, fallback) {
+  const stored = String(fallback || "").trim();
+  if (stored && !GENERIC_CONVERSATION_TITLES.has(stored)) return stored;
   const first = (messages || []).find((entry) => entry && entry.side === "me" && entry.text);
-  return first ? String(first.text).replace(/\s+/g, " ").slice(0, 28) : fallback;
+  return first ? fallbackConversationTitle(first.text) : (stored || "新对话");
 }
-function createConversation() {
-  const key = logKey();
+async function autoNameConversation(key, conversationId, text) {
+  try {
+    const data = await api("/api/conversation/title", { text });
+    const tree = ensureConversationTree(key);
+    const node = tree?.nodes?.[conversationId];
+    const title = String(data.title || "").replace(/\s+/g, " ").trim().slice(0, 24);
+    if (!node || title.length < 2) return;
+    node.title = title;
+    node.titleGenerated = true;
+    saveLogs();
+    renderContacts();
+    renderConversationHeader();
+    renderConversationPanel();
+  } catch {
+    // 本地提炼标题已经写入；远程命名失败不影响对话。
+  }
+}
+function createConversation(mode = "chat") {
+  openAppIfNeeded();
+  const key = "persona:" + APP_PERSONA_ID;
   const tree = ensureConversationTree(key);
   if (!tree) return;
-  const current = tree.nodes[tree.activeId];
-  const id = "conversation-" + crypto.randomUUID();
-  tree.nodes[id] = { id, title: "新对话", parentId: null, forkIndex: -1, createdAt: Date.now(), messages: [], config: { ...conversationDefaults(), ...(current?.config || {}) } };
-  switchConversation(id);
+  const node = makeConversationNode(mode);
+  tree.nodes[node.id] = node;
+  switchConversation(node.id);
   $("#conversationmodal").classList.remove("show");
   $("#txt").focus();
+}
+function deleteConversation(id) {
+  const key = "persona:" + APP_PERSONA_ID;
+  const tree = ensureConversationTree(key);
+  const node = tree?.nodes[id];
+  if (!node) return;
+  const title = conversationTitle(node.messages, node.title || "对话");
+  if (!confirm("删除“" + title + "”？\n这会删除此对话记录，但不会删除长期记忆或已经生成的文件。")) return;
+  delete tree.nodes[id];
+  for (const child of Object.values(tree.nodes)) if (child.parentId === id) child.parentId = null;
+  let remaining = Object.values(tree.nodes).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
+  if (!remaining.length) {
+    const replacement = makeConversationNode();
+    tree.nodes[replacement.id] = replacement;
+    remaining = [replacement];
+  }
+  if (tree.activeId === id || !tree.nodes[tree.activeId]) tree.activeId = remaining[0].id;
+  chatLogs[key] = tree.nodes[tree.activeId].messages;
+  saveConversationTrees();
+  saveLogs();
+  renderLog();
+  renderConversationPanel();
+  renderContacts();
+  renderConversationHeader();
 }
 function branchConversation(index) {
   const key = logKey();
@@ -4243,7 +4330,7 @@ function rollbackConversation(index) {
 function conversationRequestOptions(key) {
   const node = activeConversation(key);
   const config = node?.config || conversationDefaults();
-  return { sessionId: node?.id, model: config.model, reasoning: config.reasoning, toolMode: config.toolMode };
+  return { sessionId: node?.id, model: config.model, reasoning: config.reasoning, toolMode: config.toolMode, workMode: normalizeWorkMode(config.workMode) };
 }
 function renderConversationPanel() {
   const key = logKey();
@@ -4253,7 +4340,8 @@ function renderConversationPanel() {
   const nodes = Object.values(tree.nodes).sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0));
   $("#conversationTree").innerHTML = nodes.map((node) => {
     const parent = node.parentId ? tree.nodes[node.parentId] : null;
-    return '<button class="conversation-node' + (node.id === tree.activeId ? ' is-active' : '') + '" data-conversation-id="' + esc(node.id) + '" type="button"><span><strong>' + esc(conversationTitle(node.messages, node.title || "对话")) + '</strong><small>' + esc(parent ? "来自 " + conversationTitle(parent.messages, parent.title) : "独立对话") + ' · ' + String(node.messages.length) + ' 条</small></span><em>' + (node.id === tree.activeId ? "当前" : "切换") + '</em></button>';
+    const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
+    return '<button class="conversation-node' + (node.id === tree.activeId ? ' is-active' : '') + '" data-conversation-id="' + esc(node.id) + '" type="button"><span><strong>' + esc(conversationTitle(node.messages, node.title || "对话")) + '</strong><small>' + esc(mode.label + ' · ' + (parent ? "来自 " + conversationTitle(parent.messages, parent.title) : "独立任务")) + ' · ' + String(node.messages.length) + ' 条</small></span><em>' + (node.id === tree.activeId ? "当前" : "切换") + '</em></button>';
   }).join("");
   $("#conversationTimeline").innerHTML = active.messages.length ? active.messages.map((entry, index) => '<div class="timeline-message"><span>' + esc(entry.side === "me" ? "我" : entry.who || "小丑鱼") + '</span><p>' + esc(String(entry.text || "").replace(/\s+/g, " ")) + '</p><span><button data-branch-index="' + index + '" type="button">分支</button> <button data-rollback-index="' + index + '" type="button">回到这里</button></span></div>').join("") : '<div class="timeline-message"><p>当前是空白对话。</p></div>';
   $("#conversationModel").value = active.config?.model === "default" ? "" : active.config?.model || "";
@@ -4272,6 +4360,7 @@ function saveConversationSettings() {
     model: ($("#conversationModel").value || "").trim() || "default",
     reasoning: $("#conversationReasoning").value,
     toolMode: $("#conversationTools").value,
+    workMode: normalizeWorkMode(node.config?.workMode),
   };
   saveConversationTrees();
   renderConversationPanel();
@@ -4287,6 +4376,7 @@ function record(key, entry) {
   if (node) {
     node.messages.push(entry);
     node.title = conversationTitle(node.messages, node.title);
+    node.updatedAt = entry.ts;
     chatLogs[key] = node.messages;
   } else {
     (chatLogs[key] = chatLogs[key] || []).push(entry);
@@ -4294,6 +4384,7 @@ function record(key, entry) {
   saveLogs();
   updateRailStats();
   renderContacts();
+  renderConversationHeader();
 }
 const DEV_MODE_KEY = "clownfish_developer_mode";
 function isDeveloperMode() {
@@ -4354,8 +4445,45 @@ function targetIntro() {
   return null;
 }
 
+function activeWorkMode() {
+  return normalizeWorkMode(activeConversation("persona:" + APP_PERSONA_ID)?.config?.workMode);
+}
+
+function setActiveWorkMode(mode) {
+  const node = activeConversation("persona:" + APP_PERSONA_ID);
+  if (!node || (node.messages || []).some((entry) => entry.side === "me" || entry.side === "user")) return;
+  const normalized = normalizeWorkMode(mode);
+  node.config = { ...(node.config || {}), ...conversationDefaults(normalized) };
+  node.title = WORK_MODES[normalized].title;
+  node.updatedAt = Date.now();
+  saveConversationTrees();
+  saveLogs();
+  renderLog();
+  renderContacts();
+  renderConversationHeader();
+  $("#txt").focus();
+}
+
 function emptyStateHtml() {
   const picked = !!state.target;
+  if (state.target?.kind === "persona" && state.target.id === APP_PERSONA_ID) {
+    const mode = activeWorkMode();
+    const content = mode === "task"
+      ? { title: "准备完成什么？", desc: "描述目标、已有材料和希望得到的结果。专业判断与能力会在后台按需加入。" }
+      : mode === "study"
+        ? { title: "今天想学会什么？", desc: "可以发来知识点、题目或不理解的地方；系统会通过讲解、提问和练习陪你掌握。" }
+        : { title: "想聊点什么？", desc: "可以直接提问、讨论想法，或从一件小事开始。" };
+    return ''
+      + '<section class="empty-state role-intro-state">'
+      + '  <article class="role-intro-card">'
+      + '    <nav class="mode-switch" aria-label="对话方式">'
+      + Object.entries(WORK_MODES).map(([key, item]) => '<button type="button" data-work-mode="' + esc(key) + '" aria-pressed="' + String(key === mode) + '">' + esc(item.label) + '</button>').join('')
+      + '    </nav>'
+      + '    <header class="role-intro-head"><h2>' + esc(content.title) + '</h2></header>'
+      + '    <p>' + esc(content.desc) + '</p>'
+      + '  </article>'
+      + '</section>';
+  }
   const intro = targetIntro();
   if (intro && state.target) {
     const av = visualOf(state.target.kind, state.target.id);
@@ -4381,31 +4509,7 @@ function emptyStateHtml() {
     + '  </div>'
     + '</section>';
 }
-function showEmptyState() { $("#msgs").innerHTML = emptyStateHtml(); updateCallButton(); updateTopMoreButton(); }
-function updateTopMoreButton() {
-  const btn = $("#topMore");
-  if (!btn) return;
-  const isApp = state.target && state.target.kind === "persona" && state.target.id === APP_PERSONA_ID;
-  setTopActionAvailability(btn, true);
-  const label = state.target && state.target.kind === "group" ? "群管理" : (isApp ? "小丑鱼设置" : "角色设置");
-  btn.title = label;
-  btn.setAttribute("aria-label", label);
-}
-function setTopActionAvailability(btn, available) {
-  btn.hidden = false;
-  btn.disabled = !available;
-  btn.classList.toggle("is-reserved", !available);
-  btn.setAttribute("aria-hidden", available ? "false" : "true");
-}
-function updateCallButton() {
-  const btn = $("#callbtn");
-  if (!btn) return;
-  const canCall = !!(state.target && state.target.kind === "persona");
-  setTopActionAvailability(btn, canCall);
-  setIcon(btn, callMode ? "square" : "phone");
-  btn.title = callMode ? "结束通话" : "语音通话";
-  btn.setAttribute("aria-label", btn.title);
-}
+function showEmptyState() { $("#msgs").innerHTML = emptyStateHtml(); }
 function updateRailStats() {
   const personas = $("#statPersonas"), chats = $("#statChats"), groups = $("#statGroups"), mode = $("#statMode");
   if (personas) personas.textContent = String(state.personas.length || 0);
@@ -4641,10 +4745,16 @@ function renderLog() {
 function renderStarterPrompts(log) {
   const isClownfish = state.target?.kind === "persona" && state.target.id === APP_PERSONA_ID;
   if (!isClownfish || log.some((entry) => entry.side === "me" || entry.side === "user")) return;
+  const mode = activeWorkMode();
+  const prompts = mode === "task"
+    ? { title: "说清目标就可以开始", note: "系统会自己判断需要哪些能力，不用先选专家。", actions: [["做一份汇报", "帮我完成一份工作汇报，主题是："], ["分析一个问题", "帮我深入分析这个问题："], ["处理一份文件", "请根据我上传的文件完成："]] }
+    : mode === "study"
+      ? { title: "从你卡住的地方开始", note: "不需要知道由谁辅导，只要说明想学什么。", actions: [["讲懂一个概念", "请帮助我真正理解这个概念："], ["带我解一道题", "请一步步带我理解这道题："], ["检查掌握程度", "请通过几个问题检查我是否掌握了："]] }
+      : { title: "第一次可以从一件小事开始", note: "点一个例子，再补充你的具体内容。", actions: [["整理一段文字", "帮我整理这段文字："], ["讨论一个想法", "我想和你讨论："], ["梳理一个问题", "帮我梳理这个问题："]] };
   const card = document.createElement("section");
   card.className = "starter-prompts";
-  card.setAttribute("aria-label", "第一次可以这样开始");
-  card.innerHTML = '<strong>第一次可以从一件小事开始</strong><span>点一个例子，再补充你的具体内容。</span><div class="starter-prompt-actions"><button type="button" data-starter="帮我整理这段文字：">整理一段文字</button><button type="button" data-starter="帮我做一份工作汇报，主题是：">做一份汇报</button><button type="button" data-starter="帮我梳理这个问题：">梳理一个问题</button></div>';
+  card.setAttribute("aria-label", prompts.title);
+  card.innerHTML = '<strong>' + esc(prompts.title) + '</strong><span>' + esc(prompts.note) + '</span><div class="starter-prompt-actions">' + prompts.actions.map(([label, value]) => '<button type="button" data-starter="' + esc(value) + '">' + esc(label) + '</button>').join('') + '</div>';
   card.querySelectorAll("[data-starter]").forEach((button) => button.addEventListener("click", () => {
     $("#txt").value = button.dataset.starter;
     $("#txt").focus();
@@ -4765,75 +4875,76 @@ function addablePersonas() {
 function renderContacts() {
   const c = $("#contacts"); c.innerHTML = "";
   const query = String($("#contactSearch")?.value || "").trim().toLowerCase();
-  for (const p of visiblePersonas()) {
-    if (query && !(p.name + " " + (p.tag || "")).toLowerCase().includes(query)) continue;
-    c.appendChild(contactEl("persona", p.id, p.name, p.tag || ""));
+  const tree = ensureConversationTree("persona:" + APP_PERSONA_ID);
+  if (!tree) return;
+  const nodes = Object.values(tree.nodes).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
+  if (nodes.length) {
+    const label = document.createElement("div");
+    label.className = "task-list-label";
+    label.textContent = "最近";
+    c.appendChild(label);
   }
-  for (const g of state.groups) {
-    const names = g.members.map((id) => (state.personas.find((p) => p.id === id) || {}).name || id).join("、");
-    const title = g.name || names;
-    const sub = g.id === ADVISORY_GROUP_ID
-      ? "群聊 · 每轮按当前问题动态邀请专家"
-      : (g.name ? ("群聊 · " + names) : ("群聊 · " + g.members.length + " 人"));
-    if (query && !(title + " " + names).toLowerCase().includes(query)) continue;
-    c.appendChild(contactEl("group", g.id, title, sub));
+  for (const node of nodes) {
+    const title = conversationTitle(node.messages, node.title || "新任务");
+    const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
+    const preview = threadPreview(node.messages, mode.label);
+    if (query && !(title + " " + preview + " " + mode.label).toLowerCase().includes(query)) continue;
+    c.appendChild(threadEl(node, tree.activeId));
   }
-  if (!c.children.length) c.innerHTML = '<div class="contact-search-empty" role="status">没有找到匹配的联系人或群聊</div>';
+  if (!nodes.length || (query && c.children.length === 1)) c.innerHTML = '<div class="contact-search-empty" role="status">没有找到匹配的对话</div>';
 }
 
-function contactEl(kind, id, name, sub) {
-  const el = document.createElement("button");
-  el.type = "button";
-  el.className = "contact" + (state.target && state.target.kind === kind && state.target.id === id ? " active" : "");
-  el.dataset.kind = kind;
-  el.dataset.id = id;
-  el.innerHTML = '<div class="avatar"></div><div class="meta"><b></b><span></span></div><time class="contact-time"></time><div class="contact-signal"></div>';
-  const av = visualOf(kind, id);
-  const a = el.querySelector(".avatar"); a.style.background = av.g; a.innerHTML = faceHtml(kind, id);
-  el.querySelector("b").textContent = name;
-  el.querySelector(".meta span").textContent = contactPreview(kind, id, sub);
-  el.querySelector("time").textContent = contactTime(kind, id);
-  el.onclick = () => selectTarget(kind, id, name);
+function threadEl(node, activeId) {
+  const modeKey = normalizeWorkMode(node.config?.workMode);
+  const mode = WORK_MODES[modeKey];
+  const el = document.createElement("div");
+  el.className = "contact" + (node.id === activeId ? " active" : "");
+  el.dataset.conversationId = node.id;
+  el.innerHTML = '<button class="contact-open" type="button"><div class="meta"><b></b><span></span></div><time class="contact-time"></time><div class="contact-signal"></div></button><button class="contact-delete" type="button" title="删除对话" aria-label="删除对话">' + iconSvg("trash") + '</button>';
+  el.querySelector("b").textContent = conversationTitle(node.messages, node.title || mode.title);
+  el.querySelector(".meta span").textContent = threadPreview(node.messages, mode.label);
+  el.querySelector("time").textContent = threadTime(node.updatedAt || node.createdAt);
   return el;
 }
 
-function contactPreview(kind, id, fallback) {
-  const log = chatLogs[kind + ":" + id] || [];
-  for (let i = log.length - 1; i >= 0; i--) {
-    const text = String(log[i].text || "").replace(/\s+/g, " ").trim();
+function threadPreview(messages, fallback) {
+  for (let i = (messages || []).length - 1; i >= 0; i--) {
+    const text = String(messages[i].text || "").replace(/\s+/g, " ").trim();
     if (text) return text.length > 28 ? text.slice(0, 28) + "…" : text;
   }
   return fallback || "";
 }
 
-function contactTime(kind, id) {
-  const log = chatLogs[kind + ":" + id] || [];
-  for (let i = log.length - 1; i >= 0; i--) {
-    const ts = Number(log[i].ts || 0);
-    if (!ts) continue;
-    const d = new Date(ts);
-    const now = new Date();
-    const sameDay = d.toDateString() === now.toDateString();
-    if (sameDay) return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) return "昨天";
-    return d.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+function threadTime(value) {
+  const d = new Date(Number(value || 0));
+  if (!Number(value) || Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "昨天";
+  return d.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+
+function renderConversationHeader() {
+  if (!state.target) return;
+  if (state.target.kind === "persona" && state.target.id === APP_PERSONA_ID) {
+    const node = activeConversation("persona:" + APP_PERSONA_ID);
+    const mode = WORK_MODES[normalizeWorkMode(node?.config?.workMode)];
+    const title = conversationTitle(node?.messages, node?.title || mode.title);
+    $("#header").innerHTML = '<div><div class="hname">' + esc(title) + '</div><div class="htag">' + esc(mode.label) + '</div></div>';
+    return;
   }
-  return "";
+  const av = visualOf(state.target.kind, state.target.id);
+  const per = state.target.kind === "persona" ? state.personas.find((item) => item.id === state.target.id) : null;
+  const tag = per?.tag || (state.target.kind === "group" ? "群聊" : "");
+  $("#header").innerHTML = '<div class="havatar" style="background:' + av.g + '">' + faceHtml(state.target.kind, state.target.id) + '</div><div><div class="hname">' + esc(state.target.name) + '</div>' + (tag ? '<div class="htag">' + esc(tag) + '</div>' : '') + '</div>';
 }
 
 function selectTarget(kind, id, name) {
-  if (callMode) stopCall();
   state.target = { kind, id, name };
-  const av = visualOf(kind, id);
-  const per = kind === "persona" ? state.personas.find((x) => x.id === id) : null;
-  let tag = per && per.tag ? per.tag : (kind === "group" ? (id === ADVISORY_GROUP_ID ? "群聊 · 每轮动态邀请专家" : "群聊") : "");
-  if (per && per.familiarity) tag += " · " + per.familiarity; // 熟悉度（随互动量增长）
-  $("#header").innerHTML = '<div class="havatar" style="background:' + av.g + '">' + faceHtml(kind, id) + '</div><div><div class="hname">' + esc(name) + "</div>" + (tag ? '<div class="htag">' + esc(tag) + "</div>" : "") + "</div>";
+  renderConversationHeader();
   renderContacts();
   renderRelbar();
-  updateCallButton();
-  updateTopMoreButton();
   renderLog(); // 恢复该会话已有聊天记录
   renderChatCapabilityBridge();
 }
@@ -5024,11 +5135,12 @@ function addExpertLongform(brief) {
   const heading = document.createElement("div");
   const label = document.createElement("p");
   label.className = "expert-longform-label";
-  label.textContent = "专家组完成";
+  label.textContent = brief.label || "专家组完成";
   const contributors = document.createElement("p");
   contributors.className = "expert-longform-contributors";
-  contributors.textContent = "参与：" + [...new Set(sections.map((section) => section.name))].join(" · ");
-  heading.append(label, contributors);
+  contributors.textContent = brief.contributors || ("参与：" + [...new Set(sections.map((section) => section.name))].join(" · "));
+  heading.append(label);
+  if (brief.showContributors !== false) heading.append(contributors);
 
   const copy = document.createElement("button");
   copy.type = "button";
@@ -5066,78 +5178,6 @@ function addExpertLongform(brief) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
-let curSource = null, speakGen = 0;
-// 常驻播放上下文 + 静音保活：避免每次播放时音频设备从休眠唤醒发出"咔/嘟"声
-let playCtx = null;
-function ensurePlayCtx() {
-  if (!playCtx) {
-    playCtx = new (window.AudioContext || window.webkitAudioContext)();
-    // 保活：极低电平噪声（~-75dB，听不到）持续输出，防止 Windows 音频设备数字静音断电 → 起播爆音
-    const buf = playCtx.createBuffer(1, playCtx.sampleRate, playCtx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.00018;
-    const warm = playCtx.createBufferSource(); warm.buffer = buf; warm.loop = true;
-    warm.connect(playCtx.destination); warm.start();
-  }
-  if (playCtx.state === "suspended") playCtx.resume();
-  return playCtx;
-}
-["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, () => ensurePlayCtx(), { capture: true }));
-function stopAudio() { speakGen++; if (curSource) { try { curSource.stop(); } catch {} curSource = null; } }
-// 按句切分，便于"边播边合成下一句"降低首字延迟；贪心合并到 ~35 字一块
-function splitForTTS(text) {
-  const parts = text.split(/(?<=[。！？!?\n；;])/).map((s) => s.trim()).filter(Boolean);
-  const chunks = []; let cur = "";
-  for (const p of parts) { if (cur && (cur + p).length > 35) { chunks.push(cur); cur = p; } else cur += p; }
-  if (cur) chunks.push(cur);
-  return chunks.length ? chunks : [text];
-}
-async function fetchTTS(pid, text) {
-  try {
-    const resp = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ personaId: pid, text }) });
-    return resp.ok ? await resp.blob() : null;
-  } catch { return null; }
-}
-// 流式播放器：可陆续 push(句子)，每句立即并行合成，按推入顺序在同一时间线上无缝排播成连续音流。
-// 这样文本边生成边出声（助理流式回复尤其受益），且整段只有一次起播、句间无缝（不再"嘟嘟"）。
-function createSpeaker(pid) {
-  stopAudio();                       // 取消上一段播放并 bump speakGen
-  const myGen = speakGen;
-  const ctx = ensurePlayCtx();
-  const live = [];                   // 已排播的 source，供取消
-  let playhead = 0, lastSrc = null, chain = Promise.resolve();
-  curSource = { stop() { for (const s of live) { try { s.stop(); } catch {} } } };
-  function push(sentence) {
-    sentence = (sentence || "").trim();
-    if (!sentence || myGen !== speakGen) return;
-    const fetchP = fetchTTS(pid, sentence);      // 立即开始合成（并行预取）
-    chain = chain.then(async () => {             // 按顺序排播
-      if (myGen !== speakGen) return;
-      const blob = await fetchP; if (!blob || myGen !== speakGen) return;
-      let abuf; try { abuf = await ctx.decodeAudioData(await blob.arrayBuffer()); } catch { return; }
-      if (myGen !== speakGen) return;
-      const startAt = Math.max(ctx.currentTime + 0.04, playhead);
-      const src = ctx.createBufferSource(); src.buffer = abuf;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0, startAt); g.gain.linearRampToValueAtTime(1, startAt + 0.004); // 4ms 淡入
-      src.connect(g).connect(ctx.destination); src.start(startAt);
-      playhead = startAt + abuf.duration; live.push(src); lastSrc = src;
-    });
-  }
-  async function end() {
-    await chain;
-    if (myGen !== speakGen || !lastSrc) return;
-    await new Promise((resolve) => { lastSrc.onended = resolve; });
-  }
-  return { push, end, get gen() { return myGen; } };
-}
-// 合成并播放整段（通话模式用）。
-async function speak(pid, text) {
-  if (!pid || !text) return;
-  const sp = createSpeaker(pid);
-  for (const c of splitForTTS(text)) sp.push(c);
-  await sp.end();
-}
 function addTyping() {
   const row = document.createElement("div");
   row.className = "row other";
@@ -5178,22 +5218,22 @@ function waitForStreamMessage(ms) {
 }
 
 // 单人回复按空行拆成独立消息；前一条出现后，再逐条展示后续消息。
-async function streamPersona(key, text, voice, image, attachment, messageId) {
+function effectiveConversationTarget() {
+  if (state.target && !(state.target.kind === "persona" && state.target.id === APP_PERSONA_ID)) {
+    return { kind: state.target.kind, id: state.target.id, anonymous: false };
+  }
+  const mode = activeWorkMode();
+  if (mode === "study") return { kind: "persona", id: "teacher_lin", anonymous: true };
+  if (mode === "task") return { kind: "group", id: ADVISORY_GROUP_ID, anonymous: true };
+  return { kind: "persona", id: APP_PERSONA_ID, anonymous: false };
+}
+
+async function streamPersona(key, text, voice, image, attachment, messageId, requestTarget = effectiveConversationTarget()) {
   const { inner, bub } = addTyping();
-  const pid = state.target.id;
+  const pid = requestTarget.anonymous ? APP_PERSONA_ID : requestTarget.id;
   let acc = "", started = false, facts = null, artifact = null;
   let visibleCount = 1, scheduledCount = 1;
   let revealChain = Promise.resolve();
-  const speaker = callMode ? createSpeaker(pid) : null;
-  let spokenIdx = 0;
-  function pumpSpeech(final) {
-    if (!speaker) return;
-    const seg = acc.slice(spokenIdx);
-    if (final) { if (seg.trim()) { speaker.push(seg); spokenIdx = acc.length; } return; }
-    let lastEnd = -1, m; const re = /[。！？!?\n；;]/g;
-    while ((m = re.exec(seg))) lastEnd = m.index;
-    if (lastEnd >= 0 && seg.slice(0, lastEnd + 1).trim().length >= 2) { speaker.push(seg.slice(0, lastEnd + 1)); spokenIdx += lastEnd + 1; }
-  }
   function scheduleNewMessages() {
     const targetCount = splitStreamMessages(acc).length;
     while (scheduledCount < targetCount) {
@@ -5207,7 +5247,7 @@ async function streamPersona(key, text, voice, image, attachment, messageId) {
     }
   }
   try {
-    const resp = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: { kind: "persona", id: state.target.id }, text, voice, image, attachment, messageId, ...conversationRequestOptions(key) }) });
+    const resp = await fetch("/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: { kind: "persona", id: requestTarget.id }, text, voice, image, attachment, messageId, ...conversationRequestOptions(key) }) });
     if (!resp.ok) {
       let detail = "";
       try { detail = await resp.text(); } catch {}
@@ -5224,11 +5264,10 @@ async function streamPersona(key, text, voice, image, attachment, messageId) {
         let ev; try { ev = JSON.parse(line); } catch { continue; }
         if (ev.type === "status" && !started) { bub.className = "bub status"; bub.textContent = "（" + ev.text + "…）"; }
         else if (ev.type === "token") {
-          if (!started) { started = true; if (callMode) callStatus("💬 回复中…"); }
+          if (!started) started = true;
           acc += ev.text;
           syncStreamBubbles(inner, acc, visibleCount);
           scheduleNewMessages();
-          pumpSpeech(false);
           $("#msgs").scrollTop = $("#msgs").scrollHeight;
         }
         else if (ev.type === "done") { facts = ev.facts; artifact = ev.artifact || artifact; }
@@ -5249,8 +5288,6 @@ async function streamPersona(key, text, voice, image, attachment, messageId) {
       pid,
       artifact: index === finalMessages.length - 1 ? artifact : null,
     }));
-    lastReply = { pid, text: finalText, live: !!speaker };
-    if (speaker) { pumpSpeech(true); await speaker.end(); }
   } catch (e) {
     inner.innerHTML = '<div class="bub"></div>';
     inner.querySelector(".bub").textContent = "网络错误：" + e;
@@ -5289,33 +5326,41 @@ function expertLongformTitle(text) {
 }
 
 // 群聊：普通闲聊保留气泡；专家任务整合为可阅读、可复制的长文。
-async function sendRegular(key, text, voice, image, attachment, messageId) {
+async function sendRegular(key, text, voice, image, attachment, messageId, requestTarget = { kind: state.target.kind, id: state.target.id, anonymous: false }) {
   const { row } = addTyping();
-  const isGroup = key.indexOf("group:") === 0;
+  const isGroup = requestTarget.kind === "group";
   try {
-    const data = await api("/api/chat", { target: { kind: state.target.kind, id: state.target.id }, text, voice, image, attachment, messageId, ...conversationRequestOptions(key) });
+    const data = await api("/api/chat", { target: { kind: requestTarget.kind, id: requestTarget.id }, text, voice, image, attachment, messageId, ...conversationRequestOptions(key) });
     row.remove();
     const replies = data.replies || [];
-    if (shouldRenderExpertLongform(replies)) {
+    if (requestTarget.anonymous && isGroup && !replies.some((reply) => reply.artifact)) {
+      const sections = replies.map((reply, index) => ({
+        name: index === replies.length - 1 ? "综合结论" : (index === 0 ? "关键判断" : "补充分析 " + index),
+        personaId: APP_PERSONA_ID,
+        text: ((reply.messages && reply.messages.length) ? reply.messages : [reply.reply]).filter(Boolean).join("\n\n"),
+      })).filter((section) => section.text);
+      const brief = { title: expertLongformTitle(text), label: "任务完成", showContributors: false, sections };
+      addExpertLongform(brief);
+      const plainText = sections.map((section) => section.name + "：" + section.text).join("\n\n");
+      record(key, { side: "other", who: null, text: plainText, pid: APP_PERSONA_ID, longform: brief });
+    } else if (shouldRenderExpertLongform(replies)) {
       const sections = expertLongformSections(replies);
       const brief = { title: expertLongformTitle(text), sections };
       addExpertLongform(brief);
       const plainText = sections.map((section) => section.name + "：" + section.text).join("\n\n");
       record(key, { side: "other", who: "专家组答复", text: plainText, pid: "clownfish", longform: brief });
-      const finalSection = sections[sections.length - 1];
-      lastReply = { pid: finalSection.personaId, text: plainText };
     } else {
       for (const r of replies) {
         const msgs = (r.messages && r.messages.length) ? r.messages : [r.reply];
         for (let i = 0; i < msgs.length; i++) {
           const last = i === msgs.length - 1;
-          const who = isGroup ? (avatarOf("persona", r.personaId).e + " " + r.name).trim() : null;
+          const who = isGroup && !requestTarget.anonymous ? (avatarOf("persona", r.personaId).e + " " + r.name).trim() : null;
           const mem = last ? r.facts : null;
           const artifact = last ? r.artifact : null;
-          addRow("other", who, msgs[i], { mem, pid: r.personaId, artifact });
-          record(key, { side: "other", who, text: msgs[i], mem, pid: r.personaId, artifact });
+          const visiblePersonaId = requestTarget.anonymous ? APP_PERSONA_ID : r.personaId;
+          addRow("other", who, msgs[i], { mem, pid: visiblePersonaId, artifact });
+          record(key, { side: "other", who, text: msgs[i], mem, pid: visiblePersonaId, artifact });
         }
-        lastReply = { pid: r.personaId, text: msgs.join("。") };
       }
     }
     await pushCapabilityNotifications(data.taskReplies || []);
@@ -5335,26 +5380,28 @@ async function sendMsg(voiceFlag, overrideText) {
   $("#send").disabled = true;
   document.body.classList.add("is-busy");
   const key = logKey();
+  const conversationBeforeSend = activeConversation(key);
+  const shouldAutoName = !!conversationBeforeSend
+    && !conversationBeforeSend.titleGenerated
+    && !conversationBeforeSend.messages.some((entry) => entry && entry.side === "me" && entry.text);
   const voice = !!voiceFlag;
   const messageId = "message-" + crypto.randomUUID();
   const attachmentLabel = attachment ? `【文件：${attachment.name}】 ` : "";
   const utext = (image ? "[图片] " : "") + attachmentLabel + (text || (attachment ? "请查看这个文件" : "（图片）"));
   addRow("me", null, utext, { voice });
   record(key, { id: messageId, side: "me", who: null, text: utext, voice, attachment });
+  if (shouldAutoName) void autoNameConversation(key, conversationBeforeSend.id, text || utext);
   setPendingImage(null); $("#imgfile").value = "";
   setPendingFile(null); $("#chatfile").value = "";
-  const per = state.target.kind === "persona" ? state.personas.find((x) => x.id === state.target.id) : null;
-  lastReply = { pid: null, text: "", live: false };
   try {
-    if (state.target.kind === "persona") await streamPersona(key, text, voice, image, attachment, messageId);
-    else await sendRegular(key, text, voice, image, attachment, messageId);
+    const requestTarget = effectiveConversationTarget();
+    if (requestTarget.kind === "persona") await streamPersona(key, text, voice, image, attachment, messageId, requestTarget);
+    else await sendRegular(key, text, voice, image, attachment, messageId, requestTarget);
   } finally {
     sending = false;
     $("#send").disabled = false;
     document.body.classList.remove("is-busy");
-    // 通话模式：朗读回复 → 播完恢复倾听（应用已边流式边播则跳过）
-    if (callMode && lastReply.text && !lastReply.live) { callStatus("🔊 " + (per ? per.name : "对方") + " 正在说…"); await speak(lastReply.pid, lastReply.text); }
-    if (callMode) resumeListen(); else $("#txt").focus();
+    $("#txt").focus();
   }
 }
 
@@ -5741,91 +5788,6 @@ async function toggleRec() {
 }
 $("#vbtn").onclick = toggleRec;
 
-// —— 连续语音对讲（路线 A：VAD 自动断句，半双工免提）——
-let lastReply = { pid: null, text: "" };
-let callMode = false, callStream = null, callCtx = null, callAnalyser = null, callBuf = null, callRAF = null;
-let callRec = null, callChunks = [], callState = "idle"; // idle | listening | recording | busy
-let voiceFrames = 0, silenceStart = 0, recStartT = 0;
-const START_THRESH = 0.045, CONTINUE_THRESH = 0.03, SILENCE_MS = 1800, MIN_SPEECH = 350;
-function callStatus(t) { $("#callstatus").textContent = t; }
-
-async function startCall() {
-  if (callMode) return;
-  if (!state.target || state.target.kind !== "persona") { alert("通话仅支持单聊，先打开一个好友"); return; }
-  try {
-    callStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-  } catch (e) { alert("麦克风打不开（需 localhost 或 https + 授权）：" + e); return; }
-  callMode = true;
-  $("#callbtn").classList.add("on"); updateCallButton();
-  $("#callbar").classList.add("on");
-  callCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const srcNode = callCtx.createMediaStreamSource(callStream);
-  callAnalyser = callCtx.createAnalyser(); callAnalyser.fftSize = 512;
-  callBuf = new Uint8Array(callAnalyser.fftSize);
-  srcNode.connect(callAnalyser);
-  resumeListen();
-  callFrame();
-}
-function stopCall() {
-  callMode = false;
-  if (callRAF) cancelAnimationFrame(callRAF);
-  if (callRec && callRec.state === "recording") { try { callRec.stop(); } catch {} }
-  if (callStream) callStream.getTracks().forEach((t) => t.stop());
-  if (callCtx) { try { callCtx.close(); } catch {} }
-  stopAudio();
-  callStream = callCtx = callAnalyser = callBuf = callRec = null; callState = "idle";
-  $("#callbtn").classList.remove("on"); updateCallButton();
-  $("#callbar").classList.remove("on");
-}
-function resumeListen() {
-  if (!callMode) return;
-  callState = "listening"; voiceFrames = 0;
-  callStatus("在听…（说话即可，停顿后自动发送）");
-}
-function callFrame() {
-  if (!callMode) return;
-  callAnalyser.getByteTimeDomainData(callBuf);
-  let sum = 0; for (let i = 0; i < callBuf.length; i++) { const v = (callBuf[i] - 128) / 128; sum += v * v; }
-  const rms = Math.sqrt(sum / callBuf.length);
-  const now = performance.now();
-  if (callState === "listening") {
-    if (rms > START_THRESH) { voiceFrames++; if (voiceFrames >= 3) beginSegment(now); } else voiceFrames = 0;
-  } else if (callState === "recording") {
-    if (rms > CONTINUE_THRESH) silenceStart = now;
-    if (now - silenceStart > SILENCE_MS && now - recStartT > MIN_SPEECH) endSegment();
-  }
-  callRAF = requestAnimationFrame(callFrame);
-}
-function beginSegment(now) {
-  try {
-    callRec = new MediaRecorder(callStream); callChunks = [];
-    callRec.ondataavailable = (e) => { if (e.data && e.data.size) callChunks.push(e.data); };
-    callRec.onstop = () => processCallSegment(new Blob(callChunks, { type: (callRec && callRec.mimeType) || "audio/webm" }));
-    callRec.start();
-    callState = "recording"; recStartT = now; silenceStart = now;
-    callStatus("🔴 在说…");
-  } catch { resumeListen(); }
-}
-function endSegment() {
-  callState = "busy";
-  callStatus("识别中…");
-  if (callRec && callRec.state === "recording") { try { callRec.stop(); } catch { resumeListen(); } }
-}
-async function processCallSegment(blob) {
-  if (!callMode) return;
-  if (blob.size < 1600) { resumeListen(); return; }
-  let text = "";
-  try {
-    const wav = await blobToWav(blob);
-    text = await transcribeWav(wav, (i, n) => { if (n > 1) callStatus(`识别中…${i}/${n}`); });
-  } catch {}
-  if (!callMode) return;
-  if (text) await sendMsg(true, text); // sendMsg 的 finally 会朗读回复并 resumeListen
-  else resumeListen();
-}
-$("#callbtn").onclick = () => (callMode ? stopCall() : startCall());
-$("#callend").onclick = stopCall;
-
 $("#imgbtn").onclick = () => $("#imgfile").click();
 $("#filebtn").onclick = () => $("#chatfile").click();
 $("#shotbtn").onclick = requestNativeScreenshot;
@@ -5959,11 +5921,6 @@ async function addSelectedContacts() {
     button.disabled = false;
     button.textContent = "重试";
   }
-}
-
-function setQuickCreateMenu(show) {
-  $("#quickCreateMenu").classList.toggle("show", show);
-  $("#quickGroup").setAttribute("aria-expanded", show ? "true" : "false");
 }
 
 $("#contactaddok").onclick = addSelectedContacts;
@@ -7853,7 +7810,7 @@ $("#conversationmodal").onclick = (event) => {
     if (value === "memory") location.href = "/memory";
   }
 };
-$("#newConversation").onclick = createConversation;
+$("#newConversation").onclick = () => createConversation("chat");
 $("#saveConversationSettings").onclick = saveConversationSettings;
 addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -7862,22 +7819,6 @@ addEventListener("keydown", (event) => {
   }
 });
 $("#topChat").onclick = openChatHistoryModal;
-$("#topMore").onclick = () => {
-  if (!state.target) {
-    alert("先打开一个聊天。");
-    return;
-  }
-  if (state.target.kind === "group") {
-    openGroupModal("auto");
-    return;
-  }
-  if (state.target.kind === "persona" && state.target.id === APP_PERSONA_ID) {
-    openSettingsMenu();
-    return;
-  }
-  if (state.target.kind !== "persona") return;
-  openPersonaModal(state.target.id);
-};
 $("#historySearch").addEventListener("input", renderHistoryModal);
 $("#historySearch").addEventListener("keydown", (e) => { if (e.key === "Escape") $("#historymodal").classList.remove("show"); });
 $("#historyclose").onclick = () => $("#historymodal").classList.remove("show");
@@ -7933,19 +7874,40 @@ function smRun(fn) {
   $("#settingsmenu").classList.remove("show");
   fn();
 }
-$("#quickGroup").onclick = (event) => {
-  event.stopPropagation();
-  setQuickCreateMenu(!$("#quickCreateMenu").classList.contains("show"));
-};
-$("#quickAddRole").onclick = () => { setQuickCreateMenu(false); openContactModal(); };
-$("#quickAddGroup").onclick = () => { setQuickCreateMenu(false); openGroupModal("new"); };
+$("#quickGroup").onclick = () => createConversation("chat");
+function setConversationSearchOpen(open) {
+  const area = $("#wechatSearch");
+  const input = $("#contactSearch");
+  area.classList.toggle("search-open", open);
+  $("#sidebarSearchToggle").setAttribute("aria-expanded", String(open));
+  if (open) requestAnimationFrame(() => input.focus());
+  else if (input.value) {
+    input.value = "";
+    renderContacts();
+  }
+}
+$("#sidebarSearchToggle").onclick = () => setConversationSearchOpen(!$("#wechatSearch").classList.contains("search-open"));
+$("#msgs").addEventListener("click", (event) => {
+  const option = event.target.closest("[data-work-mode]");
+  if (option) setActiveWorkMode(option.dataset.workMode);
+});
 $("#contactSearch").addEventListener("input", renderContacts);
-document.addEventListener("click", (event) => {
-  if (!$("#wechatSearch").contains(event.target)) setQuickCreateMenu(false);
+$("#contactSearch").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setConversationSearchOpen(false);
+});
+$("#contacts").addEventListener("click", (event) => {
+  const row = event.target.closest(".contact[data-conversation-id]");
+  if (!row || !$("#contacts").contains(row)) return;
+  const conversationId = row.dataset.conversationId;
+  if (event.target.closest(".contact-delete")) {
+    deleteConversation(conversationId);
+    return;
+  }
+  openAppIfNeeded();
+  switchConversation(conversationId);
 });
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  setQuickCreateMenu(false);
   if ($("#contactmodal").classList.contains("show")) $("#contactmodal").classList.remove("show");
 });
 $("#railCap").onclick = () => { window.location.href = "/capabilities"; };

@@ -34,7 +34,7 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
   for (const page of pages) {
     assert.match(page, /\/assets\/app-navigation-labels\.css/);
   }
-  for (const label of ["聊天", "能力", "文件", "工作", "设置"]) {
+  for (const label of ["任务", "能力", "文件", "工作", "设置"]) {
     assert.match(pages[0], new RegExp(`data-rail-label="${label}"`));
     assert.ok(pages.slice(1).every((page) => page.includes(`<small>${label}</small>`)));
   }
@@ -51,33 +51,67 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
   assert.doesNotMatch(brandMark, /\sstroke=/);
 });
 
-test("角色使用功能徽记，右侧操作始终保留固定槽位", () => {
+test("角色使用功能徽记，右上角只保留对话操作", () => {
   const page = readFileSync(join(webRoot, "index.html"), "utf8");
   const experts = readFileSync(join(process.cwd(), "examples", "companion", "experts.ts"), "utf8");
 
   assert.match(page, /const ROLE_BADGES =/);
   assert.match(page, /className: "role-glyph"/);
-  assert.match(page, /grid-template-columns:repeat\(4,32px\)/);
-  assert.match(page, /function setTopActionAvailability/);
-  assert.match(page, /btn\.classList\.toggle\("is-reserved", !available\)/);
-  assert.doesNotMatch(page, /btn\.hidden = !!isApp/);
-  assert.doesNotMatch(page, /btn\.hidden = !canCall/);
+  assert.match(page, /grid-template-columns:repeat\(2,32px\)/);
+  assert.doesNotMatch(page, /id="callbtn"/);
+  assert.doesNotMatch(page, /id="callbar"/);
+  assert.doesNotMatch(page, /id="topMore"/);
   for (const name of ["可行性顾问", "产品顾问", "决策顾问", "思考教练"]) {
     assert.match(experts, new RegExp(`name: "${name}"`));
   }
 });
 
-test("首次角色对话说明用途，专家配置不再占用全局设置", () => {
+test("后台角色能力保留，专家配置不再占用主界面", () => {
   const page = readFileSync(join(webRoot, "index.html"), "utf8");
 
   for (const roleId of ["clownfish", "feifei", "teacher_lin", "azhe", "lingling"]) {
     assert.match(page, new RegExp(`${roleId}: \\{`));
   }
-  assert.match(page, /每轮按当前问题动态邀请专家/);
-  assert.match(page, /连续追问同一问题时，优先延续上一轮专家/);
+  assert.match(page, /专业判断与能力会在后台按需加入/);
+  assert.match(page, /不用先选专家/);
   assert.doesNotMatch(page, /id="sm-persona"/);
   assert.doesNotMatch(page, />专家与角色</);
-  assert.match(page, /"角色设置"/);
   assert.match(page, /let onboardingBusy = false/);
   assert.match(page, /dedupeAppOnboarding\(\);\s*renderLog\(\)/);
+});
+
+test("新对话直接创建并在空白页选择工作方式", () => {
+  const page = readFileSync(join(webRoot, "index.html"), "utf8");
+
+  assert.match(page, /id="quickGroup"[^>]*>[\s\S]*新对话/);
+  assert.match(page, /class="rail-brand-label">小丑鱼</);
+  assert.match(page, /id="sidebarSearchToggle"[^>]*aria-expanded="false"/);
+  assert.match(page, /function setConversationSearchOpen\(open\)/);
+  assert.match(page, /#wechatSearch\.search-open \.thread-search/);
+  assert.match(page, /data-work-mode=/);
+  assert.match(page, /Object\.entries\(WORK_MODES\)[\s\S]*aria-pressed/);
+  assert.match(page, /chat: \{ label: "直接聊聊"/);
+  assert.match(page, /task: \{ label: "完成任务"/);
+  assert.match(page, /study: \{ label: "学习辅导"/);
+  assert.match(page, /quickGroup"\)\.onclick = \(\) => createConversation\("chat"\)/);
+  assert.match(page, /function autoNameConversation\(key, conversationId, text\)/);
+  assert.match(page, /api\("\/api\/conversation\/title", \{ text \}\)/);
+  assert.match(page, /shouldAutoName[\s\S]*autoNameConversation/);
+  assert.doesNotMatch(page, /id="newconversationmodal"/);
+  assert.doesNotMatch(page, /data-conversation-mode=/);
+  assert.match(page, /mode === "study"[\s\S]*id: "teacher_lin", anonymous: true/);
+  assert.match(page, /mode === "task"[\s\S]*id: ADVISORY_GROUP_ID, anonymous: true/);
+  assert.match(page, /showContributors: false/);
+  assert.doesNotMatch(page, /data-work-mode[\s\S]{0,400}林老师/);
+});
+
+test("对话没有主对话特例并支持确认删除", () => {
+  const page = readFileSync(join(webRoot, "index.html"), "utf8");
+
+  assert.doesNotMatch(page, /title: "主对话"/);
+  assert.match(page, /function makeConversationNode/);
+  assert.match(page, /class="contact-delete"/);
+  assert.match(page, /function deleteConversation\(id\)/);
+  assert.match(page, /不会删除长期记忆或已经生成的文件/);
+  assert.match(page, /if \(!remaining\.length\)[\s\S]*makeConversationNode\(\)/);
 });

@@ -36,6 +36,15 @@ test("工作页提供任务、结果、运行和记忆的独立新手入口", ()
   assert.match(chat, /branchConversation/);
   assert.match(chat, /rollbackConversation/);
   assert.match(chat, /conversationRequestOptions/);
+  assert.match(chat, /workMode: normalizeWorkMode/);
+  assert.match(chat, /#contacts"\)\.addEventListener\("click"/);
+  assert.match(chat, /\.contact\[data-conversation-id\]/);
+  assert.doesNotMatch(chat, /querySelector\("\.contact-open"\)\.onclick/);
+  assert.match(server, /body\.workMode === "task" \|\| body\.workMode === "study"/);
+  assert.match(server, /url === "\/api\/conversation\/title"/);
+  assert.match(server, /function generateConversationTitle\(text: string\)/);
+  assert.match(server, /dailyChatModelForConnection\(modelConnection\)/);
+  assert.match(server, /toolMode: "off"/);
   assert.doesNotMatch(chat, /协作进度|executionPanel/);
   assert.match(chat, /function splitStreamMessages/);
   assert.match(chat, /STREAM_MESSAGE_REVEAL_DELAY_MS = 180/);

@@ -2095,6 +2095,60 @@ interface ChatBody {
   model?: string;
   reasoning?: "fast" | "balanced" | "deep";
   toolMode?: "auto" | "read-only" | "off";
+  workMode?: "chat" | "task" | "study";
+}
+
+function fallbackConversationTitle(text: string): string {
+  const cleaned = String(text || "")
+    .replace(/\[[^\]]{1,40}\]/g, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/^[\s，。！？!?]*(?:请|麻烦|劳驾|能否|能不能|可以|请你|帮我|帮忙|我想|我需要|想要)+[\s，。！？!?]*/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const firstClause = cleaned.split(/[。！？!?；;\n]/, 1)[0]?.replace(/[，,:：]+$/u, "").trim() || "";
+  if (!firstClause) return "新对话";
+  return firstClause.length > 18 ? firstClause.slice(0, 18) : firstClause;
+}
+
+function sanitizeConversationTitle(value: string, fallback: string): string {
+  const cleaned = String(value || "")
+    .split(/\r?\n/, 1)[0]
+    .replace(/^(?:标题|对话标题|主题)\s*[:：]\s*/u, "")
+    .replace(/[“”"'`#*_]/g, "")
+    .replace(/[。！？!?，,；;：:]+$/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length < 2) return fallback;
+  return cleaned.length > 24 ? cleaned.slice(0, 24) : cleaned;
+}
+
+async function generateConversationTitle(text: string): Promise<string> {
+  const source = String(text || "").trim().slice(0, 2_000);
+  const fallback = fallbackConversationTitle(source);
+  if (!source || !llm.live) return fallback;
+  try {
+    const instruction = "为这段对话生成简短标题";
+    const result = await llm.chat(
+      "你只负责生成对话标题。输出一个4到12个汉字的中文短标题，不使用引号、句号、冒号或解释。提炼关键对象和任务，不要直接复述整句话。",
+      source,
+      modelConnection ? dailyChatModelForConnection(modelConnection) : undefined,
+      48,
+      {
+        sessionId: `conversation-title-${randomBytes(8).toString("hex")}`,
+        userId: USER,
+        personaId: APP_PERSONA_ID,
+        instruction,
+        scope: "conversation-title",
+        memoryScopes: [],
+        mode: "task",
+        toolMode: "off",
+        runtimeLimits: { maxRounds: 1, maxToolRounds: 0, maxTotalTokens: 512, maxOutputChars: 80 },
+      },
+    );
+    return sanitizeConversationTitle(result, fallback);
+  } catch {
+    return fallback;
+  }
 }
 
 function conversationSendOptions(body: ChatBody): {
@@ -2123,7 +2177,7 @@ function conversationSendOptions(body: ChatBody): {
       target: body.target,
       expertPersonaIds: LONG_FORM_EXPERT_IDS,
       instruction: body.text,
-      forceTaskModel: body.reasoning === "deep",
+      forceTaskModel: body.reasoning === "deep" || body.workMode === "task" || body.workMode === "study",
     }),
     toolMode: body.toolMode === "off" ? "off" : body.toolMode === "read-only" ? "read-only" : "auto",
     runtimeLimits,
@@ -4726,6 +4780,16 @@ const server = createServer(async (req, res) => {
           : message;
         send(res, 500, { error: hint });
       }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/conversation/title") {
+      const body = (await readBody(req)) as { text?: string };
+      const text = String(body.text || "").trim();
+      if (!text) {
+        send(res, 400, { error: "missing text" });
+        return;
+      }
+      send(res, 200, { title: await generateConversationTitle(text) });
       return;
     }
     if (req.method === "POST" && url === "/api/chat/stream") {
