@@ -2,7 +2,7 @@
 
 [中文](README.md) · **English**
 
-> A local-first AI conversation and work application with long-term memory. Start in chat, invoke a capability when needed, work with office files, and review tasks, results, and memory in one product.
+> A local-first AI work application with long-term memory. Start with a new conversation, switch to task completion or guided study when needed, and continue complex work in Capabilities, Files, and Work.
 
 ![Clownfish chat](docs/assets/readme/clownfish-chat.jpg)
 
@@ -60,6 +60,19 @@ The file workspace supports DOCX, PPTX, XLSX, and PDF:
 
 ![Clownfish office workspace](docs/assets/readme/clownfish-office.jpg)
 
+## Work: ongoing tasks and deliverables in one place
+
+Repeated and background work is kept in the Work center:
+
+- **Tasks** retain the goal, plan, current progress, and next action;
+- **Results** collect files and reports created by capabilities;
+- **Runs** preserve execution state, logs, and errors;
+- **Memory** lets the user review facts, experiences, and habits organized by Clownfish.
+
+New users can still begin in a conversation without learning projects or workflow terminology first.
+
+![Clownfish work center](docs/assets/readme/clownfish-work.jpg)
+
 ## Memory: focused, visible, and user-controlled
 
 Clownfish uses the Nemos Memory SDK in this repository. The application currently:
@@ -80,22 +93,29 @@ See the [TypeScript SDK](sdk/typescript/README.en.md) and the [v0.7 implementati
 
 ## Provider-neutral model connection
 
-Choose a provider, model name, and API key under **Settings → Model connection**. Clownfish tests the connection before saving it.
+Open **Model connection**, then choose a provider and model name and enter an API key. Clownfish tests the connection before saving it.
 
-Clownfish follows provider presets when routing models. Providers with a separate daily-chat model use it automatically, while experts, capabilities, file generation, and complex work use the configured task model. When no separate route is defined, both use the same model. A conversation can also override the model explicitly.
+Clownfish follows provider presets when routing models. Providers with a separate daily-chat model use it automatically, while experts, capabilities, file generation, and complex work use the configured task model. When no separate route is defined, both use the same model.
 
 ![Clownfish model connection](docs/assets/readme/clownfish-model-connection.jpg)
 
-Presets are available for Zhipu GLM, OpenAI, Anthropic Claude, DeepSeek, Alibaba Qwen, MiniMax, and custom services. OpenAI-compatible and Anthropic-compatible protocols are supported. Vision, web, voice, and embedding support depends on the selected service and model.
+Presets are available for Zhipu GLM, OpenAI, Anthropic Claude, DeepSeek, Alibaba Qwen, MiniMax, and custom services. OpenAI-compatible and Anthropic-compatible protocols are supported. Vision, web, and embedding support depends on the selected service and model.
 
 On Windows, secrets are encrypted with DPAPI for the current user and full keys are never returned by the API. Offline mode keeps the interface and local-only functions available.
 
 ## Data and privacy boundaries
 
-- Memory, tasks, runs, working copies, and artifacts are stored under **~/.clownfish** by default.
+- New installations store memory, tasks, runs, working copies, and artifacts under **~/.clownfish**. If legacy **~/.nemos-companion** data is detected, Clownfish keeps using it to avoid losing content during migration.
 - When a configured model is called, the request and required context are sent to that provider. After the first message in a new conversation, the same provider's lightweight daily model also receives that message to generate a short title; this title request uses no tools and is not written to long-term memory. Network source features contact their corresponding public services when used.
 - Logs and run records redact common credential fields, but secrets should never be placed in task text.
 - Before exporting or sharing a backup or portable package, check that it does not contain a user data directory.
+
+## Current verification
+
+- The TypeScript build passes;
+- All 508 automated tests pass;
+- Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
+- See the [2026-08-08 ten-round real-world audit](sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md).
 
 ## Run locally
 
