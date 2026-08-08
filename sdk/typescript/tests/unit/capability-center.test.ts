@@ -280,6 +280,19 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   assert.match(serverSource, /memoryMode: pinnedPreferenceContext \? "off" : requestedMemoryMode/);
 });
 
+test("能力自动选择和重复任务只使用当前对外能力", () => {
+  const webDir = join(process.cwd(), "examples", "companion", "web");
+  const capabilityScript = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
+  const workScript = readFileSync(join(webDir, "assets", "work-center.js"), "utf8");
+  const workHtml = readFileSync(join(webDir, "work.html"), "utf8");
+  assert.match(capabilityScript, /管理层摘要\|正式文档/);
+  assert.match(workScript, /const PUBLIC_CAPABILITY_IDS =/);
+  assert.match(workScript, /publicAbilities\(\)/);
+  assert.doesNotMatch(workScript, /"aihot"|"travel-planning"|"hotel-booking"|"restaurant-booking"/);
+  assert.doesNotMatch(workHtml, /每隔几轮对话/);
+  assert.match(workHtml, /按使用频率运行/);
+});
+
 test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单一入口", () => {
   const webDir = join(process.cwd(), "examples", "companion", "web");
   const workHtml = readFileSync(join(webDir, "work.html"), "utf8");
@@ -347,9 +360,13 @@ test("Companion 主界面的弹窗和可点击列表具备基础无障碍语义"
   assert.match(html, /class="persona-advanced"/);
   assert.match(html, /<button type="button" class="history-row"/);
   assert.match(html, /id="contactSearch" type="search"/);
+  assert.match(html, /id="closeConversationSearch"[^>]+aria-label="关闭搜索"/);
   assert.match(html, /id="composerTool"/);
   assert.doesNotMatch(html, /id="railDesktop"/);
   assert.match(html, /id="settingsbtn"[^>]*data-icon="settings"/);
+  assert.match(html, /id="settingsbtn"[^>]*hidden/);
+  assert.match(html, /id="vbtn"[^>]*hidden/);
+  assert.match(html, /#sidebar \{ width:100%; height:auto; min-height:204px/);
 });
 
 test("常规任务的界面状态由持久作业投影，且重启后仍可恢复", () => {

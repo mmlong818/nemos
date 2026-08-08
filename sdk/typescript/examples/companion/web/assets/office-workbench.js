@@ -669,9 +669,24 @@ async function exportDraft() {
   const current = currentDocument();
   if (!current) return;
   const format = document.querySelector("#exportFormat").value;
-  setSaveState("正在生成文件…", true);
+  const filename = `${current.name || "办公文稿"}.${format}`;
+  let fileHandle = null;
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      fileHandle = await window.showSaveFilePicker({ suggestedName: filename });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        setSaveState("未导出");
+        return;
+      }
+      setSaveState("导出失败");
+      showToast(error instanceof Error ? error.message : "无法打开保存位置", true);
+      return;
+    }
+  }
+  setSaveState("正在请求下载…", true);
   try {
-    const response = await fetch("/api/files/export", {
+    const response = await fetch("/api/files/export?prepare=1", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -680,20 +695,22 @@ async function exportDraft() {
         blocks: current.blocks.map(({ title, text }) => ({ title, text })),
       }),
     });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload.error || "导出失败（" + response.status + "）");
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.downloadUrl) throw new Error(result.error || "导出失败");
+    const warnings = Array.isArray(result.warnings) ? result.warnings.join("\n") : "";
+    if (fileHandle) {
+      const download = await fetch(result.downloadUrl);
+      if (!download.ok) throw new Error("文件保存失败（" + download.status + "）");
+      const writable = await fileHandle.createWritable();
+      await writable.write(await download.blob());
+      await writable.close();
+      setSaveState("文件已保存");
+      showToast(warnings || "文件已保存", Boolean(warnings));
+      return;
     }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = (current.name || "办公文稿") + "." + format;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    const warnings = decodeURIComponent(response.headers.get("X-Clownfish-Warnings") || "");
-    setSaveState("文件已生成");
-    showToast(warnings || "已导出为 " + format.toUpperCase(), Boolean(warnings));
+    window.location.href = result.downloadUrl;
+    setSaveState("下载已开始");
+    showToast(warnings || "文件下载已开始", Boolean(warnings));
   } catch (error) {
     setSaveState("导出失败");
     showToast(error instanceof Error ? error.message : "导出失败", true);

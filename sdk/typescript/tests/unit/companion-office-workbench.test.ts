@@ -14,11 +14,25 @@ const chatHtml = readFileSync(join(webRoot, "index.html"), "utf8");
 const server = readFileSync(join(companionRoot, "server.ts"), "utf8");
 
 test("办公文件工作台拥有独立入口且三个主界面导航一致", () => {
-  assert.match(server, /url === "\/office"/);
+  assert.match(server, /pathname === "\/office"/);
   assert.match(chatHtml, /id="railOffice"[^>]+aria-label="办公文件"/);
   assert.match(chatHtml, /window\.location\.href = "\/office"/);
   assert.match(capabilityHtml, /href="\/office"[^>]+aria-label="办公文件"/);
   assert.match(officeHtml, /class="is-current" href="\/office"/);
+});
+
+test("带结果参数的办公文件地址可以打开，并通过浏览器下载通道导出", () => {
+  assert.match(server, /const pathname = url\.split\("\?", 1\)\[0\]/);
+  assert.match(server, /pathname === "\/office"/);
+  assert.match(server, /preparedOfficeExports/);
+  assert.match(server, /downloadUrl: `\/api\/files\/export\?id=\$\{id\}`/);
+  assert.match(officeJs, /\/api\/files\/export\?prepare=1/);
+  assert.match(officeJs, /showSaveFilePicker/);
+  assert.match(officeJs, /createWritable/);
+  assert.match(officeJs, /await writable\.close\(\)/);
+  assert.match(officeJs, /window\.location\.href = result\.downloadUrl/);
+  assert.match(officeJs, /文件下载已开始/);
+  assert.doesNotMatch(officeJs, /URL\.createObjectURL\(blob\)/);
 });
 
 test("工作台真实读取四类办公文件并明确保护原文件", () => {
@@ -56,6 +70,9 @@ test("聊天与能力结果可以直接进入文件工作台继续编辑", () =>
   assert.match(chatHtml, /data-artifact-action="edit"/);
   assert.match(chatHtml, /\/office\?artifact=/);
   assert.match(capabilityJs, /\/office\?artifact=/);
+  assert.match(capabilityJs, /data-artifact-edit/);
+  assert.match(capabilityJs, /window\.location\.assign/);
+  assert.match(capabilityJs, /download>\$\{compact \? "下载"/);
 });
 
 test("聊天设置统一提供记忆与数据入口，新用户看到可直接使用的例子", () => {
