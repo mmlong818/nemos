@@ -145,9 +145,23 @@ function abilityName(id) {
   return labels[id] || state.snapshot?.abilities?.find((item) => item.id === id)?.name || id;
 }
 
+const PUBLIC_CAPABILITY_IDS = [
+  "presentation-builder", "document-draft", "research-brief", "market-briefing", "thinking-workbench",
+  "product-design", "project-development", "meeting-minutes", "html-report", "decision-brief",
+  "business-deal", "market-opportunity", "ability-builder",
+];
+
+function publicAbilities() {
+  const byId = new Map((state.snapshot?.abilities || []).map((ability) => [ability.id, ability]));
+  return PUBLIC_CAPABILITY_IDS.flatMap((id) => {
+    const ability = byId.get(id);
+    return ability ? [{ ...ability, name: abilityName(id) }] : [];
+  });
+}
+
 function scheduleLabel(task) {
   if (task.schedule?.mode === "daily") return `每天 ${task.schedule.time || "09:00"}`;
-  if (task.schedule?.mode === "turns") return `每 ${task.schedule.everyTurns || 10} 轮对话`;
+  if (task.schedule?.mode === "turns") return `每完成 ${task.schedule.everyTurns || 10} 次对话后`;
   return "手动执行";
 }
 
@@ -367,7 +381,7 @@ function refreshOpenStoryline() {
 }
 
 function openTaskDialog(task) {
-  const abilities = state.snapshot?.abilities || [];
+  const abilities = publicAbilities();
   $("#taskCapability").innerHTML = `<option value="" disabled>请选择能力</option>${abilities.map((ability) => `<option value="${escapeHtml(ability.id)}">${escapeHtml(ability.name)}</option>`).join("")}`;
   $("#taskId").value = task?.id || "";
   $("#taskTitle").value = task?.title || "";
@@ -384,7 +398,7 @@ function openTaskDialog(task) {
 function updateScheduleField(turns = 10, time = "09:00") {
   const mode = $("#taskSchedule").value;
   const label = $("#scheduleDetail");
-  if (mode === "turns") label.innerHTML = `轮数<input id="taskTurns" type="number" min="1" max="1000" value="${turns}">`;
+  if (mode === "turns") label.innerHTML = `对话次数<input id="taskTurns" type="number" min="1" max="1000" value="${turns}">`;
   else if (mode === "daily") label.innerHTML = `时间<input id="taskTime" type="time" value="${time}">`;
   else label.innerHTML = '<span>按需运行</span><input type="text" value="不会自动执行" disabled>';
 }
@@ -419,6 +433,14 @@ function artifactDisplayTitle(item) {
     return abilityName(item?.capabilityId) || "能力结果";
   }
   return title;
+}
+
+function runDisplayTitle(run) {
+  const objective = String(run?.metadata?.objective || "").trim();
+  if (objective) return objective.slice(0, 60);
+  const output = String(run?.output || "").replace(/\s+/g, " ").trim();
+  if (output) return `对话 · ${output.slice(0, 34)}${output.length > 34 ? "…" : ""}`;
+  return run?.metadata?.mode === "task" ? "任务执行" : "对话记录";
 }
 function renderArtifacts() {
   const artifacts = state.snapshot?.artifacts || [];
@@ -482,7 +504,7 @@ function renderRuns() {
       : "";
     return `<article class="card"><div><h2>${escapeHtml(job.payload?.title || job.type || "后台任务")}</h2><p>${escapeHtml(job.result?.summary || job.error || (job.status === "uncertain" ? "执行结果无法自动确认，请先核对，系统不会自动重试。" : "由小丑鱼在后台执行"))}</p>${orchestrationDetail(job)}<div class="meta"><span class="pill ${statusPill(job.status)}">${escapeHtml(jobStatusLabel(job.status))}</span><span class="pill">${date(job.updatedAt || job.createdAt)}</span><span class="pill">尝试 ${job.attempts || 0}/${job.maxAttempts || 1}</span></div></div><div class="actions">${["queued", "running"].includes(job.status) ? `<button data-cancel-job="${job.id}">取消</button>` : ""}${["failed", "cancelled"].includes(job.status) ? `<button data-retry-job="${job.id}">重试</button>` : ""}${uncertainActions}</div></article>`;
   }).join("");
-  const runCards = runs.slice(0, 20).map((run) => `<article class="card"><div><h2>${escapeHtml(run.metadata?.objective || "对话处理")}</h2><p>${escapeHtml(run.output?.slice(0, 180) || run.error || "已保存执行记录，需要时可以恢复或排查。")}</p><div class="meta"><span class="pill ${statusPill(run.status)}">${escapeHtml(jobStatusLabel(run.status))}</span><span class="pill">${date(run.updatedAt || run.createdAt)}</span></div></div><div class="actions">${["interrupted", "paused", "failed"].includes(run.status) ? `<button data-resume-run="${run.runId}">恢复</button>` : ""}</div></article>`).join("");
+  const runCards = runs.slice(0, 20).map((run) => `<article class="card"><div><h2>${escapeHtml(runDisplayTitle(run))}</h2><p>${escapeHtml(run.output?.slice(0, 180) || run.error || "已保存执行记录，需要时可以恢复或排查。")}</p><div class="meta"><span class="pill ${statusPill(run.status)}">${escapeHtml(jobStatusLabel(run.status))}</span><span class="pill">${date(run.updatedAt || run.createdAt)}</span></div></div><div class="actions">${["interrupted", "paused", "failed"].includes(run.status) ? `<button data-resume-run="${run.runId}">恢复</button>` : ""}</div></article>`).join("");
   $("#content").innerHTML = `<div class="toolbar"><span></span><button id="refreshRuns">刷新</button></div><div class="list">${jobCards || runCards ? jobCards + runCards : '<div class="empty">还没有运行记录。</div>'}</div>`;
   $("#refreshRuns").onclick = load;
   $("#content").onclick = async (event) => {
