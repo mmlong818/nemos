@@ -12,24 +12,24 @@ Clownfish combines four everyday surfaces:
 
 | Surface | User action | Current implementation |
 |---|---|---|
-| **Chat** | Ask, upload images or files, speak, and resume past conversations | A single Clownfish entry, optional companion and teaching roles, expert-group collaboration, and in-chat delivery |
+| **Chat** | Create, search, switch, or delete independent conversations; upload images or files; and choose the right work mode | Automatic titles, parallel threads, isolated context, and delivery back to the originating conversation |
 | **Capabilities** | Describe an outcome or choose a capability directly | Background jobs, live progress, cancellation, retries, previews, and downloads |
 | **Files** | Open Word, PowerPoint, Excel, or PDF files | Original-file retention, local working copies, inline processing, and versions |
 | **Work** | Review tasks, results, runs, and memory | Scheduled tasks, artifacts, execution records, and preference management |
 
 New users do not need to create a project or understand tool names first.
 
-## Chat: a simple entry with expertise where it belongs
+## Conversations: one entry, three ways of working
 
-The home screen keeps one clear default one-to-one entry:
+Every new conversation begins as a blank thread with three modes:
 
-- **Clownfish** handles everyday questions, capability calls, expert coordination, and final delivery.
+- **Chat** for questions, discussion, ideas, and everyday conversation;
+- **Task** for sustained work toward a concrete outcome, with capabilities and expert judgment invoked behind the scenes;
+- **Study** for explanation, guided questions, practice, and feedback without requiring the user to choose a teacher persona.
 
-Companion and teaching roles such as Feifei and Teacher Lin remain available, but users add them only when needed instead of seeing them on a new home screen.
+The left side follows a familiar work-app pattern: the product name sits below its icon, New Conversation remains at the top, search expands only when requested, and the rest of the space is reserved for conversation threads. After the first message, a lightweight daily model generates a short title in the background. If the model is unavailable, a local fallback names the thread without blocking the reply or writing the title request into long-term memory.
 
-The first time a role conversation is opened, the page briefly explains what that role can help with and which problems it suits, so users do not need to probe for its purpose.
-
-Functional experts no longer occupy separate one-to-one contacts. They live in the Clownfish expert group and are not locked after the first turn: every turn is routed from the current topic, follow-ups prefer the previous specialists, topic changes select a new set, and `@expert` can name someone explicitly. Clownfish coordinates the final result. When chat hands work to a capability, both the original conversation text and a distilled task context are transferred instead of only the final sentence.
+Experts and teaching personas are internal execution choices rather than contacts that users must configure. When a conversation hands work to a capability, both the original text and a distilled task context are transferred instead of only the final sentence.
 
 ## Capabilities: describe the goal or choose directly
 
@@ -93,7 +93,7 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 ## Data and privacy boundaries
 
 - Memory, tasks, runs, working copies, and artifacts are stored under **~/.clownfish** by default.
-- When a configured model is called, the request and required context are sent to that provider. Network source features contact their corresponding public services when used.
+- When a configured model is called, the request and required context are sent to that provider. After the first message in a new conversation, the same provider's lightweight daily model also receives that message to generate a short title; this title request uses no tools and is not written to long-term memory. Network source features contact their corresponding public services when used.
 - Logs and run records redact common credential fields, but secrets should never be placed in task text.
 - Before exporting or sharing a backup or portable package, check that it does not contain a user data directory.
 
