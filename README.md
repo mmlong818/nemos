@@ -4,7 +4,7 @@
 
 > 一款本机优先、带长期记忆的 AI 工作应用。从一条新对话开始，按需要完成任务或进入学习辅导；复杂工作可以继续交给能力、文件和工作中心。
 
-![小丑鱼对话界面](docs/assets/readme/clownfish-chat.jpg)
+![小丑鱼对话界面](docs/assets/readme/clownfish-chat-2026-08-08.jpg)
 
 ## 现在能做什么
 
@@ -40,7 +40,7 @@
 
 选择后直接进入任务填写，不再增加“准备能力”之类的中间步骤。运行期间可以离开页面，进度和结果会保存在本机。
 
-![小丑鱼能力页](docs/assets/readme/clownfish-capabilities.jpg)
+![小丑鱼能力页](docs/assets/readme/clownfish-capabilities-2026-08-08.jpg)
 
 内置能力覆盖以下常见任务：
 
@@ -72,7 +72,7 @@
 - 删除工作文件时先进入垃圾桶，可恢复，也可明确永久删除；
 - 可以导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown。
 
-![小丑鱼办公文件页](docs/assets/readme/clownfish-office.jpg)
+![小丑鱼办公文件页](docs/assets/readme/clownfish-office-2026-08-08.jpg)
 
 ## 工作：持续任务和交付物集中管理
 
@@ -85,7 +85,7 @@
 
 新用户仍可直接从对话开始，不需要先理解“项目”或“工作流”。
 
-![小丑鱼工作页](docs/assets/readme/clownfish-work.jpg)
+![小丑鱼工作页](docs/assets/readme/clownfish-work-2026-08-08.jpg)
 
 ## 记忆：少量、可见、由用户控制
 
@@ -101,7 +101,7 @@
 
 文笔、排版和格式偏好只作为补充，当前任务的明确要求始终优先。
 
-![小丑鱼记忆页](docs/assets/readme/clownfish-memory.jpg)
+![小丑鱼记忆页](docs/assets/readme/clownfish-memory-2026-08-08.jpg)
 
 记忆内核的结构、事实演化和召回接口见 [TypeScript SDK 文档](sdk/typescript/README.md) 与 [v0.7 实现设计](sdk/typescript/docs/nemos-memory-v0.7-design.md)。
 
@@ -111,7 +111,7 @@
 
 小丑鱼会按服务商预设分配模型：支持独立日常对话模型的服务会自动分流，专家、能力、文件生成和复杂任务使用这里配置的任务模型；没有独立分流时，两类任务使用同一个模型。
 
-![小丑鱼模型连接](docs/assets/readme/clownfish-model-connection.jpg)
+![小丑鱼模型连接](docs/assets/readme/clownfish-model-connection-2026-08-08.jpg)
 
 当前预设包括智谱 GLM、OpenAI、Anthropic Claude、DeepSeek、通义千问、MiniMax 和自定义服务，支持 OpenAI 兼容与 Anthropic 兼容协议。识图、联网和向量能力取决于所选服务与模型。
 
