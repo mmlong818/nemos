@@ -112,6 +112,10 @@ const MANIFEST_FILE = resolveManifestPath();
 const APP_MANIFEST = readManifest();
 const MEMORY_CORE_INFO = readMemoryCoreInfo();
 const WEB_DIR = join(__dirname, "web");
+const WEB_VENDOR_ASSETS = new Map<string, string>([
+  ["vendor/jszip.min.js", require.resolve("jszip/dist/jszip.min.js")],
+  ["vendor/docx-preview.min.js", join(__dirname, "../../node_modules/docx-preview/dist/docx-preview.min.js")],
+]);
 const preparedOfficeExports = new Map<string, {
   data: Buffer;
   contentType: string;
@@ -2078,7 +2082,7 @@ function sendWebAsset(res: ServerResponse, assetUrl: string): boolean {
     send(res, 400, { error: "bad asset path" });
     return true;
   }
-  const path = join(WEB_DIR, "assets", rel);
+  const path = WEB_VENDOR_ASSETS.get(rel) || join(WEB_DIR, "assets", rel);
   if (!existsSync(path) || !statSync(path).isFile()) {
     send(res, 404, { error: "asset not found" });
     return true;

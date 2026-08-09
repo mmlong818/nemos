@@ -48,6 +48,7 @@
     "@earendil-works/pi-coding-agent": "^0.84.1",
     "@modelcontextprotocol/client": "^2.0.0",
     "better-sqlite3": "^12.10.0",
+    "docx-preview": "^0.4.0",
     "jszip": "^3.10.1",
     "pdfjs-dist": "^5.4.624",
     "pdfkit": "^0.17.2",

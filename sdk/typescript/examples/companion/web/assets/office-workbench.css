@@ -306,6 +306,26 @@ button, a, label { touch-action: manipulation; }
   text-decoration: none;
 }
 .source-original-link:hover { border-color: var(--office-accent); }
+.source-preview-warning {
+  width: min(760px, 100%);
+  margin: 0 auto 12px;
+  padding: 9px 12px;
+  border: 1px solid #e7d4bc;
+  border-radius: 7px;
+  color: #755f43;
+  background: #fff9ee;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.docx-preview-stage { width: 100%; overflow: auto; padding: 2px 0 30px; overscroll-behavior: contain; }
+.docx-preview-host { min-width: min-content; }
+.docx-preview-host .docx-wrapper { padding: 0; background: transparent; }
+.docx-preview-host .docx-wrapper > section.docx {
+  margin: 0 auto 20px;
+  border: 1px solid var(--office-line-strong);
+  box-shadow: 0 12px 30px rgba(48, 39, 42, .1);
+}
+.docx-preview-host .docx-wrapper > section.docx:last-child { margin-bottom: 0; }
 .source-pdf-frame {
   width: 100%;
   height: calc(100vh - 242px);
@@ -326,10 +346,9 @@ button, a, label { touch-action: manipulation; }
   box-shadow: 0 12px 30px rgba(48, 39, 42, .08);
 }
 .page-preview > span, .word-preview-number { position: absolute; top: 24px; right: 26px; color: var(--office-subtle); font-size: 10px; font-variant-numeric: tabular-nums; }
-.page-preview h2, .word-preview h2 { margin: 0 0 12px; font-size: 20px; line-height: 1.25; letter-spacing: -.01em; }
+.page-preview h2 { margin: 0 0 12px; font-size: 20px; line-height: 1.25; letter-spacing: -.01em; }
 .page-preview p, .word-preview p { margin: 0 0 22px; color: #454740; font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
 .word-preview section + section { margin-top: 24px; }
-.word-preview section:not(:first-of-type) h2 { font-size: 15px; }
 .slide-preview {
   position: relative;
   width: min(820px, 100%);
