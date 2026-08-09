@@ -1,6 +1,6 @@
 # arXiv 投稿前检查
 
-复核日期：2026-08-06
+复核日期：2026-08-10
 
 投稿包：`paper/arxiv-en.tar.gz`。包内仅包含英文论文需要的 `main.tex`、`refs.bib` 和 `main.bbl`。
 

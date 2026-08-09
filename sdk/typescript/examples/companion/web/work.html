@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/assets/work-center.css">
   <link rel="stylesheet" href="/assets/work-storyline.css">
   <link rel="stylesheet" href="/assets/work-stability.css">
+  <link rel="stylesheet" href="/assets/work-platform.css">
   <link rel="stylesheet" href="/assets/app-navigation-labels.css">
 </head>
 <body>
@@ -29,6 +30,10 @@
         <a class="wordmark" href="/tasks">工作</a>
         <nav class="tabs" aria-label="工作页面">
           <a href="/tasks" data-view="tasks">任务</a>
+          <a href="/spaces" data-view="spaces">空间</a>
+          <a href="/automations" data-view="automations">自动化</a>
+          <a href="/collaboration" data-view="collaboration">协作</a>
+          <a href="/resources" data-view="resources">资料</a>
           <a href="/artifacts" data-view="artifacts">结果</a>
           <a href="/runs" data-view="runs">运行</a>
           <a href="/memory" data-view="memory">记忆</a>
@@ -56,6 +61,15 @@
       <input id="taskId" type="hidden">
       <label>任务名称<input id="taskTitle" maxlength="60" required placeholder="例如：每周经营复盘"></label>
       <label>具体要求<textarea id="taskInstruction" rows="5" maxlength="2000" required placeholder="说清要处理什么、交付给谁、最重要的标准"></textarea></label>
+      <label>归入工作空间
+        <select id="taskSpace"><option value="">暂不归类</option></select>
+        <small class="field-hint">只有同一件事包含多个任务时才需要。</small>
+      </label>
+      <details class="task-knowledge-picker">
+        <summary>参考资料（可选）</summary>
+        <p class="field-hint">最多选择 8 份本地资料，执行时会一并交给小丑鱼。</p>
+        <div id="taskKnowledge" class="knowledge-checklist"></div>
+      </details>
       <div class="form-row">
         <label>使用能力<select id="taskCapability" required></select></label>
         <label>结果形式<select id="taskFormat"><option value="html">网页</option><option value="doc">Word</option><option value="pptx">PowerPoint</option><option value="md">文稿</option><option value="json">数据</option><option value="txt">纯文本</option></select></label>
@@ -65,6 +79,18 @@
         <label id="scheduleDetail">时间<input id="taskTime" type="time" value="09:00"></label>
       </div>
       <button class="primary" type="submit">保存任务</button>
+    </form>
+  </dialog>
+
+  <dialog id="spaceDialog">
+    <form class="dialog-card" id="spaceForm">
+      <button class="dialog-close" type="button" data-close-space aria-label="关闭">×</button>
+      <p class="eyebrow">相关工作放在一起</p>
+      <h2 id="spaceDialogTitle">新建工作空间</h2>
+      <input id="spaceId" type="hidden">
+      <label>空间名称<input id="spaceTitle" maxlength="60" required placeholder="例如：新版发布"></label>
+      <label>这件事要做到什么<textarea id="spaceDescription" rows="4" maxlength="400" placeholder="简要记录目标、范围或完成标准"></textarea></label>
+      <button class="primary" type="submit">保存工作空间</button>
     </form>
   </dialog>
 
@@ -98,12 +124,11 @@
               <textarea id="storySummary" rows="4" maxlength="800" required placeholder="现在做到哪里、卡在哪里、什么已经确认…"></textarea>
             </label>
 
-            <fieldset class="expert-fieldset">
-              <legend>专家职责</legend>
-              <p>小丑鱼仍是唯一对话入口；这里只说明谁负责判断什么。</p>
-              <div id="expertAssignments" class="expert-assignments"></div>
-              <button id="addExpertAssignment" type="button">添加专家</button>
-            </fieldset>
+            <section class="collaboration-note">
+              <strong>专家由小丑鱼按任务动态组织</strong>
+              <p>你无需选择角色；每次会根据任务内容重新判断需要谁参与，最终仍由小丑鱼完成交付。</p>
+              <div id="expertSummary" class="expert-summary"></div>
+            </section>
             <button class="primary" type="submit">保存任务脉络</button>
           </form>
 
@@ -127,6 +152,23 @@
         </aside>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="knowledgeDialog">
+    <form class="dialog-card" id="knowledgeForm">
+      <button class="dialog-close" type="button" data-close-knowledge aria-label="关闭">×</button>
+      <p class="eyebrow">本地资料</p>
+      <h2>添加资料</h2>
+      <label>资料名称<input id="knowledgeTitle" maxlength="100" required placeholder="例如：客户访谈整理"></label>
+      <div class="form-row">
+        <label>资料类型<select id="knowledgeKind"><option value="note">文字笔记</option><option value="file">文本文件</option><option value="link">网页链接</option></select></label>
+        <label>归入工作空间<select id="knowledgeSpace"><option value="">暂不归类</option></select></label>
+      </div>
+      <label id="knowledgeUrlField" hidden>网页链接<input id="knowledgeUrl" type="url" placeholder="https://"></label>
+      <label id="knowledgeFileField" hidden>选择文本文件<input id="knowledgeFile" type="file" accept=".txt,.md,.csv,.json,.html,.xml,text/*"></label>
+      <label>资料内容<textarea id="knowledgeContent" rows="8" maxlength="500000" placeholder="粘贴正文、摘要或你希望小丑鱼使用的信息"></textarea></label>
+      <button class="primary" type="submit">保存资料</button>
+    </form>
   </dialog>
 
   <dialog id="memoryDetailDialog">

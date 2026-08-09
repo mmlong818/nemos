@@ -1,6 +1,6 @@
 # MnemoBench
 
-> 状态：冻结研究快照（复核于 2026-08-06）。论文主表使用每项 50 条合成任务；原始结果、提交版本和文件哈希见 [`results/manifest.json`](./results/manifest.json)。
+> 状态：冻结研究快照（哈希与论文数字复核于 2026-08-10）。论文主表使用每项 50 条合成任务；原始结果、提交版本和文件哈希见 [`results/manifest.json`](./results/manifest.json)。
 
 A reproducible benchmark for **memory maintenance** in long-lived LLM memory systems —
 the behaviours that erode trust over time but that recall-centric benchmarks (LoCoMo,

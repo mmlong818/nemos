@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "status": "frozen-paper-snapshot",
   "updatedAt": "2026-08-06",
+  "verifiedAt": "2026-08-10",
   "scope": "Results cited by paper/main.tex and paper/main-zh.tex",
   "limitations": [
     "The cloud model identifiers describe the historical June-July 2026 runs and are not current model recommendations.",

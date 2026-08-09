@@ -139,6 +139,7 @@ const state = {
   returnConversationKey: "",
   returnUrl: "/",
   parentJobId: "",
+  continuationTaskId: "",
   handoffChain: [],
 };
 
@@ -395,6 +396,7 @@ function saveDraft() {
     workspacePath: $("#workspaceInput").value,
     accessMode: $("#accessModeSelect").value,
     parentJobId: state.parentJobId,
+    continuationTaskId: state.continuationTaskId,
     handoffChain: state.handoffChain,
     handoffSummary: state.handoffSummary,
     handoffConversation: state.handoffConversation,
@@ -429,6 +431,7 @@ function restoreLast() {
   $("#workspaceInput").value = draft.workspacePath || "";
   setDevelopmentMode(draft.accessMode, false);
   state.parentJobId = String(draft.parentJobId || "");
+  state.continuationTaskId = String(draft.continuationTaskId || "");
   state.handoffChain = Array.isArray(draft.handoffChain) ? draft.handoffChain.slice(0, 12) : [];
   state.handoffSummary = String(draft.handoffSummary || "");
   state.handoffConversation = Array.isArray(draft.handoffConversation) ? draft.handoffConversation.slice(-120) : [];
@@ -457,6 +460,7 @@ function resetDraft() {
   state.handoffSourceCapabilityId = "";
   state.returnConversationKey = "";
   state.parentJobId = "";
+  state.continuationTaskId = "";
   state.handoffChain = [];
   renderMaterials();
   $("#launchPanel").hidden = true;
@@ -501,6 +505,7 @@ async function startTask() {
         instruction: `${instruction}${materials}`,
         handoff,
         conversationKey: state.returnConversationKey,
+        continuationTaskId: state.continuationTaskId,
         workspacePath: item.id === "developer" ? $("#workspaceInput").value.trim() : "",
         accessMode: item.id === "developer" && $("#accessModeSelect").value === "inspect" ? "inspect" : "develop",
         parentJobId: state.parentJobId,
@@ -701,6 +706,7 @@ async function handoffJob(id) {
     const sourceCapability = jobCapability(job);
     const text = String(context.text || artifact.summary || "").slice(0, 160000);
     state.parentJobId = job.id;
+    state.continuationTaskId = String(artifact.taskId || "");
     state.handoffChain = [...(Array.isArray(job.payload?.handoffChain) ? job.payload.handoffChain : []), sourceCapability.backendId].slice(-12);
     const inheritedMaterials = Array.isArray(job.payload?.handoff?.materials) ? job.payload.handoff.materials.slice(-7) : [];
     state.materials = [...inheritedMaterials, { name: `${jobTitle(job)}-上一步结果.md`, size: new Blob([text]).size, text, kind: "handoff", artifactId: artifact.id }];
@@ -852,6 +858,7 @@ function applyChatHandoff() {
   state.handoffMessageCount = incomingConversation.length;
   state.handoffSource = "chat";
   state.handoffSourceCapabilityId = "";
+  state.continuationTaskId = String(handoff.sourceTaskId || "");
   state.returnConversationKey = /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(handoff.conversationKey || ""))
     ? String(handoff.conversationKey)
     : "";

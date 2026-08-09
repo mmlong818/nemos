@@ -4,7 +4,7 @@
 
 > A local-first AI work application with long-term memory. Start with a new conversation, switch to task completion or guided study when needed, and continue complex work in Capabilities, Files, and Work.
 
-![Clownfish chat](docs/assets/readme/clownfish-chat-2026-08-08.jpg)
+![Clownfish chat](docs/assets/readme/clownfish-chat-2026-08-10.png)
 
 ## What it does today
 
@@ -15,7 +15,7 @@ Clownfish combines four everyday surfaces:
 | **Chat** | Create, search, switch, or delete independent conversations; upload images or files; and choose the right work mode | Automatic titles, parallel threads, isolated context, and delivery back to the originating conversation |
 | **Capabilities** | Describe an outcome or choose a capability directly | Background jobs, live progress, cancellation, retries, previews, and downloads |
 | **Files** | Open Word, PowerPoint, Excel, or PDF files | Original-file retention, local working copies, inline processing, and versions |
-| **Work** | Review tasks, results, runs, and memory | Scheduled tasks, artifacts, execution records, and preference management |
+| **Work** | Review tasks, workspaces, automations, collaboration, resources, results, runs, and memory | Multi-task organization, scheduled execution, expert review, local resources, artifacts, and preference management |
 
 New users do not need to create a project or understand tool names first.
 
@@ -40,7 +40,7 @@ The capability page supports two equal paths:
 
 Selection opens the task form immediately, without an extra preparation step. Jobs continue in the background and remain available locally.
 
-![Clownfish capabilities](docs/assets/readme/clownfish-capabilities-2026-08-08.jpg)
+![Clownfish capabilities](docs/assets/readme/clownfish-capabilities-2026-08-10.png)
 
 Built-in capabilities cover presentation creation, formal documents, deep research, Hong Kong market briefs, complex-problem framing, product interface design, project development, meeting minutes, web reports, option comparison, business development, market opportunity simulation, and new-capability generation.
 
@@ -58,20 +58,28 @@ The file workspace supports DOCX, PPTX, XLSX, and PDF:
 - Deleted working files move to a recoverable trash area before permanent deletion;
 - Results can be exported to DOCX, PDF, PPTX, XLSX, HTML, or Markdown.
 
-![Clownfish office workspace](docs/assets/readme/clownfish-office-2026-08-08.jpg)
+![Clownfish office workspace](docs/assets/readme/clownfish-office-2026-08-10.png)
 
 ## Work: ongoing tasks and deliverables in one place
 
-Repeated and background work is kept in the Work center:
+Capability runs and ongoing work are kept in the Work center:
 
 - **Tasks** retain the goal, plan, current progress, and next action;
+- **Workspaces** keep related tasks and results together, with archive and restore controls;
+- **Automations** manage daily and usage-frequency tasks, including pause, edit, and run-now actions;
+- **Collaboration** lets Clownfish choose experts dynamically and merge their reviews into one final delivery;
+- **Resources** stores local notes, text files, and links; only explicitly selected items enter a task context;
 - **Results** collect files and reports created by capabilities;
 - **Runs** preserve execution state, logs, and errors;
 - **Memory** lets the user review facts, experiences, and habits organized by Clownfish.
 
-New users can still begin in a conversation without learning projects or workflow terminology first.
+A one-off run started from a conversation or the Capabilities page keeps its source, execution state, and artifact. Continuing that result stays in the same task and creates a linked next version. Failed runs keep their error and retry path, and a one-off task can be converted into a daily or usage-frequency task.
 
-![Clownfish work center](docs/assets/readme/clownfish-work-2026-08-08.jpg)
+New users can still begin in a conversation without creating a workspace. Workspaces only appear when one piece of work grows into multiple related tasks.
+
+The resource library is local by default. WeChat sources, X, and web search show their actual connection state instead of presenting planned adapters as live integrations.
+
+![Clownfish work center](docs/assets/readme/clownfish-work-2026-08-10.png)
 
 ## Memory: focused, visible, and user-controlled
 
@@ -87,7 +95,7 @@ Clownfish uses the Nemos Memory SDK in this repository. The application currentl
 
 Writing, layout, and format preferences supplement the current request; they do not replace it.
 
-![Clownfish memory](docs/assets/readme/clownfish-memory-2026-08-08.jpg)
+![Clownfish memory](docs/assets/readme/clownfish-memory-2026-08-10.png)
 
 See the [TypeScript SDK](sdk/typescript/README.en.md) and the [v0.7 implementation design](sdk/typescript/docs/nemos-memory-v0.7-design.md) for the memory lifecycle and APIs.
 
@@ -97,7 +105,7 @@ Open **Model connection**, then choose a provider and model name and enter an AP
 
 Clownfish follows provider presets when routing models. Providers with a separate daily-chat model use it automatically, while experts, capabilities, file generation, and complex work use the configured task model. When no separate route is defined, both use the same model.
 
-![Clownfish model connection](docs/assets/readme/clownfish-model-connection-2026-08-08.jpg)
+![Clownfish model connection](docs/assets/readme/clownfish-model-connection-2026-08-10.png)
 
 Presets are available for Zhipu GLM, OpenAI, Anthropic Claude, DeepSeek, Alibaba Qwen, MiniMax, and custom services. OpenAI-compatible and Anthropic-compatible protocols are supported. Vision, web, and embedding support depends on the selected service and model.
 
@@ -113,7 +121,7 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 ## Current verification
 
 - The TypeScript build passes;
-- All 508 automated tests pass;
+- All 514 automated tests pass;
 - Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
 - See the [2026-08-08 ten-round real-world audit](sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md).
 

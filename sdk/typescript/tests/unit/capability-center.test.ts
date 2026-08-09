@@ -83,6 +83,159 @@ test("单次能力任务只使用偏好记忆或完全关闭召回", async () =>
   }
 });
 
+test("工作空间可持久保存，并以可选方式组织多个任务", () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-work-spaces-"));
+  const options = {
+    dataDir: dir,
+    personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+    notify: async () => ({ reply: "完成", facts: [] }),
+  };
+  try {
+    const runtime = new CapabilityRuntime(options);
+    const space = runtime.createSpace({ title: "新版发布", description: "完成发布前的设计、开发和文档。" });
+    const task = runtime.createTask({
+      title: "更新说明文档",
+      personaId: "clownfish",
+      capabilityId: "document-draft",
+      instruction: "整理本次发布内容。",
+      spaceId: space.id,
+    });
+    assert.equal(task.spaceId, space.id);
+
+    runtime.updateSpace({ id: space.id, status: "archived" });
+    assert.throws(() => runtime.createTask({
+      title: "不应加入归档空间",
+      personaId: "clownfish",
+      capabilityId: "document-draft",
+      instruction: "测试",
+      spaceId: space.id,
+    }), /工作空间已归档/);
+
+    const restored = new CapabilityRuntime(options);
+    assert.equal(restored.snapshot().spaces.find((item) => item.id === space.id)?.status, "archived");
+    assert.equal(restored.snapshot().tasks.find((item) => item.id === task.id)?.spaceId, space.id);
+    restored.updateTask({ id: task.id, spaceId: null });
+    assert.equal(new CapabilityRuntime(options).snapshot().tasks.find((item) => item.id === task.id)?.spaceId, undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("单次能力执行会保存为可追溯、可继续的任务", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-durable-adhoc-task-"));
+  const options = {
+    dataDir: dir,
+    personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+    notify: async () => ({ reply: THINKING_RESULT, facts: [] }),
+  };
+  try {
+    const runtime = new CapabilityRuntime(options);
+    const result = await runtime.runAdHocTask({
+      title: "整理当前问题",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "根据前面对话整理问题并给出下一步。",
+      origin: {
+        kind: "chat",
+        conversationKey: "persona:clownfish",
+        conversationId: "conversation-1",
+        jobId: "job-1",
+      },
+    });
+
+    const saved = runtime.snapshot().tasks.find((item) => item.id === result.artifact.taskId);
+    assert.ok(saved);
+    assert.equal(saved.oneOff, true);
+    assert.equal(saved.origin?.kind, "chat");
+    assert.equal(saved.origin?.conversationKey, "persona:clownfish");
+    assert.equal(saved.storyline.status, "completed");
+    assert.equal(saved.execution?.status, "succeeded");
+    assert.equal(saved.execution?.artifactId, result.artifact.id);
+    assert.ok(saved.storyline.events.some((item) => item.artifactId === result.artifact.id));
+
+    const reloaded = new CapabilityRuntime(options).snapshot().tasks.find((item) => item.id === saved.id);
+    assert.equal(reloaded?.origin?.conversationId, "conversation-1");
+    assert.equal(reloaded?.execution?.artifactId, result.artifact.id);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("继续处理同一成果会沿用任务并形成可追溯版本", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-continuation-task-"));
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: THINKING_RESULT, facts: [] }),
+    });
+    const first = await runtime.runAdHocTask({
+      title: "产品方案",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "先整理方案",
+      origin: { kind: "chat", conversationKey: "persona:clownfish" },
+    });
+    const second = await runtime.runAdHocTask({
+      title: "产品方案第二版",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "根据反馈补充风险和下一步",
+      continuationTaskId: first.artifact.taskId,
+      origin: { kind: "capability", parentJobId: "job-first", jobId: "job-second" },
+    });
+
+    assert.equal(second.artifact.taskId, first.artifact.taskId);
+    const taskArtifacts = runtime.snapshot().artifacts
+      .filter((item) => item.taskId === first.artifact.taskId)
+      .sort((a, b) => Number(a.metadata?.lineage?.version || 0) - Number(b.metadata?.lineage?.version || 0));
+    assert.equal(taskArtifacts.length, 2);
+    assert.equal(taskArtifacts[0]?.metadata?.lineage?.version, 1);
+    assert.equal(taskArtifacts[1]?.metadata?.lineage?.version, 2);
+    assert.equal(taskArtifacts[1]?.metadata?.lineage?.previousArtifactId, first.artifact.id);
+    assert.equal(runtime.snapshot().tasks.filter((item) => item.id === first.artifact.taskId).length, 1);
+    const continuedTask = runtime.snapshot().tasks.find((item) => item.id === first.artifact.taskId);
+    assert.equal(continuedTask?.origin?.kind, "chat");
+    assert.equal(continuedTask?.origin?.conversationKey, "persona:clownfish");
+    assert.ok(continuedTask?.storyline.events.some((item) => item.type === "handoff"));
+    const promoted = runtime.updateTask({
+      id: first.artifact.taskId,
+      schedule: { mode: "daily", time: "09:00", timezone: "Asia/Shanghai" },
+      enabled: true,
+      promote: true,
+    });
+    assert.equal(promoted.oneOff, false);
+    assert.equal(promoted.schedule.mode, "daily");
+    assert.ok(promoted.storyline.events.some((item) => item.text === "已设为重复任务"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("失败的单次能力执行也会保留原因和重试入口", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-failed-adhoc-task-"));
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => { throw new Error("模型暂时不可用"); },
+    });
+    await assert.rejects(runtime.runAdHocTask({
+      title: "失败任务",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "整理问题",
+      origin: { kind: "direct", jobId: "job-failed" },
+    }), /模型暂时不可用/);
+    const saved = runtime.snapshot().tasks.find((item) => item.origin?.jobId === "job-failed");
+    assert.equal(saved?.storyline.status, "waiting");
+    assert.equal(saved?.execution?.status, "failed");
+    assert.match(saved?.execution?.error || "", /模型暂时不可用/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("开发项目作为独立能力执行，并保存可继续交接的完整结果", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-development-capability-"));
   const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-workspace-"));
@@ -272,6 +425,8 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   assert.match(capabilityScript, /function handoffJob/);
   assert.match(capabilityScript, /artifact\/context/);
   assert.match(capabilityScript, /parentJobId/);
+  assert.match(capabilityScript, /continuationTaskId/);
+  assert.match(serverSource, /continuationTaskId/);
   assert.match(capabilityScript, /function jobMemoryUsage/);
   assert.match(capabilityScript, /appliedPreferences/);
   assert.match(capabilityScript, /\/office\?artifact=/);
@@ -301,9 +456,18 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
 
   assert.match(workHtml, /id="storyDialog"/);
   assert.match(workHtml, /任务脉络/);
-  assert.match(workHtml, /专家职责/);
+  assert.match(workHtml, /专家由小丑鱼按任务动态组织/);
+  assert.doesNotMatch(workHtml, /id="expertAssignments"|id="addExpertAssignment"/);
   assert.match(workHtml, /关键决定/);
   assert.match(workScript, /\/api\/capabilities\/task\/storyline/);
+  assert.match(workScript, /function continueOneOffTask/);
+  assert.match(workScript, /clownfish-capability-handoff-v1/);
+  assert.match(workScript, /task\.origin\?\.conversationKey/);
+  assert.match(workScript, /查看结果/);
+  assert.match(workScript, /继续处理/);
+  assert.match(workScript, /sourceTaskId/);
+  assert.match(workScript, /第 \$\{version\} 版/);
+  assert.match(workScript, /设为重复任务/);
   assert.match(workScript, /\/api\/capabilities\/task\/decision/);
   assert.match(workScript, /data-open-story/);
   assert.match(workHtml, /id="taskCapability" required/);
@@ -312,6 +476,16 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
   assert.match(workScript, /这里只显示小丑鱼整理出的事实、经历与习惯/);
   assert.doesNotMatch(chatHtml, /协作进度|executionPanel/);
   assert.doesNotMatch(workHtml, /专家群聊|大群/);
+  assert.match(workHtml, /href="\/spaces" data-view="spaces">空间/);
+  assert.match(workHtml, /id="taskSpace"/);
+  assert.match(workScript, /function renderSpaces/);
+  assert.match(workScript, /单个任务无需建空间/);
+  assert.match(workScript, /\/tasks\?space=/);
+  assert.match(workHtml, /href="\/automations" data-view="automations">自动化/);
+  assert.match(workHtml, /href="\/collaboration" data-view="collaboration">协作/);
+  assert.match(workHtml, /href="\/resources" data-view="resources">资料/);
+  assert.match(workScript, /\/api\/capabilities\/task\/collaborate/);
+  assert.match(workScript, /\/api\/knowledge/);
 });
 
 test("选择能力后直接进入填写和执行，不再经过准备能力步骤", () => {
