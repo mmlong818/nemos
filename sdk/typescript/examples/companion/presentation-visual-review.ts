@@ -16,7 +16,7 @@ export interface PresentationVisualReviewPage {
 }
 
 export interface PresentationVisualReview {
-  engine: "edge-headless";
+  engine: "chromium-headless";
   checkedAt: string;
   viewport: { width: number; height: number };
   pages: PresentationVisualReviewPage[];
@@ -27,10 +27,10 @@ export interface PresentationVisualReview {
 const VIEWPORT = { width: 1440, height: 900 };
 
 export async function reviewPresentationPreview(previewFile: string, slideCount: number): Promise<PresentationVisualReview> {
-  const edge = findEdgeExecutable();
+  const browser = findChromiumExecutable();
   const checkedAt = new Date().toISOString();
-  if (!edge) {
-    return { engine: "edge-headless", checkedAt, viewport: VIEWPORT, pages: [], passed: false, unavailableReason: "未找到 Microsoft Edge，无法执行真实关键页渲染" };
+  if (!browser) {
+    return { engine: "chromium-headless", checkedAt, viewport: VIEWPORT, pages: [], passed: false, unavailableReason: "未找到 Chromium 浏览器，无法执行真实关键页渲染" };
   }
   const outputDir = previewFile.replace(/-preview\.html$/i, "-visual-review");
   mkdirSync(outputDir, { recursive: true });
@@ -39,8 +39,9 @@ export async function reviewPresentationPreview(previewFile: string, slideCount:
     const screenshot = join(outputDir, `slide-${slide + 1}.png`);
     const url = pathToFileURL(previewFile);
     url.searchParams.set("slide", String(slide));
-    const result = spawnSync(edge, [
+    const result = spawnSync(browser, [
       "--headless=new",
+      ...(process.platform === "linux" ? ["--no-sandbox"] : []),
       "--disable-gpu",
       "--disable-extensions",
       "--disable-background-networking",
@@ -58,14 +59,24 @@ export async function reviewPresentationPreview(previewFile: string, slideCount:
     }
     pages.push(await inspectScreenshot(slide, screenshot));
   }
-  return { engine: "edge-headless", checkedAt, viewport: VIEWPORT, pages, passed: pages.length > 0 && pages.every((page) => page.passed) };
+  return { engine: "chromium-headless", checkedAt, viewport: VIEWPORT, pages, passed: pages.length > 0 && pages.every((page) => page.passed) };
 }
 
-export function findEdgeExecutable(): string | null {
+export function findChromiumExecutable(): string | null {
   const candidates = [
+    process.env.NEMOS_BROWSER_PATH,
     process.env.NEMOS_EDGE_PATH,
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "/usr/bin/microsoft-edge",
+    "/usr/bin/microsoft-edge-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   ];
   return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))) ?? null;
 }
