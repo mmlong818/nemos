@@ -8,6 +8,7 @@ export interface ArtifactWorkspaceSnapshot {
   body: string;
   notes: Record<string, string>;
   checks: Record<string, boolean>;
+  values: Record<string, string>;
   status: ArtifactWorkspaceStatus;
 }
 
@@ -75,6 +76,7 @@ export class ArtifactWorkspaceStore {
     state.body = version.body;
     state.notes = structuredClone(version.notes);
     state.checks = structuredClone(version.checks);
+    state.values = structuredClone(version.values);
     state.status = version.status;
     state.revision++;
     state.updatedAt = new Date().toISOString();
@@ -145,16 +147,24 @@ function normalizeSnapshot(value: unknown): ArtifactWorkspaceSnapshot {
       if (safeKey) checks[safeKey] = raw === true;
     }
   }
+  const values: Record<string, string> = {};
+  if (input.values && typeof input.values === "object" && !Array.isArray(input.values)) {
+    for (const [key, raw] of Object.entries(input.values as Record<string, unknown>).slice(0, 100)) {
+      const safeKey = normalizeKey(key);
+      if (safeKey && (typeof raw === "string" || typeof raw === "number")) values[safeKey] = String(raw).slice(0, 2_000);
+    }
+  }
   return {
     body: typeof input.body === "string" ? input.body.slice(0, 160_000) : "",
     notes,
     checks,
+    values,
     status: input.status === "review" || input.status === "done" ? input.status : "draft",
   };
 }
 
 function emptyState(artifactId: string): ArtifactWorkspaceState {
-  return { artifactId: normalizeId(artifactId), body: "", notes: {}, checks: {}, status: "draft", updatedAt: "", revision: 0, versions: [] };
+  return { artifactId: normalizeId(artifactId), body: "", notes: {}, checks: {}, values: {}, status: "draft", updatedAt: "", revision: 0, versions: [] };
 }
 
 function normalizeId(value: string): string {
@@ -179,8 +189,17 @@ function readStates(file: string): ArtifactWorkspaceState[] {
     return value.map((state) => ({
       ...state,
       body: typeof state?.body === "string" ? state.body : "",
+      notes: state?.notes && typeof state.notes === "object" ? state.notes : {},
+      checks: state?.checks && typeof state.checks === "object" ? state.checks : {},
+      values: state?.values && typeof state.values === "object" ? state.values : {},
       revision: Number.isInteger(state?.revision) ? state.revision : 0,
-      versions: Array.isArray(state?.versions) ? state.versions.map((version: ArtifactWorkspaceVersion) => ({ ...version, body: typeof version.body === "string" ? version.body : "" })) : [],
+      versions: Array.isArray(state?.versions) ? state.versions.map((version: ArtifactWorkspaceVersion) => ({
+        ...version,
+        body: typeof version.body === "string" ? version.body : "",
+        notes: version?.notes && typeof version.notes === "object" ? version.notes : {},
+        checks: version?.checks && typeof version.checks === "object" ? version.checks : {},
+        values: version?.values && typeof version.values === "object" ? version.values : {},
+      })) : [],
     }));
   } catch {
     return [];

@@ -5,6 +5,7 @@
   const noteFields = [...document.querySelectorAll("#workNotes,#workbenchNotes")];
   const status = document.getElementById("workbenchStatus");
   const checks = [...document.querySelectorAll("[data-check]")];
+  const valueFields = [...document.querySelectorAll(".weights input[id], [data-workbench-value][id]")];
   const versions = document.getElementById("workbenchVersions");
   const message = document.getElementById("workbenchDiff");
   let state = { body: "", notes: {}, checks: {}, status: "draft", revision: 0, versions: [] };
@@ -15,9 +16,11 @@
   function capture() {
     const notes = {};
     const checked = {};
+    const values = {};
     noteFields.forEach((field) => { notes[field.id] = field.value; });
     checks.forEach((field) => { checked[field.dataset.check] = field.checked; });
-    return { body: bodyField?.value || "", notes, checks: checked, status: status?.value || "draft" };
+    valueFields.forEach((field) => { values[field.id] = field.value; });
+    return { body: bodyField?.value || "", notes, checks: checked, values, status: status?.value || "draft" };
   }
 
   function apply(next) {
@@ -27,6 +30,12 @@
     if (bodyField) bodyField.value = next.body || "";
     noteFields.forEach((field) => { field.value = next.notes?.[field.id] || ""; });
     checks.forEach((field) => { field.checked = next.checks?.[field.dataset.check] === true; });
+    valueFields.forEach((field) => {
+      if (next.values?.[field.id] !== undefined) {
+        field.value = next.values[field.id];
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
     if (status) status.value = next.status || "draft";
     drawVersions();
     hydrating = false;
@@ -75,12 +84,14 @@
   }
 
   function queueSave() {
+    if (hydrating) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveCurrent, 350);
   }
 
   noteFields.forEach((field) => field.addEventListener("input", queueSave));
   checks.forEach((field) => field.addEventListener("change", queueSave));
+  valueFields.forEach((field) => field.addEventListener("input", queueSave));
   status?.addEventListener("change", queueSave);
   document.getElementById("workbenchSaveVersion")?.addEventListener("click", async () => {
     try {

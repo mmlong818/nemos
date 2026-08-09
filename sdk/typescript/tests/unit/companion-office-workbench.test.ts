@@ -58,7 +58,7 @@ test("TXT 与 Markdown 可在明确授权后冲突安全地写回原文件", () 
 });
 
 test("Office 文件可以交给桌面原生编辑器，并把修改重新载入工作台", () => {
-  assert.match(officeHtml, /id="openDesktopEditor"[^>]*>完整编辑/);
+  assert.match(officeHtml, /id="openDesktopEditor"[^>]*>用桌面应用编辑/);
   assert.match(officeHtml, /id="refreshDesktopFile"[^>]*>载入修改/);
   assert.match(server, /OfficeFileSessionStore/);
   assert.match(server, /\/api\/files\/session\/open/);
@@ -67,6 +67,14 @@ test("Office 文件可以交给桌面原生编辑器，并把修改重新载入�
   assert.match(officeJs, /function refreshDesktopFile/);
   assert.match(officeJs, /desktopContentHash/);
   assert.match(officeJs, /桌面修改已载入/);
+  assert.match(officeJs, /function usesDesktopOriginalFormat/);
+  assert.match(officeJs, /view === "edit" && current\?\.kind === "pdf"/);
+  assert.match(officeJs, /document\.querySelector\("#editViewTab"\)\.hidden = current\.kind === "pdf"/);
+  assert.match(officeHtml, /id="applyStructuredEdit"[^>]*>应用到原格式/);
+  assert.match(officeJs, /\/api\/files\/session\/structured-edit/);
+  assert.match(officeJs, /function renderPresentationWorkspace/);
+  assert.match(officeJs, /function renderSpreadsheetWorkspace/);
+  assert.match(officeJs, /用 Word 编辑/);
 });
 
 test("工作台提供本机自动保存、版本比较与页内处理", () => {
@@ -157,6 +165,18 @@ test("Word 编辑状态使用连续文字工作副本而不是数百个段落表
   assert.match(officeJs, /current\.blocks = \[safeBlock/);
   assert.match(officeCss, /\.continuous-editor-heading/);
   assert.match(officeCss, /\.continuous-editor\s*\{/);
+});
+
+test("Markdown 提供目录、格式工具、实时预览并恢复编辑位置", () => {
+  assert.match(officeJs, /class="markdown-workspace"/);
+  assert.match(officeJs, /id="markdownOutline"/);
+  assert.match(officeJs, /data-markdown-action="heading"/);
+  assert.match(officeJs, /function updateMarkdownCompanions/);
+  assert.match(officeJs, /editorScrollTop/);
+  assert.match(officeSourceJs, /function renderMarkdown/);
+  assert.match(officeSourceJs, /markdown-table-wrap/);
+  assert.match(officeSourceJs, /loading="lazy"/);
+  assert.match(officeCss, /grid-template-columns:\s*180px minmax\(340px, 1fr\) minmax\(340px, 1fr\)/);
 });
 
 test("工作台遵守小丑鱼视觉与无障碍基线", () => {

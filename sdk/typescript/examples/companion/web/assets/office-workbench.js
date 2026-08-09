@@ -1,7 +1,7 @@
 "use strict";
 
 const STORAGE_KEY = "clownfish-office-workbench-v1";
-const MAX_STORED_DOCUMENTS = 6;
+const MAX_STORED_DOCUMENTS = 80;
 const MAX_VERSIONS = 8;
 const MAX_TRASH_DOCUMENTS = 30;
 const JOB_POLL_INTERVAL = 1400;
@@ -100,6 +100,7 @@ function safeDocument(item) {
     name: String(item?.name || "未命名文稿").slice(0, 120),
     kind,
     sourceSize: Math.max(0, Number(item?.sourceSize || 0)),
+    sourceTruncated: Boolean(item?.sourceTruncated),
     createdAt: String(item?.createdAt || now()),
     updatedAt: String(item?.updatedAt || now()),
     sourceStored: Boolean(item?.sourceStored),
@@ -109,6 +110,12 @@ function safeDocument(item) {
     processing: safeProcessing(item?.processing),
     fileRecordId: String(item?.fileRecordId || "").slice(0, 80),
     caretPosition: Math.max(0, Number(item?.caretPosition || 0)),
+    editorScrollTop: Math.max(0, Number(item?.editorScrollTop || 0)),
+    structuredCellChanges: Array.isArray(item?.structuredCellChanges) ? item.structuredCellChanges.slice(0, 20000).map((cell) => ({
+      sheetIndex: Math.max(0, Number(cell?.sheetIndex || 0)),
+      address: String(cell?.address || "").toUpperCase().slice(0, 16),
+      value: String(cell?.value || "").slice(0, 32000),
+    })).filter((cell) => /^[A-Z]{1,3}[1-9]\d{0,6}$/.test(cell.address)) : [],
     lastCheckpointAt: String(item?.lastCheckpointAt || ""),
     sourceVersions: Array.isArray(item?.sourceVersions) ? item.sourceVersions.slice(0, 40).map((version) => ({
       id: String(version?.id || "").slice(0, 80),
@@ -116,6 +123,11 @@ function safeDocument(item) {
       reason: String(version?.reason || "external-change").slice(0, 30),
       byteLength: Math.max(0, Number(version?.byteLength || 0)),
     })).filter((version) => version.id) : [],
+    sourceEvents: Array.isArray(item?.sourceEvents) ? item.sourceEvents.slice(-120).map((event) => ({
+      id: String(event?.id || "").slice(0, 80),
+      type: String(event?.type || "").slice(0, 30),
+      createdAt: String(event?.createdAt || ""),
+    })).filter((event) => event.id) : [],
     blocks,
     versions,
   };
@@ -139,6 +151,41 @@ let toastTimer = 0;
 let jobPollTimer = 0;
 let selectedCapabilityId = "document-draft";
 let pendingDeletion = null;
+let activeDocumentQuote = null;
+let libraryQuery = "";
+let libraryFormat = "all";
+const activeStructuredSection = new Map();
+
+function setActiveDocumentQuote(text, location) {
+  const value = String(text || "").trim().slice(0, 8000);
+  activeDocumentQuote = value ? { documentId: currentDocument()?.id || "", text: value, location: String(location || "选中内容").slice(0, 120) } : null;
+  const notice = document.querySelector("#selectionContext");
+  if (!notice) return;
+  if (activeDocumentQuote?.documentId !== currentDocument()?.id) activeDocumentQuote = null;
+  notice.hidden = !activeDocumentQuote;
+  notice.textContent = activeDocumentQuote ? `将重点处理${activeDocumentQuote.location}，同时保留整份文件作为背景。` : "";
+}
+
+function captureEditorSelection(editor) {
+  if (!editor || editor.selectionStart === editor.selectionEnd) return;
+  const start = editor.selectionStart || 0;
+  const end = editor.selectionEnd || start;
+  const startLine = editor.value.slice(0, start).split("\n").length;
+  const endLine = editor.value.slice(0, end).split("\n").length;
+  setActiveDocumentQuote(editor.value.slice(start, end), startLine === endLine ? `第 ${startLine} 行` : `第 ${startLine}–${endLine} 行`);
+}
+
+function captureSourceSelection() {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || !selection.anchorNode) return;
+  const anchor = selection.anchorNode.nodeType === Node.ELEMENT_NODE ? selection.anchorNode : selection.anchorNode.parentElement;
+  const source = anchor?.closest?.("#sourcePreview");
+  if (!source) return;
+  const page = anchor.closest(".page-preview,.word-preview,.slide-preview,.sheet-preview");
+  const pages = page ? [...source.querySelectorAll(".page-preview,.word-preview,.slide-preview,.sheet-preview")] : [];
+  const position = page ? pages.indexOf(page) + 1 : 0;
+  setActiveDocumentQuote(selection.toString(), position ? `预览第 ${position} 页/段` : "原文件选中内容");
+}
 
 function currentDocument() {
   return state.documents.find((document) => document.id === state.selectedId) || null;
@@ -384,7 +431,15 @@ function renderRecentFiles() {
     root.innerHTML = '<div class="empty-recent">打开过的文件会出现在这里，关闭页面后也能继续。</div>';
     return;
   }
-  root.innerHTML = state.documents.map((document) => `
+  const visible = state.documents.filter((document) => {
+    const formatMatches = libraryFormat === "all" || document.kind === libraryFormat;
+    return formatMatches && (!libraryQuery || document.name.toLocaleLowerCase("zh-CN").includes(libraryQuery));
+  });
+  if (!visible.length) {
+    root.innerHTML = '<div class="empty-recent">没有符合条件的文件。</div>';
+    return;
+  }
+  root.innerHTML = visible.map((document) => `
     <button class="file-row${document.id === state.selectedId ? " is-current" : ""}" type="button" data-document-id="${escapeHtml(document.id)}">
       <span class="file-row-icon" aria-hidden="true">${iconSvg("file")}</span>
       <span class="file-row-copy"><strong>${escapeHtml(document.name)}</strong><small>${formatLabel(document.kind)} · ${displayDate(document.updatedAt)}</small></span>
@@ -392,6 +447,7 @@ function renderRecentFiles() {
   root.querySelectorAll("[data-document-id]").forEach((button) => button.addEventListener("click", () => {
     state.selectedId = button.dataset.documentId;
     state.view = currentDocument()?.sourceSize ? "source" : "edit";
+    activeStructuredSection.delete(state.selectedId);
     persistSelection();
     render();
     closeFilePanel();
@@ -429,19 +485,103 @@ function autoResizeContinuous(textarea) {
   textarea.style.height = `${Math.max(720, textarea.scrollHeight + 4)}px`;
 }
 
+function markdownHeadings(text) {
+  return String(text || "").split("\n").flatMap((line, index) => {
+    const match = line.match(/^(#{1,6})\s+(.+)$/);
+    return match ? [{ level: match[1].length, title: match[2].replace(/[*_`]/g, "").trim().slice(0, 100), line: index }] : [];
+  }).slice(0, 80);
+}
+
+function updateMarkdownCompanions(editor) {
+  const preview = document.querySelector("#markdownLivePreview");
+  const outline = document.querySelector("#markdownOutline");
+  if (!editor || !preview || !outline) return;
+  preview.innerHTML = window.ClownfishOfficeSource.renderMarkdown(editor.value);
+  const headings = markdownHeadings(editor.value);
+  outline.innerHTML = headings.length
+    ? headings.map((heading) => `<button type="button" style="--heading-level:${heading.level}" data-markdown-line="${heading.line}">${escapeHtml(heading.title)}</button>`).join("")
+    : '<p>添加标题后会在这里生成目录。</p>';
+}
+
+function markdownSelectionAtLine(editor, lineNumber) {
+  const lines = editor.value.split("\n");
+  const position = lines.slice(0, lineNumber).reduce((total, line) => total + line.length + 1, 0);
+  editor.focus();
+  editor.setSelectionRange(position, position + (lines[lineNumber]?.length || 0));
+  const ratio = position / Math.max(1, editor.value.length);
+  editor.scrollTop = Math.max(0, (editor.scrollHeight - editor.clientHeight) * ratio - 80);
+}
+
+function applyMarkdownAction(editor, action) {
+  const start = editor.selectionStart || 0;
+  const end = editor.selectionEnd || start;
+  const selected = editor.value.slice(start, end);
+  const actions = {
+    heading: { before: "## ", after: "", fallback: "标题" },
+    bold: { before: "**", after: "**", fallback: "重点" },
+    list: { before: "- ", after: "", fallback: "列表项" },
+    quote: { before: "> ", after: "", fallback: "引用" },
+    code: { before: "```\n", after: "\n```", fallback: "代码" },
+    link: { before: "[", after: "](https://)", fallback: "链接文字" },
+  };
+  const pattern = actions[action];
+  if (!pattern) return;
+  const replacement = `${pattern.before}${selected || pattern.fallback}${pattern.after}`;
+  editor.setRangeText(replacement, start, end, "end");
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+  editor.focus();
+}
+
 function renderBlocks(current) {
   const root = window.document.querySelector("#blockList");
   const continuous = current.kind === "docx" || current.kind === "txt" || current.kind === "md";
-  document.querySelector("#addBlock").hidden = continuous;
-  document.querySelector("#editViewTab").textContent = current.kind === "docx" ? "编辑文字" : current.kind === "md" ? "编辑 Markdown" : current.kind === "txt" ? "编辑文本" : "编辑内容";
+  const importedStructured = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx"].includes(current.kind));
+  document.querySelector("#addBlock").hidden = continuous || importedStructured;
+  document.querySelector("#editViewTab").textContent = current.kind === "docx" ? "编辑 Word" : current.kind === "pptx" ? "编辑页面" : current.kind === "xlsx" ? "编辑表格" : current.kind === "md" ? "编辑 Markdown" : current.kind === "txt" ? "编辑文本" : "编辑内容";
+  if (current.kind === "md") {
+    root.innerHTML = `
+      <div class="markdown-workspace">
+        <aside class="markdown-outline-panel"><strong>目录</strong><nav id="markdownOutline" aria-label="Markdown 目录"></nav></aside>
+        <section class="markdown-editor-panel">
+          <div class="markdown-toolbar" role="toolbar" aria-label="Markdown 格式">
+            <button type="button" data-markdown-action="heading">标题</button><button type="button" data-markdown-action="bold">加粗</button><button type="button" data-markdown-action="list">列表</button><button type="button" data-markdown-action="quote">引用</button><button type="button" data-markdown-action="code">代码</button><button type="button" data-markdown-action="link">链接</button>
+          </div>
+          <label class="sr-only" for="continuousEditor">Markdown 内容</label>
+          <textarea class="continuous-editor markdown-editor" id="continuousEditor" data-continuous-editor maxlength="120000" spellcheck="true" placeholder="使用 Markdown 编写内容…">${escapeHtml(continuousDocumentText(current))}</textarea>
+        </section>
+        <section class="markdown-preview-panel" aria-label="Markdown 实时预览"><header><strong>预览</strong><span>随输入更新</span></header><div id="markdownLivePreview"></div></section>
+      </div>`;
+    const editor = root.querySelector("#continuousEditor");
+    updateMarkdownCompanions(editor);
+    window.requestAnimationFrame(() => {
+      const position = Math.min(current.caretPosition, editor.value.length);
+      editor.setSelectionRange(position, position);
+      editor.scrollTop = current.editorScrollTop || 0;
+    });
+    return;
+  }
   if (continuous) {
-    const label = current.kind === "docx" ? "文字工作副本" : current.kind === "md" ? "Markdown 工作副本" : "文本工作副本";
-    const detail = current.kind === "docx" ? "在这里连续修改文字；原文件的排版、图片和页眉页脚不会被覆盖。" : "修改会自动保存在本机工作副本中。";
+    const label = current.kind === "docx" ? "Word 内容编辑" : current.kind === "md" ? "Markdown 工作副本" : "文本工作副本";
+    const detail = current.kind === "docx" && current.desktopSessionId ? "点击“应用到原格式”后写入真实 DOCX 工作副本；原排版、图片和页眉页脚继续保留。" : current.kind === "docx" ? "连续编辑正文，导出时生成新的 Word 文件。" : "修改会自动保存在本机工作副本中。";
     root.innerHTML = `
       <header class="continuous-editor-heading"><div><strong>${label}</strong><span>${detail}</span></div><span>自动保存</span></header>
       <label class="sr-only" for="continuousEditor">${label}</label>
       <textarea class="continuous-editor" id="continuousEditor" data-continuous-editor maxlength="120000" spellcheck="true" placeholder="在这里输入内容…">${escapeHtml(continuousDocumentText(current))}</textarea>`;
-    autoResizeContinuous(root.querySelector("#continuousEditor"));
+    const editor = root.querySelector("#continuousEditor");
+    autoResizeContinuous(editor);
+    window.requestAnimationFrame(() => {
+      const position = Math.min(current.caretPosition, editor.value.length);
+      editor.setSelectionRange(position, position);
+      editor.scrollTop = current.editorScrollTop || 0;
+    });
+    return;
+  }
+  if (current.kind === "pptx") {
+    renderPresentationWorkspace(root, current);
+    return;
+  }
+  if (current.kind === "xlsx") {
+    renderSpreadsheetWorkspace(root, current);
     return;
   }
   root.innerHTML = current.blocks.map((block, index) => `
@@ -455,11 +595,129 @@ function renderBlocks(current) {
   root.querySelectorAll(".block-text").forEach(autoResize);
 }
 
+function renderPresentationWorkspace(root, current) {
+  const selected = Math.max(0, Math.min(current.blocks.length - 1, Number(activeStructuredSection.get(current.id) || 0)));
+  const block = current.blocks[selected];
+  root.innerHTML = `
+    <div class="presentation-workspace">
+      <aside class="slide-filmstrip" aria-label="幻灯片页面">
+        <header><strong>${current.blocks.length} 页</strong><span>保留原版式</span></header>
+        ${current.blocks.map((item, index) => `<button type="button" class="slide-thumb${index === selected ? " is-current" : ""}" data-structured-section="${index}"><span>${index + 1}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text.split(/\n/)[0] || "空白页面")}</small></button>`).join("")}
+      </aside>
+      <article class="slide-editor content-block" data-block-id="${escapeHtml(block.id)}">
+        <header><span>第 ${selected + 1} 页</span><strong>修改页面文字</strong><small>现有文本框、图片和页面布局会保留。</small></header>
+        <label for="block-title-${selected}">页面名称</label>
+        <input class="block-title" id="block-title-${selected}" data-field="title" maxlength="120" value="${escapeHtml(block.title)}">
+        <label for="block-text-${selected}">页面文字（每行对应一个现有文本位置）</label>
+        <textarea class="block-text slide-text-editor" id="block-text-${selected}" data-field="text" maxlength="120000" placeholder="输入页面文字…">${escapeHtml(block.text)}</textarea>
+      </article>
+    </div>`;
+  root.querySelectorAll(".block-text").forEach(autoResize);
+}
+
+function spreadsheetCells(text) {
+  const cells = new Map();
+  for (const match of String(text || "").matchAll(/(?:^|\|)\s*([A-Z]{1,3}[1-9]\d{0,6})\s*:\s*([^|\n]*)/gim)) cells.set(match[1].toUpperCase(), String(match[2] || "").trim());
+  return cells;
+}
+
+function spreadsheetColumn(index) {
+  let value = index + 1;
+  let label = "";
+  while (value) { value -= 1; label = String.fromCharCode(65 + (value % 26)) + label; value = Math.floor(value / 26); }
+  return label;
+}
+
+function spreadsheetAddressParts(address) {
+  const match = String(address).match(/^([A-Z]+)(\d+)$/);
+  if (!match) return null;
+  let column = 0;
+  for (const character of match[1]) column = column * 26 + character.charCodeAt(0) - 64;
+  return { column: column - 1, row: Number(match[2]) - 1 };
+}
+
+function spreadsheetText(cells) {
+  const sorted = [...cells].sort(([left], [right]) => {
+    const a = spreadsheetAddressParts(left); const b = spreadsheetAddressParts(right);
+    return (a?.row || 0) - (b?.row || 0) || (a?.column || 0) - (b?.column || 0);
+  });
+  const rows = new Map();
+  for (const [address, value] of sorted) {
+    const row = spreadsheetAddressParts(address)?.row || 0;
+    const values = rows.get(row) || [];
+    values.push(`${address}: ${value}`);
+    rows.set(row, values);
+  }
+  return [...rows.values()].map((items) => items.join(" | ")).join("\n");
+}
+
+function spreadsheetAnalysis(cells, rows, columns) {
+  const values = [...cells.values()].filter((value) => value !== "");
+  const numbers = values.map((value) => Number(String(value).replace(/,/g, ""))).filter(Number.isFinite);
+  const duplicates = values.length - new Set(values).size;
+  const sum = numbers.reduce((total, value) => total + value, 0);
+  return {
+    filled: values.length,
+    blank: Math.max(0, rows * columns - values.length),
+    formulas: values.filter((value) => value.startsWith("=")).length,
+    duplicates,
+    summary: numbers.length ? `数值 ${numbers.length} 个 · 合计 ${sum.toLocaleString("zh-CN")} · 平均 ${(sum / numbers.length).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}` : "当前范围没有可汇总的数值",
+  };
+}
+
+function renderSpreadsheetWorkspace(root, current) {
+  const selected = Math.max(0, Math.min(current.blocks.length - 1, Number(activeStructuredSection.get(current.id) || 0)));
+  const block = current.blocks[selected];
+  const cells = spreadsheetCells(block.text);
+  let maxRow = 0; let maxColumn = 0;
+  for (const address of cells.keys()) { const position = spreadsheetAddressParts(address); maxRow = Math.max(maxRow, position?.row || 0); maxColumn = Math.max(maxColumn, position?.column || 0); }
+  const rows = Math.min(100, Math.max(12, maxRow + 3));
+  const columns = Math.min(30, Math.max(8, maxColumn + 3));
+  const analysis = spreadsheetAnalysis(cells, rows, columns);
+  const headings = Array.from({ length: columns }, (_, index) => `<th scope="col">${spreadsheetColumn(index)}</th>`).join("");
+  const body = Array.from({ length: rows }, (_, row) => `<tr><th scope="row">${row + 1}</th>${Array.from({ length: columns }, (_, column) => {
+    const address = `${spreadsheetColumn(column)}${row + 1}`;
+    return `<td><input class="sheet-cell-input" aria-label="${address}" data-sheet-index="${selected}" data-cell-address="${address}" value="${escapeHtml(cells.get(address) || "")}"></td>`;
+  }).join("")}</tr>`).join("");
+  root.innerHTML = `
+    <div class="spreadsheet-workspace">
+      <nav class="sheet-tabs" aria-label="工作表">${current.blocks.map((item, index) => `<button type="button" class="${index === selected ? "is-current" : ""}" data-structured-section="${index}">${escapeHtml(item.title)}</button>`).join("")}</nav>
+      <section class="sheet-analysis" aria-label="当前工作表概览"><div><strong data-sheet-stat="filled">${analysis.filled}</strong><span>有内容</span></div><div><strong data-sheet-stat="blank">${analysis.blank}</strong><span>空白格</span></div><div><strong data-sheet-stat="formulas">${analysis.formulas}</strong><span>公式</span></div><div><strong data-sheet-stat="duplicates">${analysis.duplicates}</strong><span>重复值</span></div><p data-sheet-summary>${analysis.summary}</p></section>
+      <div class="spreadsheet-grid" tabindex="0"><table><thead><tr><th></th>${headings}</tr></thead><tbody>${body}</tbody></table></div>
+      <p class="sheet-note">输入 = 开头的内容可保存为公式。点击“应用到原格式”后写入真实 XLSX 工作副本，并保留原有单元格样式。</p>
+    </div>`;
+}
+
+function updateSpreadsheetAnalysis(current, sheetIndex) {
+  const analysisRoot = document.querySelector(".sheet-analysis");
+  const grid = document.querySelector(".spreadsheet-grid table");
+  const block = current.blocks[sheetIndex];
+  if (!analysisRoot || !grid || !block) return;
+  const rows = Math.max(0, grid.rows.length - 1);
+  const columns = Math.max(0, grid.rows[0]?.cells.length - 1);
+  const analysis = spreadsheetAnalysis(spreadsheetCells(block.text), rows, columns);
+  for (const key of ["filled", "blank", "formulas", "duplicates"]) {
+    const node = analysisRoot.querySelector(`[data-sheet-stat="${key}"]`);
+    if (node) node.textContent = String(analysis[key]);
+  }
+  const summary = analysisRoot.querySelector("[data-sheet-summary]");
+  if (summary) summary.textContent = analysis.summary;
+}
+
+function usesDesktopOriginalFormat(current) {
+  return Boolean(current?.sourceSize && ["docx", "pptx", "xlsx", "pdf"].includes(current.kind));
+}
+
+function desktopEditLabel(kind) {
+  return ({ docx: "用 Word 编辑", pptx: "用 PowerPoint 编辑", xlsx: "用 Excel 编辑", pdf: "用默认应用打开" })[kind] || "用桌面应用编辑";
+}
+
 function renderVersions(current) {
   const root = window.document.querySelector("#versionList");
   const sourceVersions = current?.sourceVersions || [];
-  document.querySelector("#versionCount").textContent = `${(current?.versions.length || 0) + sourceVersions.length} 个`;
-  if (!current || (!current.versions.length && !sourceVersions.length)) {
+  const sourceEvents = current?.sourceEvents || [];
+  document.querySelector("#versionCount").textContent = `${(current?.versions.length || 0) + sourceVersions.length} 个版本`;
+  if (!current || (!current.versions.length && !sourceVersions.length && !sourceEvents.length)) {
     root.innerHTML = '<p class="version-empty">保存版本后，可以比较变化或恢复到之前的内容。</p>';
     return;
   }
@@ -469,20 +727,26 @@ function renderVersions(current) {
       <button type="button" data-compare-version="${escapeHtml(version.id)}">比较</button>
       <button type="button" data-restore-version="${escapeHtml(version.id)}">恢复</button>
     </div>`).join("");
-  const reasonLabel = { imported: "导入原文件", "external-change": "桌面修改", restored: "恢复的原文件" };
+  const reasonLabel = { imported: "导入原文件", "external-change": "桌面修改", "structured-edit": "页内结构化修改", restored: "恢复的原文件" };
   const sourceRows = sourceVersions.map((version) => `
     <div class="version-row source-version-row">
       <span class="version-row-copy"><strong>${reasonLabel[version.reason] || "原文件版本"}</strong><small>${displayDate(version.createdAt)} · ${displayFileSize(version.byteLength)}</small></span>
       <button type="button" data-restore-source-version="${escapeHtml(version.id)}">恢复原文件</button>
     </div>`).join("");
-  root.innerHTML = `${workbenchRows}${sourceRows}`;
+  const eventLabel = { imported: "文件已加入工作区", "external-change": "检测到桌面修改", "structured-edit": "修改已写入原格式", restored: "已恢复历史版本", missing: "工作副本已被删除或移走", renamed: "工作副本已重命名或移动" };
+  const eventRows = sourceEvents.slice().reverse().slice(0, 12).map((event) => `<div class="version-event"><span>${escapeHtml(eventLabel[event.type] || "文件状态已变化")}</span><small>${displayDate(event.createdAt)}</small></div>`).join("");
+  root.innerHTML = `${workbenchRows}${sourceRows}${eventRows ? `<div class="version-events"><strong>文件动态</strong>${eventRows}</div>` : ""}`;
 }
 
 async function loadSourceHistory(current = currentDocument()) {
   if (!current?.desktopSessionId) return;
   try {
-    const response = await api(`/api/files/session/history?id=${encodeURIComponent(current.desktopSessionId)}`);
-    current.sourceVersions = response.versions || [];
+    const [history, events] = await Promise.all([
+      api(`/api/files/session/history?id=${encodeURIComponent(current.desktopSessionId)}`),
+      api(`/api/files/session/events?id=${encodeURIComponent(current.desktopSessionId)}`),
+    ]);
+    current.sourceVersions = history.versions || [];
+    current.sourceEvents = events.events || [];
     writeStoredState();
     renderVersions(current);
   } catch {
@@ -512,6 +776,7 @@ function setDocumentView(view) {
   const current = currentDocument();
   const hasResult = Boolean(current?.processing);
   if (!["source", "edit", "result"].includes(view)) view = current?.sourceSize ? "source" : "edit";
+  if (view === "edit" && current?.kind === "pdf") view = "source";
   if (view === "result" && !hasResult) view = current?.sourceSize ? "source" : "edit";
   state.view = view;
   document.querySelectorAll("[data-document-view]").forEach((button) => {
@@ -612,12 +877,20 @@ function render() {
   document.querySelector("#formatBadge").textContent = formatLabel(current.kind);
   document.querySelector("#documentName").value = current.name;
   const size = current.sourceSize ? ` · ${Math.max(1, Math.round(current.sourceSize / 1024))} KB` : "";
-  document.querySelector("#documentMeta").textContent = `本机工作副本${size} · 原文件未改动`;
   document.querySelector("#sourceState").textContent = current.sourceStored ? "原文件保留在本机" : current.sourceSize ? "重新打开可恢复原始版式" : "空白文稿";
   const desktopEditable = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx", "pdf"].includes(current.kind));
   document.querySelector("#openDesktopEditor").hidden = !desktopEditable;
+  document.querySelector("#openDesktopEditor").textContent = desktopEditLabel(current.kind);
   document.querySelector("#refreshDesktopFile").hidden = !desktopEditable;
   document.querySelector("#writeBackSource").hidden = !current.sourceWritable || !["txt", "md"].includes(current.kind);
+  document.querySelector("#editViewTab").hidden = current.kind === "pdf";
+  document.querySelector("#applyStructuredEdit").hidden = !Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx"].includes(current.kind));
+  document.querySelector("#documentSurface").classList.toggle("is-markdown", current.kind === "md");
+  document.querySelector("#documentSurface").classList.toggle("is-presentation", current.kind === "pptx");
+  document.querySelector("#documentSurface").classList.toggle("is-spreadsheet", current.kind === "xlsx");
+  document.querySelector("#documentMeta").textContent = usesDesktopOriginalFormat(current)
+    ? current.kind === "pdf" ? `只读原格式工作副本${size}` : `可写入原格式工作副本${size} · 版式与对象继续保留`
+    : `本机工作副本${size} · 原文件未改动`;
   renderBlocks(current);
   renderVersions(current);
   if (current.processing && ["queued", "running", "succeeded"].includes(current.processing.status)) state.view = "result";
@@ -674,6 +947,7 @@ async function importFile(file, handle = null) {
       name: file.name.replace(/\.(docx|pptx|xlsx|pdf|txt|md|markdown)$/i, ""),
       kind: extraction.kind,
       sourceSize: file.size,
+      sourceTruncated: Boolean(extraction.truncated),
       createdAt,
       updatedAt: createdAt,
       sourceStored: false,
@@ -755,6 +1029,38 @@ async function refreshDesktopFile() {
   } catch (error) {
     setSaveState("载入失败");
     showToast(error instanceof Error ? error.message : "无法载入桌面修改", true);
+  }
+}
+
+async function applyStructuredEdit() {
+  const current = currentDocument();
+  if (!current?.desktopSessionId || !["docx", "pptx", "xlsx"].includes(current.kind)) return;
+  const button = document.querySelector("#applyStructuredEdit");
+  button.disabled = true;
+  setSaveState("正在写入原格式…", true);
+  try {
+    const response = await api("/api/files/session/structured-edit", {
+      method: "POST",
+      body: JSON.stringify({
+        id: current.desktopSessionId,
+        expectedHash: current.desktopContentHash,
+        blocks: current.blocks.map(({ title, text }) => ({ title, text })),
+        cells: current.structuredCellChanges || [],
+        complete: !current.sourceTruncated,
+      }),
+    });
+    current.structuredCellChanges = [];
+    await refreshDesktopFile();
+    state.view = "edit";
+    setDocumentView("edit");
+    const warning = Array.isArray(response.warnings) ? response.warnings.join(" ") : "";
+    setSaveState("已写入原格式");
+    showToast(warning || "修改已写入真实工作副本，并保留了历史版本", Boolean(warning));
+  } catch (error) {
+    setSaveState("未写入");
+    showToast(error instanceof Error ? error.message : "无法写入原格式", true);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -1026,6 +1332,7 @@ async function startOfficeTask() {
   const format = document.querySelector("#assistantFormat").value;
   const capabilityId = capabilityForRequest(request, format);
   const text = documentMarkdown(current);
+  const quote = activeDocumentQuote?.documentId === current.id ? activeDocumentQuote : null;
   const button = document.querySelector("#startOfficeTask");
   button.disabled = true;
   button.textContent = "正在开始…";
@@ -1037,7 +1344,18 @@ async function startOfficeTask() {
         title: request.slice(0, 60),
         personaId: "clownfish",
         capabilityId,
-        instruction: `${request}\n\n请基于下面的当前工作副本完成任务。保留事实、数字和明确约束；无法确认的内容标记为待核验。不要覆盖原文件。\n\n--- ${current.name}（${formatLabel(current.kind)} 工作副本）---\n${text}`,
+        instruction: request,
+        handoff: {
+          source: "office",
+          goal: request,
+          summary: quote ? `用户要求重点处理${quote.location}。选中原文：\n${quote.text}` : "用户从文件工作台发起处理，整份工作副本已随任务交接。",
+          conversation: [],
+          materials: [{ name: current.name, text, fileRecordId: current.fileRecordId || "" }],
+          decisions: [],
+          constraints: ["保留事实、数字和明确约束", "无法确认的内容标记为待核验", "不要覆盖原文件"],
+          unresolved: [],
+          chain: [],
+        },
         format,
         memoryMode: "preferences",
         idempotencyKey: `office-${current.id}-${crypto.randomUUID()}`,
@@ -1089,6 +1407,12 @@ function openFilePanel() {
 function openAssistantPanel(mode) {
   if (!currentDocument()) return showToast("先打开一个文件", true);
   const showingVersions = mode === "versions";
+  const quoteNotice = document.querySelector("#selectionContext");
+  if (quoteNotice) {
+    if (activeDocumentQuote?.documentId !== currentDocument()?.id) activeDocumentQuote = null;
+    quoteNotice.hidden = !activeDocumentQuote;
+    quoteNotice.textContent = activeDocumentQuote ? `将重点处理${activeDocumentQuote.location}，同时保留整份文件作为背景。` : "";
+  }
   document.querySelector("#assistantCard").hidden = showingVersions;
   document.querySelector("#versionCard").hidden = !showingVersions;
   document.querySelector("#assistantPanelTitle").textContent = showingVersions ? "版本记录" : "小丑鱼处理";
@@ -1126,10 +1450,29 @@ function bindEvents() {
   });
   document.querySelector("#blockList").addEventListener("input", (event) => {
     const current = currentDocument();
+    if (current && event.target.matches("[data-cell-address]")) {
+      const sheetIndex = Number(event.target.dataset.sheetIndex || 0);
+      const address = String(event.target.dataset.cellAddress || "").toUpperCase();
+      const block = current.blocks[sheetIndex];
+      if (!block || !/^[A-Z]{1,3}[1-9]\d{0,6}$/.test(address)) return;
+      const cells = spreadsheetCells(block.text);
+      const value = event.target.value.slice(0, 32000);
+      if (value) cells.set(address, value); else cells.delete(address);
+      block.text = spreadsheetText(cells);
+      const changes = current.structuredCellChanges || [];
+      const existing = changes.find((cell) => cell.sheetIndex === sheetIndex && cell.address === address);
+      if (existing) existing.value = value; else changes.push({ sheetIndex, address, value });
+      current.structuredCellChanges = changes.slice(-20000);
+      updateSpreadsheetAnalysis(current, sheetIndex);
+      scheduleSave();
+      return;
+    }
     if (current && event.target.matches("[data-continuous-editor]")) {
       current.blocks = [safeBlock({ id: current.blocks[0]?.id || uid("block"), title: current.kind === "md" ? "Markdown" : "正文", text: event.target.value }, 0, current.kind)];
       current.caretPosition = event.target.selectionStart || 0;
-      autoResizeContinuous(event.target);
+      current.editorScrollTop = event.target.scrollTop || 0;
+      if (current.kind === "md") updateMarkdownCompanions(event.target);
+      else autoResizeContinuous(event.target);
       scheduleSave();
       return;
     }
@@ -1140,6 +1483,31 @@ function bindEvents() {
     if (event.target.matches("textarea")) autoResize(event.target);
     scheduleSave();
   });
+  document.querySelector("#blockList").addEventListener("scroll", (event) => {
+    if (!event.target.matches?.("[data-continuous-editor]")) return;
+    const current = currentDocument();
+    if (current) current.editorScrollTop = event.target.scrollTop || 0;
+  }, true);
+  document.querySelector("#blockList").addEventListener("click", (event) => {
+    const editor = document.querySelector("#continuousEditor");
+    const action = event.target.closest("[data-markdown-action]");
+    const heading = event.target.closest("[data-markdown-line]");
+    if (editor && action) applyMarkdownAction(editor, action.dataset.markdownAction);
+    if (editor && heading) markdownSelectionAtLine(editor, Number(heading.dataset.markdownLine || 0));
+    const section = event.target.closest("[data-structured-section]");
+    if (section) {
+      const current = currentDocument();
+      if (current) {
+        activeStructuredSection.set(current.id, Number(section.dataset.structuredSection || 0));
+        renderBlocks(current);
+      }
+    }
+  });
+  document.querySelector("#blockList").addEventListener("select", (event) => captureEditorSelection(event.target));
+  document.querySelector("#blockList").addEventListener("keyup", (event) => {
+    if (event.target.matches?.("textarea")) captureEditorSelection(event.target);
+  });
+  document.addEventListener("selectionchange", captureSourceSelection);
   document.querySelector("#addBlock").addEventListener("click", addBlock);
   document.querySelector("#deleteDocument").addEventListener("click", deleteCurrentDocument);
   document.querySelector("#saveVersion").addEventListener("click", saveVersion);
@@ -1151,6 +1519,7 @@ function bindEvents() {
   document.querySelector("#writeBackSource").addEventListener("click", writeBackSource);
   document.querySelector("#openDesktopEditor").addEventListener("click", openDesktopEditor);
   document.querySelector("#refreshDesktopFile").addEventListener("click", refreshDesktopFile);
+  document.querySelector("#applyStructuredEdit").addEventListener("click", applyStructuredEdit);
   document.querySelector("#startOfficeTask").addEventListener("click", startOfficeTask);
   document.querySelector("#cancelOfficeTask").addEventListener("click", cancelOfficeTask);
   document.querySelectorAll("[data-document-view]").forEach((button) => button.addEventListener("click", () => setDocumentView(button.dataset.documentView)));
@@ -1183,6 +1552,14 @@ function bindEvents() {
   document.querySelector("#toggleFiles").addEventListener("click", openFilePanel);
   document.querySelector("#closeFiles").addEventListener("click", closeFilePanel);
   document.querySelector("#filePanelBackdrop").addEventListener("click", closeFilePanel);
+  document.querySelector("#fileLibrarySearch").addEventListener("input", (event) => {
+    libraryQuery = event.target.value.trim().toLocaleLowerCase("zh-CN");
+    renderRecentFiles();
+  });
+  document.querySelector("#fileLibraryFormat").addEventListener("change", (event) => {
+    libraryFormat = event.target.value;
+    renderRecentFiles();
+  });
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeFilePanel();

@@ -42,7 +42,7 @@ export class OfficeWorkbenchStateStore {
     if (!Array.isArray(input.documents) || !Array.isArray(input.trash)) throw new Error("文件工作台数据无效");
     const candidate: OfficeWorkbenchSnapshot = {
       revision: this.state.revision + 1,
-      documents: input.documents.slice(0, 20),
+      documents: input.documents.slice(0, 80),
       trash: input.trash.slice(0, 100),
       selectedId: typeof input.selectedId === "string" ? input.selectedId.slice(0, 120) : null,
       updatedAt: new Date().toISOString(),
@@ -61,7 +61,7 @@ export class OfficeWorkbenchStateStore {
       if (!Number.isInteger(value.revision) || !Array.isArray(value.documents) || !Array.isArray(value.trash)) return structuredClone(EMPTY_STATE);
       return {
         revision: Number(value.revision),
-        documents: value.documents.slice(0, 20),
+        documents: value.documents.slice(0, 80),
         trash: value.trash.slice(0, 100),
         selectedId: typeof value.selectedId === "string" ? value.selectedId : null,
         updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : "",

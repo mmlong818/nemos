@@ -1,0 +1,25 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { routeCapability } from "../../examples/companion/capability-router.js";
+
+test("routes explicit project work ahead of generic document words", () => {
+  assert.equal(routeCapability({ goal: "检查项目文档并修复构建问题" }).capabilityId, "project-development");
+});
+
+test("routes an attached presentation when the goal is otherwise vague", () => {
+  const result = routeCapability({ goal: "帮我继续完善", materialNames: ["季度总结.pptx"] });
+  assert.equal(result.capabilityId, "presentation-builder");
+  assert.equal(result.confidence, "medium");
+});
+
+test("an explicit workspace always uses project development", () => {
+  const result = routeCapability({ goal: "看看这个", workspacePath: "C:\\work\\demo" });
+  assert.equal(result.catalogId, "developer");
+  assert.equal(result.confidence, "high");
+});
+
+test("falls back to the thinking workbench without pretending certainty", () => {
+  const result = routeCapability({ goal: "我还没想清楚" });
+  assert.equal(result.capabilityId, "thinking-workbench");
+  assert.equal(result.confidence, "low");
+});

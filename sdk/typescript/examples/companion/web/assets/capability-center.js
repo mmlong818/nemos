@@ -291,6 +291,25 @@ function matchCapability(goal) {
   return rule?.[0] || "thinking";
 }
 
+async function recommendCapability(goal) {
+  try {
+    const response = await fetch("/api/capabilities/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        goal,
+        materialNames: state.materials.map((item) => item.name),
+        workspacePath: $("#workspaceInput")?.value || "",
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.route?.catalogId) throw new Error(result.error || "无法自动选择能力");
+    return result.route.catalogId;
+  } catch {
+    return matchCapability(goal);
+  }
+}
+
 function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
   const item = selectedCapability();
   if (goal) {
@@ -870,6 +889,7 @@ function applyChatHandoff() {
       size: Math.max(0, Number(item.size || 0)),
       text: item.text.slice(0, 120000),
       kind: String(item.kind || "text").slice(0, 16),
+      fileRecordId: /^file-[a-f0-9-]{36}$/i.test(String(item.fileRecordId || "")) ? String(item.fileRecordId) : "",
     }))
     : [];
   $("#chatContext").hidden = !fromChat;
@@ -894,11 +914,11 @@ function applyChatHandoff() {
 
 function bindEvents() {
   $$('[data-view-target]').forEach((button) => button.addEventListener("click", () => openView(button.dataset.viewTarget)));
-  $("#goalForm").addEventListener("submit", (event) => {
+  $("#goalForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const goal = $("#goalInput").value.trim();
     if (!goal) return showToast("先写下想完成的事情", true);
-    selectCapability(matchCapability(goal));
+    selectCapability(await recommendCapability(goal));
     openCapability(goal);
   });
   $("#continueLast").addEventListener("click", restoreLast);
