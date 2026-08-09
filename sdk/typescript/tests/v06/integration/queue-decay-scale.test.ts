@@ -37,6 +37,7 @@ function enqueue(storage: ReturnType<typeof makeSqlite>["storage"], id: string) 
     id, tenant_id: "default", user_id: "alice",
     archival_id: `arch_${id}`, scope: "global", content: `内容 ${id}`,
     scenario_json: null, origin_agent: null,
+    content_date: null, perspectives_json: null,
     status: "queued", attempts: 0, last_error: null, created_at: now,
   });
 }

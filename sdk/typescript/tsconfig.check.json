@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*", "examples/**/*", "tests/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "examples/companion/client/dist",
+    "examples/companion/client/vendor"
+  ]
+}

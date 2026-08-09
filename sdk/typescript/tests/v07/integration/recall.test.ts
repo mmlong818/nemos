@@ -959,7 +959,6 @@ test("v0.7.5 compositional recall expands authoritative sources referenced by cr
         type: "user",
         content: "Museum visit order planning note " + noise + " for " + museum + ".",
         archival_ref: source.archival.id,
-        source_event_ids: [source.archival.id],
         source: { authoritative: false, origin: "test", chain_depth: 1 },
       });
     }
@@ -1031,7 +1030,6 @@ test("v0.7.5 compositional current claims continue into multi-source evidence", 
     trustTier: 1,
     utteranceMode: "literal",
     archival_ref: commute.archival.id,
-    source_event_ids: [commute.archival.id],
     source: { authoritative: false, origin: "test:user", chain_depth: 1 },
   });
   embeddingCalls = 0;
@@ -1084,7 +1082,6 @@ test("v0.7.5 personal calculations exclude unsupported assistant prices", async 
     type: "reference",
     content: "A bus could cost about $29 for that route.",
     archival_ref: source.archival.id,
-    source_event_ids: [source.archival.id],
     source: { authoritative: false, origin: "test:assistant", chain_depth: 1 },
   });
 

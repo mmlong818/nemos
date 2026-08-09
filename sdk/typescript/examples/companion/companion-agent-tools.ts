@@ -142,7 +142,7 @@ function taskListTool(
 
 function taskCreateTool(
   dependencies: CompanionAgentToolDependencies,
-  context: ChatAgentContext,
+  _context: ChatAgentContext,
 ): AgentTool {
   const abilities = dependencies.capabilities().snapshot().abilities
     .filter((ability) => !ability.archivedAt)

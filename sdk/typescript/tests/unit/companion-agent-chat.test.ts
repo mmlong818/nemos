@@ -389,6 +389,7 @@ test("Skill installation uses the Companion approval gateway before changing loc
       undefined,
       undefined,
       {
+        sessionId: "conv:1on1:user-a:clownfish",
         userId: "user-a",
         personaId: "clownfish",
         instruction: "帮我安装这个 Skill：https://example.test/SKILL.md",

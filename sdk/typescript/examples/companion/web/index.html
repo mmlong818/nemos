@@ -4560,7 +4560,7 @@ async function prepareChatFile(file) {
   if (!file.size || file.size > limit) throw new Error(office ? "办公文件不能超过 8 MB" : "文本文件不能超过 2 MB");
   if (office) {
     const response = await api("/api/files/extract", { name: file.name, dataBase64: await chatFileToBase64(file) });
-    return { name: file.name, kind: response.extraction.kind, text: response.extraction.text, truncated: response.extraction.truncated, size: file.size };
+    return { name: file.name, kind: response.extraction.kind, text: response.extraction.text, truncated: response.extraction.truncated, size: file.size, fileRecordId: response.fileRecord?.id || "" };
   }
   const raw = (await file.text()).replace(/\0/g, "").trim();
   if (!raw) throw new Error("文件中没有可读取的文字内容");

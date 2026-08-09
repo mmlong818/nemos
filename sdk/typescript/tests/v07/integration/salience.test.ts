@@ -88,7 +88,7 @@ test("temporary and hedged facts remain candidates even when repeated", () => {
   const memory: Memory = {
     id: "episodic:candidate",
     layer: "episodic",
-    type: "emotion",
+    type: "user",
     scope: "global",
     content: "The user may be frustrated today",
     source: {
@@ -125,7 +125,7 @@ test("hedged derived memories do not become long-term preferences", () => {
   const memory: Memory = {
     id: "semantic:hedged-style",
     layer: "semantic",
-    type: "preference",
+    type: "user",
     scope: "global",
     content: "用户可能偏好方文山的词风，也可能只是举例。",
     source: { authoritative: false, kind: "derived", origin: "semantic-analysis", chain_depth: 1, confidence: "high" },

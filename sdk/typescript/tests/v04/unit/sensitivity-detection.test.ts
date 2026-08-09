@@ -15,7 +15,7 @@ test("v0.4: 非 diary profile 的 system prompt 含 sensitivity 检测引导", a
     llm: {
       provider: "custom",
       name: "capture-mock",
-      chat: async (system: string, user: string): Promise<string> => {
+      chat: async (system: string, _user: string): Promise<string> => {
         if (!system.includes("记忆审查官")) capturedSystem = system;
         return JSON.stringify({
           archival: { arousal: { value: 0, signal_sources: [] }, surprise: { value: 0, basis: "r" } },
@@ -41,7 +41,7 @@ test("v0.4: diary profile 不重复拼 sensitivity guidance（避免冗余）", 
     llm: {
       provider: "custom",
       name: "capture-mock",
-      chat: async (system: string, user: string): Promise<string> => {
+      chat: async (system: string, _user: string): Promise<string> => {
         if (!system.includes("记忆审查官")) capturedSystem = system;
         return JSON.stringify({
           archival: { arousal: { value: 0, signal_sources: [] }, surprise: { value: 0, basis: "r" } },

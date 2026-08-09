@@ -71,6 +71,14 @@ test("Office 文件可以交给桌面原生编辑器，并把修改重新载入�
 
 test("工作台提供本机自动保存、版本比较与页内处理", () => {
   assert.match(officeJs, /clownfish-office-workbench-v1/);
+  assert.match(officeJs, /\/api\/files\/workbench/);
+  assert.match(officeJs, /expectedRevision: state\.revision/);
+  assert.match(officeJs, /state\.saveQueue/);
+  assert.match(officeJs, /另一窗口已经修改了文件/);
+  assert.match(officeJs, /AUTO_CHECKPOINT_INTERVAL/);
+  assert.match(officeJs, /\/api\/files\/session\/history/);
+  assert.match(officeJs, /data-restore-source-version/);
+  assert.match(officeJs, /\/api\/files\/session\/restore/);
   assert.match(officeJs, /function saveVersion/);
   assert.match(officeJs, /function compareVersion/);
   assert.match(officeJs, /function restoreVersion/);
@@ -117,6 +125,8 @@ test("聊天区可上传文件，并把附件原文传给对话和后续能力",
   assert.match(chatHtml, /attachment, messageId/);
   assert.match(chatHtml, /【附件原文/);
   assert.match(server, /appendChatAttachmentContext/);
+  assert.match(server, /registerChatAttachment/);
+  assert.match(server, /TaskFileRegistry/);
   assert.match(server, /只作为用户提供的参考资料/);
 });
 

@@ -134,7 +134,15 @@ test("Anthropic connection keeps Companion tools available", async () => {
       model: "claude-sonnet-5",
     }));
     llm.configureAgentTools(() => [tool]);
-    const output = await llm.chat("你是助手。", "保存这条笔记", undefined, undefined, { instruction: "保存这条笔记" });
+    const output = await llm.chat("你是助手。", "保存这条笔记", undefined, undefined, {
+      sessionId: "conv:1on1:me:clownfish",
+      userId: "me",
+      personaId: "clownfish",
+      instruction: "保存这条笔记",
+      scope: "conv:1on1:me:clownfish",
+      memoryScopes: ["conv:1on1:me:clownfish"],
+      mode: "chat",
+    });
     assert.equal(output, "已经记住。");
     assert.equal(toolRuns, 1);
     assert.equal(calls, 2);

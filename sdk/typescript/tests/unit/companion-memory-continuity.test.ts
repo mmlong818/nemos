@@ -36,7 +36,7 @@ test("one-on-one user messages stay in the user namespace without persona attrib
     });
     const entry = entries.find((item) => item.content === "我今晚在加班");
     assert.ok(entry);
-    assert.equal((entry.source as Record<string, unknown>).origin_agent, undefined);
+    assert.equal((entry.source as unknown as Record<string, unknown>).origin_agent, undefined);
     assert.equal(entry.source.speaker_id, "user:me");
     assert.equal(entry.source.subject_id, "user:me");
     assert.equal(entry.source.conversation_id, convScope("me", "feifei"));

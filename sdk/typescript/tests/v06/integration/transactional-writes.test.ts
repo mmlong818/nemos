@@ -54,7 +54,7 @@ test("transaction 抛异常时 insert 整体回滚（主表 + FTS 均无残留�
   );
 
   assert.equal(storage.get("default", "alice", "personal_semantic", "psem_txn1"), null, "主表应回滚");
-  const fts = storage.searchFts("default", "alice", "personal_semantic", "事务", { topK: 5 });
+  const fts = storage.searchFts("default", "alice", "事务", ["personal_semantic"], undefined, 5);
   assert.equal(fts.length, 0, "FTS 应随主表一起回滚");
 
   // 事务外正常写入仍然可用（回滚不破坏连接状态）
@@ -103,7 +103,7 @@ test("delete 原子性：删除后主表 / FTS / embedding 无孤儿残留", asy
   storage.delete("default", "alice", "personal_semantic", "psem_del");
 
   assert.equal(storage.get("default", "alice", "personal_semantic", "psem_del"), null);
-  const fts = storage.searchFts("default", "alice", "personal_semantic", "删除", { topK: 5 });
+  const fts = storage.searchFts("default", "alice", "删除", ["personal_semantic"], undefined, 5);
   assert.equal(fts.filter((r) => r.id === "psem_del").length, 0, "FTS 不应有孤儿");
 
   await mem.close();

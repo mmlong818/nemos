@@ -1172,18 +1172,22 @@ export class CapabilityRuntime {
     const { task, ability, persona } = this.createAdHocTask(input);
     try {
       input.onProgress?.("正在分析目标并生成结构", 20);
-      const result = ability.id === "project-development"
+      // 用一个已收窄的局部变量承接开发结果，让交付回执的类型契约在编译期成立，
+      // 而不是依赖三处独立的 ability.id 判断。
+      const developmentResult = ability.id === "project-development"
         ? await this.runDevelopmentTask(input, task, signal)
-        : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
+        : undefined;
+      const result = developmentResult
+        ?? await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
       this.markSkillUsed(ability);
-      const reply = ability.id === "project-development"
-        ? result.reply
+      const reply = developmentResult
+        ? developmentResult.reply
         : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress });
-      const runtimeMetadata = ability.id === "project-development"
+      const runtimeMetadata = developmentResult
         ? {
-            development: result,
-            validationChecks: developmentValidationChecks(result),
-            professionalReceipt: developmentProfessionalReceipt(result),
+            development: developmentResult,
+            validationChecks: developmentValidationChecks(developmentResult),
+            professionalReceipt: developmentProfessionalReceipt(developmentResult),
           }
         : undefined;
       input.onProgress?.("正在生成并保存交付物", 85);
