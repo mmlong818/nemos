@@ -1,0 +1,71 @@
+export interface CapabilityRouteInput {
+  goal: string;
+  materialNames?: string[];
+  workspacePath?: string;
+}
+
+export interface CapabilityRouteResult {
+  capabilityId: string;
+  catalogId: string;
+  confidence: "high" | "medium" | "low";
+  reason: string;
+}
+
+interface RouteRule {
+  capabilityId: string;
+  catalogId: string;
+  patterns: RegExp[];
+  reason: string;
+}
+
+const ROUTES: RouteRule[] = [
+  { capabilityId: "ability-builder", catalogId: "ability", patterns: [/(生成|创建|新增|沉淀|锻造).{0,8}(能力|技能)/i, /做成.{0,6}(能力|技能)/i], reason: "目标是沉淀可重复使用的能力" },
+  { capabilityId: "project-development", catalogId: "developer", patterns: [/开发|写代码|改代码|修复.{0,8}(问题|bug)|项目检查|构建|测试|代码库|仓库/i], reason: "目标需要读取和修改项目文件" },
+  { capabilityId: "presentation-builder", catalogId: "presentation", patterns: [/PPT|演示|汇报|路演|幻灯|提案|课件/i], reason: "目标交付物是演示文稿" },
+  { capabilityId: "meeting-minutes", catalogId: "meeting", patterns: [/会议|纪要|访谈|录音|讨论记录/i], reason: "材料属于会议或访谈记录" },
+  { capabilityId: "market-briefing", catalogId: "marketBrief", patterns: [/港股|股票|行情|公告|财报|盘前|盘后|自选|持仓|HKEX/i], reason: "目标需要整理市场与证券资料" },
+  { capabilityId: "product-design", catalogId: "product", patterns: [/产品|界面|交互|原型|用户体验|功能设计/i], reason: "目标是设计产品流程或界面" },
+  { capabilityId: "business-deal", catalogId: "business", patterns: [/商务|合作|销售|客户|谈判|成交|跟进/i], reason: "目标是推进商务合作" },
+  { capabilityId: "decision-brief", catalogId: "decision", patterns: [/决策|比较|选择|取舍|评估|该不该/i], reason: "目标是比较方案并作出判断" },
+  { capabilityId: "market-opportunity", catalogId: "market", patterns: [/市场|赛道|机会|定位|竞品|增长/i], reason: "目标是评估市场机会" },
+  { capabilityId: "research-brief", catalogId: "research", patterns: [/研究|调研|资料|调查|行业|搜集|分析报告|核验/i], reason: "目标需要检索和核验资料" },
+  { capabilityId: "html-report", catalogId: "web", patterns: [/网页|HTML|页面|网站|可视化/i], reason: "目标交付物是独立网页" },
+  { capabilityId: "document-draft", catalogId: "document", patterns: [/文档|文章|总结|说明|方案|写作|润色|周报|月报|日报|材料整理/i], reason: "目标交付物是正式文稿" },
+  { capabilityId: "thinking-workbench", catalogId: "thinking", patterns: [/思考|梳理|头脑风暴|复盘|想法|困惑/i], reason: "目标需要先拆解问题" },
+];
+
+const EXTENSION_ROUTES: Record<string, Omit<CapabilityRouteResult, "confidence">> = {
+  ".ppt": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
+  ".pptx": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
+  ".doc": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文档材料" },
+  ".docx": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文档材料" },
+  ".txt": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文本材料" },
+  ".md": { capabilityId: "document-draft", catalogId: "document", reason: "已附带 Markdown 材料" },
+};
+
+export function routeCapability(input: CapabilityRouteInput): CapabilityRouteResult {
+  const goal = String(input.goal || "").trim().slice(0, 4000);
+  const workspacePath = String(input.workspacePath || "").trim();
+  if (workspacePath) {
+    return { capabilityId: "project-development", catalogId: "developer", confidence: "high", reason: "已指定项目工作区" };
+  }
+
+  for (const rule of ROUTES) {
+    if (rule.patterns.some((pattern) => pattern.test(goal))) {
+      return { capabilityId: rule.capabilityId, catalogId: rule.catalogId, confidence: "high", reason: rule.reason };
+    }
+  }
+
+  for (const name of input.materialNames || []) {
+    const normalized = String(name || "").toLowerCase();
+    const extension = Object.keys(EXTENSION_ROUTES).find((item) => normalized.endsWith(item));
+    if (extension) return { ...EXTENSION_ROUTES[extension], confidence: "medium" };
+  }
+
+  return {
+    capabilityId: "thinking-workbench",
+    catalogId: "thinking",
+    confidence: "low",
+    reason: "目标还不够明确，先整理问题和成功标准",
+  };
+}

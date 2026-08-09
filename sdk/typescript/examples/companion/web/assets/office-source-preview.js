@@ -182,6 +182,8 @@
 
   function inlineMarkdown(value) {
     return escapeHtml(value)
+      .replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+|data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+)\)/gi, '<img src="$2" alt="$1" loading="lazy">')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/__([^_]+)__/g, "<strong>$1</strong>")
@@ -190,12 +192,27 @@
 
   function markdownBody(value) {
     let inCode = false;
+    let codeLanguage = "";
     const output = [];
-    for (const line of String(value || "").split("\n")) {
+    const lines = String(value || "").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
       if (/^\s*```/.test(line)) {
-        output.push(inCode ? "</code></pre>" : '<pre><code>');
+        codeLanguage = inCode ? codeLanguage : line.replace(/^\s*```/, "").trim().slice(0, 30);
+        output.push(inCode ? "</code></pre>" : `<pre data-language="${escapeHtml(codeLanguage)}"><code>`);
         inCode = !inCode;
       } else if (inCode) output.push(`${escapeHtml(line)}\n`);
+      else if (line.includes("|") && /^\s*\|?\s*:?-{3,}/.test(lines[index + 1] || "")) {
+        const headers = markdownTableCells(line);
+        const rows = [];
+        index += 2;
+        while (index < lines.length && lines[index].includes("|")) {
+          rows.push(markdownTableCells(lines[index]));
+          index += 1;
+        }
+        index -= 1;
+        output.push(`<div class="markdown-table-wrap"><table><thead><tr>${headers.map((cell) => `<th>${inlineMarkdown(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((_, cellIndex) => `<td>${inlineMarkdown(row[cellIndex] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      }
       else if (!line.trim()) output.push('<span class="markdown-gap" aria-hidden="true"></span>');
       else if (/^\s*#{1,6}\s+/.test(line)) {
         const match = line.match(/^\s*(#{1,6})\s+(.+)$/);
@@ -209,6 +226,14 @@
     }
     if (inCode) output.push("</code></pre>");
     return output.join("");
+  }
+
+  function markdownTableCells(line) {
+    return String(line || "").trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()).slice(0, 20);
+  }
+
+  function renderMarkdown(value) {
+    return `<article class="text-source-preview is-markdown">${markdownBody(value)}</article>`;
   }
 
   function renderTextDocument(current, record, sourceUrl) {
@@ -277,5 +302,5 @@
     else await renderDocument(root, current, record, sourceUrl, renderToken);
   }
 
-  window.ClownfishOfficeSource = Object.freeze({ save, get, remove, canWrite, writeText, render, release });
+  window.ClownfishOfficeSource = Object.freeze({ save, get, remove, canWrite, writeText, render, renderMarkdown, release });
 })();

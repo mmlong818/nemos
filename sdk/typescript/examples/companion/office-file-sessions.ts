@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
+import { applyStructuredOfficeEdit, type StructuredOfficeBlock, type StructuredSpreadsheetCell } from "./office-structured-edit.js";
 
 export interface OfficeFileSession {
   id: string;
@@ -20,8 +21,18 @@ export interface OfficeFileVersion {
   contentHash: string;
   byteLength: number;
   createdAt: string;
-  reason: "imported" | "external-change" | "restored";
+  reason: "imported" | "external-change" | "structured-edit" | "restored";
   file: string;
+}
+
+export interface OfficeFileEvent {
+  id: string;
+  sessionId: string;
+  type: "imported" | "external-change" | "structured-edit" | "restored" | "missing" | "renamed";
+  createdAt: string;
+  from?: string;
+  to?: string;
+  contentHash?: string;
 }
 
 const EXTENSIONS = new Set(["docx", "pptx", "xlsx", "pdf", "txt", "md"]);
@@ -29,8 +40,11 @@ const EXTENSIONS = new Set(["docx", "pptx", "xlsx", "pdf", "txt", "md"]);
 export class OfficeFileSessionStore {
   private readonly sessions = new Map<string, OfficeFileSession>();
   private readonly versions = new Map<string, OfficeFileVersion[]>();
+  private readonly events = new Map<string, OfficeFileEvent[]>();
+  private readonly watchedPaths = new Map<string, string>();
   private readonly indexFile: string;
   private readonly versionIndexFile: string;
+  private readonly eventIndexFile: string;
   private readonly historyDirectory: string;
 
   constructor(private readonly directory: string) {
@@ -38,6 +52,7 @@ export class OfficeFileSessionStore {
     this.indexFile = join(directory, "sessions.json");
     this.historyDirectory = join(directory, "history");
     this.versionIndexFile = join(this.historyDirectory, "versions.json");
+    this.eventIndexFile = join(this.historyDirectory, "events.json");
     mkdirSync(this.historyDirectory, { recursive: true });
     this.load();
   }
@@ -61,18 +76,25 @@ export class OfficeFileSessionStore {
     };
     this.sessions.set(id, session);
     this.captureVersion(session, data, "imported");
+    this.captureEvent(session, "imported", { to: session.file, contentHash: session.contentHash });
+    this.watchSession(session);
     this.persist();
     return structuredClone(session);
   }
 
   inspect(id: string): OfficeFileSession {
-    const session = this.require(id);
+    const session = this.requireRecord(id);
+    this.resolveRenamedFile(session);
+    this.assertManagedFile(session);
     const data = readFileSync(session.file);
     const previousHash = session.contentHash;
     session.byteLength = data.byteLength;
     session.contentHash = hash(data);
     session.updatedAt = statSync(session.file).mtime.toISOString();
-    if (session.contentHash !== previousHash) this.captureVersion(session, data, "external-change");
+    if (session.contentHash !== previousHash) {
+      this.captureVersion(session, data, "external-change");
+      this.captureEvent(session, "external-change", { to: session.file, contentHash: session.contentHash });
+    }
     this.persist();
     return structuredClone(session);
   }
@@ -91,12 +113,41 @@ export class OfficeFileSessionStore {
   }
 
   history(id: string): Array<Omit<OfficeFileVersion, "file">> {
-    this.require(id);
+    this.inspect(id);
     return (this.versions.get(id) || []).map(({ file: _file, ...version }) => structuredClone(version));
   }
 
+  eventHistory(id: string): OfficeFileEvent[] {
+    const session = this.requireRecord(id);
+    try { this.inspect(id); } catch { /* Missing state is already recorded by inspect. */ }
+    return (this.events.get(session.id) || []).map((event) => structuredClone(event));
+  }
+
+  async applyStructuredEdit(id: string, expectedHash: string, blocks: StructuredOfficeBlock[], cells: StructuredSpreadsheetCell[] = [], complete = false): Promise<{ session: OfficeFileSession; warnings: string[]; changedParts: string[] }> {
+    this.inspect(id);
+    const session = this.requireRecord(id);
+    if (!expectedHash || session.contentHash !== expectedHash) throw new Error("文件已在其他程序中变化，请重新载入后再应用修改");
+    if (session.extension !== "docx" && session.extension !== "pptx" && session.extension !== "xlsx") throw new Error("这个格式不支持结构化写入");
+    const source = readFileSync(session.file);
+    const edited = await applyStructuredOfficeEdit({ kind: session.extension, data: source, blocks, cells, complete });
+    writeAtomic(session.file, edited.data);
+    session.byteLength = edited.data.byteLength;
+    session.contentHash = hash(edited.data);
+    session.updatedAt = new Date().toISOString();
+    this.captureVersion(session, edited.data, "structured-edit");
+    this.captureEvent(session, "structured-edit", { to: session.file, contentHash: session.contentHash });
+    this.persist();
+    return { session: structuredClone(session), warnings: edited.warnings, changedParts: edited.changedParts };
+  }
+
+  scan(): OfficeFileSession[] {
+    return [...this.sessions.keys()].flatMap((id) => {
+      try { return [this.inspect(id)]; } catch { return []; }
+    });
+  }
+
   restore(id: string, versionId: string, expectedHash: string): OfficeFileSession {
-    const session = this.require(id);
+    const session = this.requireRecord(id);
     this.inspect(id);
     if (!expectedHash || session.contentHash !== expectedHash) throw new Error("文件已在其他程序中变化，请重新载入后再恢复版本");
     const version = (this.versions.get(id) || []).find((item) => item.id === versionId);
@@ -107,21 +158,29 @@ export class OfficeFileSessionStore {
     session.contentHash = hash(data);
     session.updatedAt = new Date().toISOString();
     this.captureVersion(session, data, "restored");
+    this.captureEvent(session, "restored", { to: session.file, contentHash: session.contentHash });
     this.persist();
     return structuredClone(session);
   }
 
-  private require(id: string): OfficeFileSession {
+  private requireRecord(id: string): OfficeFileSession {
     if (!/^office-[a-f0-9-]{36}$/i.test(id)) throw new Error("文件会话编号无效");
     const session = this.sessions.get(id);
     if (!session) throw new Error("文件工作副本不存在或已经清理");
+    return session;
+  }
+
+  private assertManagedFile(session: OfficeFileSession): void {
     const root = realpathSync(resolve(this.directory)) + sep;
-    if (!existsSync(session.file)) throw new Error("文件工作副本不可用");
+    if (!existsSync(session.file)) {
+      this.captureEvent(session, "missing", { from: session.file, contentHash: session.contentHash });
+      this.persist();
+      throw new Error("文件工作副本不可用；删除事件已记录");
+    }
     const file = realpathSync(resolve(session.file));
     const comparableRoot = process.platform === "win32" ? root.toLowerCase() : root;
     const comparableFile = process.platform === "win32" ? file.toLowerCase() : file;
     if (!comparableFile.startsWith(comparableRoot) || !statSync(file).isFile()) throw new Error("文件工作副本不可用");
-    return session;
   }
 
   private load(): void {
@@ -131,30 +190,47 @@ export class OfficeFileSessionStore {
       if (!Array.isArray(parsed)) return;
       for (const item of parsed) {
         if (!item || typeof item !== "object" || typeof item.id !== "string" || typeof item.file !== "string") continue;
-        if (!EXTENSIONS.has(item.extension) || !existsSync(item.file)) continue;
+        if (!EXTENSIONS.has(item.extension) || !this.isManagedSessionPath(item.file)) continue;
         this.sessions.set(item.id, item as OfficeFileSession);
+        this.watchSession(item as OfficeFileSession);
       }
     } catch {
       // A damaged index never grants access to arbitrary paths.
     }
-    if (!existsSync(this.versionIndexFile)) return;
-    try {
-      const parsed = JSON.parse(readFileSync(this.versionIndexFile, "utf8"));
-      if (!Array.isArray(parsed)) return;
-      for (const item of parsed) {
-        if (!item || typeof item.sessionId !== "string" || typeof item.file !== "string" || !this.isManagedHistoryFile(item.file)) continue;
-        const current = this.versions.get(item.sessionId) || [];
-        current.push(item as OfficeFileVersion);
-        this.versions.set(item.sessionId, current);
+    if (existsSync(this.versionIndexFile)) {
+      try {
+        const parsed = JSON.parse(readFileSync(this.versionIndexFile, "utf8"));
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (!item || typeof item.sessionId !== "string" || typeof item.file !== "string" || !this.isManagedHistoryFile(item.file)) continue;
+            const current = this.versions.get(item.sessionId) || [];
+            current.push(item as OfficeFileVersion);
+            this.versions.set(item.sessionId, current);
+          }
+        }
+      } catch {
+        // History corruption cannot grant access to files outside the managed directory.
       }
-    } catch {
-      // History corruption cannot grant access to files outside the managed directory.
+    }
+    if (existsSync(this.eventIndexFile)) {
+      try {
+        const parsed = JSON.parse(readFileSync(this.eventIndexFile, "utf8"));
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (!item || typeof item.sessionId !== "string" || typeof item.type !== "string") continue;
+            const current = this.events.get(item.sessionId) || [];
+            current.push(item as OfficeFileEvent);
+            this.events.set(item.sessionId, current.slice(-120));
+          }
+        }
+      } catch { /* A damaged event index is ignored. */ }
     }
   }
 
   private persist(): void {
     writeAtomic(this.indexFile, Buffer.from(JSON.stringify([...this.sessions.values()].slice(-200), null, 2), "utf8"));
     writeAtomic(this.versionIndexFile, Buffer.from(JSON.stringify([...this.versions.values()].flat(), null, 2), "utf8"));
+    writeAtomic(this.eventIndexFile, Buffer.from(JSON.stringify([...this.events.values()].flat(), null, 2), "utf8"));
   }
 
   private captureVersion(session: OfficeFileSession, data: Buffer, reason: OfficeFileVersion["reason"]): void {
@@ -173,7 +249,51 @@ export class OfficeFileSessionStore {
       reason,
       file,
     });
-    this.versions.set(session.id, current.slice(0, 40));
+    const retained = current.slice(0, 40);
+    const removed = current.slice(40);
+    this.versions.set(session.id, retained);
+    for (const expired of removed) {
+      try { if (this.isManagedHistoryFile(expired.file)) unlinkSync(expired.file); } catch { /* Best-effort retention cleanup. */ }
+    }
+  }
+
+  private watchSession(session: OfficeFileSession): void {
+    const previousPath = this.watchedPaths.get(session.id);
+    if (previousPath === session.file) return;
+    if (previousPath) unwatchFile(previousPath);
+    this.watchedPaths.set(session.id, session.file);
+    watchFile(session.file, { interval: 2_000, persistent: false }, (current, previous) => {
+      if (!current.isFile()) {
+        try { this.inspect(session.id); } catch { /* Missing or renamed state was recorded. */ }
+        return;
+      }
+      if (current.mtimeMs === previous.mtimeMs && current.size === previous.size) return;
+      try { this.inspect(session.id); } catch { /* The next explicit refresh will report an unavailable copy. */ }
+    });
+  }
+
+  private resolveRenamedFile(session: OfficeFileSession): void {
+    if (existsSync(session.file)) return;
+    const oldPath = session.file;
+    const candidates = readdirSync(this.directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === `.${session.extension}`)
+      .map((entry) => join(this.directory, entry.name));
+    const moved = candidates.find((candidate) => {
+      try { return statSync(candidate).size === session.byteLength && hash(readFileSync(candidate)) === session.contentHash; } catch { return false; }
+    });
+    if (!moved) return;
+    session.file = moved;
+    session.updatedAt = new Date().toISOString();
+    this.captureEvent(session, "renamed", { from: oldPath, to: moved, contentHash: session.contentHash });
+    this.watchSession(session);
+  }
+
+  private captureEvent(session: OfficeFileSession, type: OfficeFileEvent["type"], details: Pick<OfficeFileEvent, "from" | "to" | "contentHash">): void {
+    const current = this.events.get(session.id) || [];
+    const latest = current[current.length - 1];
+    if (latest?.type === type && latest.from === details.from && latest.to === details.to && latest.contentHash === details.contentHash) return;
+    current.push({ id: `event-${randomUUID()}`, sessionId: session.id, type, createdAt: new Date().toISOString(), ...details });
+    this.events.set(session.id, current.slice(-120));
   }
 
   private isManagedHistoryFile(file: string): boolean {
@@ -183,6 +303,14 @@ export class OfficeFileSessionStore {
     const comparableRoot = process.platform === "win32" ? root.toLowerCase() : root;
     const comparableTarget = process.platform === "win32" ? target.toLowerCase() : target;
     return comparableTarget.startsWith(comparableRoot) && statSync(target).isFile();
+  }
+
+  private isManagedSessionPath(file: string): boolean {
+    const root = resolve(this.directory) + sep;
+    const target = resolve(file);
+    const comparableRoot = process.platform === "win32" ? root.toLowerCase() : root;
+    const comparableTarget = process.platform === "win32" ? target.toLowerCase() : target;
+    return comparableTarget.startsWith(comparableRoot) && dirname(target) === resolve(this.directory);
   }
 }
 

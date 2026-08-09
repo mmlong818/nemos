@@ -14,6 +14,7 @@ test("工作台状态和版本在重启后仍可恢复", () => {
     const saved = store.saveVersion("art-1", {
       notes: { workbenchNotes: "用户确认先做本地版本" },
       checks: { "success-0": true, "success-1": false },
+      values: { demandWeight: "45" },
       status: "review",
     });
     assert.equal(saved.versions.length, 1);
@@ -21,11 +22,13 @@ test("工作台状态和版本在重启后仍可恢复", () => {
     store.saveCurrent("art-1", {
       notes: { workbenchNotes: "后来改成先验证" },
       checks: { "success-0": false },
+      values: { demandWeight: "70" },
       status: "draft",
     });
     const restored = new ArtifactWorkspaceStore(file).restoreVersion("art-1", saved.versions[0]!.id);
     assert.equal(restored.notes.workbenchNotes, "用户确认先做本地版本");
     assert.equal(restored.checks["success-0"], true);
+    assert.equal(restored.values.demandWeight, "45");
     assert.equal(restored.status, "review");
   } finally {
     rmSync(dir, { recursive: true, force: true });

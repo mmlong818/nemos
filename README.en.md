@@ -14,7 +14,7 @@ Clownfish combines four everyday surfaces:
 |---|---|---|
 | **Chat** | Create, search, switch, or delete independent conversations; upload images or files; and choose the right work mode | Automatic titles, parallel threads, isolated context, and delivery back to the originating conversation |
 | **Capabilities** | Describe an outcome or choose a capability directly | Background jobs, live progress, cancellation, retries, previews, and downloads |
-| **Files** | Open Word, PowerPoint, Excel, or PDF files | Original-file retention, local working copies, inline processing, and versions |
+| **Files** | Open Word, PowerPoint, Excel, PDF, TXT, or Markdown | Original-format working copies, Word body editing, slide-by-slide text editing, spreadsheet cells and formulas, and version history |
 | **Work** | Review tasks, workspaces, automations, collaboration, resources, results, runs, and memory | Multi-task organization, scheduled execution, expert review, local resources, artifacts, and preference management |
 
 New users do not need to create a project or understand tool names first.
@@ -27,7 +27,7 @@ Every new conversation begins as a blank thread with three modes:
 - **Task** for sustained work toward a concrete outcome, with capabilities and expert judgment invoked behind the scenes;
 - **Study** for explanation, guided questions, practice, and feedback without requiring the user to choose a teacher persona.
 
-The left side follows a familiar work-app pattern: the product name sits below its icon, New Conversation remains at the top, search expands only when requested, and the rest of the space is reserved for conversation threads. After the first message, a lightweight daily model generates a short title in the background. If the model is unavailable, a local fallback names the thread without blocking the reply or writing the title request into long-term memory.
+The left side follows a familiar work-app pattern: the product name sits below its icon, New Conversation remains at the top, and search expands only when requested. Search covers every conversation and returns to the exact matching message, while each conversation keeps its own unsent draft. After the first message, a lightweight daily model generates a short title in the background. If the model is unavailable, a local fallback names the thread without blocking the reply or writing the title request into long-term memory.
 
 Experts and teaching personas are internal execution choices rather than contacts that users must configure. When a conversation hands work to a capability, both the original text and a distilled task context are transferred instead of only the final sentence.
 
@@ -35,7 +35,7 @@ Experts and teaching personas are internal execution choices rather than contact
 
 The capability page supports two equal paths:
 
-1. Describe the outcome and let Clownfish choose;
+1. Describe the outcome and let Clownfish choose from the goal, attachment formats, and project workspace;
 2. Select a capability directly when you already know what you need.
 
 Selection opens the task form immediately, without an extra preparation step. Jobs continue in the background and remain available locally.
@@ -48,17 +48,26 @@ Outputs include PPTX, DOCX, PDF, XLSX, HTML, Markdown, and structured data.
 
 ## Files: original, working copy, and result stay together
 
-The file workspace supports DOCX, PPTX, XLSX, and PDF:
+The file workspace supports DOCX, PPTX, XLSX, PDF, TXT, and Markdown:
 
 - New and open actions sit above recent files;
 - The original stays local and is never overwritten by editing;
+- Markdown has an outline, formatting tools, and live preview; TXT uses continuous text editing;
+- Working copies are saved by the local service, and revision checks prevent stale windows from overwriting newer edits;
 - PDFs retain their original layout; Office formats receive a structured preview while the original file is retained;
+- Word body edits can be applied to the real DOCX working copy while existing paragraph formatting, images, headers, and footers stay in place;
+- PowerPoint uses a slide filmstrip and page-level text editor while preserving existing text boxes, images, and layouts;
+- Excel provides sheet tabs, editable cells, formulas, and deterministic numeric summaries while retaining existing cell styles;
+- TXT and Markdown can be written back only after explicit authorization and an external-change conflict check;
 - Editing, versions, AI progress, and results stay on the same page;
+- The file library supports name search and format filters; external edits, renames, moves, and deletions are recorded as file events;
+- Chat attachments, capability artifacts, and the file workspace share a stable file identity instead of cloning the same file at each handoff;
+- A selected excerpt is handed off with its location, original text, complete file, and stable file identity;
 - Results created in chat or by a capability can open as a local working copy for continued editing;
 - Deleted working files move to a recoverable trash area before permanent deletion;
 - Results can be exported to DOCX, PDF, PPTX, XLSX, HTML, or Markdown.
 
-![Clownfish office workspace](docs/assets/readme/clownfish-office-2026-08-10.png)
+![Clownfish office workspace](docs/assets/readme/clownfish-office-2026-08-10-v2.png)
 
 ## Work: ongoing tasks and deliverables in one place
 
@@ -121,7 +130,7 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 ## Current verification
 
 - The TypeScript build passes;
-- All 514 automated tests pass;
+- All 569 automated tests pass;
 - Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
 - See the [2026-08-08 ten-round real-world audit](sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md).
 

@@ -95,6 +95,7 @@ import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
+import { routeCapability } from "./capability-router.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
 import {
   importWeChatPrivateSource,
@@ -2360,15 +2361,24 @@ function registerChatAttachment(b: ChatBody): void {
   const ownerId = String(b.sessionId || b.target.id || "conversation").slice(0, 160);
   const messageId = String(b.messageId || createHash("sha256").update(text).digest("hex").slice(0, 20));
   const extension = String(attachment?.kind || name.split(".").pop() || "txt").replace(/[^a-z0-9_-]/gi, "").toLowerCase().slice(0, 16) || "txt";
+  if (attachment?.fileRecordId) {
+    try {
+      taskFiles.link(String(attachment.fileRecordId), "conversation", ownerId, `conversation:${ownerId}:${messageId}`);
+      return;
+    } catch {
+      // A stale client-side reference falls back to a new safe registry record.
+    }
+  }
   taskFiles.register({
-    sourceKey: attachment?.fileRecordId ? `linked:${attachment.fileRecordId}:${ownerId}` : `conversation:${ownerId}:${messageId}`,
+    fileId: /^file-[a-f0-9-]{36}$/i.test(String(attachment?.fileRecordId || "")) ? String(attachment?.fileRecordId) : undefined,
+    sourceKey: `conversation:${ownerId}:${messageId}`,
     ownerKind: "conversation",
     ownerId,
     displayName: name.slice(0, 180),
     extension,
     byteLength: Math.max(0, Number(attachment?.size || Buffer.byteLength(text, "utf8"))),
     contentHash: createHash("sha256").update(text).digest("hex"),
-    storageRef: attachment?.fileRecordId ? `file:${attachment.fileRecordId}` : `message:${messageId}`,
+    storageRef: `message:${messageId}`,
   });
 }
 
@@ -3124,6 +3134,28 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, files: taskFiles.list(allowedOwner, ownerId) });
       return;
     }
+    if (req.method === "POST" && pathname === "/api/files/link") {
+      const body = (await readBody(req)) as { id?: string; ownerKind?: TaskFileOwnerKind; ownerId?: string; sourceKey?: string };
+      try {
+        if (!body.ownerKind || !["conversation", "task", "artifact", "office"].includes(body.ownerKind)) throw new Error("文件归属类型无效");
+        const file = taskFiles.link(String(body.id || ""), body.ownerKind, String(body.ownerId || ""), String(body.sourceKey || "") || undefined);
+        send(res, 200, { ok: true, file });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/files/status") {
+      const body = (await readBody(req)) as { id?: string; status?: "active" | "trashed" };
+      try {
+        if (body.status !== "active" && body.status !== "trashed") throw new Error("文件状态无效");
+        const file = taskFiles.setStatus(String(body.id || ""), body.status);
+        send(res, 200, { ok: true, file });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
     if (req.method === "GET" && pathname === "/api/files/session") {
       const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
       try {
@@ -3175,6 +3207,44 @@ const server = createServer(async (req, res) => {
         send(res, 200, { ok: true, versions: officeFileSessions.history(id) });
       } catch (error) {
         send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/files/session/events") {
+      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
+      try {
+        send(res, 200, { ok: true, events: officeFileSessions.eventHistory(id) });
+      } catch (error) {
+        send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/files/session/structured-edit") {
+      const body = (await readBody(req, 2 * 1024 * 1024)) as {
+        id?: string;
+        expectedHash?: string;
+        blocks?: Array<{ title?: string; text?: string }>;
+        cells?: Array<{ sheetIndex?: number; address?: string; value?: string }>;
+        complete?: boolean;
+      };
+      try {
+        const blocks = Array.isArray(body.blocks) ? body.blocks.slice(0, 300).map((block) => ({
+          title: String(block?.title || "").slice(0, 160),
+          text: String(block?.text || "").slice(0, 120_000),
+        })) : [];
+        const cells = Array.isArray(body.cells) ? body.cells.slice(0, 20_000).map((cell) => ({
+          sheetIndex: Number(cell?.sheetIndex),
+          address: String(cell?.address || "").slice(0, 16),
+          value: String(cell?.value || "").slice(0, 32_000),
+        })) : [];
+        const result = await officeFileSessions.applyStructuredEdit(String(body.id || ""), String(body.expectedHash || ""), blocks, cells, body.complete === true);
+        taskFiles.refreshStorage(result.session.id, {
+          byteLength: result.session.byteLength,
+          contentHash: result.session.contentHash,
+        });
+        send(res, 200, { ok: true, ...result });
+      } catch (error) {
+        send(res, 409, { error: error instanceof Error ? error.message : String(error) });
       }
       return;
     }
@@ -3527,6 +3597,16 @@ const server = createServer(async (req, res) => {
         }),
         summarizeResult: (job) => ({ ok: true, jobId: job.id, status: job.status }),
       });
+      if (handoff) {
+        for (const material of handoff.materials) {
+          if (!material.fileRecordId) continue;
+          try {
+            taskFiles.link(material.fileRecordId, "task", action.value.id, `task:${action.value.id}:${material.fileRecordId}`);
+          } catch {
+            // Missing source records do not block a task whose material text is already embedded in the handoff.
+          }
+        }
+      }
       send(res, 202, { ok: true, job: action.value, auditRunId: action.runId });
       return;
     }
@@ -4115,6 +4195,18 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url === "/api/capabilities") {
       send(res, 200, capabilities.snapshot());
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capabilities/route") {
+      const body = (await readBody(req)) as { goal?: string; materialNames?: string[]; workspacePath?: string };
+      send(res, 200, {
+        ok: true,
+        route: routeCapability({
+          goal: String(body.goal || ""),
+          materialNames: Array.isArray(body.materialNames) ? body.materialNames.slice(0, 20).map(String) : [],
+          workspacePath: String(body.workspacePath || ""),
+        }),
+      });
       return;
     }
     if (req.method === "GET" && url === "/api/capabilities/tools") {
