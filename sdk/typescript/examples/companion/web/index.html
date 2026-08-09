@@ -3462,7 +3462,7 @@
     <div class="modal-box" style="width:860px">
       <div class="modal-head"><span id="capTitle">开发控制台</span><button id="capclose" type="button" aria-label="关闭开发控制台">×</button></div>
       <div class="cap-panel">
-        <div class="cap-note">这里管理小丑鱼使用的 Skills、固定任务和交付物。专家需要工具时，会由小丑鱼在当前对话中统一执行。</div>
+        <div class="cap-note">这里管理小丑鱼使用的能力、固定任务和交付物。专家需要工具时，会由小丑鱼在当前对话中统一执行。</div>
         <section class="cap-card cap-full" aria-labelledby="agentOpsTitle">
           <div class="agent-ops-head">
             <div>
@@ -3506,7 +3506,7 @@
           </div>
         </section>
         <div class="cap-card cap-full">
-          <h3>Skills 管理</h3>
+          <h3>能力管理</h3>
           <div id="skillAudit"></div>
         </div>
         <div class="cap-card cap-full">
@@ -3557,12 +3557,12 @@
           <button id="capabilityCreate" class="primary" type="button">生成能力</button>
         </div>
         <div class="cap-card">
-          <h3>安装 Skill</h3>
+          <h3>导入能力</h3>
           <div class="cap-owner-line">安装到：<span class="cap-owner-name">小丑鱼</span>的能力后台</div>
-          <input id="skillName" placeholder="Skill 名称，可留空自动识别" />
+          <input id="skillName" placeholder="能力名称，可留空自动识别" />
           <input id="skillPath" placeholder="本机 SKILL.md 或 skill 文件夹路径" />
           <textarea id="skillText" placeholder="也可以直接粘贴 SKILL.md 正文。优先使用粘贴内容；留空则读取上面的本机路径。"></textarea>
-          <button id="skillInstall" class="primary" type="button">安装 Skill</button>
+          <button id="skillInstall" class="primary" type="button">导入能力</button>
         </div>
         <div class="cap-card">
           <h3>新增常规任务</h3>
@@ -6563,9 +6563,9 @@ function agentToolLabel(name) {
     capability_ability_update: "更新能力",
     capability_ability_archive: "归档能力",
     capability_ability_restore: "恢复能力",
-    skill_install: "安装或更新 Skill",
-    skill_upgrade: "升级 Skill",
-    skill_delete: "删除 Skill",
+    skill_install: "导入或更新能力",
+    skill_upgrade: "更新能力",
+    skill_delete: "删除能力",
     agent_delegation_create: "交给多位角色协作",
     agent_extension_install: "安装扩展",
     agent_extension_upgrade: "升级扩展",
@@ -6603,7 +6603,7 @@ function agentToolLabel(name) {
 function agentApprovalArguments(name, args) {
   const visible = { ...(args || {}) };
   if (name === "skill_install" && typeof visible.sourceText === "string") {
-    visible.sourceText = "已粘贴 Skill 内容（" + visible.sourceText.length + " 个字符，不在确认框完整显示）";
+    visible.sourceText = "已粘贴能力说明（" + visible.sourceText.length + " 个字符，不在确认框完整显示）";
   }
   return JSON.stringify(visible, null, 2);
 }
@@ -6914,7 +6914,7 @@ function renderAgentOps() {
       esc(item.manifest.kind + " · v" + item.manifest.version + " · " + runtimeLabel + " · " + securityLabel) +
       '</span><span class="agent-status ' + stateClass + '">' + stateLabel +
       '</span></div><div class="agent-op-actions">' + actions + "</div></div>";
-  }).join("") || '<div class="agent-op-row"><div><strong>暂无外部扩展</strong><span>开发者模式下可以导入扩展清单；已生成的 Skills 仍由 Skills 管理。</span></div></div>';
+  }).join("") || '<div class="agent-op-row"><div><strong>暂无外部扩展</strong><span>开发者模式下可以导入扩展清单；已生成的能力仍由能力管理。</span></div></div>';
   $("#agentJobList").querySelectorAll(".agent-job-cancel").forEach((button) => {
     button.onclick = async () => { await api("/api/agent/job/cancel", { id: button.closest(".agent-op-row").dataset.id }); await refreshAgentOps(); };
   });
@@ -7089,7 +7089,7 @@ function renderArtifactList() {
 }
 function abilitySourceLabel(a) {
   if (a.kind === "builtin") return "内置能力";
-  if (a.source === "installed") return "已安装 Skill";
+  if (a.source === "installed") return "已导入能力";
   if (a.source === "learned") return "自学习能力";
   return "自定义能力";
 }
@@ -7110,7 +7110,7 @@ function renderAbilityList() {
       + '<summary><div><strong>' + esc(a.name) + '</strong><span>' + esc(meta) + '</span></div><span class="cap-edit-status">' + esc(readonly ? "只读" : "展开编辑") + '</span></summary>'
       + '<div class="cap-edit-body">' + body + '</div>'
       + '</details>';
-  }).join("") || '<div class="cap-row"><div><strong>还没有能力</strong><span>新增能力或安装 Skill 后会出现在这里。</span></div></div>';
+  }).join("") || '<div class="cap-row"><div><strong>还没有能力</strong><span>新增或导入能力后会出现在这里。</span></div></div>';
   box.innerHTML = '<div class="skill-manager-note">' + esc(capabilityOwnerName()) + ' 统一执行能力。其他专家需要工具时，会在当前对话中转交给 ' + esc(capabilityOwnerName()) + ' 执行。</div><div class="cap-edit-list">' + rows + '</div>';
   box.querySelectorAll(".ability-save").forEach((btn) => {
     btn.onclick = () => updateAbility(btn.closest(".cap-edit-row").dataset.id);
@@ -7160,7 +7160,7 @@ function renderSkillAudit() {
   if (!box) return;
   const audit = capState.skillAudit;
   if (!audit) {
-    box.innerHTML = '<div class="cap-row"><div><strong>正在读取 Skills</strong><span>已安装和自学习技能会在这里统一管理。</span></div></div>';
+    box.innerHTML = '<div class="cap-row"><div><strong>正在读取能力</strong><span>已导入和自学习能力会在这里统一管理。</span></div></div>';
     return;
   }
   const rows = (audit.items || []).map((item) => {
@@ -7169,9 +7169,9 @@ function renderSkillAudit() {
     const source = skillSourceLabel(item.source);
     const updated = item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "未知";
     const lastUsed = item.lastUsedAt ? new Date(item.lastUsedAt).toLocaleString() : "未使用";
-    const updateBtn = item.sourceUrl
+    const updateBtn = item.canUpdate
       ? '<button class="skill-upgrade primary" type="button">更新</button>'
-      : '<button type="button" disabled title="没有远端 source_url">更新</button>';
+      : '<button type="button" disabled title="当前能力没有可用更新">更新</button>';
     const toggleBtn = paused
       ? '<button class="skill-restore primary" type="button">启用</button>'
       : '<button class="skill-archive" type="button">停用</button>';    const pinBtn = item.pinned
@@ -7192,7 +7192,7 @@ function renderSkillAudit() {
       + '<span class="skill-pill">任务 ' + esc(String(item.taskCount || 0)) + '</span>'
       + '<span class="skill-pill">产物 ' + esc(String(item.artifactCount || 0)) + '</span>'
       + '</div>'
-      + '<span>更新：' + esc(updated) + ' · 最近使用：' + esc(lastUsed) + (item.sourceUrl ? ' · 来源：' + esc(item.sourceUrl) : ' · 来源：本机/粘贴') + '</span>'
+      + '<span>更新：' + esc(updated) + ' · 最近使用：' + esc(lastUsed) + '</span>'
       + '</div>'
       + '<div class="skill-actions">'
       + updateBtn
@@ -7203,9 +7203,9 @@ function renderSkillAudit() {
       + '<button class="skill-delete danger" type="button">删除</button>'
       + '</div>'
       + '</div>';
-  }).join("") || '<div class="cap-row"><div><strong>还没有 Skills</strong><span>安装外部 Skill，或让角色在任务中沉淀可复用能力后会出现在这里。</span></div></div>';
+  }).join("") || '<div class="cap-row"><div><strong>还没有可复用能力</strong><span>导入能力，或让小丑鱼在任务中沉淀可复用做法后会出现在这里。</span></div></div>';
   box.innerHTML =
-    '<div class="skill-manager-note">这里管理所有可复用 Skills：停用后不会被角色调用；更新会从原始 URL 重新拉取；删除会移除该 Skill 和绑定任务。</div>'
+    '<div class="skill-manager-note">这里管理所有可复用能力：停用后不会被调用；可更新的能力会重新获取最新内容；删除会移除能力和绑定任务。</div>'
     + '<div class="skill-audit-head">'
     + '<div><b>' + esc(String(audit.total || 0)) + '</b><span>技能</span></div>'
     + '<div><b>' + esc(String(audit.active || 0)) + '</b><span>活跃</span></div>'
@@ -7235,7 +7235,7 @@ function renderSkillAudit() {
   box.querySelectorAll(".skill-delete").forEach((btn) => {
     btn.onclick = () => {
       const row = btn.closest(".cap-row");
-      deleteSkill(row.dataset.id, row.dataset.name || "这个 Skill");
+      deleteSkill(row.dataset.id, row.dataset.name || "这个能力");
     };
   });
 }
@@ -7314,7 +7314,7 @@ async function installSkill() {
     defaultFormat: "md",
   };
   if (!body.sourcePath && !body.sourceText) {
-    alert("请填写 SKILL.md 路径，或粘贴 Skill 正文。");
+    alert("请填写能力文件路径，或粘贴能力说明。");
     return;
   }
   await api("/api/capabilities/skill/install", body);

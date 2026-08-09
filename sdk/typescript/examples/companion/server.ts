@@ -4048,7 +4048,11 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && url === "/api/capabilities/skills/audit") {
-      send(res, 200, capabilities.auditSkills());
+      const audit = capabilities.auditSkills();
+      send(res, 200, {
+        ...audit,
+        items: audit.items.map(({ sourceUrl, ...item }) => ({ ...item, canUpdate: Boolean(sourceUrl) })),
+      });
       return;
     }
     if (req.method === "POST" && url === "/api/capabilities/ability/state") {

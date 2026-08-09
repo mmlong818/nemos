@@ -7,7 +7,7 @@ import test from "node:test";
 import { parseNativeCapabilityPayload } from "../../examples/companion/native-capability-contracts.js";
 import { validateDevelopmentWorkspace } from "../../examples/companion/pi-development.js";
 import { assessProfessionalArtifact } from "../../examples/companion/professional-artifact-gate.js";
-import { admitGeneratedAbilitySpec, CAPABILITY_ADMISSION_MATRIX } from "../../examples/companion/capability-admission.js";
+import { admitGeneratedAbilitySpec, admitInstalledSkillContent, CAPABILITY_ADMISSION_MATRIX } from "../../examples/companion/capability-admission.js";
 import type { GeneratedAbilitySpec } from "../../examples/companion/native-capability-contracts.js";
 
 const validResearch = JSON.stringify({
@@ -100,4 +100,12 @@ test("触发边界冲突会阻止生成能力准入", () => {
   const receipt = admitGeneratedAbilitySpec(invalid);
   assert.equal(receipt.passed, false);
   assert.match(receipt.outcomes.find((item) => item.scenario === "malformed-input")?.detail || "", /冲突/);
+});
+
+test("外部安装能力也必须具备可执行步骤和结果约定", () => {
+  const accepted = admitInstalledSkillContent(`# 周报整理\n\n## 步骤\n\n1. 收集用户提供的事实。\n2. 按完成、进行中和风险分组。\n3. 标记缺失的负责人。\n\n## 输出\n\n交付可发送的周报，并在交付前检查事实来源。`);
+  assert.equal(accepted.passed, true);
+  assert.equal(accepted.profile, "installed-skill");
+  const rejected = admitInstalledSkillContent("# 一个名字\n\n随便处理一下。");
+  assert.equal(rejected.passed, false);
 });
