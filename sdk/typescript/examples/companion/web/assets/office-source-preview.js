@@ -32,16 +32,55 @@
     }
   }
 
-  async function save(documentId, file) {
+  async function save(documentId, file, handle = null) {
     if (!documentId || !(file instanceof Blob)) return false;
-    await withStore("readwrite", (store) => store.put({
+    const record = {
       documentId,
       blob: file,
       name: String(file.name || "原文件"),
       type: String(file.type || "application/octet-stream"),
+      sourceSize: Number(file.size || 0),
+      sourceLastModified: Number(file.lastModified || 0),
       savedAt: new Date().toISOString(),
-    }));
+    };
+    if (handle) record.handle = handle;
+    try {
+      await withStore("readwrite", (store) => store.put(record));
+    } catch (error) {
+      if (!handle) throw error;
+      delete record.handle;
+      await withStore("readwrite", (store) => store.put(record));
+    }
     return true;
+  }
+
+  async function canWrite(documentId) {
+    const record = await get(documentId);
+    return Boolean(record?.handle && typeof record.handle.createWritable === "function");
+  }
+
+  async function writeText(documentId, text) {
+    const record = await get(documentId);
+    const handle = record?.handle;
+    if (!handle || typeof handle.createWritable !== "function") throw new Error("这次打开没有获得原文件写入权限，请重新用“打开文件”选择它");
+    let permission = await handle.queryPermission?.({ mode: "readwrite" });
+    if (permission !== "granted") permission = await handle.requestPermission?.({ mode: "readwrite" });
+    if (permission !== "granted") throw new Error("没有获得写回原文件的权限");
+    const current = await handle.getFile();
+    if (Number(record.sourceLastModified || 0) && (current.lastModified !== record.sourceLastModified || current.size !== record.sourceSize)) {
+      throw new Error("原文件已被其他程序修改。为避免覆盖，请重新打开文件后合并内容");
+    }
+    const writable = await handle.createWritable({ keepExistingData: false });
+    try {
+      await writable.write(String(text || ""));
+      await writable.close();
+    } catch (error) {
+      await writable.abort?.();
+      throw error;
+    }
+    const updated = await handle.getFile();
+    await save(documentId, updated, handle);
+    return { size: updated.size, lastModified: updated.lastModified };
   }
 
   async function get(documentId) {
@@ -238,5 +277,5 @@
     else await renderDocument(root, current, record, sourceUrl, renderToken);
   }
 
-  window.ClownfishOfficeSource = Object.freeze({ save, get, remove, render, release });
+  window.ClownfishOfficeSource = Object.freeze({ save, get, remove, canWrite, writeText, render, release });
 })();

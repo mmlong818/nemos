@@ -27,6 +27,7 @@ export interface GeneratedAbilitySpec {
   triggerExamples: string[];
   nonTriggerExamples: string[];
   checks: string[];
+  testCases: Array<{ request: string; shouldTrigger: boolean; reason: string }>;
 }
 
 const NATIVE_ID_SET = new Set<string>(NATIVE_CAPABILITY_IDS);
@@ -98,6 +99,13 @@ export function generatedAbilitySpec(payload: NativeCapabilityPayload): Generate
   if (!["md", "html", "txt", "json", "doc"].includes(defaultFormat)) {
     throw new Error("data.spec.defaultFormat 不受支持");
   }
+  const testCases = asRecordList(payload.data.testCases, "data.testCases", 5).map((item, index) => ({
+    request: asText(item.request, `data.testCases[${index}].request`).slice(0, 500),
+    shouldTrigger: typeof item.shouldTrigger === "boolean"
+      ? item.shouldTrigger
+      : (() => { throw new Error(`data.testCases[${index}].shouldTrigger 必须是布尔值`); })(),
+    reason: asText(item.reason, `data.testCases[${index}].reason`).slice(0, 500),
+  }));
   return {
     name: asText(spec.name, "data.spec.name").slice(0, 40),
     description: asText(spec.description, "data.spec.description").slice(0, 320),
@@ -106,6 +114,7 @@ export function generatedAbilitySpec(payload: NativeCapabilityPayload): Generate
     triggerExamples: asTextList(spec.triggerExamples, "data.spec.triggerExamples", 2),
     nonTriggerExamples: asTextList(spec.nonTriggerExamples, "data.spec.nonTriggerExamples", 1),
     checks: asTextList(spec.checks, "data.spec.checks", 2),
+    testCases,
   };
 }
 

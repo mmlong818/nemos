@@ -8,6 +8,7 @@ import {
   type NativeCapabilityId,
   type NativeCapabilityPayload,
 } from "./native-capability-contracts.js";
+import { reviewPresentationPreview, type PresentationVisualReview } from "./presentation-visual-review.js";
 
 export interface NativeArtifactMetadata {
   generatedAbilityId?: string;
@@ -18,6 +19,7 @@ export interface NativeArtifactValidationCheck {
   id: string;
   label: string;
   status: "passed" | "failed" | "not-run";
+  phase?: "validation" | "verification";
   detail?: string;
 }
 
@@ -27,6 +29,7 @@ export interface NativeRenderedArtifact {
   previewFile?: string;
   summary: string;
   validationChecks: NativeArtifactValidationCheck[];
+  visualReview?: PresentationVisualReview;
 }
 
 export async function writeNativeCapabilityArtifact(input: {
@@ -43,7 +46,7 @@ export async function writeNativeCapabilityArtifact(input: {
     const previewFile = `${input.fileBase}-preview.html`;
     await writePresentation(file, payload);
     writeFileSync(previewFile, renderPresentation(payload, input.metadata), "utf8");
-    return finalizeNativeArtifact({ format: "pptx", file, previewFile, summary: payload.summary }, payload);
+    return await finalizeNativeArtifact({ format: "pptx", file, previewFile, summary: payload.summary }, payload);
   }
 
   if (input.requestedFormat === "doc" || input.requestedFormat === "pdf" || input.requestedFormat === "xlsx") {
@@ -58,32 +61,32 @@ export async function writeNativeCapabilityArtifact(input: {
     writeFileSync(file, exported.data);
     const previewFile = input.fileBase + "-preview.html";
     writeFileSync(previewFile, renderWorkbench(payload, input.metadata), "utf8");
-    return finalizeNativeArtifact({ format: input.requestedFormat, file, previewFile, summary: payload.summary }, payload);
+    return await finalizeNativeArtifact({ format: input.requestedFormat, file, previewFile, summary: payload.summary }, payload);
   }
 
   if (input.requestedFormat === "html" || nativeDefaultIsWorkbench(input.capabilityId, input.requestedFormat)) {
     const file = `${input.fileBase}.html`;
     writeFileSync(file, renderWorkbench(payload, input.metadata), "utf8");
-    return finalizeNativeArtifact({ format: "html", file, summary: payload.summary }, payload);
+    return await finalizeNativeArtifact({ format: "html", file, summary: payload.summary }, payload);
   }
 
   if (input.requestedFormat === "json") {
     const file = `${input.fileBase}.json`;
     writeFileSync(file, JSON.stringify(payload, null, 2), "utf8");
-    return finalizeNativeArtifact({ format: "json", file, summary: payload.summary }, payload);
+    return await finalizeNativeArtifact({ format: "json", file, summary: payload.summary }, payload);
   }
 
   const format = input.requestedFormat === "txt" ? "txt" : input.requestedFormat === "doc" ? "doc" : "md";
   const extension = format === "txt" ? "txt" : "md";
   const file = `${input.fileBase}.${extension}`;
   writeFileSync(file, renderMarkdown(payload), "utf8");
-  return finalizeNativeArtifact({ format, file, summary: payload.summary }, payload);
+  return await finalizeNativeArtifact({ format, file, summary: payload.summary }, payload);
 }
 
-function finalizeNativeArtifact(
+async function finalizeNativeArtifact(
   artifact: Omit<NativeRenderedArtifact, "validationChecks">,
   payload: NativeCapabilityPayload,
-): NativeRenderedArtifact {
+): Promise<NativeRenderedArtifact> {
   const content = readFileSync(artifact.file);
   const checks: NativeArtifactValidationCheck[] = [{
     id: "artifact-readable",
@@ -95,6 +98,7 @@ function finalizeNativeArtifact(
     const previewBytes = statSync(artifact.previewFile).size;
     checks.push({ id: "preview-readable", label: "预览文件可读取且非空", status: previewBytes > 32 ? "passed" : "failed", detail: `${previewBytes} bytes` });
   }
+  let visualReview: PresentationVisualReview | undefined;
   if (payload.kind === "presentation-builder" && artifact.format === "pptx") {
     const slides = records(payload.data.slides);
     const warnings = presentationWarnings(slides);
@@ -105,9 +109,19 @@ function finalizeNativeArtifact(
     checks.push({ id: "slide-density", label: "逐页文字密度适合放映", status: warnings.length === 0 ? "passed" : "failed", detail: warnings.length ? warnings.join(" ") : "未发现溢出风险" });
     checks.push({ id: "slide-layout-variety", label: "版式具有必要变化", status: layouts.size >= Math.min(3, slides.length) ? "passed" : "failed", detail: `${layouts.size} 种版式` });
     checks.push({ id: "speaker-notes", label: "演讲备注覆盖主要页面", status: notesCount >= Math.ceil(slides.length * 0.6) ? "passed" : "failed", detail: `${notesCount}/${slides.length} 页` });
+    if (artifact.previewFile) {
+      visualReview = await reviewPresentationPreview(artifact.previewFile, slides.length);
+      checks.push({
+        id: "key-slide-visual-review",
+        label: "关键页真实渲染复核",
+        status: visualReview.unavailableReason ? "not-run" : visualReview.passed ? "passed" : "failed",
+        phase: "verification",
+        detail: visualReview.unavailableReason || visualReview.pages.map((page) => `第 ${page.slide + 1} 页：${page.detail}`).join("；"),
+      });
+    }
   }
   if (payload.kind === "research-brief") checks.push(researchEvidenceCheck(payload));
-  return { ...artifact, validationChecks: checks };
+  return { ...artifact, validationChecks: checks, visualReview };
 }
 
 function researchEvidenceCheck(payload: NativeCapabilityPayload): NativeArtifactValidationCheck {
@@ -280,7 +294,7 @@ function renderPresentation(payload: NativeCapabilityPayload, metadata?: NativeA
       ${text(slide.speakerNotes) ? `<details><summary>演讲备注</summary><p>${escapeHtml(text(slide.speakerNotes))}</p></details>` : ""}
     </article>`;
   }).join("")}</main><nav class="deck-nav"><button id="prev" type="button">上一页</button><span id="position">1 / ${slides.length}</span><button id="next" type="button">下一页</button><button id="openDeckReview" type="button">审阅记录</button></nav>${renderPresentationReview()}`;
-  const script = `let current=0;const slides=[...document.querySelectorAll('.slide')];const show=(n)=>{current=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,i)=>s.classList.toggle('is-active',i===current));document.getElementById('position').textContent=(current+1)+' / '+slides.length;};document.getElementById('prev').onclick=()=>show(current-1);document.getElementById('next').onclick=()=>show(current+1);addEventListener('keydown',e=>{if(document.getElementById('deckReviewDialog')?.open)return;if(e.key==='ArrowLeft')show(current-1);if(e.key==='ArrowRight'||e.key===' ')show(current+1);});document.getElementById('openDeckReview').onclick=()=>document.getElementById('deckReviewDialog').showModal();document.getElementById('closeDeckReview').onclick=()=>document.getElementById('deckReviewDialog').close();` + workbenchScript("presentation-builder");
+  const script = `let current=0;const slides=[...document.querySelectorAll('.slide')];const show=(n)=>{current=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,i)=>s.classList.toggle('is-active',i===current));document.getElementById('position').textContent=(current+1)+' / '+slides.length;};const requested=Number(new URLSearchParams(location.search).get('slide'));show(Number.isInteger(requested)?requested:0);document.getElementById('prev').onclick=()=>show(current-1);document.getElementById('next').onclick=()=>show(current+1);addEventListener('keydown',e=>{if(document.getElementById('deckReviewDialog')?.open)return;if(e.key==='ArrowLeft')show(current-1);if(e.key==='ArrowRight'||e.key===' ')show(current+1);});document.getElementById('openDeckReview').onclick=()=>document.getElementById('deckReviewDialog').showModal();document.getElementById('closeDeckReview').onclick=()=>document.getElementById('deckReviewDialog').close();` + workbenchScript("presentation-builder");
   return pageShell(payload.title, payload.summary, content, script, payload, "presentation", metadata);
 }
 

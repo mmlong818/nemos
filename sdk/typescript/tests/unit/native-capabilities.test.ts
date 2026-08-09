@@ -101,7 +101,7 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
       assert.equal(result.artifact.format, format);
       assert.ok(existsSync(result.artifact.file));
       assert.ok(statSync(result.artifact.file).size > 100);
-      assert.equal(result.artifact.proof?.level, "validated");
+      assert.equal(result.artifact.proof?.level, format === "pptx" ? "verified" : "validated");
       assert.ok(result.artifact.proof?.checks.every((check) => check.status === "passed"));
       assert.equal(result.artifact.proof?.algorithm, "sha256");
       assert.equal(result.artifact.proof?.byteLength, statSync(result.artifact.file).size);
@@ -116,6 +116,16 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
         assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-density")?.status, "passed");
         assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-layout-variety")?.status, "passed");
         assert.equal(result.artifact.proof?.checks.find((check) => check.id === "speaker-notes")?.status, "passed");
+        assert.equal(result.artifact.proof?.checks.find((check) => check.id === "key-slide-visual-review")?.status, "passed");
+        assert.ok(result.artifact.metadata?.presentationVisualReview?.pages.every((page) => existsSync(page.screenshot)));
+        const approved = runtime.updateArtifactWorkspace({
+          id: result.artifact.id,
+          action: "save",
+          expectedRevision: 0,
+          current: { status: "done", body: "", notes: {}, checks: {} },
+        });
+        assert.equal(approved.status, "done");
+        assert.equal(runtime.snapshot().artifacts.find((item) => item.id === result.artifact.id)?.proof?.level, "approved");
       } else {
         const html = readFileSync(result.artifact.file, "utf8");
         assert.match(html, /小丑鱼能力结果/);
@@ -125,6 +135,8 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
     const builtId = runtime.snapshot().artifacts.find((item) => item.capabilityId === "ability-builder")?.metadata?.generatedAbilityId;
     assert.ok(builtId);
     assert.equal(runtime.getAbility(builtId!)?.name, "整理项目周报");
+    assert.equal(runtime.getAbility(builtId!)?.admission?.passed, true);
+    assert.match(runtime.getAbility(builtId!)?.admission?.contractHash || "", /^[a-f0-9]{64}$/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

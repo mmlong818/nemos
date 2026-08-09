@@ -97,6 +97,9 @@ function safeDocument(item) {
     createdAt: String(item?.createdAt || now()),
     updatedAt: String(item?.updatedAt || now()),
     sourceStored: Boolean(item?.sourceStored),
+    sourceWritable: Boolean(item?.sourceWritable),
+    desktopSessionId: String(item?.desktopSessionId || "").slice(0, 80),
+    desktopContentHash: String(item?.desktopContentHash || "").slice(0, 64),
     processing: safeProcessing(item?.processing),
     blocks,
     versions,
@@ -490,6 +493,10 @@ function render() {
   const size = current.sourceSize ? ` · ${Math.max(1, Math.round(current.sourceSize / 1024))} KB` : "";
   document.querySelector("#documentMeta").textContent = `本机工作副本${size} · 原文件未改动`;
   document.querySelector("#sourceState").textContent = current.sourceStored ? "原文件保留在本机" : current.sourceSize ? "重新打开可恢复原始版式" : "空白文稿";
+  const desktopEditable = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx", "pdf"].includes(current.kind));
+  document.querySelector("#openDesktopEditor").hidden = !desktopEditable;
+  document.querySelector("#refreshDesktopFile").hidden = !desktopEditable;
+  document.querySelector("#writeBackSource").hidden = !current.sourceWritable || !["txt", "md"].includes(current.kind);
   renderBlocks(current);
   renderVersions(current);
   if (current.processing && ["queued", "running", "succeeded"].includes(current.processing.status)) state.view = "result";
@@ -529,7 +536,7 @@ async function fileToBase64(file) {
   return btoa(binary);
 }
 
-async function importFile(file) {
+async function importFile(file, handle = null) {
   if (!file) return;
   if (!/\.(docx|pptx|xlsx|pdf|txt|md|markdown)$/i.test(file.name)) return showToast("支持 Word、PowerPoint、Excel、PDF、TXT 和 Markdown 文件", true);
   if (file.size > 8 * 1024 * 1024) return showToast("文件不能超过 8 MB", true);
@@ -549,11 +556,14 @@ async function importFile(file) {
       createdAt,
       updatedAt: createdAt,
       sourceStored: false,
+      desktopSessionId: extraction && response.session?.id,
+      desktopContentHash: response.session?.contentHash,
       blocks: textToBlocks(extraction.text, extraction.kind),
       versions: [],
     });
     try {
-      importedDocument.sourceStored = await window.ClownfishOfficeSource.save(importedDocument.id, file);
+      importedDocument.sourceStored = await window.ClownfishOfficeSource.save(importedDocument.id, file, handle);
+      importedDocument.sourceWritable = Boolean(handle && await window.ClownfishOfficeSource.canWrite(importedDocument.id));
     } catch {
       importedDocument.sourceStored = false;
     }
@@ -569,6 +579,95 @@ async function importFile(file) {
   } catch (error) {
     setSaveState("读取失败");
     showToast(error instanceof Error ? error.message : "文件读取失败", true);
+  }
+}
+
+async function openDesktopEditor() {
+  const current = currentDocument();
+  if (!current?.desktopSessionId) return;
+  setSaveState("正在打开桌面编辑器…", true);
+  try {
+    await api("/api/files/session/open", { method: "POST", body: JSON.stringify({ id: current.desktopSessionId }) });
+    setSaveState("桌面编辑器已打开");
+    showToast("请在桌面应用中保存，完成后点击“载入修改”");
+  } catch (error) {
+    setSaveState("无法打开");
+    showToast(error instanceof Error ? error.message : "无法打开桌面编辑器", true);
+  }
+}
+
+async function refreshDesktopFile() {
+  const current = currentDocument();
+  if (!current?.desktopSessionId) return;
+  setSaveState("正在检查桌面修改…", true);
+  try {
+    const response = await api("/api/files/session/refresh", {
+      method: "POST",
+      body: JSON.stringify({ id: current.desktopSessionId, expectedHash: current.desktopContentHash }),
+    });
+    if (!response.changed) {
+      setSaveState("没有发现新修改");
+      showToast("桌面文件没有变化");
+      return;
+    }
+    const bytes = Uint8Array.from(atob(response.dataBase64), (character) => character.charCodeAt(0));
+    const file = new File([bytes], response.session.name, { type: "application/octet-stream", lastModified: Date.now() });
+    current.blocks = textToBlocks(response.extraction.text, response.extraction.kind);
+    current.sourceSize = response.session.byteLength;
+    current.desktopContentHash = response.session.contentHash;
+    current.sourceStored = await window.ClownfishOfficeSource.save(current.id, file);
+    current.versions.unshift({
+      id: uid("version"),
+      name: "桌面修改",
+      createdAt: now(),
+      blocks: current.blocks.map((block) => ({ ...block })),
+    });
+    current.versions = current.versions.slice(0, MAX_VERSIONS);
+    state.view = "source";
+    persistState("桌面修改已载入");
+    render();
+    showToast(response.extraction.truncated ? "已载入修改；超长内容仅展示可处理部分" : "桌面修改已载入");
+  } catch (error) {
+    setSaveState("载入失败");
+    showToast(error instanceof Error ? error.message : "无法载入桌面修改", true);
+  }
+}
+
+async function openOfficeFile() {
+  if (typeof window.showOpenFilePicker !== "function") {
+    document.querySelector("#officeFileInput").click();
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      multiple: false,
+      types: [{
+        description: "办公与文本文件",
+        accept: {
+          "application/octet-stream": [".docx", ".pptx", ".xlsx"],
+          "application/pdf": [".pdf"],
+          "text/plain": [".txt", ".md", ".markdown"],
+        },
+      }],
+    });
+    if (handle) await importFile(await handle.getFile(), handle);
+  } catch (error) {
+    if (error?.name !== "AbortError") showToast(error instanceof Error ? error.message : "无法打开文件", true);
+  }
+}
+
+async function writeBackSource() {
+  const current = currentDocument();
+  if (!current || !["txt", "md"].includes(current.kind)) return;
+  setSaveState("正在写回原文件…", true);
+  try {
+    await window.ClownfishOfficeSource.writeText(current.id, continuousDocumentText(current));
+    current.sourceStored = true;
+    persistState("原文件已更新");
+    showToast("已安全写回原文件");
+  } catch (error) {
+    setSaveState("未写回");
+    showToast(error instanceof Error ? error.message : "原文件写回失败", true);
   }
 }
 
@@ -893,6 +992,7 @@ function bindEvents() {
     await importFile(event.target.files?.[0]);
     event.target.value = "";
   });
+  document.querySelectorAll("[data-open-office-file]").forEach((button) => button.addEventListener("click", openOfficeFile));
   document.querySelector("#documentName").addEventListener("input", (event) => {
     const current = currentDocument();
     if (!current) return;
@@ -922,6 +1022,9 @@ function bindEvents() {
   document.querySelector("#closeAssistantPanel").addEventListener("click", closeAssistantPanel);
   document.querySelector("#assistantPanelBackdrop").addEventListener("click", closeAssistantPanel);
   document.querySelector("#exportDraft").addEventListener("click", exportDraft);
+  document.querySelector("#writeBackSource").addEventListener("click", writeBackSource);
+  document.querySelector("#openDesktopEditor").addEventListener("click", openDesktopEditor);
+  document.querySelector("#refreshDesktopFile").addEventListener("click", refreshDesktopFile);
   document.querySelector("#startOfficeTask").addEventListener("click", startOfficeTask);
   document.querySelector("#cancelOfficeTask").addEventListener("click", cancelOfficeTask);
   document.querySelectorAll("[data-document-view]").forEach((button) => button.addEventListener("click", () => setDocumentView(button.dataset.documentView)));

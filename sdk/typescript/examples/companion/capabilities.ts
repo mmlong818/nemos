@@ -30,6 +30,7 @@ import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
 import { exportOfficeDocument } from "./office-export.js";
 import { ArtifactWorkspaceStore, type ArtifactWorkspaceState } from "./artifact-workspace.js";
 import { assessProfessionalArtifact, type ProfessionalArtifactReceipt } from "./professional-artifact-gate.js";
+import { admitGeneratedAbilitySpec, type CapabilityAdmissionReceipt } from "./capability-admission.js";
 
 const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -68,6 +69,7 @@ export interface Capability {
   pinnedAt?: string;
   disabledAt?: string;
   staleAt?: string;
+  admission?: CapabilityAdmissionReceipt;
 }
 
 export interface CapabilitySchedule {
@@ -207,6 +209,7 @@ export interface CapabilityArtifact {
     development?: CapabilityDevelopmentReceipt;
     workspace?: { status: "draft" | "review" | "done"; updatedAt: string; versionCount: number };
     presentationVersion?: { state: "validated" | "needs-review"; lastGoodArtifactId?: string };
+    presentationVisualReview?: import("./presentation-visual-review.js").PresentationVisualReview;
     lineage?: { version: number; previousArtifactId?: string };
     professionalReceipt?: ProfessionalArtifactReceipt;
   };
@@ -218,6 +221,7 @@ export interface CapabilityArtifactValidationCheck {
   id: string;
   label: string;
   status: "passed" | "failed" | "not-run";
+  phase?: "validation" | "verification";
   detail?: string;
 }
 
@@ -1121,10 +1125,10 @@ export class CapabilityRuntime {
   ): Promise<CapabilityNotification> {
     const artifact = withArtifactProof(await this.writeArtifact(task, ability, reply));
     if (ability.id === "presentation-builder") {
-      const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level === "validated");
+      const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level !== "produced");
       artifact.metadata = {
         ...artifact.metadata,
-        presentationVersion: artifact.proof?.level === "validated"
+        presentationVersion: artifact.proof?.level !== "produced"
           ? { state: "validated", lastGoodArtifactId: artifact.id }
           : { state: "needs-review", lastGoodArtifactId: previousGood?.id },
       };
@@ -1415,10 +1419,10 @@ export class CapabilityRuntime {
     if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
     withArtifactProof(artifact);
     if (ability.id === "presentation-builder") {
-      const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level === "validated");
+      const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level !== "produced");
       artifact.metadata = {
         ...artifact.metadata,
-        presentationVersion: artifact.proof?.level === "validated"
+        presentationVersion: artifact.proof?.level !== "produced"
           ? { state: "validated", lastGoodArtifactId: artifact.id }
           : { state: "needs-review", lastGoodArtifactId: previousGood?.id },
       };
@@ -1530,6 +1534,18 @@ export class CapabilityRuntime {
       ...artifact.metadata,
       workspace: { status: state.status, updatedAt: state.updatedAt, versionCount: state.versions.length },
     };
+    if (artifact.proof?.level === "verified" && state.status === "done") {
+      artifact.proof.level = "approved";
+      artifact.proof.checkedAt = state.updatedAt;
+      artifact.proof.checks = [
+        ...artifact.proof.checks.filter((check) => check.id !== "user-approval"),
+        { id: "user-approval", label: "用户已在工作台明确确认", status: "passed", phase: "verification", detail: state.updatedAt },
+      ];
+    } else if (artifact.proof?.level === "approved" && state.status !== "done") {
+      artifact.proof.level = "verified";
+      artifact.proof.checkedAt = state.updatedAt;
+      artifact.proof.checks = artifact.proof.checks.filter((check) => check.id !== "user-approval");
+    }
     this.saveArtifacts();
     return state;
   }
@@ -2008,7 +2024,7 @@ ${task.instruction}`,
       .filter((item): item is string => !!item && item.length >= 2)
       .slice(0, 12);
     const skillContent = readFileSync(join(dir, "SKILL.md"));
-    const manifest: AgentExtensionManifest & { capabilityId: string; personaId: string; origin: string; updatedAt: string; integrity: { algorithm: "sha256"; contentHash: string; byteLength: number }; rollback?: { previousVersion: string; historyPath: string } } = {
+    const manifest: AgentExtensionManifest & { capabilityId: string; personaId: string; origin: string; updatedAt: string; integrity: { algorithm: "sha256"; contentHash: string; byteLength: number }; admission?: CapabilityAdmissionReceipt; rollback?: { previousVersion: string; historyPath: string } } = {
       schemaVersion: 1,
       id: `skill.${ability.id.toLowerCase().replace(/[^a-z0-9._-]/g, "-")}`,
       name: ability.name,
@@ -2028,6 +2044,7 @@ ${task.instruction}`,
       origin,
       updatedAt,
       integrity: { algorithm: "sha256", contentHash: createHash("sha256").update(skillContent).digest("hex"), byteLength: skillContent.byteLength },
+      admission: ability.admission,
       rollback: lifecycle ? { previousVersion: lifecycle.version, historyPath: `history/${basename(lifecycle.historyPath)}` } : undefined,
     };
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
@@ -2134,7 +2151,13 @@ ${task.instruction}`,
         previewFile: rendered.previewFile,
         createdAt,
         summary: rendered.summary,
-        metadata: { native: true, generatedAbilityId, contextFile, validationChecks: rendered.validationChecks },
+        metadata: {
+          native: true,
+          generatedAbilityId,
+          contextFile,
+          validationChecks: rendered.validationChecks,
+          presentationVisualReview: rendered.visualReview,
+        },
         verification: verification?.relevant ? verification : undefined,
       };
     }
@@ -2184,6 +2207,11 @@ ${task.instruction}`,
 
   private upsertGeneratedAbilitySpec(personaId: string, spec: GeneratedAbilitySpec): Capability {
     const now = new Date().toISOString();
+    const admission = admitGeneratedAbilitySpec(spec);
+    if (!admission.passed) {
+      const failed = admission.outcomes.filter((item) => !item.passed).map((item) => item.detail).join("；");
+      throw new Error(`新能力未通过准入检查：${failed}`);
+    }
     const learnedKey = `builder:${slug(spec.name)}`;
     const prompt = [
       spec.prompt,
@@ -2203,6 +2231,7 @@ ${task.instruction}`,
       existing.defaultFormat = spec.defaultFormat;
       existing.prompt = prompt;
       existing.updatedAt = now;
+      existing.admission = admission;
       delete existing.archivedAt;
       this.writeSkillFile(existing, spec.triggerExamples.join("；"), "manual");
       this.saveAbilities();
@@ -2220,6 +2249,7 @@ ${task.instruction}`,
       prompt,
       createdAt: now,
       updatedAt: now,
+      admission,
     };
     this.generatedAbilities.push(ability);
     this.writeSkillFile(ability, spec.triggerExamples.join("；"), "manual");
@@ -2244,9 +2274,17 @@ function withArtifactProof(artifact: CapabilityArtifact): CapabilityArtifact {
     status: content.byteLength > 0 ? "passed" : "failed",
     detail: `${content.byteLength} bytes`,
   }, ...validationChecks];
+  const professionalLevel = artifact.metadata?.professionalReceipt?.level;
+  const verificationChecks = validationChecks.filter((item) => item.phase === "verification");
+  const allChecksPassed = validationChecks.length > 0 && validationChecks.every((item) => item.status === "passed");
+  const level = professionalLevel && professionalLevel !== "failed"
+    ? professionalLevel
+    : allChecksPassed
+      ? verificationChecks.length > 0 ? "verified" : "validated"
+      : "produced";
   artifact.proof = {
     version: 1,
-    level: validationChecks.length > 0 && validationChecks.every((item) => item.status === "passed") ? "validated" : "produced",
+    level,
     algorithm: "sha256",
     contentHash: createHash("sha256").update(content).digest("hex"),
     byteLength: content.byteLength,
@@ -2273,7 +2311,7 @@ function developmentProfessionalReceipt(result: CapabilityDevelopmentReceipt): P
     domain: "software",
     artifactExists: result.accessMode === "inspect" || result.fileReceipts.length > 0,
     structuredInput: true,
-    intermediateArtifact: (result.contextReceipts?.length ?? 0) > 0,
+    intermediateArtifact: result.accessMode === "inspect" || result.fileReceipts.length > 0,
     renderedArtifact: result.accessMode === "inspect" || result.fileReceipts.length > 0,
     version: result.baseRevision || "unversioned",
     checks: substantive.map((item) => ({
@@ -2281,6 +2319,7 @@ function developmentProfessionalReceipt(result: CapabilityDevelopmentReceipt): P
       label: item.command,
       required: true,
       passed: item.passed,
+      phase: "verification",
       detail: item.output.slice(0, 500),
     })),
   });

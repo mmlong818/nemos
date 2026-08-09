@@ -88,6 +88,7 @@ import { resolveGroupReplyRoute } from "./group-routing.js";
 import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
 import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
 import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
+import { OfficeFileSessionStore } from "./office-file-sessions.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
@@ -122,6 +123,7 @@ const preparedOfficeExports = new Map<string, {
   filename: string;
   expiresAt: number;
 }>();
+const officeFileSessions = new OfficeFileSessionStore(join(DATA_DIR, "office-file-sessions"));
 
 
 function migrateStoredPersonaIdentities(root: string): void {
@@ -2074,6 +2076,17 @@ function contentType(path: string): string {
   return "application/octet-stream";
 }
 
+function officeSessionContentType(extension: string): string {
+  return ({
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    pdf: "application/pdf",
+    txt: "text/plain; charset=utf-8",
+    md: "text/markdown; charset=utf-8",
+  } as Record<string, string>)[extension] || "application/octet-stream";
+}
+
 function sendWebAsset(res: ServerResponse, assetUrl: string): boolean {
   const clean = assetUrl.split("?")[0]!;
   if (!clean.startsWith("/assets/")) return false;
@@ -3040,7 +3053,53 @@ const server = createServer(async (req, res) => {
       }
       try {
         const extraction = await extractOfficeFile(name, data);
-        send(res, 200, { ok: true, extraction });
+        const session = officeFileSessions.create(name, data);
+        send(res, 200, { ok: true, extraction, session });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/files/session") {
+      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
+      try {
+        const { session, data } = officeFileSessions.read(id);
+        res.writeHead(200, {
+          "Content-Type": officeSessionContentType(session.extension),
+          "Content-Length": data.byteLength,
+          "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(session.name),
+          "Cache-Control": "no-store",
+          "X-Clownfish-Content-Hash": session.contentHash,
+        });
+        res.end(data);
+      } catch (error) {
+        send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/files/session/open") {
+      const body = (await readBody(req)) as { id?: string };
+      try {
+        const action = await agentUserActions.execute({
+          name: "office_file_open_desktop",
+          description: "在 Windows 已关联的桌面应用中打开用户明确选择的本机工作副本",
+          arguments: { sessionId: body.id },
+          execute: () => officeFileSessions.openDesktop(String(body.id || "")),
+          summarizeResult: (session) => ({ ok: true, sessionId: session.id, extension: session.extension }),
+        });
+        send(res, 200, { ok: true, session: action.value, auditRunId: action.runId });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/files/session/refresh") {
+      const body = (await readBody(req)) as { id?: string; expectedHash?: string };
+      try {
+        const { session, data } = officeFileSessions.read(String(body.id || ""));
+        const changed = !body.expectedHash || body.expectedHash !== session.contentHash;
+        const extraction = await extractOfficeFile(session.name, data);
+        send(res, 200, { ok: true, changed, session, extraction, dataBase64: data.toString("base64") });
       } catch (error) {
         send(res, 400, { error: error instanceof Error ? error.message : String(error) });
       }
