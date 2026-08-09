@@ -107,6 +107,8 @@ test("原文件保存在本机并提供格式化预览", () => {
   assert.match(officeSourceJs, /ignoreLastRenderedPageBreak:\s*false/);
   assert.match(officeSourceJs, /renderHeaders:\s*true/);
   assert.match(officeSourceJs, /renderDocumentFallback[\s\S]+<section><p>\$\{escapeHtml\(block\.text\)\}<\/p><\/section>/);
+  assert.match(officeCss, /\.docx-preview-stage[\s\S]+overflow:\s*visible/);
+  assert.doesNotMatch(officeCss, /\.docx-preview-stage[^}]+overscroll-behavior/);
 });
 
 test("工作台遵守小丑鱼视觉与无障碍基线", () => {

@@ -317,7 +317,11 @@ button, a, label { touch-action: manipulation; }
   font-size: 11px;
   line-height: 1.5;
 }
-.docx-preview-stage { width: 100%; overflow: auto; padding: 2px 0 30px; overscroll-behavior: contain; }
+.docx-preview-stage {
+  width: 100%;
+  overflow: visible;
+  padding: 2px 0 30px;
+}
 .docx-preview-host { min-width: min-content; }
 .docx-preview-host .docx-wrapper { padding: 0; background: transparent; }
 .docx-preview-host .docx-wrapper > section.docx {
