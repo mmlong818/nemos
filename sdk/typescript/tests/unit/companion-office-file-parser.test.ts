@@ -69,6 +69,23 @@ test("读取 PDF 页面文字", async () => {
   assert.match(result.text, /Quarterly summary/);
 });
 
+test("读取 TXT 与 Markdown 文本文件", async () => {
+  const text = await extractOfficeFile("说明.txt", Buffer.from("第一段\n\n第二段", "utf8"));
+  assert.equal(text.kind, "txt");
+  assert.equal(text.sections, 2);
+  assert.match(text.text, /第一段\n\n第二段/);
+
+  const markdown = await extractOfficeFile("README.markdown", Buffer.from("# 标题\n\n- 条目", "utf8"));
+  assert.equal(markdown.kind, "md");
+  assert.match(markdown.text, /# 标题/);
+});
+
+test("读取带 BOM 的 UTF-16 文本", async () => {
+  const content = Buffer.from("中文内容", "utf16le");
+  const result = await extractOfficeFile("旧资料.txt", Buffer.concat([Buffer.from([0xff, 0xfe]), content]));
+  assert.equal(result.text, "中文内容");
+});
+
 test("拒绝伪装成办公文件的未知格式", async () => {
-  await assert.rejects(() => extractOfficeFile("notes.rtf", Buffer.from("hello")), /仅支持 DOCX、PPTX、XLSX 和 PDF/);
+  await assert.rejects(() => extractOfficeFile("notes.rtf", Buffer.from("hello")), /仅支持 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown/);
 });

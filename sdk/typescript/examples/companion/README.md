@@ -86,7 +86,7 @@ npm run companion
 
 ## 文件工作台
 
-- 读取 DOCX、PPTX、XLSX 和 PDF；
+- 读取 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown；
 - 原文件保留在浏览器本机存储中，不被工作副本覆盖；
 - PDF 使用原始文件预览，Office 文件提供结构化预览；
 - 编辑和 AI 处理都留在文件页；

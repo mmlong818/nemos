@@ -68,6 +68,8 @@
     const notice = record
       ? current.kind === "pdf"
         ? "正在显示原始 PDF，页面、图片和排版均保留。"
+        : current.kind === "txt" || current.kind === "md"
+          ? "正在显示原始文本内容；可切换到可编辑内容继续修改。"
         : faithfulPreview
           ? "正在按 Word 原始结构显示正文、表格、图片、页眉页脚和分页；复杂域或特殊字体可能与桌面 Word 略有差异。"
           : "原文件已保留在本机；页面按可读取结构展示，可随时打开原文件核对完整格式。"
@@ -139,6 +141,40 @@
     return `<section class="source-preview-shell">${sourceHeading(current, record, sourceUrl)}<div class="sheet-preview-list">${current.blocks.map((block) => `<article class="sheet-preview"><h2>${escapeHtml(block.title)}</h2><div class="sheet-table-wrap">${sheetTable(block)}</div></article>`).join("")}</div></section>`;
   }
 
+  function inlineMarkdown(value) {
+    return escapeHtml(value)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+      .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
+  }
+
+  function markdownBody(value) {
+    let inCode = false;
+    const output = [];
+    for (const line of String(value || "").split("\n")) {
+      if (/^\s*```/.test(line)) {
+        output.push(inCode ? "</code></pre>" : '<pre><code>');
+        inCode = !inCode;
+      } else if (inCode) output.push(`${escapeHtml(line)}\n`);
+      else if (!line.trim()) output.push('<span class="markdown-gap" aria-hidden="true"></span>');
+      else if (/^\s*[-*+]\s+/.test(line)) output.push(`<p class="markdown-list">${inlineMarkdown(line.replace(/^\s*[-*+]\s+/, ""))}</p>`);
+      else if (/^\s*\d+[.)]\s+/.test(line)) output.push(`<p class="markdown-list is-ordered">${inlineMarkdown(line.replace(/^\s*\d+[.)]\s+/, ""))}</p>`);
+      else if (/^\s*>\s?/.test(line)) output.push(`<blockquote>${inlineMarkdown(line.replace(/^\s*>\s?/, ""))}</blockquote>`);
+      else output.push(`<p>${inlineMarkdown(line)}</p>`);
+    }
+    if (inCode) output.push("</code></pre>");
+    return output.join("");
+  }
+
+  function renderTextDocument(current, record, sourceUrl) {
+    const isMarkdown = current.kind === "md";
+    const content = current.blocks.map((block) => isMarkdown
+      ? `<section>${block.title && !/^段落\s+\d+$/.test(block.title) ? `<h2>${escapeHtml(block.title)}</h2>` : ""}${markdownBody(block.text)}</section>`
+      : `<p>${escapeHtml(block.text)}</p>`).join("");
+    return `<section class="source-preview-shell is-text">${sourceHeading(current, record, sourceUrl)}<article class="text-source-preview${isMarkdown ? " is-markdown" : ""}">${content}</article></section>`;
+  }
+
   function renderDocumentFallback(current, record, sourceUrl, message = "当前浏览器无法还原 Word 版式，下面显示可读取正文。") {
     const pages = [];
     for (let index = 0; index < current.blocks.length; index += 12) pages.push(current.blocks.slice(index, index + 12));
@@ -193,6 +229,7 @@
     if (current.kind === "pdf") root.innerHTML = renderPdf(current, record, sourceUrl);
     else if (current.kind === "pptx") root.innerHTML = renderSlides(current, record, sourceUrl);
     else if (current.kind === "xlsx") root.innerHTML = renderWorkbook(current, record, sourceUrl);
+    else if (current.kind === "txt" || current.kind === "md") root.innerHTML = renderTextDocument(current, record, sourceUrl);
     else await renderDocument(root, current, record, sourceUrl, renderToken);
   }
 

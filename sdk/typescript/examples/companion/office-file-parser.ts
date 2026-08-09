@@ -4,7 +4,7 @@ import JSZip from "jszip";
 export const MAX_OFFICE_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_EXTRACTED_CHARACTERS = 120_000;
 
-export type OfficeFileKind = "docx" | "pptx" | "xlsx" | "pdf";
+export type OfficeFileKind = "docx" | "pptx" | "xlsx" | "pdf" | "txt" | "md";
 
 export interface OfficeFileExtraction {
   kind: OfficeFileKind;
@@ -16,9 +16,31 @@ export interface OfficeFileExtraction {
 
 function extensionOf(fileName: string): OfficeFileKind | null {
   const extension = fileName.trim().toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
-  return extension === "docx" || extension === "pptx" || extension === "xlsx" || extension === "pdf"
-    ? extension
+  return extension === "docx" || extension === "pptx" || extension === "xlsx" || extension === "pdf" || extension === "txt" || extension === "md" || extension === "markdown"
+    ? extension === "markdown" ? "md" : extension
     : null;
+}
+
+function decodePlainText(data: Uint8Array): string {
+  if (data[0] === 0xff && data[1] === 0xfe) return new TextDecoder("utf-16le").decode(data.subarray(2));
+  if (data[0] === 0xfe && data[1] === 0xff) {
+    const swapped = Uint8Array.from(data.subarray(2));
+    for (let index = 0; index + 1 < swapped.length; index += 2) [swapped[index], swapped[index + 1]] = [swapped[index + 1]!, swapped[index]!];
+    return new TextDecoder("utf-16le").decode(swapped);
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(data);
+  } catch {
+    return new TextDecoder("gb18030").decode(data);
+  }
+}
+
+function extractPlainText(data: Uint8Array): { text: string; sections: number } {
+  const text = decodePlainText(data).replace(/^\uFEFF/, "");
+  const controlCharacters = [...text].filter((character) => character < " " && !"\n\r\t".includes(character)).length;
+  if (text.includes("\0") || controlCharacters > Math.max(4, text.length * 0.01)) throw new Error("这个文本文件包含无法读取的二进制内容");
+  const sections = text.split(/\n\s*\n+/).filter((section) => section.trim()).length;
+  return { text, sections: Math.max(1, sections) };
 }
 
 function decodeXml(value: string): string {
@@ -182,13 +204,14 @@ async function extractPdf(data: Uint8Array): Promise<{ text: string; sections: n
 
 export async function extractOfficeFile(fileName: string, data: Uint8Array): Promise<OfficeFileExtraction> {
   const kind = extensionOf(fileName);
-  if (!kind) throw new Error("仅支持 DOCX、PPTX、XLSX 和 PDF 文件");
+  if (!kind) throw new Error("仅支持 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown 文件");
   if (!data.byteLength) throw new Error("文件内容为空");
-  if (data.byteLength > MAX_OFFICE_FILE_BYTES) throw new Error("单个办公文件不能超过 8 MB");
+  if (data.byteLength > MAX_OFFICE_FILE_BYTES) throw new Error("单个文件不能超过 8 MB");
 
   let extracted: { text: string; sections: number };
   try {
-    if (kind === "docx") extracted = await extractDocx(data);
+    if (kind === "txt" || kind === "md") extracted = extractPlainText(data);
+    else if (kind === "docx") extracted = await extractDocx(data);
     else if (kind === "pptx") extracted = await extractPptx(data);
     else if (kind === "xlsx") extracted = await extractXlsx(data);
     else extracted = await extractPdf(data);

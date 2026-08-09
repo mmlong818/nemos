@@ -35,10 +35,11 @@ test("带结果参数的办公文件地址可以打开，并通过浏览器下�
   assert.doesNotMatch(officeJs, /URL\.createObjectURL\(blob\)/);
 });
 
-test("工作台真实读取四类办公文件并明确保护原文件", () => {
-  assert.match(officeHtml, /\.docx,\.pptx,\.xlsx,\.pdf/);
+test("工作台真实读取六类文件并明确保护原文件", () => {
+  assert.match(officeHtml, /\.docx,\.pptx,\.xlsx,\.pdf,\.txt,\.md,\.markdown/);
   assert.match(officeJs, /\/api\/files\/extract/);
-  assert.match(officeJs, /办公文件不能超过 8 MB/);
+  assert.match(officeJs, /docx\|pptx\|xlsx\|pdf\|txt\|md\|markdown/);
+  assert.match(officeJs, /文件不能超过 8 MB/);
   assert.match(officeHtml, /原文件不会被覆盖/);
   assert.match(officeJs, /原文件未改动/);
 });
@@ -107,6 +108,8 @@ test("原文件保存在本机并提供格式化预览", () => {
   assert.match(officeSourceJs, /ignoreLastRenderedPageBreak:\s*false/);
   assert.match(officeSourceJs, /renderHeaders:\s*true/);
   assert.match(officeSourceJs, /renderDocumentFallback[\s\S]+<section><p>\$\{escapeHtml\(block\.text\)\}<\/p><\/section>/);
+  assert.match(officeSourceJs, /renderTextDocument/);
+  assert.match(officeSourceJs, /markdownBody/);
   assert.match(officeCss, /\.docx-preview-stage[\s\S]+overflow:\s*visible/);
   assert.doesNotMatch(officeCss, /\.docx-preview-stage[^}]+overscroll-behavior/);
 });
