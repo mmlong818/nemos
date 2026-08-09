@@ -194,7 +194,7 @@ async function writePresentation(file: string, payload: NativeCapabilityPayload)
     } else if (layout === "chart") {
       addSlideHeading(slide, title, message, palette);
       addSlideChart(slide, bullets, palette, pptx);
-    } else if (layout === "visual" && /^data:image\//i.test(text(item.imageData))) {
+    } else if (layout === "visual" && isSupportedPresentationImageData(text(item.imageData))) {
       addSlideHeading(slide, title, message, palette);
       addBulletCard(slide, bullets, 0.82, 3.0, 5.25, 3.0, palette, pptx.ShapeType.roundRect);
       slide.addImage({ data: text(item.imageData), x: 6.4, y: 2.7, w: 5.85, h: 3.3 });
@@ -259,9 +259,14 @@ function presentationWarnings(slides: Record<string, unknown>[]): string[] {
     const bullets = strings(slide.bullets);
     const chars = title.length + text(slide.keyMessage).length + bullets.join("").length;
     if (title.length > 34 || bullets.length > 7 || chars > 650) warnings.push("第 " + (index + 1) + " 页内容偏多，已自动收缩；建议放映前复核。");
-    if (text(slide.layout) === "visual" && !/^data:image\//i.test(text(slide.imageData))) warnings.push("第 " + (index + 1) + " 页选择了视觉版式，但没有可嵌入图片。");
+    if (text(slide.layout) === "visual" && !isSupportedPresentationImageData(text(slide.imageData))) warnings.push("第 " + (index + 1) + " 页选择了视觉版式，但图片格式或大小不受支持。");
   });
   return warnings;
+}
+
+export function isSupportedPresentationImageData(value: string): boolean {
+  if (!value || value.length > 11_200_000) return false;
+  return /^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/]+={0,2}$/i.test(value);
 }
 
 function presentationPalette(theme: string): { background: string; surface: string; text: string; muted: string; accent: string; border: string } {

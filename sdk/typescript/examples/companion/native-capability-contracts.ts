@@ -123,7 +123,7 @@ function contractFor(id: NativeCapabilityId): string {
     case "research-brief":
       return "结构：{kind,title,summary,data:{question,plan:string[],sources:[{id,title,url,publisher,tier:1|2|3|4,score:0-100,checkedAt,claims:string[],anchors:[{id,page?:string,span?:string,quote:string}]}],findings:[{claim,evidenceIds:string[],anchorIds:string[],confidence:0-1,status:\"confirmed\"|\"partial\"|\"unverified\"}],conclusion,limitations:string[],nextSteps:string[]}}。至少 3 个研究步骤；有联网资料时至少 2 个来源；锚点必须给出页码或章节/段落位置和短引文。每条已确认结论必须同时引用 evidenceIds 和 anchorIds；系统会为引文生成 quoteHash，缺少可定位证据的结论会自动降级。";
     case "presentation-builder":
-      return "结构：{kind,title,summary,data:{audience,purpose,theme:\"sand\"|\"ink\"|\"forest\",slides:[{title,keyMessage,layout:\"title\"|\"statement\"|\"two-column\"|\"timeline\"|\"comparison\"|\"chart\"|\"visual\"|\"closing\",bullets:string[],imageData?:\"data:image/...\",speakerNotes}]}}。slides 为 3-30 页，每页只表达一个主观点。";
+      return "结构：{kind,title,summary,data:{audience,purpose,theme:\"sand\"|\"ink\"|\"forest\",slides:[{title,keyMessage,layout:\"title\"|\"statement\"|\"two-column\"|\"timeline\"|\"comparison\"|\"chart\"|\"visual\"|\"closing\",bullets:string[],imageData?:\"data:image/png|jpeg|webp|gif;base64,...\",speakerNotes}]}}。slides 为 3-30 页，每页只表达一个主观点；嵌入图片只接受 PNG、JPEG、WebP 或 GIF。";
     case "thinking-workbench":
       return "结构：{kind,title,summary,data:{problem,facts:string[],assumptions:[{text,risk}],contradictions:string[],options:[{name,upside,downside,signal}],experiments:[{name,method,cost,successSignal}],nextActions:string[]}}。至少 2 个选项和 1 个低成本验证。";
     case "product-design":

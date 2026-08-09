@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { CapabilityRuntime, type ArtifactFormat } from "../../examples/companion/capabilities.js";
 import { parseNativeCapabilityPayload } from "../../examples/companion/native-capability-contracts.js";
+import { isSupportedPresentationImageData } from "../../examples/companion/native-capability-renderer.js";
 
 const payloads: Record<string, Record<string, unknown>> = {
   "research-brief": {
@@ -81,6 +82,15 @@ const payloads: Record<string, Record<string, unknown>> = {
     },
   },
 };
+
+test("演示文稿图片入口只接受有界的常用安全格式", () => {
+  assert.equal(isSupportedPresentationImageData("data:image/png;base64,AAAA"), true);
+  assert.equal(isSupportedPresentationImageData("data:image/jpeg;base64,AAAA"), true);
+  assert.equal(isSupportedPresentationImageData("data:image/icns;base64,AAAA"), false);
+  assert.equal(isSupportedPresentationImageData("data:image/heif;base64,AAAA"), false);
+  assert.equal(isSupportedPresentationImageData("data:image/jxl;base64,AAAA"), false);
+  assert.equal(isSupportedPresentationImageData("data:image/png;base64," + "A".repeat(11_200_001)), false);
+});
 
 test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生成能力会写入能力库", async () => {
   const dir = mkdtempSync(join(tmpdir(), "nemos-native-capabilities-"));
