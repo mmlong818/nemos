@@ -38,3 +38,16 @@ test("演示导出会给过量内容返回版面复核提示", async () => {
   });
   assert.ok(output.warnings.some((warning) => warning.includes("复核版面")));
 });
+
+test("连续文字工作副本导出 Word 时不添加虚假的正文标题", async () => {
+  const output = await exportOfficeDocument({
+    name: "连续文稿",
+    format: "docx",
+    blocks: [{ title: "正文", text: "第一段\n\n第二段" }],
+  });
+  const zip = await JSZip.loadAsync(output.data);
+  const xml = await zip.file("word/document.xml")!.async("string");
+  assert.doesNotMatch(xml, />正文</);
+  assert.match(xml, />第一段</);
+  assert.match(xml, />第二段</);
+});

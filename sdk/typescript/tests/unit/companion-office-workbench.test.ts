@@ -114,6 +114,16 @@ test("原文件保存在本机并提供格式化预览", () => {
   assert.doesNotMatch(officeCss, /\.docx-preview-stage[^}]+overscroll-behavior/);
 });
 
+test("Word 编辑状态使用连续文字工作副本而不是数百个段落表单", () => {
+  assert.match(officeHtml, /id="editViewTab"[^>]*>编辑文字/);
+  assert.doesNotMatch(officeHtml, /surface-ruler/);
+  assert.match(officeJs, /function continuousDocumentText/);
+  assert.match(officeJs, /data-continuous-editor/);
+  assert.match(officeJs, /current\.blocks = \[safeBlock/);
+  assert.match(officeCss, /\.continuous-editor-heading/);
+  assert.match(officeCss, /\.continuous-editor\s*\{/);
+});
+
 test("工作台遵守小丑鱼视觉与无障碍基线", () => {
   assert.match(officeHtml, /aria-live="polite"/);
   assert.match(officeHtml, /label[^>]+for="assistantPrompt"/);

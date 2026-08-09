@@ -272,6 +272,9 @@ async function api(path, options = {}) {
 
 function textToBlocks(text, kind) {
   const normalized = String(text || "").replace(/\r/g, "").trim();
+  if (kind === "docx" || kind === "txt" || kind === "md") {
+    return [safeBlock({ id: "block-1", title: kind === "md" ? "Markdown" : "正文", text: normalized }, 0, kind)];
+  }
   const sectionPattern = kind === "md" ? /^#{1,6}\s+(.+)$/gm : /^##\s+(.+)$/gm;
   const matches = [...normalized.matchAll(sectionPattern)];
   if (matches.length) {
@@ -329,8 +332,32 @@ function autoResize(textarea) {
   textarea.style.height = `${Math.max(44, Math.min(520, textarea.scrollHeight))}px`;
 }
 
+function continuousDocumentText(current) {
+  if (current.blocks.length === 1 && /^(正文|Markdown)$/.test(current.blocks[0].title)) return current.blocks[0].text;
+  if (current.kind === "md") return current.blocks.map((block) => `${block.title ? `## ${block.title}\n\n` : ""}${block.text}`).join("\n\n").trim();
+  return current.blocks.map((block) => block.text).join("\n\n").trim();
+}
+
+function autoResizeContinuous(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.max(720, textarea.scrollHeight + 4)}px`;
+}
+
 function renderBlocks(current) {
   const root = window.document.querySelector("#blockList");
+  const continuous = current.kind === "docx" || current.kind === "txt" || current.kind === "md";
+  document.querySelector("#addBlock").hidden = continuous;
+  document.querySelector("#editViewTab").textContent = current.kind === "docx" ? "编辑文字" : current.kind === "md" ? "编辑 Markdown" : current.kind === "txt" ? "编辑文本" : "编辑内容";
+  if (continuous) {
+    const label = current.kind === "docx" ? "文字工作副本" : current.kind === "md" ? "Markdown 工作副本" : "文本工作副本";
+    const detail = current.kind === "docx" ? "在这里连续修改文字；原文件的排版、图片和页眉页脚不会被覆盖。" : "修改会自动保存在本机工作副本中。";
+    root.innerHTML = `
+      <header class="continuous-editor-heading"><div><strong>${label}</strong><span>${detail}</span></div><span>自动保存</span></header>
+      <label class="sr-only" for="continuousEditor">${label}</label>
+      <textarea class="continuous-editor" id="continuousEditor" data-continuous-editor maxlength="120000" spellcheck="true" placeholder="在这里输入内容…">${escapeHtml(continuousDocumentText(current))}</textarea>`;
+    autoResizeContinuous(root.querySelector("#continuousEditor"));
+    return;
+  }
   root.innerHTML = current.blocks.map((block, index) => `
     <article class="content-block" data-block-id="${escapeHtml(block.id)}">
       <span class="block-index" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>
@@ -662,6 +689,7 @@ function restoreVersion(versionId) {
 }
 
 function documentMarkdown(current) {
+  if (current.kind === "docx" || current.kind === "txt" || current.kind === "md") return continuousDocumentText(current);
   return current.blocks.map((block) => `## ${block.title}\n\n${block.text}`).join("\n\n").trim();
 }
 
@@ -872,8 +900,14 @@ function bindEvents() {
     scheduleSave();
   });
   document.querySelector("#blockList").addEventListener("input", (event) => {
-    const row = event.target.closest("[data-block-id]");
     const current = currentDocument();
+    if (current && event.target.matches("[data-continuous-editor]")) {
+      current.blocks = [safeBlock({ id: current.blocks[0]?.id || uid("block"), title: current.kind === "md" ? "Markdown" : "正文", text: event.target.value }, 0, current.kind)];
+      autoResizeContinuous(event.target);
+      scheduleSave();
+      return;
+    }
+    const row = event.target.closest("[data-block-id]");
     const block = current?.blocks.find((item) => item.id === row?.dataset.blockId);
     if (!block || !event.target.dataset.field) return;
     block[event.target.dataset.field] = event.target.value;
