@@ -618,7 +618,7 @@ export class CompanionEngine {
       ...userTurns.map((memory) => ({
         speaker: "对方",
         text: memory.content,
-        voice: memory.source?.scenario === "voice-transcript",
+        voice: memory.scenario === "voice-transcript",
         createdAt: memory.created_at,
       })),
       ...personaTurns.map((memory) => ({

@@ -6,11 +6,11 @@ import { resolveLLM } from "../../examples/companion/llm.js";
 test("live task chat forwards the requested long-output token budget", async () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.ZHIPU_API_KEY;
-  let requestBody: Record<string, unknown> | null = null;
+  const requestBodies: Record<string, unknown>[] = [];
 
   process.env.ZHIPU_API_KEY = "test-key";
   globalThis.fetch = async (_input, init) => {
-    requestBody = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+    requestBodies.push(JSON.parse(String(init?.body || "{}")) as Record<string, unknown>);
     return new Response(JSON.stringify({
       choices: [{ finish_reason: "stop", message: { content: "done" } }],
       usage: { prompt_tokens: 4, completion_tokens: 1 },
@@ -33,7 +33,7 @@ test("live task chat forwards the requested long-output token budget", async () 
     });
 
     assert.equal(reply, "done");
-    assert.equal(requestBody?.max_tokens, 6000);
+    assert.equal(requestBodies[0]?.max_tokens, 6000);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.ZHIPU_API_KEY;

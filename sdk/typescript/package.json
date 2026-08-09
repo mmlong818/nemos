@@ -33,16 +33,17 @@
     "companion": "tsx examples/companion/server.ts",
     "companion:cli": "tsx examples/companion/chat-cli.ts",
     "build": "tsc",
-    "test": "tsx --test tests/unit/*.test.ts tests/integration/*.test.ts tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts tests/v06/integration/*.test.ts tests/v07/integration/*.test.ts",
-    "test:unit": "tsx --test tests/unit/*.test.ts tests/v02/unit/*.test.ts tests/v03/unit/*.test.ts tests/v04/unit/*.test.ts tests/v05/unit/*.test.ts",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "tsx --test \"tests/**/*.test.ts\"",
+    "test:unit": "tsx --test \"tests/unit/*.test.ts\" \"tests/v*/unit/*.test.ts\"",
     "test:v02": "tsx --test tests/v02/unit/*.test.ts tests/v02/integration/*.test.ts",
     "test:v03": "tsx --test tests/v03/unit/*.test.ts tests/v03/integration/*.test.ts",
     "test:v04": "tsx --test tests/v04/unit/*.test.ts tests/v04/integration/*.test.ts",
     "test:v05": "tsx --test tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts",
-    "test:v06": "tsx --test tests/v06/integration/*.test.ts",
+    "test:v06": "tsx --test \"tests/v06/unit/*.test.ts\" \"tests/v06/integration/*.test.ts\"",
     "test:v07": "tsx --test tests/v07/integration/*.test.ts",
     "prepublishOnly": "npm run build",
-    "check": "npm run build && npm test"
+    "check": "npm run build && npm run typecheck && npm test"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.100",

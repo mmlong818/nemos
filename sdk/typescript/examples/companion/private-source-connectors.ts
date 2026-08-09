@@ -190,8 +190,8 @@ function defaultPrivateSourcesConfig(dataDir: string): PrivateSourcesConfig {
 
 function normalizePrivateSourcesConfig(dataDir: string, input: Partial<PrivateSourcesConfig>): PrivateSourcesConfig {
   const fallback = defaultPrivateSourcesConfig(dataDir);
-  const wechat = input.wechat ?? {};
-  const x = input.x ?? {};
+  const wechat: Partial<PrivateSourcesConfig["wechat"]> = input.wechat ?? {};
+  const x: Partial<PrivateSourcesConfig["x"]> = input.x ?? {};
   const config: PrivateSourcesConfig = {
     wechat: {
       enabled: wechat.enabled ?? fallback.wechat.enabled,

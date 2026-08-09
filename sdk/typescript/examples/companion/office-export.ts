@@ -100,7 +100,7 @@ async function createPptx(name: string, blocks: OfficeExportBlock[]): Promise<Bu
     slide.addShape(pptx.ShapeType.line, { x: .72, y: .58, w: .46, h: 0, line: { color: "B33F72", width: 3 } });
     slide.addText(block.title || `第 ${index + 1} 页`, { x: .78, y: .9, w: 11.25, h: .72, fontSize: 26, bold: true, color: "20221F", margin: .02, fit: "shrink" });
     const lines = block.text.split(/\n+/).map((line) => line.trim()).filter(Boolean).slice(0, 12);
-    slide.addText(lines.map((line) => ({ text: line.replace(/^[-*•]\s*/, ""), options: { bullet: { indent: 16 }, breakLine: true } })), { x: .92, y: 1.92, w: 11.0, h: 4.78, fontSize: block.text.length > 620 ? 14 : 18, color: "4E504A", breakLine: false, margin: .04, paraSpaceAfterPt: 12, valign: "top", fit: "shrink" });
+    slide.addText(lines.map((line) => ({ text: line.replace(/^[-*•]\s*/, ""), options: { bullet: { indent: 16 }, breakLine: true } })), { x: .92, y: 1.92, w: 11.0, h: 4.78, fontSize: block.text.length > 620 ? 14 : 18, color: "4E504A", breakLine: false, margin: .04, paraSpaceAfter: 12, valign: "top", fit: "shrink" });
     slide.addText(String(index + 1).padStart(2, "0"), { x: 11.7, y: 7.04, w: .6, h: .2, fontSize: 9, color: "85887F", align: "right", margin: 0 });
   });
   return Buffer.from(await pptx.write({ outputType: "nodebuffer", compression: true }) as Buffer);

@@ -5,6 +5,7 @@ const MAX_STORED_DOCUMENTS = 6;
 const MAX_VERSIONS = 8;
 const MAX_TRASH_DOCUMENTS = 30;
 const JOB_POLL_INTERVAL = 1400;
+const AUTO_CHECKPOINT_INTERVAL = 5 * 60 * 1000;
 
 const ICON_PATHS = {
   ...window.ClownfishIcons.paths,
@@ -42,6 +43,11 @@ function displayDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "时间未知";
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function displayFileSize(bytes) {
+  const value = Math.max(0, Number(bytes || 0));
+  return value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(value / 1024))} KB`;
 }
 
 function formatLabel(kind) {
@@ -101,6 +107,15 @@ function safeDocument(item) {
     desktopSessionId: String(item?.desktopSessionId || "").slice(0, 80),
     desktopContentHash: String(item?.desktopContentHash || "").slice(0, 64),
     processing: safeProcessing(item?.processing),
+    fileRecordId: String(item?.fileRecordId || "").slice(0, 80),
+    caretPosition: Math.max(0, Number(item?.caretPosition || 0)),
+    lastCheckpointAt: String(item?.lastCheckpointAt || ""),
+    sourceVersions: Array.isArray(item?.sourceVersions) ? item.sourceVersions.slice(0, 40).map((version) => ({
+      id: String(version?.id || "").slice(0, 80),
+      createdAt: String(version?.createdAt || ""),
+      reason: String(version?.reason || "external-change").slice(0, 30),
+      byteLength: Math.max(0, Number(version?.byteLength || 0)),
+    })).filter((version) => version.id) : [],
     blocks,
     versions,
   };
@@ -112,9 +127,9 @@ function loadState() {
     const documents = Array.isArray(parsed?.documents) ? parsed.documents.map(safeDocument) : [];
     const trash = Array.isArray(parsed?.trash) ? parsed.trash.slice(0, MAX_TRASH_DOCUMENTS).map((item) => ({ ...safeDocument(item), deletedAt: String(item?.deletedAt || item?.updatedAt || now()) })) : [];
     const selectedId = documents.some((document) => document.id === parsed?.selectedId) ? parsed.selectedId : documents[0]?.id || null;
-    return { documents, trash, selectedId, saveTimer: 0 };
+    return { documents, trash, selectedId, saveTimer: 0, revision: 0, saveQueue: Promise.resolve(), saveConflict: false };
   } catch {
-    return { documents: [], trash: [], selectedId: null, saveTimer: 0 };
+    return { documents: [], trash: [], selectedId: null, saveTimer: 0, revision: 0, saveQueue: Promise.resolve(), saveConflict: false };
   }
 }
 
@@ -144,7 +159,7 @@ function persistState(message = "已保存到本机") {
   removedDocuments.forEach((item) => void window.ClownfishOfficeSource.remove(item.id).catch(() => {}));
   try {
     writeStoredState();
-    setSaveState(message);
+    queueRemoteSave(message);
   } catch {
     setSaveState("本机空间不足");
     showToast("本机存储空间不足，请先导出草稿", true);
@@ -159,7 +174,7 @@ function writeStoredState() {
 function persistSelection() {
   try {
     writeStoredState();
-    setSaveState("已打开本机工作副本");
+    queueRemoteSave("已打开本机工作副本");
   } catch {
     setSaveState("无法保存当前选择");
   }
@@ -168,8 +183,71 @@ function persistSelection() {
 
 function scheduleSave() {
   setSaveState("正在保存…", true);
+  maybeCreateAutomaticCheckpoint();
   window.clearTimeout(state.saveTimer);
   state.saveTimer = window.setTimeout(() => persistState(), 420);
+}
+
+function queueRemoteSave(message) {
+  const snapshot = {
+    documents: structuredClone(state.documents),
+    trash: structuredClone(state.trash),
+    selectedId: state.selectedId,
+  };
+  state.saveQueue = state.saveQueue.catch(() => {}).then(async () => {
+    if (state.saveConflict) return;
+    try {
+      const response = await api("/api/files/workbench", {
+        method: "PUT",
+        body: JSON.stringify({ expectedRevision: state.revision, ...snapshot }),
+      });
+      state.revision = response.state.revision;
+      setSaveState(message);
+    } catch (error) {
+      if (error.status === 409) {
+        state.saveConflict = true;
+        setSaveState("另一窗口有新修改");
+        showToast("另一窗口已经修改了文件。当前内容仍保留在本机，请刷新页面核对后再继续。", true);
+        return;
+      }
+      setSaveState("本机备份已保存");
+    }
+  });
+}
+
+function maybeCreateAutomaticCheckpoint() {
+  const current = currentDocument();
+  if (!current) return;
+  const previous = new Date(current.lastCheckpointAt || current.createdAt).getTime();
+  if (Date.now() - previous < AUTO_CHECKPOINT_INTERVAL) return;
+  current.versions.unshift({
+    id: uid("version"),
+    name: "自动保存",
+    createdAt: now(),
+    blocks: current.blocks.map((block) => ({ ...block })),
+  });
+  current.versions = current.versions.slice(0, MAX_VERSIONS);
+  current.lastCheckpointAt = now();
+}
+
+async function hydrateWorkbenchState() {
+  try {
+    const response = await api("/api/files/workbench");
+    const remote = response.state;
+    state.revision = Number(remote.revision || 0);
+    if (Array.isArray(remote.documents) && (remote.documents.length || remote.trash?.length)) {
+      state.documents = remote.documents.map(safeDocument);
+      state.trash = Array.isArray(remote.trash) ? remote.trash.map((item) => ({ ...safeDocument(item), deletedAt: String(item?.deletedAt || item?.updatedAt || now()) })) : [];
+      state.selectedId = state.documents.some((item) => item.id === remote.selectedId) ? remote.selectedId : state.documents[0]?.id || null;
+      state.view = currentDocument()?.sourceSize ? "source" : "edit";
+      writeStoredState();
+      render();
+      return;
+    }
+    if (state.documents.length || state.trash.length) queueRemoteSave("已保存到本机");
+  } catch {
+    setSaveState("使用本机备份");
+  }
 }
 
 function showToast(message, error = false) {
@@ -269,7 +347,12 @@ function permanentlyDeleteTrashDocument(id) {
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `请求失败（${response.status}）`);
+  if (!response.ok) {
+    const error = new Error(body.error || `请求失败（${response.status}）`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
   return body;
 }
 
@@ -374,17 +457,55 @@ function renderBlocks(current) {
 
 function renderVersions(current) {
   const root = window.document.querySelector("#versionList");
-  document.querySelector("#versionCount").textContent = `${current?.versions.length || 0} 个`;
-  if (!current || !current.versions.length) {
+  const sourceVersions = current?.sourceVersions || [];
+  document.querySelector("#versionCount").textContent = `${(current?.versions.length || 0) + sourceVersions.length} 个`;
+  if (!current || (!current.versions.length && !sourceVersions.length)) {
     root.innerHTML = '<p class="version-empty">保存版本后，可以比较变化或恢复到之前的内容。</p>';
     return;
   }
-  root.innerHTML = current.versions.map((version) => `
+  const workbenchRows = current.versions.map((version) => `
     <div class="version-row">
       <span class="version-row-copy"><strong>${escapeHtml(version.name)}</strong><small>${displayDate(version.createdAt)}</small></span>
       <button type="button" data-compare-version="${escapeHtml(version.id)}">比较</button>
       <button type="button" data-restore-version="${escapeHtml(version.id)}">恢复</button>
     </div>`).join("");
+  const reasonLabel = { imported: "导入原文件", "external-change": "桌面修改", restored: "恢复的原文件" };
+  const sourceRows = sourceVersions.map((version) => `
+    <div class="version-row source-version-row">
+      <span class="version-row-copy"><strong>${reasonLabel[version.reason] || "原文件版本"}</strong><small>${displayDate(version.createdAt)} · ${displayFileSize(version.byteLength)}</small></span>
+      <button type="button" data-restore-source-version="${escapeHtml(version.id)}">恢复原文件</button>
+    </div>`).join("");
+  root.innerHTML = `${workbenchRows}${sourceRows}`;
+}
+
+async function loadSourceHistory(current = currentDocument()) {
+  if (!current?.desktopSessionId) return;
+  try {
+    const response = await api(`/api/files/session/history?id=${encodeURIComponent(current.desktopSessionId)}`);
+    current.sourceVersions = response.versions || [];
+    writeStoredState();
+    renderVersions(current);
+  } catch {
+    // Draft history remains available when the source history cannot be read.
+  }
+}
+
+async function restoreSourceVersion(versionId) {
+  const current = currentDocument();
+  if (!current?.desktopSessionId || !versionId) return;
+  if (!window.confirm("恢复这个原文件版本？当前原文件会先保留在历史记录中。")) return;
+  setSaveState("正在恢复原文件版本…", true);
+  try {
+    await api("/api/files/session/restore", {
+      method: "POST",
+      body: JSON.stringify({ id: current.desktopSessionId, versionId, expectedHash: current.desktopContentHash }),
+    });
+    await refreshDesktopFile();
+    await loadSourceHistory(current);
+  } catch (error) {
+    setSaveState("未恢复");
+    showToast(error instanceof Error ? error.message : "原文件版本恢复失败", true);
+  }
 }
 
 function setDocumentView(view) {
@@ -558,8 +679,10 @@ async function importFile(file, handle = null) {
       sourceStored: false,
       desktopSessionId: extraction && response.session?.id,
       desktopContentHash: response.session?.contentHash,
+      fileRecordId: response.fileRecord?.id,
       blocks: textToBlocks(extraction.text, extraction.kind),
-      versions: [],
+      versions: [{ id: uid("version"), name: "导入原稿", createdAt, blocks: textToBlocks(extraction.text, extraction.kind).map((block) => ({ ...block })) }],
+      lastCheckpointAt: createdAt,
     });
     try {
       importedDocument.sourceStored = await window.ClownfishOfficeSource.save(importedDocument.id, file, handle);
@@ -573,6 +696,7 @@ async function importFile(file, handle = null) {
     state.documents.unshift(importedDocument);
     state.selectedId = importedDocument.id;
     state.view = "source";
+    await loadSourceHistory(importedDocument);
     persistState(extraction.truncated ? "已读取可处理的前半部分" : "文件已读取");
     render();
     showToast(extraction.truncated ? "文件较长，已保留原文件和可处理的前半部分" : importedDocument.sourceStored ? "文件已打开，原始版本保留在本机" : "文件已打开，工作副本不会覆盖原文件");
@@ -623,6 +747,7 @@ async function refreshDesktopFile() {
       blocks: current.blocks.map((block) => ({ ...block })),
     });
     current.versions = current.versions.slice(0, MAX_VERSIONS);
+    await loadSourceHistory(current);
     state.view = "source";
     persistState("桌面修改已载入");
     render();
@@ -1003,6 +1128,7 @@ function bindEvents() {
     const current = currentDocument();
     if (current && event.target.matches("[data-continuous-editor]")) {
       current.blocks = [safeBlock({ id: current.blocks[0]?.id || uid("block"), title: current.kind === "md" ? "Markdown" : "正文", text: event.target.value }, 0, current.kind)];
+      current.caretPosition = event.target.selectionStart || 0;
       autoResizeContinuous(event.target);
       scheduleSave();
       return;
@@ -1031,8 +1157,10 @@ function bindEvents() {
   document.querySelector("#versionList").addEventListener("click", (event) => {
     const compare = event.target.closest("[data-compare-version]");
     const restore = event.target.closest("[data-restore-version]");
+    const restoreSource = event.target.closest("[data-restore-source-version]");
     if (compare) compareVersion(compare.dataset.compareVersion);
     if (restore) restoreVersion(restore.dataset.restoreVersion);
+    if (restoreSource) void restoreSourceVersion(restoreSource.dataset.restoreSourceVersion);
   });
   document.querySelector("#closeDiff").addEventListener("click", () => { document.querySelector("#diffPanel").hidden = true; });
   document.querySelector("#trashFiles").addEventListener("click", (event) => {
@@ -1072,4 +1200,4 @@ function bindEvents() {
 hydrateIcons();
 bindEvents();
 render();
-void importArtifactFromQuery();
+void hydrateWorkbenchState().then(() => importArtifactFromQuery());

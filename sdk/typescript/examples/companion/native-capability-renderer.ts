@@ -76,7 +76,8 @@ export async function writeNativeCapabilityArtifact(input: {
     return await finalizeNativeArtifact({ format: "json", file, summary: payload.summary }, payload);
   }
 
-  const format = input.requestedFormat === "txt" ? "txt" : input.requestedFormat === "doc" ? "doc" : "md";
+  // doc/pdf/xlsx 已在上面的 Office 分支处理并返回，这里只剩 txt/md/pptx。
+  const format = input.requestedFormat === "txt" ? "txt" : "md";
   const extension = format === "txt" ? "txt" : "md";
   const file = `${input.fileBase}.${extension}`;
   writeFileSync(file, renderMarkdown(payload), "utf8");
@@ -325,13 +326,13 @@ function renderResearch(payload: NativeCapabilityPayload): string {
   const data = payload.data;
   const sources = records(data.sources);
   const findings = records(data.findings);
-  const anchors = sources.flatMap((source) => records(source.anchors).map((anchor) => ({ ...anchor, source })));
+  const anchors = sources.flatMap((source) => records(source.anchors).map((anchor) => ({ anchor, source })));
   const chart = svgChart("结论置信度", findings.map((item) => text(item.claim).slice(0, 12)), findings.map((item) => Math.round(number(item.confidence) * 100)), "bar");
   return `${heroBlock("研究问题", text(data.question), ["分阶段研究", "来源分级", "结论核验"])}
     <section class="panel"><h2>研究路径</h2>${ordered(strings(data.plan))}</section>
     <section class="panel"><div class="section-head"><h2>关键结论</h2><span>${findings.length} 条</span></div><div class="card-grid">${findings.map((item) => `<article class="finding"><span class="status ${escapeHtml(text(item.status))}">${statusLabel(text(item.status))}</span><h3>${escapeHtml(text(item.claim))}</h3><p>置信度 ${Math.round(number(item.confidence) * 100)}% · 来源 ${strings(item.evidenceIds).map(escapeHtml).join("、") || "待补充"}</p><p class="anchor-links">${strings(item.anchorIds).map((id) => `<a href="#evidence-${escapeAttribute(id)}">${escapeHtml(id)}</a>`).join(" ") || "没有可定位证据"}</p></article>`).join("")}</div></section>
     <section class="panel"><div class="section-head"><h2>来源台账</h2><span>${sources.length} 个来源</span></div><div class="table-wrap"><table><thead><tr><th>来源</th><th>等级</th><th>评分</th><th>核验时间</th></tr></thead><tbody>${sources.map((source) => `<tr><td>${sourceLink(source)}</td><td>Tier ${escapeHtml(String(source.tier || "-"))}</td><td>${escapeHtml(String(source.score ?? "-"))}</td><td>${escapeHtml(text(source.checkedAt) || "待确认")}</td></tr>`).join("")}</tbody></table></div></section>
-    <section class="panel"><div class="section-head"><h2>证据定位</h2><span>${anchors.length} 个锚点</span></div>${anchors.map(({ source, ...anchor }) => `<article class="evidence-anchor" id="evidence-${escapeAttribute(text(anchor.id))}"><h3>${escapeHtml(text(anchor.id))} · ${escapeHtml(text(source.title) || text(source.publisher))}</h3><p>${escapeHtml(text(anchor.page) || text(anchor.span))}</p><blockquote>${escapeHtml(text(anchor.quote))}</blockquote><small>SHA-256 ${escapeHtml(text(anchor.quoteHash).slice(0, 16))}…</small></article>`).join("") || "<p>暂无可定位证据，相关结论不能标为已核验。</p>"}</section>
+    <section class="panel"><div class="section-head"><h2>证据定位</h2><span>${anchors.length} 个锚点</span></div>${anchors.map(({ source, anchor }) => `<article class="evidence-anchor" id="evidence-${escapeAttribute(text(anchor.id))}"><h3>${escapeHtml(text(anchor.id))} · ${escapeHtml(text(source.title) || text(source.publisher))}</h3><p>${escapeHtml(text(anchor.page) || text(anchor.span))}</p><blockquote>${escapeHtml(text(anchor.quote))}</blockquote><small>SHA-256 ${escapeHtml(text(anchor.quoteHash).slice(0, 16))}…</small></article>`).join("") || "<p>暂无可定位证据，相关结论不能标为已核验。</p>"}</section>
     ${textBlock("结论", text(data.conclusion))}${chart}${listBlock("限制与待确认", strings(data.limitations))}${listBlock("下一步", strings(data.nextSteps))}`;
 }
 

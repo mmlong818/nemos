@@ -10,10 +10,10 @@ import {
 
 test("explicit user actions use the audited write-tool gateway without a second prompt", async () => {
   const events: AgentRunEvent[] = [];
-  let started: AgentRunInput | null = null;
+  const startedRuns: AgentRunInput[] = [];
   let executions = 0;
   const observer: AgentRunObserver = {
-    onStart: (input) => { started = input; },
+    onStart: (input) => { startedRuns.push(input); },
     onEvent: (_runId, event) => { events.push(event); },
   };
   const gateway = new AgentUserActionGateway(observer);
@@ -34,6 +34,7 @@ test("explicit user actions use the audited write-tool gateway without a second 
   assert.equal(result.value.deletedId, "task-1");
   assert.match(result.runId, /^user-action-/);
   assert.equal(result.sessionId, "companion:management");
+  const started = startedRuns[0];
   assert.equal(started?.runId, result.runId);
   assert.equal(started?.sessionId, result.sessionId);
   assert.equal(started?.metadata?.actor, "user");

@@ -23,6 +23,7 @@ import {
   type LLMConfig,
 } from "../../src/index.js";
 import type { ChatAgentContext, ChatFn, ChatStreamFn } from "./engine.js";
+import type { CapabilityStreamCb } from "./capabilities.js";
 import {
   companionModelProviderPreset,
   defaultCompanionModelConnection,
@@ -77,7 +78,7 @@ export interface ResolvedLLM {
   resumeAgentRun: ((
     run: AgentStoredRun,
     checkpoint: AgentRunCheckpoint,
-    cb?: StreamCb,
+    cb?: CapabilityStreamCb,
   ) => Promise<string>) | null;
   label: string;
   live: boolean;
