@@ -427,9 +427,36 @@ button, a, label { touch-action: manipulation; }
   background: var(--office-sheet);
   box-shadow: 0 14px 34px rgba(48, 39, 42, .11);
 }
-.surface-ruler { height: 18px; display: flex; justify-content: space-between; margin: -10px 0 22px; border-bottom: 1px solid #ece6dd; }
-.surface-ruler span { width: 1px; height: 6px; align-self: end; background: var(--office-line-strong); }
 .block-list { display: grid; gap: 20px; }
+.continuous-editor-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin: -2px 0 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--office-line);
+}
+.continuous-editor-heading > div { display: grid; gap: 4px; }
+.continuous-editor-heading strong { font-size: 13px; letter-spacing: .01em; }
+.continuous-editor-heading span { color: var(--office-subtle); font-size: 10.5px; line-height: 1.45; letter-spacing: .012em; }
+.continuous-editor {
+  width: 100%;
+  min-height: 720px;
+  display: block;
+  resize: none;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--office-ink);
+  background: transparent;
+  font: 15.5px/1.82 "Noto Serif SC", "Songti SC", SimSun, serif;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+.continuous-editor:focus { caret-color: var(--office-accent); }
 .content-block {
   position: relative;
   display: grid;

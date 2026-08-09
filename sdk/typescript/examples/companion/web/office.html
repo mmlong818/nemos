@@ -93,7 +93,7 @@
 
             <div class="document-view-bar" role="tablist" aria-label="文件视图">
               <button class="is-current" type="button" role="tab" aria-selected="true" data-document-view="source">原文件</button>
-              <button type="button" role="tab" aria-selected="false" data-document-view="edit">可编辑内容</button>
+              <button id="editViewTab" type="button" role="tab" aria-selected="false" data-document-view="edit">编辑文字</button>
               <button type="button" role="tab" aria-selected="false" data-document-view="result" id="resultViewTab" hidden>处理结果</button>
               <span id="sourceState">原文件保留在本机</span>
             </div>
@@ -101,7 +101,6 @@
             <div class="source-preview" id="sourcePreview" role="tabpanel" aria-label="原文件预览"></div>
 
             <div class="document-surface" id="documentSurface" role="tabpanel" aria-label="可编辑内容" hidden>
-              <div class="surface-ruler" aria-hidden="true"><span></span><span></span><span></span></div>
               <div class="block-list" id="blockList"></div>
               <button class="add-block" id="addBlock" type="button" data-office-icon="plus">添加内容块</button>
             </div>

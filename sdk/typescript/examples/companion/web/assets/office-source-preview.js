@@ -158,6 +158,11 @@
         inCode = !inCode;
       } else if (inCode) output.push(`${escapeHtml(line)}\n`);
       else if (!line.trim()) output.push('<span class="markdown-gap" aria-hidden="true"></span>');
+      else if (/^\s*#{1,6}\s+/.test(line)) {
+        const match = line.match(/^\s*(#{1,6})\s+(.+)$/);
+        const level = Math.min(6, Math.max(2, match?.[1]?.length || 2));
+        output.push(`<h${level}>${inlineMarkdown(match?.[2] || line)}</h${level}>`);
+      }
       else if (/^\s*[-*+]\s+/.test(line)) output.push(`<p class="markdown-list">${inlineMarkdown(line.replace(/^\s*[-*+]\s+/, ""))}</p>`);
       else if (/^\s*\d+[.)]\s+/.test(line)) output.push(`<p class="markdown-list is-ordered">${inlineMarkdown(line.replace(/^\s*\d+[.)]\s+/, ""))}</p>`);
       else if (/^\s*>\s?/.test(line)) output.push(`<blockquote>${inlineMarkdown(line.replace(/^\s*>\s?/, ""))}</blockquote>`);
@@ -170,7 +175,7 @@
   function renderTextDocument(current, record, sourceUrl) {
     const isMarkdown = current.kind === "md";
     const content = current.blocks.map((block) => isMarkdown
-      ? `<section>${block.title && !/^段落\s+\d+$/.test(block.title) ? `<h2>${escapeHtml(block.title)}</h2>` : ""}${markdownBody(block.text)}</section>`
+      ? `<section>${block.title && !/^(段落\s+\d+|Markdown)$/.test(block.title) ? `<h2>${escapeHtml(block.title)}</h2>` : ""}${markdownBody(block.text)}</section>`
       : `<p>${escapeHtml(block.text)}</p>`).join("");
     return `<section class="source-preview-shell is-text">${sourceHeading(current, record, sourceUrl)}<article class="text-source-preview${isMarkdown ? " is-markdown" : ""}">${content}</article></section>`;
   }
