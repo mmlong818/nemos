@@ -4,8 +4,17 @@ import test from "node:test";
 import {
   dependencyArtifactBlock,
   expertAssignmentPrompt,
+  expertContract,
   planExpertTeam,
 } from "../../examples/companion/expert-contracts.js";
+import { EXPERT_CORES } from "../../examples/companion/experts.js";
+
+test("every registered expert has an executable contract", () => {
+  assert.equal(EXPERT_CORES.length, 26);
+  for (const expert of EXPERT_CORES) {
+    assert.ok(expertContract(expert.id), `${expert.id} is missing an execution contract`);
+  }
+});
 
 test("plans a capability-specific expert team and changes it for task signals", () => {
   const ordinary = planExpertTeam({
@@ -40,6 +49,25 @@ test("expert assignments include execution, deliverable, and review contracts", 
   assert.match(prompt, /复核标准/);
   assert.match(prompt, /工具不可用时明确记录缺口/);
   assert.doesNotMatch(prompt, /来源仓库|复制的提示词|第三方专家/);
+});
+
+test("covers document, presentation, data, coordination, automation, security, contract, and visual work", () => {
+  const cases: Array<[string, string, string]> = [
+    ["document-draft", "整理一份可以发送的正式 Word 报告", "document_editor"],
+    ["presentation-builder", "制作一套面向投资人的产品演示 PPT", "presentation_design"],
+    ["market-briefing", "检查 Excel 数据口径、指标和趋势图", "data_analysis"],
+    ["meeting-minutes", "整理会议决定、负责人和行动项", "project_coordination"],
+    ["workflow-builder", "把重复工作改成有审批和失败重试的自动化流程", "workflow_automation"],
+    ["project-development", "检查权限、密钥泄露和发布安全", "security_compliance"],
+    ["business-deal", "检查合作协议的付款、验收和知识产权条款", "contract_risk"],
+    ["image-prompt-reconstruction", "分析图片构图、光线和材质并反推提示词", "visual_analysis"],
+    ["research-brief", "不要只看简介，要核验来源和仓库实际实现", "research_verification"],
+  ];
+
+  for (const [capabilityId, instruction, personaId] of cases) {
+    const plan = planExpertTeam({ capabilityId, instruction });
+    assert.ok(plan.assignments.some((item) => item.personaId === personaId), `${capabilityId} should include ${personaId}`);
+  }
 });
 
 test("passes both summaries and full expert artifacts to dependent work", () => {
