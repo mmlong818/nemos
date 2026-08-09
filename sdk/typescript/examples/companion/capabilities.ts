@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { ServerResponse } from "node:http";
 import type { AgentExtensionManifest } from "../../src/index.js";
 import type { CapabilityToolRegistry, CapabilityToolSummary } from "./capability-tools.js";
@@ -30,7 +30,7 @@ import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
 import { exportOfficeDocument } from "./office-export.js";
 import { ArtifactWorkspaceStore, type ArtifactWorkspaceState } from "./artifact-workspace.js";
 import { assessProfessionalArtifact, type ProfessionalArtifactReceipt } from "./professional-artifact-gate.js";
-import { admitGeneratedAbilitySpec, type CapabilityAdmissionReceipt } from "./capability-admission.js";
+import { admitGeneratedAbilitySpec, admitInstalledSkillContent, type CapabilityAdmissionReceipt } from "./capability-admission.js";
 
 const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -317,6 +317,7 @@ export interface SkillAuditItem {
   updatedAt?: string;
   skillFile: string;
   sourceUrl?: string;
+  canUpdate?: boolean;
   archived: boolean;
   pinned: boolean;
   disabled: boolean;
@@ -770,6 +771,11 @@ export class CapabilityRuntime {
     defaultFormat?: ArtifactFormat;
   }): Capability {
     const installed = loadInstallableSkill(input);
+    const admission = admitInstalledSkillContent(installed.content);
+    if (!admission.passed) {
+      const failed = admission.outcomes.filter((item) => !item.passed).map((item) => item.detail).join("；");
+      throw new Error(`安装能力未通过准入检查：${failed}`);
+    }
     const now = new Date().toISOString();
     const name = text(input.name || installed.name, "安装的 Skill", 40);
     const description = text(input.description || installed.description, "从外部安装的可复用 Skill", 320);
@@ -779,7 +785,7 @@ export class CapabilityRuntime {
     const prompt = [
       "This is an installed reusable skill. Follow the installed SKILL.md content as the operating procedure.",
       "Use it as a backend capability: execute the work, preserve constraints, mark unknowns, and save a complete artifact.",
-      installed.sourceUrl ? `Original source URL: ${installed.sourceUrl}` : installed.sourcePath ? `Original source path: ${installed.sourcePath}` : "Original source: pasted text",
+      "The source procedure has been normalized into this local capability. Do not expose installation provenance in user-facing output.",
     ].join("\n");
     if (existing) {
       existing.name = name;
@@ -787,8 +793,9 @@ export class CapabilityRuntime {
       existing.defaultFormat = normalizeFormat(input.defaultFormat || existing.defaultFormat);
       existing.prompt = prompt;
       existing.updatedAt = now;
+      existing.admission = admission;
       delete existing.archivedAt;
-      this.writeInstalledSkillFile(existing, installed, input.sourceUrl || input.sourcePath || (input.sourceText ? "pasted text" : ""));
+      this.writeInstalledSkillFile(existing, installed);
       this.saveAbilities();
       return existing;
     }
@@ -803,10 +810,11 @@ export class CapabilityRuntime {
       learnedKey: key,
       createdAt: now,
       updatedAt: now,
+      admission,
       prompt,
     };
     this.generatedAbilities.push(ability);
-    this.writeInstalledSkillFile(ability, installed, input.sourceUrl || input.sourcePath || (input.sourceText ? "pasted text" : ""));
+    this.writeInstalledSkillFile(ability, installed);
     this.saveAbilities();
     return ability;
   }
@@ -1973,7 +1981,7 @@ ${task.instruction}`,
     }
   }
 
-  private writeInstalledSkillFile(ability: Capability, installed: InstalledSkillContent, sourceLabel: string): void {
+  private writeInstalledSkillFile(ability: Capability, installed: InstalledSkillContent): void {
     const dir = this.skillDirPath(ability);
     mkdirSync(dir, { recursive: true });
     const lifecycle = this.snapshotSkillVersion(dir);
@@ -1986,16 +1994,12 @@ ${task.instruction}`,
       "origin: installed",
       `persona: ${ability.ownerPersonaId || "shared"}`,
       `capability_id: ${ability.id}`,
-      installed.sourcePath ? `source_path: ${yamlString(installed.sourcePath)}` : "",
-      installed.sourceUrl ? `source_url: ${yamlString(installed.sourceUrl)}` : "",
       `updated_at: ${now}`,
       "---",
       "",
       `# ${ability.name}`,
       "",
-      "This capability is available in 小丑鱼. The original instructions are preserved below and are used as the reusable operating procedure.",
-      "",
-      sourceLabel ? `Source: ${sourceLabel.slice(0, 500)}` : "",
+      "This capability is available in 小丑鱼. Its local operating procedure is preserved below.",
       "",
       "## Installed Skill Content",
       "",
@@ -2776,12 +2780,10 @@ function parseSkillMetadata(content: string): { name?: string; description?: str
 
 function skillSourceUrl(file: string): string | undefined {
   try {
-    if (!existsSync(file)) return undefined;
-    const raw = readFileSync(file, "utf8").slice(0, 3000);
-    const front = raw.match(/^---\s*\n([\s\S]*?)\n---/);
-    const block = front?.[1] || raw;
-    const m = block.match(/^source_url:\s*(.+)$/m);
-    return m?.[1]?.trim().replace(/^["']|["']$/g, "") || undefined;
+    const manifest = readJson<{ source?: { type?: string; location?: string } }>(join(dirname(file), "manifest.json"), {});
+    return manifest.source?.type === "url" && /^https?:\/\//i.test(manifest.source.location || "")
+      ? manifest.source.location
+      : undefined;
   } catch {
     return undefined;
   }

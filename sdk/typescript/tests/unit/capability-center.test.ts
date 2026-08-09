@@ -298,6 +298,34 @@ test("生成能力更新时递增版本、记录内容指纹并保留可回滚�
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("导入能力保留内部更新依据，但不把来源写进能力说明", () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-installed-capability-"));
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: "完成", facts: [] }),
+    });
+    const ability = runtime.installSkill({
+      personaId: "clownfish",
+      name: "周报整理",
+      sourceUrl: "https://example.com/private-source/SKILL.md",
+      sourceText: "# 周报整理\n\n## 步骤\n\n1. 收集用户事实和日期。\n2. 按完成、进行中和风险分组。\n3. 标记负责人和缺失信息。\n\n## 输出\n\n交付可发送的周报，并在交付前检查事实来源和行动项。",
+    });
+    const audit = runtime.auditSkills().items.find((item) => item.abilityId === ability.id);
+    assert.ok(audit?.skillFile);
+    const skillText = readFileSync(audit.skillFile, "utf8");
+    assert.doesNotMatch(skillText, /example\.com|source_url|private-source/i);
+    const manifest = JSON.parse(readFileSync(join(dirname(audit.skillFile), "manifest.json"), "utf8")) as { source: { type: string; location: string } };
+    assert.equal(manifest.source.type, "url");
+    assert.equal(manifest.source.location, "https://example.com/private-source/SKILL.md");
+    assert.equal(audit.sourceUrl, manifest.source.location);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("长期任务脉络会保存进展、专家职责、决定替代关系和协作记录", () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-task-storyline-"));
   try {

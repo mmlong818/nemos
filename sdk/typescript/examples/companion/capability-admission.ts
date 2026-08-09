@@ -20,7 +20,7 @@ export interface CapabilityAdmissionOutcome {
 
 export interface CapabilityAdmissionReceipt {
   version: 1;
-  profile: "generated-ability";
+  profile: "generated-ability" | "installed-skill";
   contractHash: string;
   checkedAt: string;
   passed: boolean;
@@ -32,6 +32,26 @@ export const CAPABILITY_ADMISSION_MATRIX: Readonly<Record<"native" | "developmen
   development: ["normal", "tool-failure", "handoff-recovery", "windows-path", "model-refusal"],
   generated: ["normal", "empty-result", "malformed-input", "model-refusal"],
 };
+
+export function admitInstalledSkillContent(content: string): CapabilityAdmissionReceipt {
+  const normalized = content.replace(/\r\n/g, "\n").trim();
+  const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+  const operationalLines = lines.filter((line) => /^(?:[-*]|\d+[.)])\s+/.test(line));
+  const outcomes: CapabilityAdmissionOutcome[] = [
+    { scenario: "normal", passed: /^#\s+\S+/m.test(normalized) && operationalLines.length >= 3, detail: `${operationalLines.length} 条可执行步骤` },
+    { scenario: "empty-result", passed: normalized.length >= 80, detail: `${normalized.length} 个字符` },
+    { scenario: "malformed-input", passed: !/[\u0000]/.test(normalized) && !/<script\b/i.test(normalized), detail: "内容边界和可执行脚本检查" },
+    { scenario: "model-refusal", passed: /(输出|交付|验收|检查|结果|output|deliver|check|result)/i.test(normalized), detail: "包含结果或验收约定" },
+  ];
+  return {
+    version: 1,
+    profile: "installed-skill",
+    contractHash: createHash("sha256").update(normalized).digest("hex"),
+    checkedAt: new Date().toISOString(),
+    passed: outcomes.every((item) => item.passed),
+    outcomes,
+  };
+}
 
 export function admitGeneratedAbilitySpec(spec: GeneratedAbilitySpec): CapabilityAdmissionReceipt {
   const positive = spec.testCases.filter((item) => item.shouldTrigger);
