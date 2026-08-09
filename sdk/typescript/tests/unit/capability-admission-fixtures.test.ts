@@ -7,6 +7,8 @@ import test from "node:test";
 import { parseNativeCapabilityPayload } from "../../examples/companion/native-capability-contracts.js";
 import { validateDevelopmentWorkspace } from "../../examples/companion/pi-development.js";
 import { assessProfessionalArtifact } from "../../examples/companion/professional-artifact-gate.js";
+import { admitGeneratedAbilitySpec, CAPABILITY_ADMISSION_MATRIX } from "../../examples/companion/capability-admission.js";
+import type { GeneratedAbilitySpec } from "../../examples/companion/native-capability-contracts.js";
 
 const validResearch = JSON.stringify({
   kind: "research-brief",
@@ -58,4 +60,44 @@ test("任何必需工具或渲染检查失败都不能被平均成通过", () =>
   });
   assert.notEqual(receipt.level, "validated");
   assert.match(receipt.failureReasons.join("\n"), /测试/);
+});
+
+const generatedSpec: GeneratedAbilitySpec = {
+  name: "整理周报",
+  description: "把团队更新整理为可发送的项目周报。",
+  defaultFormat: "md",
+  prompt: "根据用户提供的事实整理周报；信息不足时明确列出缺口，不得补写未经确认的进展。",
+  triggerExamples: ["整理本周项目周报", "把这些进展做成周报", "生成团队周报"],
+  nonTriggerExamples: ["查询天气", "写一篇新闻"],
+  checks: ["事实可追溯", "行动项有负责人或标记待定"],
+  testCases: [
+    { request: "整理本周项目周报", shouldTrigger: true, reason: "明确要求周报" },
+    { request: "把这些进展做成周报", shouldTrigger: true, reason: "目标输出是周报" },
+    { request: "生成团队周报", shouldTrigger: true, reason: "直接匹配能力" },
+    { request: "查询天气", shouldTrigger: false, reason: "不属于项目整理" },
+    { request: "写一篇新闻", shouldTrigger: false, reason: "不是周报任务" },
+  ],
+};
+
+test("完整准入矩阵覆盖蓝图规定的八类失败路径", () => {
+  const covered = new Set(Object.values(CAPABILITY_ADMISSION_MATRIX).flat());
+  assert.deepEqual(covered, new Set([
+    "normal", "empty-result", "malformed-input", "tool-failure", "handoff-recovery",
+    "windows-path", "damaged-format", "model-refusal",
+  ]));
+});
+
+test("生成能力每次写入前都生成绑定合同指纹的准入回执", () => {
+  const receipt = admitGeneratedAbilitySpec(generatedSpec);
+  assert.equal(receipt.passed, true);
+  assert.match(receipt.contractHash, /^[a-f0-9]{64}$/);
+  assert.equal(receipt.outcomes.length, CAPABILITY_ADMISSION_MATRIX.generated.length);
+});
+
+test("触发边界冲突会阻止生成能力准入", () => {
+  const invalid = structuredClone(generatedSpec);
+  invalid.nonTriggerExamples[0] = invalid.triggerExamples[0]!;
+  const receipt = admitGeneratedAbilitySpec(invalid);
+  assert.equal(receipt.passed, false);
+  assert.match(receipt.outcomes.find((item) => item.scenario === "malformed-input")?.detail || "", /冲突/);
 });

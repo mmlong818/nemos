@@ -35,13 +35,38 @@ test("带结果参数的办公文件地址可以打开，并通过浏览器下�
   assert.doesNotMatch(officeJs, /URL\.createObjectURL\(blob\)/);
 });
 
-test("工作台真实读取六类文件并明确保护原文件", () => {
+test("工作台真实读取六类文件并默认保护原文件", () => {
   assert.match(officeHtml, /\.docx,\.pptx,\.xlsx,\.pdf,\.txt,\.md,\.markdown/);
   assert.match(officeJs, /\/api\/files\/extract/);
   assert.match(officeJs, /docx\|pptx\|xlsx\|pdf\|txt\|md\|markdown/);
   assert.match(officeJs, /文件不能超过 8 MB/);
-  assert.match(officeHtml, /原文件不会被覆盖/);
+  assert.match(officeHtml, /不会静默覆盖原文件/);
   assert.match(officeJs, /原文件未改动/);
+});
+
+test("TXT 与 Markdown 可在明确授权后冲突安全地写回原文件", () => {
+  assert.match(officeHtml, /id="writeBackSource"[^>]*>写回原文件/);
+  assert.match(officeJs, /showOpenFilePicker/);
+  assert.match(officeJs, /sourceWritable/);
+  assert.match(officeJs, /ClownfishOfficeSource\.writeText/);
+  assert.match(officeSourceJs, /queryPermission/);
+  assert.match(officeSourceJs, /requestPermission/);
+  assert.match(officeSourceJs, /sourceLastModified/);
+  assert.match(officeSourceJs, /原文件已被其他程序修改/);
+  assert.match(officeSourceJs, /createWritable\(\{ keepExistingData: false \}\)/);
+  assert.match(officeSourceJs, /await writable\.abort\?\.\(\)/);
+});
+
+test("Office 文件可以交给桌面原生编辑器，并把修改重新载入工作台", () => {
+  assert.match(officeHtml, /id="openDesktopEditor"[^>]*>完整编辑/);
+  assert.match(officeHtml, /id="refreshDesktopFile"[^>]*>载入修改/);
+  assert.match(server, /OfficeFileSessionStore/);
+  assert.match(server, /\/api\/files\/session\/open/);
+  assert.match(server, /\/api\/files\/session\/refresh/);
+  assert.match(officeJs, /function openDesktopEditor/);
+  assert.match(officeJs, /function refreshDesktopFile/);
+  assert.match(officeJs, /desktopContentHash/);
+  assert.match(officeJs, /桌面修改已载入/);
 });
 
 test("工作台提供本机自动保存、版本比较与页内处理", () => {

@@ -261,7 +261,7 @@ test("开发项目作为独立能力执行，并保存可继续交接的完整�
     assert.deepEqual(received, { workspacePath: workspace, instruction: "修复页面跳动，并运行测试。", accessMode: "develop" });
     const handoff = runtime.artifactHandoff(notification.artifact.id);
     assert.equal(handoff?.text, "已完成项目修改。\n\n测试通过。");
-    assert.equal(notification.artifact.proof?.level, "validated");
+    assert.equal(notification.artifact.proof?.level, "verified");
     assert.equal(notification.artifact.metadata?.development?.checks[0]?.command, "npm_test");
     assert.equal(notification.artifact.metadata?.development?.proposal?.state, "pending");
     assert.equal(runtime.updateDevelopmentProposalState("devprop-test", "applied")?.metadata?.development?.proposal?.state, "applied");
