@@ -1,6 +1,6 @@
 # 本机运行与运维指南
 
-更新：2026-08-06
+更新：2026-08-10
 
 本文只覆盖当前可运行的 TypeScript SDK 和小丑鱼本机应用，不描述尚未交付的云服务。
 
@@ -41,6 +41,7 @@ agent-jobs.json
 agent-approvals.json
 agent-extensions.json
 capabilities/
+knowledge/
 backups/
 logs/
 ~~~
@@ -78,6 +79,8 @@ GET /api/runtime
 GET /api/llm-config
 GET /api/agent/jobs
 GET /api/agent/runs
+GET /api/knowledge
+GET /api/sources
 GET /api/memory?who=me
 ~~~
 

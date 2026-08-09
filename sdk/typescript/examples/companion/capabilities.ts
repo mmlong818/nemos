@@ -124,6 +124,32 @@ export interface CapabilityTaskExecution {
   updatedAt: string;
 }
 
+export type CapabilityTaskOriginKind = "chat" | "capability" | "direct" | "orchestration" | "automation";
+
+export interface CapabilityTaskOrigin {
+  kind: CapabilityTaskOriginKind;
+  conversationKey?: string;
+  conversationId?: string;
+  parentJobId?: string;
+  jobId?: string;
+}
+
+export interface CapabilityTaskWorkspace {
+  path: string;
+  accessMode: "inspect" | "develop";
+}
+
+export type CapabilitySpaceStatus = "active" | "archived";
+
+export interface CapabilitySpace {
+  id: string;
+  title: string;
+  description: string;
+  status: CapabilitySpaceStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CapabilityTask {
   id: string;
   title: string;
@@ -138,7 +164,28 @@ export interface CapabilityTask {
   lastRunAt?: string;
   lastRunKey?: string;
   execution?: CapabilityTaskExecution;
+  origin?: CapabilityTaskOrigin;
+  workspace?: CapabilityTaskWorkspace;
+  spaceId?: string;
+  knowledgeIds?: string[];
+  oneOff?: boolean;
   storyline: CapabilityTaskStoryline;
+}
+
+interface AdHocTaskInput {
+  title: string;
+  personaId: string;
+  capabilityId: string;
+  instruction: string;
+  format?: ArtifactFormat;
+  trigger?: string;
+  runId?: string;
+  memoryMode?: "default" | "preferences" | "off";
+  workspacePath?: string;
+  accessMode?: "inspect" | "develop";
+  origin?: CapabilityTaskOrigin;
+  continuationTaskId?: string;
+  onProgress?: (message: string, percent: number) => void;
 }
 
 export interface CapabilityArtifact {
@@ -160,6 +207,7 @@ export interface CapabilityArtifact {
     development?: CapabilityDevelopmentReceipt;
     workspace?: { status: "draft" | "review" | "done"; updatedAt: string; versionCount: number };
     presentationVersion?: { state: "validated" | "needs-review"; lastGoodArtifactId?: string };
+    lineage?: { version: number; previousArtifactId?: string };
     professionalReceipt?: ProfessionalArtifactReceipt;
   };
   proof?: CapabilityArtifactProof;
@@ -218,6 +266,7 @@ export interface CapabilityNotification {
 export interface CapabilitySnapshot {
   abilities: Capability[];
   personas: CapabilityPersona[];
+  spaces: CapabilitySpace[];
   tasks: CapabilityTask[];
   artifacts: CapabilityArtifact[];
   tools: CapabilityToolSummary[];
@@ -288,6 +337,7 @@ export interface CapabilityRuntimeOptions {
   notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off") => Promise<{ reply: string; facts: string[] }>;
   personas: () => CapabilityPersona[];
   toolRegistry?: CapabilityToolRegistry;
+  knowledgeContext?: (ids: string[]) => string;
   runDeveloper?: (input: {
     workspacePath: string;
     instruction: string;
@@ -314,6 +364,7 @@ const DEFAULT_DAYS = [1, 2, 3, 4, 5, 6, 7];
 
 export class CapabilityRuntime {
   private readonly abilitiesFile: string;
+  private readonly spacesFile: string;
   private readonly tasksFile: string;
   private readonly artifactsFile: string;
   private readonly intakesFile: string;
@@ -323,6 +374,7 @@ export class CapabilityRuntime {
   private readonly artifactFeedbackFile: string;
   private readonly artifactWorkspaceStore: ArtifactWorkspaceStore;
   private generatedAbilities: Capability[] = [];
+  private spaces: CapabilitySpace[] = [];
   private tasks: CapabilityTask[] = [];
   private artifacts: CapabilityArtifact[] = [];
   private intakes: DemandIntakeReport[] = [];
@@ -331,6 +383,7 @@ export class CapabilityRuntime {
     const root = join(opts.dataDir, "capabilities");
     this.artifactDir = join(root, "artifacts");
     this.abilitiesFile = join(root, "abilities.json");
+    this.spacesFile = join(root, "spaces.json");
     this.tasksFile = join(root, "tasks.json");
     this.artifactsFile = join(root, "artifacts.json");
     this.intakesFile = join(root, "intakes.json");
@@ -349,6 +402,7 @@ export class CapabilityRuntime {
     return {
       abilities: this.listAbilities(),
       personas: this.opts.personas(),
+      spaces: [...this.spaces].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       tasks: [...this.tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       artifacts: [...this.artifacts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 80),
       tools: this.opts.toolRegistry?.list() ?? [],
@@ -789,6 +843,36 @@ export class CapabilityRuntime {
     return report;
   }
 
+  createSpace(input: { title: string; description?: string }): CapabilitySpace {
+    const now = new Date().toISOString();
+    const space: CapabilitySpace = {
+      id: uniqueId("space"),
+      title: text(input.title, "未命名空间", 60),
+      description: text(input.description || "", "", 400),
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.spaces.push(space);
+    this.saveSpaces();
+    return space;
+  }
+
+  updateSpace(input: {
+    id: string;
+    title?: string;
+    description?: string;
+    status?: CapabilitySpaceStatus;
+  }): CapabilitySpace {
+    const space = this.requireSpace(input.id);
+    if (typeof input.title === "string") space.title = text(input.title, space.title, 60);
+    if (typeof input.description === "string") space.description = text(input.description, "", 400);
+    if (input.status === "active" || input.status === "archived") space.status = input.status;
+    space.updatedAt = new Date().toISOString();
+    this.saveSpaces();
+    return space;
+  }
+
   createTask(input: {
     title: string;
     personaId: string;
@@ -797,6 +881,8 @@ export class CapabilityRuntime {
     format?: ArtifactFormat;
     schedule?: Partial<CapabilitySchedule>;
     enabled?: boolean;
+    spaceId?: string;
+    knowledgeIds?: string[];
   }): CapabilityTask {
     const ability = this.requireAbility(input.capabilityId);
     const now = new Date().toISOString();
@@ -809,6 +895,8 @@ export class CapabilityRuntime {
       format: normalizeFormat(input.format || ability.defaultFormat),
       schedule: normalizeSchedule(input.schedule),
       enabled: input.enabled ?? true,
+      spaceId: input.spaceId ? this.requireSpace(input.spaceId, true).id : undefined,
+      knowledgeIds: normalizeKnowledgeIds(input.knowledgeIds),
       createdAt: now,
       updatedAt: now,
       storyline: createTaskStoryline(now),
@@ -827,6 +915,9 @@ export class CapabilityRuntime {
     format?: ArtifactFormat;
     schedule?: Partial<CapabilitySchedule>;
     enabled?: boolean;
+    promote?: boolean;
+    spaceId?: string | null;
+    knowledgeIds?: string[];
   }): CapabilityTask {
     const task = this.requireTask(input.id);
     if (typeof input.title === "string") task.title = text(input.title, task.title, 60);
@@ -836,6 +927,17 @@ export class CapabilityRuntime {
     if (input.format) task.format = normalizeFormat(input.format);
     if (input.schedule) task.schedule = normalizeSchedule(input.schedule);
     if (typeof input.enabled === "boolean") task.enabled = input.enabled;
+    if (input.spaceId === null || input.spaceId === "") delete task.spaceId;
+    else if (typeof input.spaceId === "string") task.spaceId = this.requireSpace(input.spaceId, true).id;
+    if (Array.isArray(input.knowledgeIds)) task.knowledgeIds = normalizeKnowledgeIds(input.knowledgeIds);
+    if (input.promote && task.oneOff) {
+      task.oneOff = false;
+      task.enabled = input.enabled ?? true;
+      task.storyline.status = "active";
+      task.storyline.summary = "已从一次任务转为可重复执行的任务。";
+      task.storyline.nextAction = task.schedule.mode === "manual" ? "需要时手动运行。" : "等待下一次自动执行。";
+      this.appendTaskStorylineEvent(task, { type: "progress", text: "已设为重复任务" });
+    }
     task.updatedAt = new Date().toISOString();
     this.saveTasks();
     return task;
@@ -1054,73 +1156,47 @@ export class CapabilityRuntime {
     };
   }
 
-  async runAdHocTask(input: {
-    title: string;
-    personaId: string;
-    capabilityId: string;
-    instruction: string;
-    format?: ArtifactFormat;
-    trigger?: string;
-    runId?: string;
-    memoryMode?: "default" | "preferences" | "off";
-    workspacePath?: string;
-    accessMode?: "inspect" | "develop";
-    onProgress?: (message: string, percent: number) => void;
-  }, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
-    const ability = this.requireAbility(input.capabilityId);
-    const persona = this.persona(input.personaId);
-    const now = new Date().toISOString();
-    const task: CapabilityTask = {
-      id: uniqueId("adhoc"),
-      title: meaningfulTaskTitle(input.title, ability.name),
-      personaId: input.personaId,
-      capabilityId: ability.id,
-      instruction: text(input.instruction, "按用户要求完成一次任务。", 160000),
-      format: normalizeFormat(input.format || ability.defaultFormat),
-      schedule: { mode: "manual" },
-      enabled: false,
-      createdAt: now,
-      updatedAt: now,
-      storyline: createTaskStoryline(now),
-    };
-    input.onProgress?.("正在分析目标并生成结构", 20);
-    const result = ability.id === "project-development"
-      ? await this.runDevelopmentTask(input, task, signal)
-      : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
-    this.markSkillUsed(ability);
-    const reply = ability.id === "project-development"
-      ? result.reply
-      : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress });
-    const runtimeMetadata = ability.id === "project-development"
-      ? {
-          development: result,
-          validationChecks: developmentValidationChecks(result),
-          professionalReceipt: developmentProfessionalReceipt(result),
-        }
-      : undefined;
-    input.onProgress?.("正在生成并保存交付物", 85);
-    return this.finishAdHocRun(task, ability, persona, reply, runtimeMetadata);
+  async runAdHocTask(input: AdHocTaskInput, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
+    const { task, ability, persona } = this.createAdHocTask(input);
+    try {
+      input.onProgress?.("正在分析目标并生成结构", 20);
+      const result = ability.id === "project-development"
+        ? await this.runDevelopmentTask(input, task, signal)
+        : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
+      this.markSkillUsed(ability);
+      const reply = ability.id === "project-development"
+        ? result.reply
+        : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress });
+      const runtimeMetadata = ability.id === "project-development"
+        ? {
+            development: result,
+            validationChecks: developmentValidationChecks(result),
+            professionalReceipt: developmentProfessionalReceipt(result),
+          }
+        : undefined;
+      input.onProgress?.("正在生成并保存交付物", 85);
+      return this.finishAdHocRun(task, ability, persona, reply, runtimeMetadata);
+    } catch (error) {
+      this.failAdHocRun(task, error);
+      throw error;
+    }
   }
 
-  async runAdHocTaskStream(input: {
-    title: string;
-    personaId: string;
-    capabilityId: string;
-    instruction: string;
-    format?: ArtifactFormat;
-    trigger?: string;
-    runId?: string;
-    memoryMode?: "default" | "preferences" | "off";
-  }, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
+  async runAdHocTaskStream(input: AdHocTaskInput, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
     const { task, ability, persona } = this.createAdHocTask(input);
-    const prompt = await this.buildRunPrompt(task, ability, persona, input.trigger || "chat");
-    const result = this.opts.notifyStream
-      ? await this.opts.notifyStream(task.personaId, prompt, cb, signal, limits, input.runId, input.memoryMode)
-      : await this.opts.notify(task.personaId, prompt, signal, limits, input.runId, input.memoryMode);
-    if (!this.opts.notifyStream) cb.onToken(result.reply);
-    this.markSkillUsed(ability);
-    const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode });
-    return this.finishAdHocRun(task, ability, persona, reply);
+    try {
+      const prompt = await this.buildRunPrompt(task, ability, persona, input.trigger || "chat");
+      const result = this.opts.notifyStream
+        ? await this.opts.notifyStream(task.personaId, prompt, cb, signal, limits, input.runId, input.memoryMode)
+        : await this.opts.notify(task.personaId, prompt, signal, limits, input.runId, input.memoryMode);
+      if (!this.opts.notifyStream) cb.onToken(result.reply);
+      this.markSkillUsed(ability);
+      const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode });
+      return this.finishAdHocRun(task, ability, persona, reply);
+    } catch (error) {
+      this.failAdHocRun(task, error);
+      throw error;
+    }
   }
 
   private async completeAbilityReply(
@@ -1223,16 +1299,58 @@ export class CapabilityRuntime {
       : reply;
   }
 
-  private createAdHocTask(input: {
-    title: string;
-    personaId: string;
-    capabilityId: string;
-    instruction: string;
-    format?: ArtifactFormat;
-  }): { task: CapabilityTask; ability: Capability; persona: CapabilityPersona } {
+  private createAdHocTask(input: AdHocTaskInput): { task: CapabilityTask; ability: Capability; persona: CapabilityPersona } {
     const ability = this.requireAbility(input.capabilityId);
     const persona = this.persona(input.personaId);
     const now = new Date().toISOString();
+    const origin: CapabilityTaskOrigin = input.origin ? {
+      kind: input.origin.kind,
+      conversationKey: text(input.origin.conversationKey, "", 200) || undefined,
+      conversationId: text(input.origin.conversationId, "", 200) || undefined,
+      parentJobId: text(input.origin.parentJobId, "", 160) || undefined,
+      jobId: text(input.origin.jobId, "", 160) || undefined,
+    } : { kind: "direct" };
+    const existing = input.continuationTaskId
+      ? this.tasks.find((item) => item.id === input.continuationTaskId && item.oneOff)
+      : undefined;
+    if (existing) {
+      existing.capabilityId = ability.id;
+      existing.instruction = text(input.instruction, existing.instruction, 160000);
+      existing.format = normalizeFormat(input.format || ability.defaultFormat);
+      existing.updatedAt = now;
+      existing.origin = {
+        ...origin,
+        kind: existing.origin?.kind || origin.kind,
+        conversationKey: origin.conversationKey || existing.origin?.conversationKey,
+        conversationId: origin.conversationId || existing.origin?.conversationId,
+      };
+      if (input.workspacePath) {
+        existing.workspace = {
+          path: text(input.workspacePath, "", 2_000),
+          accessMode: input.accessMode === "inspect" ? "inspect" : "develop",
+        };
+      }
+      existing.execution = origin.jobId ? {
+        jobId: origin.jobId,
+        status: "running",
+        progress: 10,
+        label: "正在继续处理",
+        updatedAt: now,
+      } : undefined;
+      existing.storyline.status = "active";
+      existing.storyline.summary = "正在基于上一次结果继续处理。";
+      existing.storyline.nextAction = "等待本次执行完成。";
+      this.appendTaskStorylineEvent(existing, {
+        type: "handoff",
+        text: `继续交给「${ability.name}」处理`,
+        personaId: input.personaId,
+      });
+      this.saveTasks();
+      return { task: existing, ability, persona };
+    }
+    const storyline = createTaskStoryline(now);
+    storyline.summary = "任务正在执行，完成后会保留结果和继续入口。";
+    storyline.nextAction = "等待本次执行完成。";
     const task: CapabilityTask = {
       id: uniqueId("adhoc"),
       title: meaningfulTaskTitle(input.title, ability.name),
@@ -1244,8 +1362,23 @@ export class CapabilityRuntime {
       enabled: false,
       createdAt: now,
       updatedAt: now,
-      storyline: createTaskStoryline(now),
+      origin,
+      workspace: input.workspacePath ? {
+        path: text(input.workspacePath, "", 2_000),
+        accessMode: input.accessMode === "inspect" ? "inspect" : "develop",
+      } : undefined,
+      oneOff: true,
+      execution: origin.jobId ? {
+        jobId: origin.jobId,
+        status: "running",
+        progress: 10,
+        label: "正在执行能力任务",
+        updatedAt: now,
+      } : undefined,
+      storyline,
     };
+    this.tasks.push(task);
+    this.saveTasks();
     return { task, ability, persona };
   }
 
@@ -1272,7 +1405,13 @@ export class CapabilityRuntime {
     reply: string,
     runtimeMetadata?: NonNullable<CapabilityArtifact["metadata"]>,
   ): Promise<CapabilityNotification> {
+    const previousArtifact = [...this.artifacts].reverse().find((item) => item.taskId === task.id);
+    const version = this.artifacts.filter((item) => item.taskId === task.id).length + 1;
     const artifact = await this.writeArtifact(task, ability, reply);
+    artifact.metadata = {
+      ...artifact.metadata,
+      lineage: { version, previousArtifactId: previousArtifact?.id },
+    };
     if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
     withArtifactProof(artifact);
     if (ability.id === "presentation-builder") {
@@ -1284,7 +1423,30 @@ export class CapabilityRuntime {
           : { state: "needs-review", lastGoodArtifactId: previousGood?.id },
       };
     }
+    const now = new Date().toISOString();
+    task.lastRunAt = now;
+    task.updatedAt = now;
+    task.storyline.status = "completed";
+    task.storyline.summary = artifact.summary || "本次任务已经完成。";
+    task.storyline.nextAction = "查看结果；需要调整时可继续交给能力处理。";
+    if (task.execution) {
+      task.execution = {
+        ...task.execution,
+        status: "succeeded",
+        progress: 100,
+        label: "产物已保存",
+        artifactId: artifact.id,
+        updatedAt: now,
+      };
+    }
+    this.appendTaskStorylineEvent(task, {
+      type: "result",
+      text: `已生成结果：${artifact.title}`,
+      personaId: task.personaId,
+      artifactId: artifact.id,
+    });
     this.artifacts.push(artifact);
+    this.saveTasks();
     this.saveArtifacts();
     return {
       personaId: task.personaId,
@@ -1292,6 +1454,25 @@ export class CapabilityRuntime {
       text: this.notificationText(persona.name, task, artifact, reply),
       artifact,
     };
+  }
+
+  private failAdHocRun(task: CapabilityTask, error: unknown): void {
+    const now = new Date().toISOString();
+    const message = error instanceof Error ? error.message : String(error);
+    task.updatedAt = now;
+    task.storyline.status = "waiting";
+    task.storyline.summary = "本次执行没有完成。";
+    task.storyline.nextAction = "查看失败原因后重试。";
+    if (task.execution) {
+      task.execution = {
+        ...task.execution,
+        status: "failed",
+        error: text(message, "执行失败", 1_000),
+        updatedAt: now,
+      };
+    }
+    this.appendTaskStorylineEvent(task, { type: "error", text: message || "执行失败" });
+    this.saveTasks();
   }
 
   artifactWorkspace(id: string | null): ArtifactWorkspaceState | null {
@@ -1452,8 +1633,14 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
 
   private load(): void {
     this.generatedAbilities = readJson<Capability[]>(this.abilitiesFile, []);
+    this.spaces = readJson<CapabilitySpace[]>(this.spacesFile, []).map((space) => ({
+      ...space,
+      description: typeof space.description === "string" ? space.description : "",
+      status: space.status === "archived" ? "archived" : "active",
+    }));
     this.tasks = readJson<CapabilityTask[]>(this.tasksFile, []).map((task) => ({
       ...task,
+      knowledgeIds: normalizeKnowledgeIds(task.knowledgeIds),
       storyline: normalizeTaskStoryline(task.storyline, task.createdAt),
     }));
     this.artifacts = readJson<CapabilityArtifact[]>(this.artifactsFile, []);
@@ -1489,6 +1676,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
       enabled: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      storyline: createTaskStoryline(new Date().toISOString()),
     });
     this.saveTasks();
   }
@@ -1525,6 +1713,10 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     writeJson(this.abilitiesFile, this.generatedAbilities);
   }
 
+  private saveSpaces(): void {
+    writeJson(this.spacesFile, this.spaces);
+  }
+
   private saveTasks(): void {
     writeJson(this.tasksFile, this.tasks);
   }
@@ -1543,6 +1735,13 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     if (ability.archivedAt) throw new Error(`能力已归档：${ability.name}`);
     if (ability.disabledAt) throw new Error("能力已停用：" + ability.name);
     return ability;
+  }
+
+  private requireSpace(id: string, requireActive = false): CapabilitySpace {
+    const space = this.spaces.find((item) => item.id === id);
+    if (!space) throw new Error(`未知工作空间：${id}`);
+    if (requireActive && space.status === "archived") throw new Error(`工作空间已归档：${space.title}`);
+    return space;
   }
 
   private requireTask(id: string): CapabilityTask {
@@ -1584,6 +1783,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     const privateSources = isVisualOnly ? "" : await buildPrivateSourcePromptBlock(this.opts.dataDir, task.instruction);
     const retrievalBlock = isVisualOnly ? "" : this.localRetrievalPromptBlock(task.instruction);
     const skillBlock = this.skillPromptBlock(ability);
+    const knowledgeBlock = this.opts.knowledgeContext?.(task.knowledgeIds || []) || "";
     const executionRequirements = nativeId
       ? [
         "Execution requirements:",
@@ -1636,6 +1836,7 @@ ${ability.prompt}`,
       sourceVerification,
       privateSources,
       retrievalBlock,
+      knowledgeBlock,
       `Current local time: ${currentTimeBlock()}`,
       `Date rule: never invent weekdays, dates, deadlines, booking times, or recurrence limits. If the user did not specify the date/time, mark it as missing or ask for it.`,
       `Task title: ${task.title}`,
@@ -2648,6 +2849,12 @@ function meaningfulTaskTitle(value: string | undefined, fallback: string): strin
   return /^(可以|好|好的|行|没问题|继续|就这样|看起来可以|我没想好|不知道|随便)[。！!？?，,\s]*$/.test(title)
     ? fallback
     : title;
+}
+
+function normalizeKnowledgeIds(input?: string[]): string[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const ids = [...new Set(input.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, 8);
+  return ids.length ? ids : undefined;
 }
 function text(value: string | undefined, fallback: string, max: number): string {
   const out = (value || "").trim() || fallback;

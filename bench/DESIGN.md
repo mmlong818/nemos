@@ -1,6 +1,6 @@
 # MnemoBench v0.1 — Belief-Update & Anti-Self-Pollution Benchmark
 
-> 状态：冻结研究设计（复核于 2026-08-06）。本文用于解释论文实验，不是当前产品规格。论文主表的实际数据规模、模型配置和结果哈希以 [`results/manifest.json`](./results/manifest.json) 为准。
+> 状态：冻结研究设计（哈希与论文数字复核于 2026-08-10）。本文用于解释论文实验，不是当前产品规格。论文主表的实际数据规模、模型配置和结果哈希以 [`results/manifest.json`](./results/manifest.json) 为准。
 
 ## 0. 为什么需要这个 benchmark(定位)
 

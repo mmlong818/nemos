@@ -93,6 +93,7 @@ import {
   savePrivateSourcesConfig,
   type PrivateSourcesConfig,
 } from "./private-source-connectors.js";
+import { KnowledgeLibrary, type KnowledgeItemKind } from "./knowledge-library.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const USER = process.env.COMPANION_USER || "me";
@@ -166,7 +167,8 @@ function broadcastAgentEvent(event: AgentJobQueueEvent): void {
   queueMicrotask(() => {
     try {
       const job = agentJobQueue.get(event.job.id);
-      const taskId = String(job?.metadata?.workTaskId || "");
+      const resultData = job?.result?.data as { artifact?: { taskId?: string } } | undefined;
+      const taskId = String(job?.metadata?.workTaskId || resultData?.artifact?.taskId || "");
       if (!job || !taskId) return;
       const checkpoint = job.checkpoints[job.checkpoints.length - 1];
       const artifactId = job.result?.artifactRefs?.find((item) => item.startsWith("artifact:"))?.slice("artifact:".length);
@@ -319,6 +321,7 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
   },
 });
 const developmentProposals = new DevelopmentProposalStore(join(DATA_DIR, "development-proposals"));
+const knowledgeLibrary = new KnowledgeLibrary(DATA_DIR);
 const capabilities = new CapabilityRuntime({
   dataDir: DATA_DIR,
   personas: () => engine.listPersonas().map((p) => ({
@@ -328,6 +331,7 @@ const capabilities = new CapabilityRuntime({
     expert: LONG_FORM_EXPERT_IDS.has(p.id),
   })),
   toolRegistry: capabilityTools,
+  knowledgeContext: (ids) => knowledgeLibrary.buildPromptBlock(ids),
   runDeveloper: async (input) => {
     if (!modelConnection) throw new Error("请先在设置中连接一个可用模型。");
     const result = await runPiDevelopment({
@@ -368,6 +372,8 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
   const personaId = input.task.metadata?.personaId || APP_PERSONA_ID;
   const capabilityId = input.task.metadata?.capabilityId || "research-brief";
   const format = normalizeAgentJobFormat(input.task.metadata?.format);
+  const workspacePath = typeof input.task.metadata?.workspacePath === "string" ? input.task.metadata.workspacePath : undefined;
+  const accessMode = input.task.metadata?.accessMode === "inspect" ? "inspect" : "develop";
   const dependencyBlock = input.sharedArtifactRefs.length
     ? `\n\nDependency artifacts (use references; do not assume hidden subtask history):\n${input.sharedArtifactRefs.join("\n")}`
     : "";
@@ -377,8 +383,14 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
     capabilityId,
     instruction: `${input.task.instruction}${dependencyBlock}`,
     format,
+    workspacePath,
+    accessMode,
     trigger: `orchestration:${input.parentSessionId}`,
     runId: input.sessionId,
+    origin: {
+      kind: "orchestration",
+      conversationId: input.parentSessionId,
+    },
   }, input.signal, input.budget);
   return {
     summary: notification.text,
@@ -453,6 +465,13 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       memoryMode: pinnedPreferenceContext ? "off" : requestedMemoryMode,
       workspacePath: String(job.payload.workspacePath || ""),
       accessMode: job.payload.accessMode === "inspect" ? "inspect" : "develop",
+      continuationTaskId: String(job.payload.continuationTaskId || ""),
+      origin: {
+        kind: handoff?.source === "capability" ? "capability" : job.payload.conversationKey ? "chat" : "direct",
+        conversationKey: String(job.payload.conversationKey || ""),
+        parentJobId: String(job.payload.parentJobId || ""),
+        jobId: job.id,
+      },
       onProgress: (message, percent) => context.checkpoint(message, percent),
     }, context.signal);
     context.checkpoint("产物已保存", 100, { artifactId: notification.artifact.id });
@@ -726,6 +745,37 @@ function agentCostForRunPrefix(runIdPrefix: string) {
 }
 function normalizeAgentJobFormat(value: unknown): ArtifactFormat {
   return value === "html" || value === "txt" || value === "json" || value === "doc" || value === "pptx" ? value : "md";
+}
+
+const COLLABORATION_EXPERTS: Record<string, Array<{ personaId: string; responsibility: string }>> = {
+  "project-development": [
+    { personaId: "system_architecture", responsibility: "检查系统边界、数据流和失败恢复" },
+    { personaId: "lean_engineering", responsibility: "控制实现复杂度并确认最小可靠方案" },
+    { personaId: "quality_testing", responsibility: "设计核心路径、边界与回归验证" },
+  ],
+  "product-design": [
+    { personaId: "product_lead", responsibility: "确认产品取舍和核心用户价值" },
+    { personaId: "user_experience", responsibility: "检查真实任务路径和可恢复性" },
+    { personaId: "interface_design", responsibility: "检查信息层级、视觉系统和小屏体验" },
+  ],
+  "presentation-builder": [
+    { personaId: "product_lead", responsibility: "确认叙事重点和信息取舍" },
+    { personaId: "interface_design", responsibility: "检查版式、层级和视觉一致性" },
+    { personaId: "brand_strategy", responsibility: "检查受众理解与表达可信度" },
+  ],
+  "market-briefing": [
+    { personaId: "industry_analysis", responsibility: "核对事实、结构和市场判断" },
+    { personaId: "pricing_finance", responsibility: "检查数字假设、成本和财务边界" },
+    { personaId: "decision_analysis", responsibility: "检查选项、风险和机会成本" },
+  ],
+};
+
+function collaborationAssignments(capabilityId: string): Array<{ personaId: string; responsibility: string }> {
+  return COLLABORATION_EXPERTS[capabilityId] || [
+    { personaId: "first_principles", responsibility: "拆解目标、约束和关键假设" },
+    { personaId: "decision_analysis", responsibility: "检查方案取舍、风险和遗漏" },
+    { personaId: "quality_testing", responsibility: "按真实交付标准复核完整性" },
+  ];
 }
 
 function makeMem(): Nemos {
@@ -2688,6 +2738,11 @@ async function maybeRunAdHocWorkFromChat(b: ChatBody, text: string): Promise<Ret
     instruction: workInstructionForTarget(b, text, target),
     format: inferArtifactFormat(text),
     trigger: "chat",
+    origin: {
+      kind: "chat",
+      conversationKey: `${b.target.kind}:${b.target.id}`,
+      conversationId: b.sessionId,
+    },
   });
   autoLearnFromWork(target.personaId, text, capabilityId, inferArtifactFormat(text));
   return capabilityReply(notification);
@@ -2709,6 +2764,11 @@ async function maybeRunAdHocWorkFromChatStream(
     instruction: workInstructionForTarget(b, text, target),
     format: inferArtifactFormat(text),
     trigger: "chat",
+    origin: {
+      kind: "chat",
+      conversationKey: `${b.target.kind}:${b.target.id}`,
+      conversationId: b.sessionId,
+    },
   }, cb);
   autoLearnFromWork(target.personaId, text, capabilityId, inferArtifactFormat(text));
   return notification;
@@ -2902,7 +2962,7 @@ const server = createServer(async (req, res) => {
       send(res, 200, readFileSync(join(WEB_DIR, "office.html"), "utf-8"), "text/html");
       return;
     }
-    if (req.method === "GET" && ["/tasks", "/artifacts", "/runs", "/memory"].includes(pathname)) {
+    if (req.method === "GET" && ["/tasks", "/spaces", "/automations", "/collaboration", "/resources", "/artifacts", "/runs", "/memory"].includes(pathname)) {
       send(res, 200, readFileSync(join(WEB_DIR, "work.html"), "utf-8"), "text/html");
       return;
     }
@@ -3230,6 +3290,7 @@ const server = createServer(async (req, res) => {
         capabilityId?: string;
         instruction?: string;
         conversationKey?: string;
+        continuationTaskId?: string;
         workspacePath?: string;
         accessMode?: DevelopmentAccessMode;
         parentJobId?: string;
@@ -3257,6 +3318,12 @@ const server = createServer(async (req, res) => {
       const parentJob = parentJobId ? agentJobQueue.get(parentJobId) : null;
       if (parentJobId && (!parentJob || parentJob.status !== "succeeded")) {
         send(res, 400, { error: "上一步能力结果不存在或尚未完成" });
+        return;
+      }
+      const parentResult = parentJob?.result?.data as { artifact?: { taskId?: string } } | undefined;
+      const continuationTaskId = String(body.continuationTaskId || parentResult?.artifact?.taskId || "").trim();
+      if (continuationTaskId && !capabilities.snapshot().tasks.some((item) => item.id === continuationTaskId && item.oneOff)) {
+        send(res, 400, { error: "要继续的任务不存在" });
         return;
       }
       const handoff = body.kind === "capability-adhoc" && body.handoff
@@ -3310,6 +3377,7 @@ const server = createServer(async (req, res) => {
                 capabilityId: body.capabilityId,
                 instruction: body.instruction,
                 conversationKey: /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(body.conversationKey || "")) ? body.conversationKey : "",
+                continuationTaskId,
                 workspacePath: body.capabilityId === "project-development" ? validateDevelopmentWorkspace(String(body.workspacePath || "")) : "",
                 accessMode: body.accessMode === "inspect" ? "inspect" : "develop",
                 parentJobId,
@@ -3630,6 +3698,54 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, extension: action.value, auditRunId: action.runId });
       return;
     }
+    if (req.method === "GET" && url.split("?")[0] === "/api/knowledge") {
+      const params = new URLSearchParams(url.split("?")[1] || "");
+      const id = params.get("id");
+      if (id) {
+        const item = knowledgeLibrary.get(id);
+        if (!item) { send(res, 404, { error: "未找到这份资料" }); return; }
+        send(res, 200, { ok: true, item });
+      } else {
+        send(res, 200, { ok: true, items: knowledgeLibrary.list(params.get("archived") === "1") });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/knowledge") {
+      const b = (await readBody(req)) as {
+        id?: string;
+        title?: string;
+        kind?: KnowledgeItemKind;
+        content?: string;
+        sourceUrl?: string;
+        fileName?: string;
+        mimeType?: string;
+        spaceId?: string | null;
+      };
+      if (!b.id && !b.title?.trim()) { send(res, 400, { error: "资料名称不能为空" }); return; }
+      try {
+        const item = b.id
+          ? knowledgeLibrary.update({ id: b.id, title: b.title, content: b.content, sourceUrl: b.sourceUrl, spaceId: b.spaceId })
+          : knowledgeLibrary.create({
+              title: b.title!, kind: b.kind, content: b.content, sourceUrl: b.sourceUrl,
+              fileName: b.fileName, mimeType: b.mimeType, spaceId: b.spaceId || undefined,
+            });
+        send(res, 200, { ok: true, item, items: knowledgeLibrary.list() });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "POST" && (url === "/api/knowledge/archive" || url === "/api/knowledge/restore")) {
+      const b = (await readBody(req)) as { id?: string };
+      if (!b.id) { send(res, 400, { error: "缺少资料编号" }); return; }
+      try {
+        const item = url.endsWith("/restore") ? knowledgeLibrary.restore(b.id) : knowledgeLibrary.archive(b.id);
+        send(res, 200, { ok: true, item, items: knowledgeLibrary.list(true) });
+      } catch (error) {
+        send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
     if (req.method === "GET" && url === "/api/sources") {
       send(res, 200, {
         ok: true,
@@ -3753,7 +3869,7 @@ const server = createServer(async (req, res) => {
           textChars: b.text?.length ?? 0,
         },
         execute: () => importWeChatPrivateSource(DATA_DIR, b),
-        summarizeResult: (item) => ({ ok: true, sourceId: item.id }),
+        summarizeResult: (item) => ({ ok: true, file: item.file, title: item.title }),
       });
       send(res, 200, { ok: true, item: action.value, auditRunId: action.runId, sources: privateSourcesSummary(DATA_DIR) });
       return;
@@ -4207,6 +4323,9 @@ const server = createServer(async (req, res) => {
         format?: ArtifactFormat;
         schedule?: { mode?: "manual" | "daily" | "turns"; time?: string; timezone?: string; days?: number[]; everyTurns?: number };
         enabled?: boolean;
+        promote?: boolean;
+        spaceId?: string | null;
+        knowledgeIds?: string[];
       };
       const action = await agentUserActions.execute({
         name: b.id ? "capability_task_update" : "capability_task_create",
@@ -4219,6 +4338,8 @@ const server = createServer(async (req, res) => {
           format: b.format,
           schedule: b.schedule,
           enabled: b.enabled,
+          spaceId: b.spaceId,
+          knowledgeCount: b.knowledgeIds?.length ?? 0,
           instructionChars: b.instruction?.length ?? 0,
         },
         metadata: { personaId: b.personaId || APP_PERSONA_ID },
@@ -4226,6 +4347,31 @@ const server = createServer(async (req, res) => {
         summarizeResult: (task) => ({ ok: true, taskId: task.id }),
       });
       send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capabilities/space") {
+      const b = (await readBody(req)) as {
+        id?: string;
+        title?: string;
+        description?: string;
+        status?: "active" | "archived";
+      };
+      if (!b.id && !b.title?.trim()) { send(res, 400, { error: "missing space title" }); return; }
+      const action = await agentUserActions.execute({
+        name: b.id ? "capability_space_update" : "capability_space_create",
+        description: b.id ? "更新工作空间的名称、说明或归档状态" : "创建用于组织相关任务和结果的工作空间",
+        arguments: {
+          spaceId: b.id,
+          title: b.title,
+          descriptionChars: b.description?.length ?? 0,
+          status: b.status,
+        },
+        execute: () => b.id
+          ? capabilities.updateSpace({ id: b.id!, title: b.title, description: b.description, status: b.status })
+          : capabilities.createSpace({ title: b.title!, description: b.description }),
+        summarizeResult: (space) => ({ ok: true, spaceId: space.id, status: space.status }),
+      });
+      send(res, 200, { ok: true, space: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
     }
     if (req.method === "POST" && url === "/api/capabilities/task/storyline") {
@@ -4298,6 +4444,64 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
     }
+    if (req.method === "POST" && url === "/api/capabilities/task/collaborate") {
+      const b = (await readBody(req)) as { id?: string };
+      if (!b.id) { send(res, 400, { error: "缺少任务编号" }); return; }
+      const task = capabilities.snapshot().tasks.find((item) => item.id === b.id);
+      if (!task) { send(res, 404, { error: "未找到这个任务" }); return; }
+      const assignments = collaborationAssignments(task.capabilityId)
+        .filter((assignment) => LONG_FORM_EXPERT_IDS.has(assignment.personaId));
+      capabilities.updateTaskStoryline({
+        id: task.id,
+        summary: "小丑鱼已按任务需要组织专家并行检查。",
+        nextAction: "等待专家意见汇总后，由小丑鱼完成最终交付。",
+        experts: assignments,
+      });
+      const expertTasks = assignments.map((assignment, index) => ({
+        id: `expert-${index + 1}`,
+        title: assignment.responsibility,
+        instruction: `围绕主任务独立完成专业检查。主任务：${task.instruction}\n你的职责：${assignment.responsibility}\n给出具体发现、证据和可执行建议，不要代替小丑鱼做最终交付。`,
+        dependsOn: [] as string[],
+        metadata: { personaId: assignment.personaId, capabilityId: "research-brief", format: "md" as ArtifactFormat },
+      }));
+      const finalTask = {
+        id: "clownfish-final",
+        title: `完成：${task.title}`,
+        instruction: `结合专家产物完成原任务。必须直接交付最终结果，不要只汇总意见。原任务：${task.instruction}`,
+        dependsOn: expertTasks.map((item) => item.id),
+        metadata: {
+          personaId: APP_PERSONA_ID,
+          capabilityId: task.capabilityId,
+          format: task.format,
+          ...(task.workspace ? { workspacePath: task.workspace.path, accessMode: task.workspace.accessMode } : {}),
+        },
+      };
+      const action = await agentUserActions.execute({
+        name: "capability_task_collaborate",
+        description: "由小丑鱼按任务需要自动组织专家检查并完成最终交付",
+        arguments: { taskId: task.id, capabilityId: task.capabilityId, expertCount: assignments.length },
+        execute: () => agentJobQueue.enqueue({
+          type: "orchestration",
+          payload: { objective: task.instruction, tasks: [...expertTasks, finalTask], taskId: task.id },
+          metadata: { userId: USER, workTaskId: task.id, requestedBy: APP_PERSONA_ID },
+          deliveryRequired: true,
+          sideEffectRisk: true,
+          maxAttempts: 1,
+          timeoutMs: 45 * 60_000,
+          idempotencyKey: `collaboration:${task.id}:${Date.now()}`,
+        }),
+        summarizeResult: (job) => ({ ok: true, jobId: job.id, status: job.status }),
+      });
+      capabilities.projectTaskExecution({
+        taskId: task.id,
+        jobId: action.value.id,
+        status: action.value.status,
+        label: "小丑鱼正在组织协作",
+        updatedAt: action.value.updatedAt,
+      });
+      send(res, 202, { ok: true, job: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
+      return;
+    }
     if (req.method === "POST" && url === "/api/capabilities/task/run") {
       const b = (await readBody(req)) as { id?: string };
       if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
@@ -4359,6 +4563,7 @@ const server = createServer(async (req, res) => {
             instruction: b.instruction!,
             format: b.format || "md",
             trigger: "workspace",
+            origin: { kind: "direct" },
           }, signal);
           autoLearnFromWork(b.personaId!, b.instruction!, b.capabilityId!, b.format || "md");
           return notification;
