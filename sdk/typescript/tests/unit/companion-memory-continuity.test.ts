@@ -60,6 +60,31 @@ test("one-on-one user messages stay in the user namespace without persona attrib
   }
 });
 
+test("memory off isolates expert tasks from user facts and previous persona statements", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-memory-isolation-"));
+  const memory = makeMemory(dir);
+  try {
+    await memory.forUser("me").write({
+      layer: "semantic",
+      content: "用户正在处理一个无关的旧项目",
+      scope: convScope("me", "feifei"),
+      source: { authoritative: true, origin: "test" },
+    });
+    await memory.forUser("persona:feifei").ingest("我之前给过另一项任务的建议", {
+      scope: convScope("me", "feifei"),
+      originAgent: "feifei",
+    });
+    const engine = new CompanionEngine(memory, [persona], async () => "完成", { asyncIngest: false });
+
+    const isolated = await engine.recall("me", "feifei", "执行本次独立检查", "off");
+    assert.equal(isolated.userFacts, "");
+    assert.equal(isolated.selfState, "");
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
 test("a rebuilt engine restores recent turns and keeps persona names canonical", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-memory-continuity-"));
   const memory = makeMemory(dir);
