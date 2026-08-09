@@ -457,7 +457,7 @@ function renderStoryline(task, hydrateForm = true) {
     $("#storyNextAction").value = story.nextAction;
   }
   $("#expertSummary").innerHTML = story.experts?.length
-    ? story.experts.map((item) => `<span class="pill">${escapeHtml(personaName(item.personaId))} · ${escapeHtml(item.responsibility)}</span>`).join("")
+    ? story.experts.map((item) => `<span class="pill">专业检查 · ${escapeHtml(item.responsibility)}</span>`).join("")
     : '<span class="field-hint">尚未启动专家协作；普通任务会直接由小丑鱼完成。</span>';
   renderDecisionList(task);
   renderStoryActivity(task);
@@ -717,7 +717,7 @@ function orchestrationDetail(job) {
   if (job.type !== "orchestration") return "";
   const tasks = Array.isArray(job.payload?.tasks) ? job.payload.tasks : [];
   const quality = job.result?.data?.orchestration?.quality;
-  const assignments = tasks.map((task) => '<span class="pill">' + escapeHtml(task.title || task.id) + ' · ' + escapeHtml(task.metadata?.personaId || "小丑鱼") + '</span>').join("");
+  const assignments = tasks.map((task) => '<span class="pill">' + escapeHtml(task.metadata?.role === "reviewer" || task.metadata?.personaId === "clownfish" ? "小丑鱼最终复核" : task.title || "专业检查") + '</span>').join("");
   const checks = Array.isArray(quality?.checks) ? quality.checks.map((check) => '<span class="pill ' + (check.status === "passed" ? "ok" : check.status === "failed" ? "bad" : "warn") + '">' + escapeHtml(check.id === "review" ? "最终复核" : check.id === "deliverables" ? "交付检查" : "完成度") + ' · ' + escapeHtml(check.status) + '</span>').join("") : "";
   return '<div class="meta orchestration-meta">' + assignments + checks + (quality?.score !== undefined ? '<span class="pill">质量 ' + escapeHtml(String(quality.score)) + '</span>' : "") + '</div>';
 }

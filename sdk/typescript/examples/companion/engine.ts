@@ -534,16 +534,18 @@ export class CompanionEngine {
     //  - 基础记忆（scope=bio）：背景事实（取代 prompt 里的具体设定），全量带上（每角色小集合）
     //  - 种入的近况（scope=self）
     //  - 它在本关系里说过的原话（archival 原文，最近几条）→ 保持前后一致
-    const selfSnapshotsPromise = Promise.all(personaIdentityAliases(personaId).map(async (id) => {
-      const self = this.nemos.forUser(personaNamespace(id));
-      const scope = convScope(userId, id);
-      const [bio, seeded, said] = await Promise.all([
-        self.listByLayer("personal_semantic", { scope: BIO_SCOPE, limit: 50 }),
-        self.listByLayer(SELF_LAYER, { scope: SELF_SCOPE, limit: 3 }),
-        self.listByLayer("archival", { scope, limit: 12 }),
-      ]);
-      return { bio, seeded, said };
-    }));
+    const selfSnapshotsPromise = memoryMode === "off"
+      ? Promise.resolve([])
+      : Promise.all(personaIdentityAliases(personaId).map(async (id) => {
+        const self = this.nemos.forUser(personaNamespace(id));
+        const scope = convScope(userId, id);
+        const [bio, seeded, said] = await Promise.all([
+          self.listByLayer("personal_semantic", { scope: BIO_SCOPE, limit: 50 }),
+          self.listByLayer(SELF_LAYER, { scope: SELF_SCOPE, limit: 3 }),
+          self.listByLayer("archival", { scope, limit: 12 }),
+        ]);
+        return { bio, seeded, said };
+      }));
     const [rawUserFacts, selfSnapshots] = await Promise.all([userFactsPromise, selfSnapshotsPromise]);
     const userFacts = this.normalizePersonaReferences(rawUserFacts);
     const selfLines = [
