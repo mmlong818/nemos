@@ -45,7 +45,7 @@ function displayDate(value) {
 }
 
 function formatLabel(kind) {
-  return ({ docx: "DOCX", pptx: "PPTX", xlsx: "XLSX", pdf: "PDF" })[kind] || "文稿";
+  return ({ docx: "DOCX", pptx: "PPTX", xlsx: "XLSX", pdf: "PDF", txt: "TXT", md: "Markdown" })[kind] || "文稿";
 }
 
 function kindTitle(kind, index) {
@@ -78,7 +78,7 @@ function safeProcessing(value) {
 }
 
 function safeDocument(item) {
-  const kind = ["docx", "pptx", "xlsx", "pdf"].includes(item?.kind) ? item.kind : "docx";
+  const kind = ["docx", "pptx", "xlsx", "pdf", "txt", "md"].includes(item?.kind) ? item.kind : "docx";
   const blocks = Array.isArray(item?.blocks) && item.blocks.length
     ? item.blocks.slice(0, 300).map((block, index) => safeBlock(block, index, kind))
     : [safeBlock(null, 0, kind)];
@@ -272,7 +272,7 @@ async function api(path, options = {}) {
 
 function textToBlocks(text, kind) {
   const normalized = String(text || "").replace(/\r/g, "").trim();
-  const sectionPattern = /^##\s+(.+)$/gm;
+  const sectionPattern = kind === "md" ? /^#{1,6}\s+(.+)$/gm : /^##\s+(.+)$/gm;
   const matches = [...normalized.matchAll(sectionPattern)];
   if (matches.length) {
     return matches.map((match, index) => {
@@ -504,8 +504,8 @@ async function fileToBase64(file) {
 
 async function importFile(file) {
   if (!file) return;
-  if (!/\.(docx|pptx|xlsx|pdf)$/i.test(file.name)) return showToast("支持 Word、PowerPoint、Excel 和 PDF 文件", true);
-  if (file.size > 8 * 1024 * 1024) return showToast("办公文件不能超过 8 MB", true);
+  if (!/\.(docx|pptx|xlsx|pdf|txt|md|markdown)$/i.test(file.name)) return showToast("支持 Word、PowerPoint、Excel、PDF、TXT 和 Markdown 文件", true);
+  if (file.size > 8 * 1024 * 1024) return showToast("文件不能超过 8 MB", true);
   setSaveState("正在读取文件…", true);
   try {
     const response = await api("/api/files/extract", {
@@ -516,7 +516,7 @@ async function importFile(file) {
     const createdAt = now();
     const importedDocument = safeDocument({
       id: uid("document"),
-      name: file.name.replace(/\.(docx|pptx|xlsx|pdf)$/i, ""),
+      name: file.name.replace(/\.(docx|pptx|xlsx|pdf|txt|md|markdown)$/i, ""),
       kind: extraction.kind,
       sourceSize: file.size,
       createdAt,
