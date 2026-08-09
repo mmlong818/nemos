@@ -96,11 +96,17 @@ test("聊天区可上传文件，并把附件原文传给对话和后续能力",
 
 test("原文件保存在本机并提供格式化预览", () => {
   assert.match(officeHtml, /office-source-preview\.js/);
+  assert.match(officeHtml, /vendor\/jszip\.min\.js/);
+  assert.match(officeHtml, /vendor\/docx-preview\.min\.js/);
   assert.match(officeHtml, /data-document-view="source"/);
   assert.match(officeSourceJs, /indexedDB\.open/);
   assert.match(officeSourceJs, /URL\.createObjectURL/);
   assert.match(officeSourceJs, /source-pdf-frame/);
   assert.match(officeSourceJs, /renderSlides|renderWorkbook|renderDocument/);
+  assert.match(officeSourceJs, /window\.docx\.renderAsync/);
+  assert.match(officeSourceJs, /ignoreLastRenderedPageBreak:\s*false/);
+  assert.match(officeSourceJs, /renderHeaders:\s*true/);
+  assert.match(officeSourceJs, /renderDocumentFallback[\s\S]+<section><p>\$\{escapeHtml\(block\.text\)\}<\/p><\/section>/);
 });
 
 test("工作台遵守小丑鱼视觉与无障碍基线", () => {
