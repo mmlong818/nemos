@@ -64,11 +64,13 @@
     return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
   }
 
-  function sourceHeading(current, record, sourceUrl) {
+  function sourceHeading(current, record, sourceUrl, faithfulPreview = false) {
     const notice = record
       ? current.kind === "pdf"
         ? "正在显示原始 PDF，页面、图片和排版均保留。"
-        : "原文件已保留在本机；页面按可读取结构展示，可随时打开原文件核对完整格式。"
+        : faithfulPreview
+          ? "正在按 Word 原始结构显示正文、表格、图片、页眉页脚和分页；复杂域或特殊字体可能与桌面 Word 略有差异。"
+          : "原文件已保留在本机；页面按可读取结构展示，可随时打开原文件核对完整格式。"
       : "这份旧工作副本没有保留原文件。重新打开文件后，可查看原始版式。";
     const action = sourceUrl
       ? `<a class="source-original-link" href="${sourceUrl}" download="${escapeHtml(record.name || current.name)}">打开原文件</a>`
@@ -137,10 +139,40 @@
     return `<section class="source-preview-shell">${sourceHeading(current, record, sourceUrl)}<div class="sheet-preview-list">${current.blocks.map((block) => `<article class="sheet-preview"><h2>${escapeHtml(block.title)}</h2><div class="sheet-table-wrap">${sheetTable(block)}</div></article>`).join("")}</div></section>`;
   }
 
-  function renderDocument(current, record, sourceUrl) {
+  function renderDocumentFallback(current, record, sourceUrl, message = "当前浏览器无法还原 Word 版式，下面显示可读取正文。") {
     const pages = [];
     for (let index = 0; index < current.blocks.length; index += 12) pages.push(current.blocks.slice(index, index + 12));
-    return `<section class="source-preview-shell">${sourceHeading(current, record, sourceUrl)}<div class="word-preview-list">${pages.map((blocks, pageIndex) => `<article class="word-preview"><span class="word-preview-number">${pageIndex + 1}</span>${blocks.map((block) => `<section><h2>${escapeHtml(block.title)}</h2><p>${escapeHtml(block.text)}</p></section>`).join("")}</article>`).join("")}</div></section>`;
+    return `<section class="source-preview-shell">${sourceHeading(current, record, sourceUrl)}<p class="source-preview-warning">${escapeHtml(message)}</p><div class="word-preview-list">${pages.map((blocks, pageIndex) => `<article class="word-preview"><span class="word-preview-number">${pageIndex + 1}</span>${blocks.map((block) => `<section><p>${escapeHtml(block.text)}</p></section>`).join("")}</article>`).join("")}</div></section>`;
+  }
+
+  async function renderDocument(root, current, record, sourceUrl, renderToken) {
+    if (!(record?.blob instanceof Blob) || typeof window.docx?.renderAsync !== "function") {
+      root.innerHTML = renderDocumentFallback(current, record, sourceUrl);
+      return;
+    }
+    root.innerHTML = `<section class="source-preview-shell is-docx">${sourceHeading(current, record, sourceUrl, true)}<div class="docx-preview-stage"><div class="docx-preview-host" aria-label="${escapeHtml(current.name)} Word 预览"></div></div></section>`;
+    const host = root.querySelector(".docx-preview-host");
+    try {
+      await window.docx.renderAsync(record.blob, host, host, {
+        className: "docx",
+        inWrapper: true,
+        breakPages: true,
+        ignoreLastRenderedPageBreak: false,
+        renderHeaders: true,
+        renderFooters: true,
+        renderFootnotes: true,
+        renderEndnotes: true,
+        renderComments: false,
+        useBase64URL: true,
+      });
+      if (root.dataset.renderToken !== renderToken) return;
+      host.querySelectorAll("a[href]").forEach((link) => {
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+      });
+    } catch {
+      if (root.dataset.renderToken === renderToken) root.innerHTML = renderDocumentFallback(current, record, sourceUrl, "这份 Word 使用了暂不支持的结构，已切换为正文视图；原文件没有改动。");
+    }
   }
 
   async function render(root, current) {
@@ -161,7 +193,7 @@
     if (current.kind === "pdf") root.innerHTML = renderPdf(current, record, sourceUrl);
     else if (current.kind === "pptx") root.innerHTML = renderSlides(current, record, sourceUrl);
     else if (current.kind === "xlsx") root.innerHTML = renderWorkbook(current, record, sourceUrl);
-    else root.innerHTML = renderDocument(current, record, sourceUrl);
+    else await renderDocument(root, current, record, sourceUrl, renderToken);
   }
 
   window.ClownfishOfficeSource = Object.freeze({ save, get, remove, render, release });
