@@ -208,4 +208,7 @@ const context = await memory.getRelevantContext("起草一份方案");
 
 ## 许可
 
-本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE)。允许非商业使用、修改和分发；商业用途需要另行授权。
+本仓库采用双授权结构，完整说明见 [LICENSING.md](LICENSING.md)：
+
+- **Nemos Memory SDK**（`sdk/typescript/src/`、`spec/`、`rfcs/`、`bench/`、`docs/`）采用 [PolyForm Noncommercial License 1.0.0](LICENSE)。允许非商业使用、修改和分发；商业用途需要另行授权。
+- **小丑鱼应用**（`sdk/typescript/examples/companion/`）保留全部权利，不在上述许可证覆盖范围内，另行授权，见该目录下的 [LICENSE](sdk/typescript/examples/companion/LICENSE)。
