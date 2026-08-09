@@ -130,7 +130,7 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 ## Current verification
 
 - The TypeScript build passes;
-- All 569 automated tests pass;
+- All 570 automated tests pass;
 - Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
 - See the [2026-08-08 ten-round real-world audit](sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md).
 
