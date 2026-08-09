@@ -2,6 +2,7 @@ import type { AgentTool, Nemos } from "../../src/index.js";
 import type { CapabilityRuntime } from "./capabilities.js";
 import type { ChatAgentContext } from "./engine.js";
 import type { AgentToolProvider } from "./llm.js";
+import { expertAssignmentPrompt, expertContract, finalDeliveryPrompt } from "./expert-contracts.js";
 
 export interface CompanionDelegationJobInput {
   objective: string;
@@ -371,31 +372,51 @@ function delegationCreateTool(
 
       const taskIds = assignments.map((assignment) => assignment.id);
       const synthesisInstruction = String(input.synthesisInstruction ?? "").trim();
-      const tasks: CompanionDelegationJobInput["tasks"] = assignments.map((assignment) => ({
-        id: assignment.id,
-        title: assignment.title,
-        instruction: assignment.instruction,
-        metadata: {
-          personaId: assignment.personaId,
-          capabilityId: assignment.capabilityId,
-          format: assignment.format,
-          role: "expert",
-        },
-        budget: { maxRounds: 4, maxToolRounds: 3, maxTotalTokens: 12_000, maxOutputChars: 20_000 },
-      }));
+      const tasks: CompanionDelegationJobInput["tasks"] = assignments.map((assignment) => {
+        const contract = expertContract(assignment.personaId);
+        const contractedInstruction = contract
+          ? `${assignment.instruction}\n\n${expertAssignmentPrompt({
+            personaId: assignment.personaId,
+            responsibility: assignment.title,
+            capabilityId: assignment.capabilityId,
+            format: assignment.format === "html" ? "html" : "md",
+            memoryMode: "off",
+            contract,
+          }, objective)}`
+          : assignment.instruction;
+        return {
+          id: assignment.id,
+          title: assignment.title,
+          instruction: contractedInstruction,
+          metadata: {
+            personaId: assignment.personaId,
+            capabilityId: assignment.capabilityId,
+            format: assignment.format,
+            role: "expert",
+            memoryMode: "off",
+          },
+          budget: { maxRounds: 4, maxToolRounds: 3, maxTotalTokens: 12_000, maxOutputChars: 20_000 },
+        };
+      });
       tasks.push({
         id: "synthesis",
         title: "小丑鱼复核与汇总",
-        instruction: synthesisInstruction || [
-          "复核各专家交付物，指出一致结论、关键分歧、证据缺口和风险。",
-          "只保留能由交付物支持的结论，形成一份可直接给用户使用的最终结果。",
-        ].join("\n"),
+        instruction: synthesisInstruction || finalDeliveryPrompt({
+          objective,
+          reviewChecks: [
+            "完整满足原任务，而不是只罗列专家观点",
+            "保留关键分歧、证据缺口和风险",
+            "只使用专家完整交付或任务材料能够支持的结论",
+            "形成可直接给用户使用的最终结果",
+          ],
+        }),
         dependsOn: taskIds,
         metadata: {
           personaId: context.personaId,
           capabilityId: "research-brief",
           format: "md",
           role: "reviewer",
+          memoryMode: "preferences",
         },
         budget: { maxRounds: 4, maxToolRounds: 2, maxTotalTokens: 16_000, maxOutputChars: 30_000 },
       });

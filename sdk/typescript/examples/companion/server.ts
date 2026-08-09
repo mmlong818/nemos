@@ -37,6 +37,12 @@ import {
 import { CompanionEngine, personaNamespace } from "./engine.js";
 import { PERSONAS, RELATIONSHIPS, DEFAULT_RELATIONSHIP } from "./personas.js";
 import { LONG_FORM_EXPERT_IDS } from "./experts.js";
+import {
+  dependencyArtifactBlock,
+  expertAssignmentPrompt,
+  finalDeliveryPrompt,
+  planExpertTeam,
+} from "./expert-contracts.js";
 import { resolveLLM, searchWeb, validateCompanionModelConnection, type ResolvedLLM } from "./llm.js";
 import {
   COMPANION_MODEL_PROVIDER_PRESETS,
@@ -374,9 +380,13 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
   const format = normalizeAgentJobFormat(input.task.metadata?.format);
   const workspacePath = typeof input.task.metadata?.workspacePath === "string" ? input.task.metadata.workspacePath : undefined;
   const accessMode = input.task.metadata?.accessMode === "inspect" ? "inspect" : "develop";
-  const dependencyBlock = input.sharedArtifactRefs.length
-    ? `\n\nDependency artifacts (use references; do not assume hidden subtask history):\n${input.sharedArtifactRefs.join("\n")}`
-    : "";
+  const dependencyBlock = dependencyArtifactBlock(input.sharedArtifactRefs, (id) => {
+    const handoff = capabilities.artifactHandoff(id);
+    return handoff
+      ? { title: handoff.artifact.title, summary: handoff.artifact.summary, text: handoff.text }
+      : null;
+  });
+  const memoryMode = input.task.metadata?.memoryMode === "preferences" ? "preferences" : "off";
   const notification = await capabilities.runAdHocTask({
     title: input.task.title,
     personaId,
@@ -387,6 +397,7 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
     accessMode,
     trigger: `orchestration:${input.parentSessionId}`,
     runId: input.sessionId,
+    memoryMode,
     origin: {
       kind: "orchestration",
       conversationId: input.parentSessionId,
@@ -745,37 +756,6 @@ function agentCostForRunPrefix(runIdPrefix: string) {
 }
 function normalizeAgentJobFormat(value: unknown): ArtifactFormat {
   return value === "html" || value === "txt" || value === "json" || value === "doc" || value === "pptx" ? value : "md";
-}
-
-const COLLABORATION_EXPERTS: Record<string, Array<{ personaId: string; responsibility: string }>> = {
-  "project-development": [
-    { personaId: "system_architecture", responsibility: "检查系统边界、数据流和失败恢复" },
-    { personaId: "lean_engineering", responsibility: "控制实现复杂度并确认最小可靠方案" },
-    { personaId: "quality_testing", responsibility: "设计核心路径、边界与回归验证" },
-  ],
-  "product-design": [
-    { personaId: "product_lead", responsibility: "确认产品取舍和核心用户价值" },
-    { personaId: "user_experience", responsibility: "检查真实任务路径和可恢复性" },
-    { personaId: "interface_design", responsibility: "检查信息层级、视觉系统和小屏体验" },
-  ],
-  "presentation-builder": [
-    { personaId: "product_lead", responsibility: "确认叙事重点和信息取舍" },
-    { personaId: "interface_design", responsibility: "检查版式、层级和视觉一致性" },
-    { personaId: "brand_strategy", responsibility: "检查受众理解与表达可信度" },
-  ],
-  "market-briefing": [
-    { personaId: "industry_analysis", responsibility: "核对事实、结构和市场判断" },
-    { personaId: "pricing_finance", responsibility: "检查数字假设、成本和财务边界" },
-    { personaId: "decision_analysis", responsibility: "检查选项、风险和机会成本" },
-  ],
-};
-
-function collaborationAssignments(capabilityId: string): Array<{ personaId: string; responsibility: string }> {
-  return COLLABORATION_EXPERTS[capabilityId] || [
-    { personaId: "first_principles", responsibility: "拆解目标、约束和关键假设" },
-    { personaId: "decision_analysis", responsibility: "检查方案取舍、风险和遗漏" },
-    { personaId: "quality_testing", responsibility: "按真实交付标准复核完整性" },
-  ];
 }
 
 function makeMem(): Nemos {
@@ -4449,30 +4429,41 @@ const server = createServer(async (req, res) => {
       if (!b.id) { send(res, 400, { error: "缺少任务编号" }); return; }
       const task = capabilities.snapshot().tasks.find((item) => item.id === b.id);
       if (!task) { send(res, 404, { error: "未找到这个任务" }); return; }
-      const assignments = collaborationAssignments(task.capabilityId)
+      const teamPlan = planExpertTeam({ capabilityId: task.capabilityId, instruction: task.instruction });
+      const assignments = teamPlan.assignments
         .filter((assignment) => LONG_FORM_EXPERT_IDS.has(assignment.personaId));
       capabilities.updateTaskStoryline({
         id: task.id,
-        summary: "小丑鱼已按任务需要组织专家并行检查。",
+        summary: teamPlan.reason,
         nextAction: "等待专家意见汇总后，由小丑鱼完成最终交付。",
-        experts: assignments,
+        experts: assignments.map(({ personaId, responsibility }) => ({ personaId, responsibility })),
       });
       const expertTasks = assignments.map((assignment, index) => ({
         id: `expert-${index + 1}`,
         title: assignment.responsibility,
-        instruction: `围绕主任务独立完成专业检查。主任务：${task.instruction}\n你的职责：${assignment.responsibility}\n给出具体发现、证据和可执行建议，不要代替小丑鱼做最终交付。`,
+        instruction: expertAssignmentPrompt(assignment, task.instruction),
         dependsOn: [] as string[],
-        metadata: { personaId: assignment.personaId, capabilityId: "research-brief", format: "md" as ArtifactFormat },
+        metadata: {
+          personaId: assignment.personaId,
+          capabilityId: assignment.capabilityId,
+          format: assignment.format as ArtifactFormat,
+          memoryMode: assignment.memoryMode,
+          expertContractId: assignment.personaId,
+          ...(task.workspace && assignment.capabilityId === "project-development"
+            ? { workspacePath: task.workspace.path, accessMode: "inspect" }
+            : {}),
+        },
       }));
       const finalTask = {
         id: "clownfish-final",
-        title: `完成：${task.title}`,
-        instruction: `结合专家产物完成原任务。必须直接交付最终结果，不要只汇总意见。原任务：${task.instruction}`,
+        title: `复核并完成：${task.title}`,
+        instruction: finalDeliveryPrompt({ objective: task.instruction, reviewChecks: teamPlan.finalReviewChecks }),
         dependsOn: expertTasks.map((item) => item.id),
         metadata: {
           personaId: APP_PERSONA_ID,
           capabilityId: task.capabilityId,
           format: task.format,
+          memoryMode: teamPlan.finalMemoryMode,
           ...(task.workspace ? { workspacePath: task.workspace.path, accessMode: task.workspace.accessMode } : {}),
         },
       };
@@ -4483,7 +4474,13 @@ const server = createServer(async (req, res) => {
         execute: () => agentJobQueue.enqueue({
           type: "orchestration",
           payload: { objective: task.instruction, tasks: [...expertTasks, finalTask], taskId: task.id },
-          metadata: { userId: USER, workTaskId: task.id, requestedBy: APP_PERSONA_ID },
+          metadata: {
+            userId: USER,
+            workTaskId: task.id,
+            requestedBy: APP_PERSONA_ID,
+            expertTeamId: teamPlan.id,
+            expertTeamReason: teamPlan.reason,
+          },
           deliveryRequired: true,
           sideEffectRisk: true,
           maxAttempts: 1,
