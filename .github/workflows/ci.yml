@@ -15,7 +15,13 @@ concurrency:
 
 jobs:
   typescript:
-    runs-on: ubuntu-latest
+    # 小丑鱼是 Windows 优先的桌面产品（本机 Edge 渲染、Windows 文件关联、盘符/UNC 路径），
+    # 只跑 Linux 会把“Linux CI 通过”错当成“Windows 可用”。
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     timeout-minutes: 20
     defaults:
       run:
