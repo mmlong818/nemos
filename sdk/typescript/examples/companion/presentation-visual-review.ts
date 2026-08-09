@@ -59,6 +59,16 @@ export async function reviewPresentationPreview(previewFile: string, slideCount:
     }
     pages.push(await inspectScreenshot(slide, screenshot));
   }
+  if (pages.length > 0 && pages.every((page) => page.byteLength === 0)) {
+    return {
+      engine: "chromium-headless",
+      checkedAt,
+      viewport: VIEWPORT,
+      pages,
+      passed: false,
+      unavailableReason: "浏览器未能完成关键页截图，真实渲染复核未执行",
+    };
+  }
   return { engine: "chromium-headless", checkedAt, viewport: VIEWPORT, pages, passed: pages.length > 0 && pages.every((page) => page.passed) };
 }
 

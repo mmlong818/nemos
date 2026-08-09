@@ -2283,8 +2283,11 @@ function withArtifactProof(artifact: CapabilityArtifact): CapabilityArtifact {
     detail: `${content.byteLength} bytes`,
   }, ...validationChecks];
   const professionalLevel = artifact.metadata?.professionalReceipt?.level;
-  const verificationChecks = validationChecks.filter((item) => item.phase === "verification");
-  const allChecksPassed = validationChecks.length > 0 && validationChecks.every((item) => item.status === "passed");
+  // `not-run` 表示检查器本身不可用（例如本机没有 Chromium 浏览器，无法做真实渲染复核），
+  // 与 `failed` 不同：它不该把等级压回 produced，但也不能充当 verified 的依据。
+  const verificationChecks = validationChecks.filter((item) => item.phase === "verification" && item.status === "passed");
+  const blockingChecks = validationChecks.filter((item) => item.status !== "not-run");
+  const allChecksPassed = blockingChecks.length > 0 && blockingChecks.every((item) => item.status === "passed");
   const level = professionalLevel && professionalLevel !== "failed"
     ? professionalLevel
     : allChecksPassed
