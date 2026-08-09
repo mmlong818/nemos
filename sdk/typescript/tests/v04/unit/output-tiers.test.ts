@@ -142,7 +142,7 @@ test("v0.4 narrative 失败时降级 tiered（不抛错）", async () => {
     llm: {
       provider: "custom",
       name: "fail",
-      chat: async (system, user) => {
+      chat: async (system, _user) => {
         // ingest 用的 mock：返回最小 JSON
         if (system.includes("nemos 记忆叙事器")) throw new Error("simulated LLM error");
         if (system.includes("记忆审查官")) return JSON.stringify({ derived: [], stats: {} });

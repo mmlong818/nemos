@@ -96,11 +96,13 @@ export class UserMemory {
    *
    * options.skipAnalysis = true → 只存 archival，不跑 LLM。
    */
-  async ingest(content: string, options?: IngestOptions): Promise<IngestResult>;
+  // 更具体的重载必须排在前面：TypeScript 取第一个匹配的重载，
+  // 若 IngestResult 版本在前，background: true 也会被解析成 IngestResult。
   async ingest(
     content: string,
     options: IngestOptions & { background: true },
   ): Promise<IngestHandle>;
+  async ingest(content: string, options?: IngestOptions): Promise<IngestResult>;
   async ingest(
     content: string,
     options: IngestOptions = {},

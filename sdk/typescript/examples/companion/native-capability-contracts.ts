@@ -163,8 +163,9 @@ function normalizeResearchAnchors(data: Record<string, unknown>): void {
     const referenced = Array.isArray(finding.anchorIds)
       ? finding.anchorIds.map(String).filter((id) => anchorIds.has(id))
       : [];
-    finding.anchorIds = [...new Set(referenced)];
-    if (finding.status === "confirmed" && finding.anchorIds.length === 0) {
+    const uniqueAnchorIds = [...new Set(referenced)];
+    finding.anchorIds = uniqueAnchorIds;
+    if (finding.status === "confirmed" && uniqueAnchorIds.length === 0) {
       finding.status = "partial";
     }
   }

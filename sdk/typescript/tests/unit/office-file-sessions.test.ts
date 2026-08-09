@@ -31,6 +31,22 @@ test("桌面应用保存后重新核算字节和指纹", () => {
     const refreshed = store.inspect(created.id);
     assert.equal(refreshed.byteLength, Buffer.byteLength("new content"));
     assert.notEqual(refreshed.contentHash, created.contentHash);
+    const history = store.history(created.id);
+    assert.equal(history.length, 2);
+    assert.equal(history[0]?.reason, "external-change");
+    const restored = store.restore(created.id, history[1]!.id, refreshed.contentHash);
+    assert.equal(readFileSync(restored.file, "utf8"), "old");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("恢复旧版本前会检查当前文件指纹", () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-office-conflict-"));
+  try {
+    const store = new OfficeFileSessionStore(dir);
+    const created = store.create("notes.txt", Buffer.from("first"));
+    assert.throws(() => store.restore(created.id, store.history(created.id)[0]!.id, "stale"), /其他程序中变化/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

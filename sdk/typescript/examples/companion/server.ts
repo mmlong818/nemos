@@ -26,6 +26,7 @@ import {
   FileAgentJobQueue,
   FileAgentRunStore,
   Nemos,
+  determinePromotion,
   type AgentApprovalStatus,
   type AgentApprovalStoreEvent,
   type AgentExtensionManifest,
@@ -89,6 +90,8 @@ import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from 
 import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
 import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
 import { OfficeFileSessionStore } from "./office-file-sessions.js";
+import { OfficeWorkbenchRevisionConflict, OfficeWorkbenchStateStore } from "./office-workbench-state.js";
+import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
@@ -124,6 +127,8 @@ const preparedOfficeExports = new Map<string, {
   expiresAt: number;
 }>();
 const officeFileSessions = new OfficeFileSessionStore(join(DATA_DIR, "office-file-sessions"));
+const officeWorkbenchState = new OfficeWorkbenchStateStore(join(DATA_DIR, "office-workbench.json"));
+const taskFiles = new TaskFileRegistry(join(DATA_DIR, "task-files.json"));
 
 
 function migrateStoredPersonaIdentities(root: string): void {
@@ -2167,7 +2172,7 @@ interface ChatBody {
   text: string;
   voice?: boolean;
   image?: string; // base64 data URL（识图）
-  attachment?: { name?: string; kind?: string; text?: string; truncated?: boolean };
+  attachment?: { name?: string; kind?: string; text?: string; truncated?: boolean; size?: number; fileRecordId?: string };
   sessionId?: string;
   messageId?: string;
   model?: string;
@@ -2342,8 +2347,29 @@ async function prepareChatTextWithImage(b: ChatBody): Promise<PreparedChatText> 
 
 async function prepareChatTextWithReadableContext(b: ChatBody): Promise<PreparedChatText> {
   const prepared = await prepareChatTextWithImage(b);
+  registerChatAttachment(b);
   const withAttachment = appendChatAttachmentContext(prepared.text, b.attachment);
   return { ...prepared, text: await appendWebPageContext(withAttachment) };
+}
+
+function registerChatAttachment(b: ChatBody): void {
+  const attachment = b.attachment;
+  const name = String(attachment?.name || "").trim();
+  const text = String(attachment?.text || "");
+  if (!name || !text) return;
+  const ownerId = String(b.sessionId || b.target.id || "conversation").slice(0, 160);
+  const messageId = String(b.messageId || createHash("sha256").update(text).digest("hex").slice(0, 20));
+  const extension = String(attachment?.kind || name.split(".").pop() || "txt").replace(/[^a-z0-9_-]/gi, "").toLowerCase().slice(0, 16) || "txt";
+  taskFiles.register({
+    sourceKey: attachment?.fileRecordId ? `linked:${attachment.fileRecordId}:${ownerId}` : `conversation:${ownerId}:${messageId}`,
+    ownerKind: "conversation",
+    ownerId,
+    displayName: name.slice(0, 180),
+    extension,
+    byteLength: Math.max(0, Number(attachment?.size || Buffer.byteLength(text, "utf8"))),
+    contentHash: createHash("sha256").update(text).digest("hex"),
+    storageRef: attachment?.fileRecordId ? `file:${attachment.fileRecordId}` : `message:${messageId}`,
+  });
 }
 
 function appendChatAttachmentContext(text: string, attachment?: ChatBody["attachment"]): string {
@@ -3054,10 +3080,48 @@ const server = createServer(async (req, res) => {
       try {
         const extraction = await extractOfficeFile(name, data);
         const session = officeFileSessions.create(name, data);
-        send(res, 200, { ok: true, extraction, session });
+        const fileRecord = taskFiles.register({
+          sourceKey: `office:${session.id}`,
+          ownerKind: "office",
+          ownerId: session.id,
+          displayName: session.name,
+          extension: session.extension,
+          byteLength: session.byteLength,
+          contentHash: session.contentHash,
+          storageRef: session.id,
+        });
+        send(res, 200, { ok: true, extraction, session, fileRecord });
       } catch (error) {
         send(res, 400, { error: error instanceof Error ? error.message : String(error) });
       }
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/files/workbench") {
+      send(res, 200, { ok: true, state: officeWorkbenchState.read() });
+      return;
+    }
+    if (req.method === "PUT" && pathname === "/api/files/workbench") {
+      const body = (await readBody(req, 7 * 1024 * 1024)) as { expectedRevision?: number; documents?: unknown[]; trash?: unknown[]; selectedId?: string | null };
+      try {
+        const state = officeWorkbenchState.save({
+          expectedRevision: Number(body.expectedRevision),
+          documents: body.documents || [],
+          trash: body.trash || [],
+          selectedId: body.selectedId,
+        });
+        send(res, 200, { ok: true, state });
+      } catch (error) {
+        if (error instanceof OfficeWorkbenchRevisionConflict) send(res, 409, { error: error.message, state: error.current });
+        else send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/files") {
+      const query = new URL(url, "http://127.0.0.1").searchParams;
+      const ownerKind = query.get("ownerKind") as TaskFileOwnerKind | null;
+      const ownerId = query.get("ownerId") || undefined;
+      const allowedOwner = ownerKind && ["conversation", "task", "artifact", "office"].includes(ownerKind) ? ownerKind : undefined;
+      send(res, 200, { ok: true, files: taskFiles.list(allowedOwner, ownerId) });
       return;
     }
     if (req.method === "GET" && pathname === "/api/files/session") {
@@ -3102,6 +3166,25 @@ const server = createServer(async (req, res) => {
         send(res, 200, { ok: true, changed, session, extraction, dataBase64: data.toString("base64") });
       } catch (error) {
         send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/files/session/history") {
+      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
+      try {
+        send(res, 200, { ok: true, versions: officeFileSessions.history(id) });
+      } catch (error) {
+        send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/files/session/restore") {
+      const body = (await readBody(req)) as { id?: string; versionId?: string; expectedHash?: string };
+      try {
+        const session = officeFileSessions.restore(String(body.id || ""), String(body.versionId || ""), String(body.expectedHash || ""));
+        send(res, 200, { ok: true, session });
+      } catch (error) {
+        send(res, 409, { error: error instanceof Error ? error.message : String(error) });
       }
       return;
     }
@@ -4226,7 +4309,7 @@ const server = createServer(async (req, res) => {
           targetFormat: b.format,
           persist: true,
         }),
-        summarizeResult: (report) => ({ ok: true, intakeId: report.intake?.id, matchedAbilityId: report.matchedAbility?.id }),
+        summarizeResult: (report) => ({ ok: true, intakeId: report.id, matchedAbilityId: report.matchedAbilities[0]?.abilityId }),
       });
       send(res, 200, { ok: true, report: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
@@ -4390,7 +4473,7 @@ const server = createServer(async (req, res) => {
           instructionChars: b.instruction?.length ?? 0,
         },
         metadata: { personaId: b.personaId || APP_PERSONA_ID },
-        execute: () => b.id ? capabilities.updateTask({ ...b, id: b.id! }) : capabilities.createTask(b),
+        execute: () => b.id ? capabilities.updateTask({ ...b, id: b.id! }) : capabilities.createTask({ ...b, spaceId: b.spaceId ?? undefined }),
         summarizeResult: (task) => ({ ok: true, taskId: task.id }),
       });
       send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
@@ -5302,6 +5385,7 @@ function capabilityReply(item: CapabilityNotification): {
   messages: string[];
   artifact: CapabilityNotification["artifact"];
 } {
+  registerCapabilityArtifact(item);
   return {
     personaId: item.personaId,
     name: item.name,
@@ -5311,8 +5395,29 @@ function capabilityReply(item: CapabilityNotification): {
   };
 }
 
-function capabilityReplies(items: CapabilityNotification[]): ReturnType<typeof capabilityReply>[] {
-  return items.map((item) => capabilityReply(item));
+function registerCapabilityArtifact(item: CapabilityNotification): void {
+  const artifact = item.artifact;
+  let byteLength = 0;
+  let contentHash = "";
+  try {
+    if (existsSync(artifact.file) && statSync(artifact.file).isFile()) {
+      const data = readFileSync(artifact.file);
+      byteLength = data.byteLength;
+      contentHash = createHash("sha256").update(data).digest("hex");
+    }
+  } catch {
+    // Artifact delivery remains available even if metadata inspection fails.
+  }
+  taskFiles.register({
+    sourceKey: `artifact:${artifact.id}`,
+    ownerKind: "artifact",
+    ownerId: artifact.taskId || artifact.id,
+    displayName: artifact.title,
+    extension: artifact.format,
+    byteLength,
+    contentHash,
+    storageRef: artifact.id,
+  });
 }
 
 function artifactDoneText(item: CapabilityNotification): string {

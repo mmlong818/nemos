@@ -466,7 +466,7 @@ export function makeReflectMockLLMConfig(opts?: {
   conflict?: boolean;
   /** v0.6：冲突时把解析到的 anchor（psem_xxx）id 填进 invalidates，驱动矛盾失效。 */
   invalidatesAnchors?: boolean;
-}): LLMConfig {
+}): Extract<LLMConfig, { provider: "custom" }> {
   const content = opts?.fixedContent ?? "用户在工作上倾向早晨时段进入高产状态";
   const layer = opts?.layer ?? "personal_semantic";
   const conflict = opts?.conflict === true;

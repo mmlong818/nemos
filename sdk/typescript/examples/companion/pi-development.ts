@@ -136,7 +136,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
   input.signal?.addEventListener("abort", abort, { once: true });
   try {
     input.onProgress?.(input.accessMode === "inspect" ? "正在检查项目" : "正在开发并验证", 20);
-    await session.prompt(buildDevelopmentPrompt(input.instruction, workspace, input.accessMode), { source: "sdk" });
+    await session.prompt(buildDevelopmentPrompt(input.instruction, workspace, input.accessMode), { source: "rpc" });
     if (toolCalls === 0) throw new Error("开发能力未实际读取项目，已拒绝把模型文字当作执行结果。");
     const reply = lastAssistantText(session.messages);
     if (!reply) throw new Error("开发能力没有生成可交付结果。");

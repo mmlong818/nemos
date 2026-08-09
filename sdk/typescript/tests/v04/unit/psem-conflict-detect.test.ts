@@ -7,29 +7,6 @@ import assert from "node:assert/strict";
 import { Nemos } from "../../../src/index.js";
 import { makeMockLLMConfig, makeReflectMockLLMConfig, resetMockCount } from "../../helpers.js";
 
-// Mock：强制让 LLM 输出 personal_semantic
-function makePsemMockLLMConfig(content: string) {
-  return {
-    provider: "custom" as const,
-    name: "psem-mock",
-    chat: async (_system: string, _user: string): Promise<string> => {
-      return JSON.stringify({
-        archival: { arousal: { value: 0, signal_sources: [] }, surprise: { value: 0, basis: "raw" } },
-        derived: [
-          {
-            layer: "personal_semantic",
-            content,
-            type: "user",
-            source: { authoritative: false, origin: "llm-extract", chain_depth: 1 },
-            arousal: { value: 0.3, signal_sources: [] },
-            surprise: { value: 0.2, basis: "mock" },
-          },
-        ],
-      });
-    },
-  };
-}
-
 test("v0.4 psem conflict: 相似内容自动建立 related 链", async () => {
   resetMockCount();
   const nemos = new Nemos({
