@@ -47,6 +47,10 @@
             <button class="toolbar-button primary" type="button" data-open-office-file data-office-icon="upload">打开文件</button>
             <input id="officeFileInput" type="file" hidden accept=".docx,.pptx,.xlsx,.pdf,.txt,.md,.markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,text/plain,text/markdown">
           </div>
+          <div class="file-library-tools" aria-label="筛选文件">
+            <label><span class="sr-only">搜索文件</span><input id="fileLibrarySearch" type="search" maxlength="80" placeholder="搜索文件"></label>
+            <label><span class="sr-only">按格式筛选</span><select id="fileLibraryFormat"><option value="all">全部格式</option><option value="docx">Word</option><option value="pptx">PowerPoint</option><option value="xlsx">Excel</option><option value="pdf">PDF</option><option value="txt">TXT</option><option value="md">Markdown</option></select></label>
+          </div>
           <div class="recent-files" id="recentFiles"></div>
           <details class="trash-panel" id="trashPanel">
             <summary><span class="trash-label"><i data-office-icon="trash" aria-hidden="true"></i>垃圾桶</span><small id="trashCount">0</small></summary>
@@ -85,8 +89,9 @@
                 <button class="toolbar-button danger" id="deleteDocument" type="button" data-office-icon="trash">删除</button>
                 <button class="toolbar-button assistant-trigger" id="openAssistantPanel" type="button" data-office-icon="spark" aria-controls="assistantPanel" aria-expanded="false">小丑鱼处理</button>
                 <button class="toolbar-button" id="openVersionPanel" type="button" data-office-icon="bookmark" aria-controls="assistantPanel" aria-expanded="false">版本</button>
-                <button class="toolbar-button" id="openDesktopEditor" type="button" data-office-icon="document" hidden>完整编辑</button>
+                <button class="toolbar-button" id="openDesktopEditor" type="button" data-office-icon="document" hidden>用桌面应用编辑</button>
                 <button class="toolbar-button" id="refreshDesktopFile" type="button" data-office-icon="download" hidden>载入修改</button>
+                <button class="toolbar-button primary" id="applyStructuredEdit" type="button" data-office-icon="check" hidden>应用到原格式</button>
                 <button class="toolbar-button" id="writeBackSource" type="button" data-office-icon="download" hidden>写回原文件</button>
                 <label class="export-choice"><span class="sr-only">导出格式</span><select id="exportFormat" aria-label="导出格式"><option value="docx">Word</option><option value="pdf">PDF</option><option value="pptx">PowerPoint</option><option value="xlsx">Excel</option><option value="html">网页</option><option value="md">Markdown</option></select></label>
                 <button class="toolbar-button" id="exportDraft" type="button" data-office-icon="download">导出</button>
@@ -136,6 +141,7 @@
               <div><p class="section-label">交给小丑鱼</p><h2>下一步怎么处理？</h2></div>
             </div>
             <p class="assistant-copy">小丑鱼会带上当前工作副本，并让你确认结果形式后开始。</p>
+            <p class="selection-context" id="selectionContext" hidden></p>
             <div class="quick-prompts" aria-label="常用处理">
               <button type="button" data-prompt="整理成结构清楚的正式文档" data-capability="document-draft" data-format="doc">整理成正式文档</button>
               <button type="button" data-prompt="提炼重点并做成适合汇报的演示文稿" data-capability="presentation-builder" data-format="pptx">做成汇报 PPT</button>

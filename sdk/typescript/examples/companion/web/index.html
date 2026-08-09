@@ -2616,6 +2616,7 @@
     outline:2px solid rgba(179,63,114,.72);
     outline-offset:2px;
   }
+  .row.history-target .bub, .row.history-target .expert-longform { outline:2px solid rgba(179,63,114,.55); outline-offset:4px; background-color:#fff8fa; transition:outline-color .2s ease, background-color .2s ease; }
   #quickCreateMenu {
     color:#20221f;
     background:#fffcf7;
@@ -4161,8 +4162,11 @@ function dedupeAppOnboarding() {
 }
 dedupeAppOnboarding();
 const CONVERSATION_TREE_KEY = "clownfish-conversation-trees-v1";
+const CONVERSATION_DRAFTS_KEY = "clownfish-conversation-drafts-v1";
 let conversationTrees = {};
 try { conversationTrees = JSON.parse(localStorage.getItem(CONVERSATION_TREE_KEY) || "{}"); } catch { conversationTrees = {}; }
+let conversationDrafts = {};
+try { conversationDrafts = JSON.parse(localStorage.getItem(CONVERSATION_DRAFTS_KEY) || "{}"); } catch { conversationDrafts = {}; }
 const WORK_MODES = {
   chat: { label: "直接聊聊", icon: "message-circle", title: "新对话", reasoning: "fast", toolMode: "auto" },
   task: { label: "完成任务", icon: "work", title: "新任务", reasoning: "balanced", toolMode: "auto" },
@@ -4218,6 +4222,23 @@ function activeConversation(key) {
 function saveConversationTrees() {
   try { localStorage.setItem(CONVERSATION_TREE_KEY, JSON.stringify(conversationTrees)); } catch {}
 }
+function activeConversationId(key = logKey()) {
+  return ensureConversationTree(key)?.activeId || "";
+}
+function saveConversationDraft() {
+  const id = activeConversationId();
+  const input = $("#txt");
+  if (!id || !input) return;
+  const value = input.value.slice(0, 12000);
+  if (value) conversationDrafts[id] = value;
+  else delete conversationDrafts[id];
+  try { localStorage.setItem(CONVERSATION_DRAFTS_KEY, JSON.stringify(conversationDrafts)); } catch {}
+}
+function restoreConversationDraft() {
+  const input = $("#txt");
+  if (!input) return;
+  input.value = conversationDrafts[activeConversationId()] || "";
+}
 function switchConversation(id) {
   const key = logKey();
   const tree = ensureConversationTree(key);
@@ -4226,6 +4247,7 @@ function switchConversation(id) {
     $("#txt")?.focus();
     return;
   }
+  saveConversationDraft();
   tree.activeId = id;
   chatLogs[key] = tree.nodes[id].messages;
   saveConversationTrees();
@@ -4234,6 +4256,7 @@ function switchConversation(id) {
   renderConversationPanel();
   renderContacts();
   renderConversationHeader();
+  restoreConversationDraft();
 }
 const GENERIC_CONVERSATION_TITLES = new Set(["新对话", "新任务", "新分支", "对话", "直接聊聊", "完成任务", "学习辅导"]);
 function fallbackConversationTitle(text) {
@@ -4289,6 +4312,8 @@ function deleteConversation(id) {
   const title = conversationTitle(node.messages, node.title || "对话");
   if (!confirm("删除“" + title + "”？\n这会删除此对话记录，但不会删除长期记忆或已经生成的文件。")) return;
   delete tree.nodes[id];
+  delete conversationDrafts[id];
+  try { localStorage.setItem(CONVERSATION_DRAFTS_KEY, JSON.stringify(conversationDrafts)); } catch {}
   for (const child of Object.values(tree.nodes)) if (child.parentId === id) child.parentId = null;
   let remaining = Object.values(tree.nodes).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
   if (!remaining.length) {
@@ -4376,6 +4401,7 @@ function saveLogs() {
 function logKey(t) { t = t || state.target; return t ? t.kind + ":" + t.id : ""; }
 function record(key, entry) {
   entry.ts = entry.ts || Date.now();
+  entry.id = entry.id || ("message-" + crypto.randomUUID());
   const node = activeConversation(key);
   if (node) {
     node.messages.push(entry);
@@ -4565,7 +4591,7 @@ async function prepareChatFile(file) {
   const raw = (await file.text()).replace(/\0/g, "").trim();
   if (!raw) throw new Error("文件中没有可读取的文字内容");
   const truncated = raw.length > 120000;
-  return { name: file.name, kind: extension, text: raw.slice(0, 120000), truncated, size: file.size };
+  return { name: file.name, kind: extension, text: raw.slice(0, 120000), truncated, size: file.size, fileRecordId: "file-" + crypto.randomUUID() };
 }
 function requestNativeScreenshot() {
   const btn = $("#shotbtn");
@@ -4671,19 +4697,32 @@ function historyScopeKeys() {
   if (current) return [current];
   return Object.keys(chatLogs).filter((key) => Array.isArray(chatLogs[key]) && chatLogs[key].length);
 }
+function historyConversationSources() {
+  return historyScopeKeys().flatMap((key) => {
+    const tree = ensureConversationTree(key);
+    if (!tree) return [{ key, conversationId: "", messages: Array.isArray(chatLogs[key]) ? chatLogs[key] : [] }];
+    return Object.values(tree.nodes).map((node) => ({ key, conversationId: node.id, messages: Array.isArray(node.messages) ? node.messages : [] }));
+  });
+}
+function scrollToHistoryMessage(messageId) {
+  const row = document.querySelector('.row[data-message-id="' + CSS.escape(String(messageId || "")) + '"]');
+  if (!row) return;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.classList.add("history-target");
+  window.setTimeout(() => row.classList.remove("history-target"), 2200);
+}
 function renderHistoryModal() {
   const q = ($("#historySearch").value || "").trim().toLowerCase();
-  const keys = historyScopeKeys();
   const rows = [];
-  for (const key of keys) {
-    const log = Array.isArray(chatLogs[key]) ? chatLogs[key] : [];
+  for (const source of historyConversationSources()) {
+    const key = source.key;
     const meta = chatMetaFromKey(key);
-    log.forEach((entry, index) => {
+    source.messages.forEach((entry, index) => {
       const text = String(entry.text || "");
       const speaker = historySpeaker(entry, meta);
       const haystack = (meta.name + " " + speaker + " " + text).toLowerCase();
       if (q && !haystack.includes(q)) return;
-      rows.push({ key, index, entry, meta, speaker, text });
+      rows.push({ key, conversationId: source.conversationId, messageId: entry.id || ("legacy-" + index), index, entry, meta, speaker, text });
     });
   }
   rows.sort((a, b) => Number(b.entry.ts || 0) - Number(a.entry.ts || 0));
@@ -4699,7 +4738,7 @@ function renderHistoryModal() {
   }
   list.innerHTML = rows.slice(0, 300).map((row) => {
     const text = row.text || (row.entry.voice ? "[语音]" : "");
-    return '<button type="button" class="history-row" data-key="' + esc(row.key) + '" data-index="' + esc(String(row.index)) + '">'
+    return '<button type="button" class="history-row" data-key="' + esc(row.key) + '" data-conversation-id="' + esc(row.conversationId) + '" data-message-id="' + esc(row.messageId) + '">'
       + '<span class="history-meta"><span>' + esc(historyTime(row.entry.ts)) + '</span><span>' + esc(row.meta.name) + '</span><span class="history-speaker">' + esc(row.speaker) + '</span></span>'
       + '<span class="history-text">' + esc(text) + '</span>'
       + '</button>';
@@ -4708,7 +4747,9 @@ function renderHistoryModal() {
     row.onclick = () => {
       const meta = chatMetaFromKey(row.dataset.key);
       if (meta.kind && meta.id) selectTarget(meta.kind, meta.id, meta.name);
+      if (row.dataset.conversationId) switchConversation(row.dataset.conversationId);
       $("#historymodal").classList.remove("show");
+      window.requestAnimationFrame(() => scrollToHistoryMessage(row.dataset.messageId));
     };
   });
 }
@@ -4731,15 +4772,17 @@ function renderLog() {
   const log = chatLogs[logKey()] || [];
   if (!log.length) { m.innerHTML = emptyStateHtml(); renderStarterPrompts(log); m.scrollTop = 0; return; }
   m.innerHTML = "";
-  for (const e of log) {
+  for (let messageIndex = 0; messageIndex < log.length; messageIndex += 1) {
+    const e = log[messageIndex];
+    const messageId = e.id || ("legacy-" + messageIndex);
     if (e.longform && isSubstantialExpertLongform(e.longform.sections)) {
-      addExpertLongform(e.longform);
+      addExpertLongform(e.longform, messageId);
     } else if (e.longform && Array.isArray(e.longform.sections)) {
       for (const section of e.longform.sections) {
         addRow("other", section.name || null, section.text || "", { pid: section.personaId || e.pid });
       }
     } else {
-      addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact });
+      addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, messageId });
     }
   }
   renderStarterPrompts(log);
@@ -4761,6 +4804,7 @@ function renderStarterPrompts(log) {
   card.innerHTML = '<strong>' + esc(prompts.title) + '</strong><span>' + esc(prompts.note) + '</span><div class="starter-prompt-actions">' + prompts.actions.map(([label, value]) => '<button type="button" data-starter="' + esc(value) + '">' + esc(label) + '</button>').join('') + '</div>';
   card.querySelectorAll("[data-starter]").forEach((button) => button.addEventListener("click", () => {
     $("#txt").value = button.dataset.starter;
+    saveConversationDraft();
     $("#txt").focus();
     $("#txt").setSelectionRange($("#txt").value.length, $("#txt").value.length);
   }));
@@ -4945,12 +4989,14 @@ function renderConversationHeader() {
 }
 
 function selectTarget(kind, id, name) {
+  saveConversationDraft();
   state.target = { kind, id, name };
   renderConversationHeader();
   renderContacts();
   renderRelbar();
   renderLog(); // 恢复该会话已有聊天记录
   renderChatCapabilityBridge();
+  restoreConversationDraft();
 }
 
 function esc(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
@@ -5103,6 +5149,7 @@ function addRow(side, who, text, opts = {}) {
   const empty = msgs.querySelector(".empty-state"); if (empty) empty.remove();
   const row = document.createElement("div");
   row.className = "row " + side;
+  if (opts.messageId) row.dataset.messageId = String(opts.messageId);
   const inner = document.createElement("div");
   inner.className = "msg-body";
   if (who) {
@@ -5121,7 +5168,7 @@ function addRow(side, who, text, opts = {}) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
-function addExpertLongform(brief) {
+function addExpertLongform(brief, messageId = "") {
   const msgs = $("#msgs");
   const hint = msgs.querySelector(".hint"); if (hint) hint.remove();
   const empty = msgs.querySelector(".empty-state"); if (empty) empty.remove();
@@ -5130,6 +5177,7 @@ function addExpertLongform(brief) {
 
   const row = document.createElement("div");
   row.className = "row other expert-longform-row";
+  if (messageId) row.dataset.messageId = messageId;
   const article = document.createElement("article");
   article.className = "expert-longform";
   article.setAttribute("aria-label", brief.title || "专家组答复");
@@ -5380,7 +5428,10 @@ async function sendMsg(voiceFlag, overrideText) {
   const attachment = state.pendingFile;
   if ((!text && !image && !attachment) || !state.target) return;
   sending = true;
-  if (overrideText == null) $("#txt").value = "";
+  if (overrideText == null) {
+    $("#txt").value = "";
+    saveConversationDraft();
+  }
   $("#send").disabled = true;
   document.body.classList.add("is-busy");
   const key = logKey();
@@ -5410,12 +5461,14 @@ async function sendMsg(voiceFlag, overrideText) {
 }
 
 $("#send").onclick = () => sendMsg();
+$("#txt").addEventListener("input", saveConversationDraft);
 $("#txt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     sendMsg();
   }
 });
+window.addEventListener("beforeunload", saveConversationDraft);
 
 // 把录音（webm/ogg/mp4）解码后重编码为 16k 单声道 16bit WAV，ASR 才认
 async function blobToWav(blob) {
@@ -7439,6 +7492,13 @@ function openCapabilityPanel(options = {}) {
       text: String(entry.text || "") + attachmentText,
     };
   }).filter((entry) => entry.text.trim());
+  const conversationMaterials = sourceMessages.flatMap((entry) => entry.attachment?.text ? [{
+    name: String(entry.attachment.name || "对话附件").slice(0, 160),
+    size: Math.max(0, Number(entry.attachment.size || 0)),
+    text: String(entry.attachment.text).slice(0, 120000),
+    kind: String(entry.attachment.kind || "text").slice(0, 16),
+    fileRecordId: String(entry.attachment.fileRecordId || ""),
+  }] : []).slice(-8);
   const draft = options.includeDraft ? $("#txt").value.trim().slice(0, 2000) : "";
   const latestUserMessage = [...conversation].reverse().find((entry) => entry.side === "user");
   const goal = draft || String(latestUserMessage?.text || "").slice(0, 2000);
@@ -7467,7 +7527,9 @@ function openCapabilityPanel(options = {}) {
     chatName: chatName || "小丑鱼",
     goal,
     conversation,
-    materials: state.pendingFile ? [{ name: state.pendingFile.name, size: state.pendingFile.size, text: state.pendingFile.text, kind: state.pendingFile.kind }] : [],
+    materials: state.pendingFile
+      ? [...conversationMaterials, { name: state.pendingFile.name, size: state.pendingFile.size, text: state.pendingFile.text, kind: state.pendingFile.kind, fileRecordId: state.pendingFile.fileRecordId || "" }].slice(-8)
+      : conversationMaterials,
     createdAt: Date.now(),
   }));
   window.location.href = "/capabilities";

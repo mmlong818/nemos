@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-export type CapabilityHandoffSource = "chat" | "capability";
+export type CapabilityHandoffSource = "chat" | "capability" | "office";
 
 export interface CapabilityHandoffMessage {
   sourceMessageId: string;
@@ -16,6 +16,7 @@ export interface CapabilityHandoffMaterial {
   text: string;
   byteLength: number;
   contentHash: string;
+  fileRecordId?: string;
   artifactId?: string;
 }
 
@@ -73,7 +74,7 @@ export function createCapabilityHandoffEnvelope(
 ): CapabilityHandoffEnvelope | undefined {
   const target = boundedText(targetCapabilityId, 120);
   if (!target) return undefined;
-  const source: CapabilityHandoffSource = input.source === "capability" ? "capability" : "chat";
+  const source: CapabilityHandoffSource = input.source === "capability" ? "capability" : input.source === "office" ? "office" : "chat";
   const conversation = normalizeMessages(input.conversation);
   const materials = normalizeMaterials(input.materials);
   const goal = boundedText(input.goal, 4_000);
@@ -190,6 +191,7 @@ function normalizeMaterials(value: unknown): CapabilityHandoffMaterial[] {
       text,
       byteLength: Buffer.byteLength(text, "utf8"),
       contentHash: digest(text),
+      fileRecordId: /^file-[a-f0-9-]{36}$/i.test(boundedText(item.fileRecordId, 80)) ? boundedText(item.fileRecordId, 80) : undefined,
       artifactId: boundedText(item.artifactId, 160) || undefined,
     }];
   });
