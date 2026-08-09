@@ -132,4 +132,6 @@ await nemos.close();
 
 ## 许可证
 
-PolyForm Noncommercial 1.0.0。
+Nemos Memory SDK（本包发布的 `dist/`，构建自 `src/`）采用 PolyForm Noncommercial 1.0.0。
+
+同目录下的 `examples/companion/`（小丑鱼应用）**不在**该许可证范围内，保留全部权利并另行授权；它不随本 npm 包发布（`files` 白名单仅含 `dist`）。完整授权结构见仓库根目录 [LICENSING.md](../../LICENSING.md)。

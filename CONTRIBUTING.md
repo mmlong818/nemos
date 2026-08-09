@@ -79,4 +79,21 @@ docs: refresh current product guide
 
 ## 许可
 
-提交内容按本仓库的 PolyForm Noncommercial 1.0.0 许可提供。
+本仓库采用双授权结构：`sdk/typescript/src/` 等 SDK 部分对外按 PolyForm
+Noncommercial 1.0.0 提供，`sdk/typescript/examples/companion/`（小丑鱼应用）
+保留全部权利并另行授权。完整说明见 [LICENSING.md](LICENSING.md)。
+
+小丑鱼的打包产物内含 SDK 代码，因此提交贡献时需要一并给出商业再授权许可，
+否则该贡献将无法随应用分发。
+
+**提交 Pull Request 即表示你声明并同意：**
+
+1. 你拥有所提交内容的著作权，或已获得足以作出本节授权的权利；
+2. 你授予项目所有者一份永久、全球、非独占、免费、不可撤销、可转授的许可，
+   允许其以任何条款（包括但不限于 PolyForm Noncommercial 及商业许可）
+   使用、复制、修改、演绎、公开发布、分发与再授权你的贡献；
+3. 你的贡献同时按本仓库当前适用的对外许可证向公众提供；
+4. 你保留对自身贡献的著作权，本节授权为许可而非著作权转让。
+
+若你代表雇主或其他组织提交，请确认已获得该组织的相应授权。无法作出上述
+授权时，请在 issue 中说明，不要直接提交 Pull Request。

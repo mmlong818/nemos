@@ -189,4 +189,7 @@ const context = await memory.getRelevantContext("Draft a proposal");
 
 ## License
 
-This project uses the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, modification, and distribution are allowed; commercial use requires separate permission.
+This repository uses a dual licensing structure. See [LICENSING.md](LICENSING.md) for the authoritative scope:
+
+- **Nemos Memory SDK** (`sdk/typescript/src/`, `spec/`, `rfcs/`, `bench/`, `docs/`) uses the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, modification, and distribution are allowed; commercial use requires separate permission.
+- **The Clownfish application** (`sdk/typescript/examples/companion/`) is **not** covered by that license. All rights reserved; licensed separately. See its [LICENSE](sdk/typescript/examples/companion/LICENSE).
