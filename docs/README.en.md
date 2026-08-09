@@ -4,6 +4,8 @@
 
 This page links to the main product, integration, architecture, and research documents for Clownfish and the Nemos Memory SDK.
 
+Get-started, integration, and product-design documents describe the current implementation. Dated audits, RFCs, the paper, and `spec/` are historical or research records and do not define the current UI or public API.
+
 ## Get started
 
 | Document | Purpose |
@@ -40,5 +42,7 @@ This page links to the main product, integration, architecture, and research doc
 | [Paper artifacts](../paper/README.md) | MnemoBench paper, source, and results |
 | [Benchmark guide](../bench/README.md) | Benchmark tasks, execution, and results |
 | [Early specifications](../spec/README.md) | Archived v0.1 design records |
+| [2026-08-08 web audit](../sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md) | Dated UI and remediation evidence, not current status |
+| [2026-08-07 web audit](../sdk/typescript/examples/companion/docs/reviews/2026-08-07-web-true-check-10-rounds.md) | Dated user-path findings, not current status |
 
 Current SDK types, README files, tests, and release notes define the public interface. Research and archived material provide design context but do not replace current API documentation.

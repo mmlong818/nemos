@@ -31,6 +31,14 @@ npm run build
 npm test
 ~~~
 
+仓库根目录还提供公开文档核验：
+
+~~~powershell
+node scripts\verify-docs.mjs
+~~~
+
+它会检查本地链接、能力数量、README 测试数、历史文档标识、冻结实验哈希与论文关键结果。
+
 小丑鱼：
 
 ~~~powershell
