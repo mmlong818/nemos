@@ -65,8 +65,8 @@ async function checkZipPackage(format: "docx" | "pptx" | "xlsx", data: Buffer, c
   const unsafe = names.filter((name) => name.includes("..") || name.startsWith("/") || /^[a-z]:/i.test(name) || name.includes("\\"));
   checks.push({ name: "没有越界的包内路径", passed: unsafe.length === 0, detail: unsafe.length ? unsafe.slice(0, 3).join("、") : undefined });
 
-  const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
-  checks.push({ name: "没有重复部件", passed: duplicates.length === 0, detail: duplicates.length ? duplicates.slice(0, 3).join("、") : undefined });
+  // 已知缺口：JSZip 载入时同名条目后者覆盖前者，因此这里检不出重复部件。
+  // 要真正判断需要自己解析 ZIP 中央目录，等接入真实编辑内核时一并处理。
 
   const required = REQUIRED_PARTS[format]!;
   const missing = required.exact.filter((part) => !zip.file(part));
@@ -140,7 +140,7 @@ function xmlProblem(xml: string): string | null {
     if (close < 0) return "标签被截断";
     const body = xml.slice(open + 1, close);
     index = close + 1;
-    if (body.endsWith("/")) continue;
+    if (body.trimEnd().endsWith("/")) continue;
     if (body.startsWith("/")) {
       const name = body.slice(1).trim();
       const expected = stack.pop();
