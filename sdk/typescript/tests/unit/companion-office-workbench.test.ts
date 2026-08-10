@@ -70,12 +70,12 @@ test("Office 文件可以交给桌面原生编辑器，并把修改重新载入�
   assert.match(officeJs, /function usesDesktopOriginalFormat/);
   assert.match(officeJs, /view === "edit" && current\?\.kind === "pdf"/);
   assert.match(officeJs, /document\.querySelector\("#editViewTab"\)\.hidden = current\.kind === "pdf"/);
-  assert.match(officeHtml, /id="saveStructuredCopy"[^>]*>另存为文字副本/);
-  assert.match(officeJs, /\/api\/files\/session\/structured-copy/);
-  assert.match(officeJs, /\/api\/files\/session\/docx-copy/);
   assert.match(officeJs, /function renderPresentationWorkspace/);
   assert.match(officeJs, /function renderSpreadsheetWorkspace/);
   assert.match(officeJs, /用 Word 编辑/);
+  // 原格式编辑已退出产品：桌面应用仍可打开原文件，但页内不再提供原格式写入。
+  assert.doesNotMatch(officeJs, /\/api\/files\/session\/structured-copy/);
+  assert.doesNotMatch(officeJs, /\/api\/files\/session\/docx-copy/);
 });
 
 test("工作台提供本机自动保存、版本比较与页内处理", () => {

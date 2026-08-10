@@ -89,6 +89,7 @@ import { resolveGroupReplyRoute } from "./group-routing.js";
 import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
 import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
 import { officeCapabilityBrowserScript } from "./office-capabilities.js";
+import { convertOfficeToMarkdown } from "./office-to-markdown.js";
 import { userFacingMessage } from "./office-errors.js";
 import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
 import { OfficeFileSessionStore } from "./office-file-sessions.js";
@@ -2089,17 +2090,6 @@ function contentType(path: string): string {
   return "application/octet-stream";
 }
 
-function normalizeDocxEdits(edits: unknown): Array<{ docxIndex: number; text: string }> {
-  if (!Array.isArray(edits)) return [];
-  return edits
-    .filter((edit) => Number.isInteger((edit as { docxIndex?: unknown })?.docxIndex) && Number((edit as { docxIndex: number }).docxIndex) >= 0)
-    .slice(0, 5_000)
-    .map((edit) => ({
-      docxIndex: Number((edit as { docxIndex: number }).docxIndex),
-      text: String((edit as { text?: unknown }).text ?? "").slice(0, 120_000),
-    }));
-}
-
 function officeSessionContentType(extension: string): string {
   return ({
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -3118,6 +3108,8 @@ const server = createServer(async (req, res) => {
         return;
       }
       try {
+        // 上传的文档统一转成 Markdown 再处理；原文件仍完整保存在会话里，可随时下载。
+        const conversion = await convertOfficeToMarkdown(name, data);
         const extraction = await extractOfficeFile(name, data);
         const session = officeFileSessions.create(name, data);
         const fileRecord = taskFiles.register({
@@ -3130,7 +3122,7 @@ const server = createServer(async (req, res) => {
           contentHash: session.contentHash,
           storageRef: session.id,
         });
-        send(res, 200, { ok: true, extraction, session, fileRecord });
+        send(res, 200, { ok: true, extraction, conversion, session, fileRecord });
       } catch (error) {
         send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
@@ -3246,110 +3238,6 @@ const server = createServer(async (req, res) => {
         send(res, 200, { ok: true, events: officeFileSessions.eventHistory(id) });
       } catch (error) {
         send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && pathname === "/api/files/session/docx-blocks") {
-      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
-      try {
-        send(res, 200, { ok: true, blocks: await officeFileSessions.readDocxBlocks(id) });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && pathname === "/api/files/session/pptx-blocks") {
-      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
-      try {
-        send(res, 200, { ok: true, blocks: await officeFileSessions.readPptxBlocks(id) });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/session/pptx-save") {
-      const body = (await readBody(req, 2 * 1024 * 1024)) as {
-        id?: string;
-        expectedHash?: string;
-        edits?: Array<{ slideIndex?: number; elementIndex?: number; paragraphIndex?: number; text?: string }>;
-      };
-      try {
-        const edits = Array.isArray(body.edits)
-          ? body.edits
-            .filter((edit) => [edit?.slideIndex, edit?.elementIndex, edit?.paragraphIndex].every((value) => Number.isInteger(value) && Number(value) >= 0))
-            .slice(0, 5_000)
-            .map((edit) => ({
-              slideIndex: Number(edit.slideIndex),
-              elementIndex: Number(edit.elementIndex),
-              paragraphIndex: Number(edit.paragraphIndex),
-              text: String(edit.text ?? "").slice(0, 120_000),
-            }))
-          : [];
-        const result = await officeFileSessions.savePptxTextEdits(String(body.id || ""), String(body.expectedHash || ""), edits);
-        taskFiles.refreshStorage(result.session.id, {
-          byteLength: result.session.byteLength,
-          contentHash: result.session.contentHash,
-        });
-        send(res, 200, { ok: true, ...result });
-      } catch (error) {
-        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/session/docx-save") {
-      const body = (await readBody(req, 2 * 1024 * 1024)) as {
-        id?: string;
-        expectedHash?: string;
-        edits?: Array<{ docxIndex?: number; text?: string }>;
-      };
-      try {
-        const result = await officeFileSessions.saveDocxTextEdits(String(body.id || ""), String(body.expectedHash || ""), normalizeDocxEdits(body.edits));
-        taskFiles.refreshStorage(result.session.id, {
-          byteLength: result.session.byteLength,
-          contentHash: result.session.contentHash,
-        });
-        send(res, 200, { ok: true, ...result });
-      } catch (error) {
-        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/session/docx-copy") {
-      const body = (await readBody(req, 2 * 1024 * 1024)) as {
-        id?: string;
-        expectedHash?: string;
-        edits?: Array<{ docxIndex?: number; text?: string }>;
-      };
-      try {
-        const result = await officeFileSessions.saveDocxTextCopy(String(body.id || ""), String(body.expectedHash || ""), normalizeDocxEdits(body.edits));
-        send(res, 200, { ok: true, ...result });
-      } catch (error) {
-        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/session/structured-copy") {
-      const body = (await readBody(req, 2 * 1024 * 1024)) as {
-        id?: string;
-        expectedHash?: string;
-        blocks?: Array<{ title?: string; text?: string }>;
-        cells?: Array<{ sheetIndex?: number; address?: string; value?: string }>;
-        complete?: boolean;
-      };
-      try {
-        const blocks = Array.isArray(body.blocks) ? body.blocks.slice(0, 300).map((block) => ({
-          title: String(block?.title || "").slice(0, 160),
-          text: String(block?.text || "").slice(0, 120_000),
-        })) : [];
-        const cells = Array.isArray(body.cells) ? body.cells.slice(0, 20_000).map((cell) => ({
-          sheetIndex: Number(cell?.sheetIndex),
-          address: String(cell?.address || "").slice(0, 16),
-          value: String(cell?.value || "").slice(0, 32_000),
-        })) : [];
-        const result = await officeFileSessions.saveStructuredCopy(String(body.id || ""), String(body.expectedHash || ""), blocks, cells, body.complete === true);
-        send(res, 200, { ok: true, ...result });
-      } catch (error) {
-        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }

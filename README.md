@@ -69,10 +69,12 @@
 - 文件工作副本同时保存到本地服务；多个窗口同时编辑时会阻止旧内容覆盖新内容；
 - Markdown 提供目录、格式工具和实时预览，TXT 保持连续文本编辑；
 - PDF 可显示原始版式，Office 文件提供结构化预览并保留原文件；
-- 每个文件都标注真实能力：TXT、Markdown、Word 和 PowerPoint 是**可编辑**，Excel 和 PDF 是**仅查看**；能力标注与"能否覆盖原文件"分开表达，不互相冒充；
-- Word 按段落修改：只重写你改过的段落，其余段落、表格、图片、图表、页眉页脚、批注和修订都保持原字节，改动段落自己的加粗、字号、颜色也保留。可以**写回原文件**，也可以另存为新文件；写回前的版本保留在版本记录里，可随时取回。已用真实 Microsoft Word 在禁止修复的模式下逐份验证（见 `sdk/typescript/examples/companion/docs/reviews/2026-08-10-docx-fidelity-with-word.md`）。仅声明 Microsoft Word 兼容，不声称兼容 WPS 与 LibreOffice；
-- PowerPoint 按段落修改：只重写你改过的段落，同页其他元素、其他页面、表格、图片、图表与讲者备注都保持原字节。一次改动必须落在同一段格式内，跨格式的改动会被拒绝并提示你分段修改——宁可拒绝，也不打乱行内格式。已用真实 Microsoft PowerPoint 逐份验证（见 `sdk/typescript/examples/companion/docs/reviews/2026-08-11-pptx-fidelity-with-powerpoint.md`）；
-- Excel 仍走旧的文字级替换，被改动位置的单元格样式会丢失，因此只能另存为新文件并保持仅查看标注；
+- 上传的文档统一转成 **Markdown** 再处理。Word、PowerPoint、Excel 和 PDF 打开后即转换；TXT 和 Markdown 本身直接编辑；
+- **原文件完整保留、可下载、不会被改写。** 转换结果是派生的工作文档，写回只对 TXT 和 Markdown 开放；
+- 每次转换都会逐条列出**这一份具体丢了什么**：Word 的字体字号颜色对齐、页眉页脚、批注修订与图片；PowerPoint 的版式母版主题动画；Excel 的单元格样式、条件格式与图表；PDF 的版式与表格线。标题层级、段落、列表、表格和讲者备注会带过来；
+- 转换后用 Markdown 编辑器处理：目录、格式工具、源码与实时预览双视图；
+- 需要原版式时可以随时切回“原文件”页签查看，或用桌面 Office 打开原文件；
+- 结果可导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown——导出的是新文件，不是覆盖原件；
 - TXT 与 Markdown 在用户明确授权后可以写回原文件；写回前会检查原文件是否已被其他程序修改；
 - DOCX、PPTX、XLSX 和 PDF 可从文件页交给 Windows 已关联的桌面编辑器，保存后再将真实文件修改载入工作台；
 - 编辑、自动检查点、工作副本版本、原文件历史、AI 处理进度和结果都留在当前页面；

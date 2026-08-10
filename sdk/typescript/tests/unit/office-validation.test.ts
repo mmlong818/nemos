@@ -95,25 +95,6 @@ test("结构完整但没有文字的文件不算损坏", async () => {
   assert.match(reparse.detail || "", /没有可提取的文字/);
 });
 
-test("副本没通过格式检查时不落盘，工作区不留半成品", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "clownfish-office-validation-"));
-  try {
-    // 用 XLSX：DOCX 与 PPTX 都已改走保真路径，不再经过这条已冻结的替换。
-    const zip = new JSZip();
-    zip.file("[Content_Types].xml", "<Types/>");
-    zip.file("xl/workbook.xml", "<workbook/>");
-    zip.file("xl/worksheets/sheet1.xml", '<worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>');
-    const store = new OfficeFileSessionStore(directory);
-    const created = store.create("broken.xlsx", await zip.generateAsync({ type: "nodebuffer" }));
-    await assert.rejects(
-      () => store.saveStructuredCopy(created.id, created.contentHash, [{ title: "数据", text: "A1: 新值" }]),
-      /没有通过格式检查/,
-    );
-    assert.deepEqual(store.scan().map((session) => session.id), [created.id]);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
 
 test("只有写给用户看的提示才允许原样展示", async () => {
   const directory = mkdtempSync(join(tmpdir(), "clownfish-office-usermsg-"));
@@ -121,8 +102,10 @@ test("只有写给用户看的提示才允许原样展示", async () => {
     const store = new OfficeFileSessionStore(directory);
     const created = store.create("notes.md", Buffer.from("content"));
     // 我们自己写的提示：可以展示
-    const stale = await store.saveStructuredCopy(created.id, "stale", []).catch((error: unknown) => error);
-    assert.equal(userFacingMessage(stale), "文件已在其他程序中变化，请重新载入后再生成副本");
+    const stale = await Promise.resolve()
+      .then(() => store.restore(created.id, store.history(created.id)[0]!.id, "stale"))
+      .catch((error: unknown) => error);
+    assert.equal(userFacingMessage(stale), "文件已在其他程序中变化，请重新载入后再恢复版本");
     // 依赖库或运行时抛出的异常：不进入白名单
     assert.equal(userFacingMessage(new Error("ENOENT: no such file or directory, open 'C:\\\\secret'")), undefined);
     assert.equal(userFacingMessage("字符串异常"), undefined);
@@ -137,18 +120,3 @@ test("生成导出文件时同样过结构检查并带回回执", async () => {
   assert.equal(exported.validation?.byteLength, exported.data.byteLength);
 });
 
-test("通过检查的副本会带回可复核的检查回执", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "clownfish-office-receipt-"));
-  try {
-    const original = await exportOfficeDocument({ name: "报告", format: "xlsx", blocks: [{ title: "数据", text: "A1: 旧值" }] });
-    const store = new OfficeFileSessionStore(directory);
-    const created = store.create("报告.xlsx", original.data);
-    const result = await store.saveStructuredCopy(created.id, created.contentHash, [{ title: "数据", text: "A1: 新值" }]);
-    assert.equal(result.validation.passed, true);
-    assert.equal(result.validation.sha256, result.copy.contentHash);
-    assert.equal(result.validation.byteLength, result.copy.byteLength);
-    assert.ok(result.validation.checks.length >= 6);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
