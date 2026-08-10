@@ -4,7 +4,7 @@
 
 This page links to the main product, integration, architecture, and research documents for Clownfish and the Nemos Memory SDK.
 
-Get-started, integration, and product-design documents describe the current implementation. Dated audits, RFCs, the paper, and `spec/` are historical or research records and do not define the current UI or public API.
+Get-started, integration, and architecture documents describe the current implementation. RFCs, the paper, and `spec/` are research or archived records and do not define the current UI or public API.
 
 ## Get started
 
@@ -24,12 +24,10 @@ Get-started, integration, and product-design documents describe the current impl
 | [Memory architecture](architecture-overview.md) | Layers, ingestion, recall, and data boundaries |
 | [Runtime architecture](../sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Tasks, tools, permissions, recovery, and extensions |
 
-## Product design
+## Architecture
 
 | Document | Purpose |
 | --- | --- |
-| [Product design brief](../sdk/typescript/examples/companion/docs/clownfish-product-design-brief.md) | User journeys and interface principles |
-| [Product language](../sdk/typescript/examples/companion/docs/clownfish-product-language.md) | Naming, states, and user-facing copy |
 | [Capability workflow](../sdk/typescript/examples/companion/docs/capability-center-design.md) | Starting, running, and delivering capability tasks |
 | [Capability memory](../sdk/typescript/examples/companion/docs/capability-center-memory-design.md) | Preferences, formatting, and task context |
 | [Capability runtime](../sdk/typescript/examples/companion/docs/capability-os-design.md) | Shared execution model for chat, capabilities, files, and tasks |
@@ -42,7 +40,5 @@ Get-started, integration, and product-design documents describe the current impl
 | [Paper artifacts](../paper/README.md) | MnemoBench paper, source, and results |
 | [Benchmark guide](../bench/README.md) | Benchmark tasks, execution, and results |
 | [Early specifications](../spec/README.md) | Archived v0.1 design records |
-| [2026-08-08 web audit](../sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md) | Dated UI and remediation evidence, not current status |
-| [2026-08-07 web audit](../sdk/typescript/examples/companion/docs/reviews/2026-08-07-web-true-check-10-rounds.md) | Dated user-path findings, not current status |
 
 Current SDK types, README files, tests, and release notes define the public interface. Research and archived material provide design context but do not replace current API documentation.

@@ -50,11 +50,6 @@ for (const file of markdownFiles.filter((path) => path.startsWith(join(root, "sp
     fail(`归档规范缺少顶部状态：${file.slice(root.length + 1)}`);
   }
 }
-for (const file of markdownFiles.filter((path) => path.includes(`${join("docs", "reviews")}`) && /web-true-check/.test(path))) {
-  if (!readFileSync(file, "utf8").split(/\r?\n/).slice(0, 8).join("\n").includes("历史评审记录")) {
-    fail(`历史评审缺少顶部说明：${file.slice(root.length + 1)}`);
-  }
-}
 
 const capabilityScript = readFileSync(join(root, "sdk", "typescript", "examples", "companion", "web", "assets", "capability-center.js"), "utf8");
 const publicCapabilityCount = [...capabilityScript.matchAll(/backendId:/g)].length;

@@ -1,6 +1,21 @@
-# Clownfish
+# Nemos
 
 [中文](README.md) · **English**
+
+[![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
+[![SDK license: PolyForm Noncommercial](https://img.shields.io/badge/SDK-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#run-locally)
+
+This repository holds two things under different licenses:
+
+| Part | What it is | License |
+|---|---|---|
+| **Nemos Memory SDK**<br>`sdk/typescript/src/` | An embeddable long-term memory core: layered archival, structured claims, invalidation and correction, multi-path recall | [PolyForm Noncommercial 1.0.0](LICENSE); commercial use requires a separate grant |
+| **Clownfish**<br>`sdk/typescript/examples/companion/` | A local-first AI work application built on that core, and the SDK's full reference implementation | All rights reserved, [licensed separately](sdk/typescript/examples/companion/LICENSE) |
+
+See [LICENSING.md](LICENSING.md) for the full terms. The application is described first; for SDK usage jump to [Use the memory SDK independently](#use-the-memory-sdk-independently).
+
+## Clownfish
 
 > A local-first AI work application with long-term memory. Start with a new conversation, switch to task completion or guided study when needed, and continue complex work in Capabilities, Files, and Work.
 
@@ -14,7 +29,7 @@ Clownfish combines four everyday surfaces:
 |---|---|---|
 | **Chat** | Create, search, switch, or delete independent conversations; upload images or files; and choose the right work mode | Automatic titles, parallel threads, isolated context, and delivery back to the originating conversation |
 | **Capabilities** | Describe an outcome or choose a capability directly | Background jobs, live progress, cancellation, retries, previews, and downloads |
-| **Files** | Open Word, PowerPoint, Excel, PDF, TXT, or Markdown | Faithful preview, a stated capability per format, direct editing and write-back for TXT/Markdown, text extraction and save-as-copy for Office, and version history |
+| **Files** | Open Word, PowerPoint, Excel, PDF, TXT, or Markdown | Converted to Markdown for editing, an itemized list of what the conversion lost, the original kept and downloadable, faithful preview, and version history |
 | **Work** | Review tasks, workspaces, automations, collaboration, resources, results, runs, and memory | Multi-task organization, scheduled execution, expert review, local resources, artifacts, and preference management |
 
 New users do not need to create a project or understand tool names first.
@@ -133,9 +148,8 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 ## Current verification
 
 - The TypeScript build passes;
-- All 601 automated tests pass;
+- All 590 automated tests pass;
 - Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
-- See the [2026-08-08 ten-round real-world audit](sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md).
 
 ## Run locally
 
@@ -189,6 +203,8 @@ const context = await memory.getRelevantContext("Draft a proposal");
 | [Runtime architecture](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Tasks, tools, permissions, and recovery |
 | [Roadmap](ROADMAP.md) | Current versions and next priorities |
 | [Documentation guide](docs/README.en.md) | Product, integration, architecture, and research documents |
+| [Contributing](CONTRIBUTING.md) | Submission process and inbound license terms |
+| [Security policy](SECURITY.md) | How to report a vulnerability |
 
 ## License
 
