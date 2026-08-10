@@ -314,6 +314,12 @@ function maybeCreateAutomaticCheckpoint() {
   current.lastCheckpointAt = now();
 }
 
+/** 允许用 ?view=source|edit|result 深链到某个视图（截图与外部跳转都用得上）。 */
+function requestedView() {
+  const value = new URLSearchParams(window.location.search).get("view");
+  return ["source", "edit", "result"].includes(String(value)) ? String(value) : null;
+}
+
 async function hydrateWorkbenchState() {
   try {
     const response = await api("/api/files/workbench");
@@ -323,7 +329,7 @@ async function hydrateWorkbenchState() {
       state.documents = remote.documents.map(safeDocument);
       state.trash = Array.isArray(remote.trash) ? remote.trash.map((item) => ({ ...safeDocument(item), deletedAt: String(item?.deletedAt || item?.updatedAt || now()) })) : [];
       state.selectedId = state.documents.some((item) => item.id === remote.selectedId) ? remote.selectedId : state.documents[0]?.id || null;
-      state.view = currentDocument()?.sourceSize ? "source" : "edit";
+      state.view = requestedView() || (currentDocument()?.sourceSize ? "source" : "edit");
       writeStoredState();
       render();
       return;
@@ -1045,8 +1051,11 @@ function render() {
   document.querySelector("#documentSurface").classList.toggle("is-markdown", current.kind === "md");
   document.querySelector("#documentSurface").classList.toggle("is-presentation", current.kind === "pptx");
   document.querySelector("#documentSurface").classList.toggle("is-spreadsheet", current.kind === "xlsx");
+  const savesToLabel = capability.savesTo === "original"
+    ? "修改可写回原文件"
+    : capability.savesTo === "copy" ? "文字修改另存为副本，本文件不改动" : "只读";
   document.querySelector("#documentMeta").textContent = usesDesktopOriginalFormat(current)
-    ? `原格式文件${size} · ${capability.copyOnly ? "文字修改另存为副本，本文件不改动" : "只读"}`
+    ? `原格式文件${size} · ${savesToLabel}`
     : `本机工作副本${size} · 原文件未改动`;
   if (current.kind === "docx" && current.desktopSessionId && !docxBlocksRequested.has(current.id)) {
     docxBlocksRequested.add(current.id);
