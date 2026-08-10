@@ -68,7 +68,7 @@ The file workspace supports DOCX, PPTX, XLSX, PDF, TXT, and Markdown:
 - Deleted working files move to a recoverable trash area before permanent deletion;
 - Results can be exported to DOCX, PDF, PPTX, XLSX, HTML, or Markdown.
 
-![Clownfish office workspace](docs/assets/readme/clownfish-office-2026-08-10-v2.png)
+![Clownfish office workspace](docs/assets/readme/clownfish-office-2026-08-11.png)
 
 ## Work: ongoing tasks and deliverables in one place
 
