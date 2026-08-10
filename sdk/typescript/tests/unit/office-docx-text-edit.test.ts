@@ -160,6 +160,57 @@ test("会话层按 docxIndex 生成保真副本，原文件字节不变", async 
   }
 });
 
+test("就地写回覆盖工作副本，改动前的版本仍可取回", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "clownfish-docx-writeback-"));
+  try {
+    const original = await buildDocx(MIXED_BODY);
+    const store = new OfficeFileSessionStore(directory);
+    const created = store.create("季度汇报.docx", original);
+
+    const saved = await store.saveDocxTextEdits(created.id, created.contentHash, [
+      { docxIndex: 0, text: "写回后的开头 这段加粗 这段红色大字" },
+    ]);
+    assert.deepEqual(saved.changed, [0]);
+    assert.equal(saved.validation.passed, true);
+    // 工作副本本身被覆盖
+    assert.notEqual(saved.session.contentHash, created.contentHash);
+    const nowXml = await documentXmlOf(readFileSync(created.file));
+    assert.match(nowXml, /写回后的开头/);
+    assert.match(nowXml, /<w:rPr><w:b\/><\/w:rPr><w:t[^>]*>这段加粗/, "写回同样不能压平行内格式");
+
+    // 改动前的字节仍在版本历史里
+    const versions = store.history(created.id);
+    assert.equal(versions[0]?.reason, "text-edit");
+    const imported = versions.find((version) => version.reason === "imported");
+    assert.ok(imported, "导入时的原始版本必须保留");
+    assert.equal(imported.contentHash, created.contentHash);
+    const restored = store.restore(created.id, imported.id, saved.session.contentHash);
+    assert.equal(readFileSync(restored.file).equals(original), true, "应能完整回到改动前的字节");
+    assert.equal(store.eventHistory(created.id).some((event) => event.type === "text-edit"), true);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("就地写回在格式检查不通过时不落盘", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "clownfish-docx-writeback-guard-"));
+  try {
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", "<Types/>");
+    zip.file("word/document.xml", "<w:document><w:body><w:p><w:r><w:t>原内容</w:t></w:r></w:p>");
+    const broken = await zip.generateAsync({ type: "nodebuffer" });
+    const store = new OfficeFileSessionStore(directory);
+    const created = store.create("broken.docx", broken);
+    await assert.rejects(
+      () => store.saveDocxTextEdits(created.id, created.contentHash, [{ docxIndex: 0, text: "新内容" }]),
+      /没有通过格式检查/,
+    );
+    assert.equal(readFileSync(created.file).equals(broken), true, "工作副本必须保持原样");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("会话层拒绝没有实际变化的请求，不产生空副本", async () => {
   const directory = mkdtempSync(join(tmpdir(), "clownfish-docx-engine-noop-"));
   try {

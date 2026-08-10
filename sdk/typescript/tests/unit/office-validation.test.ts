@@ -98,13 +98,15 @@ test("结构完整但没有文字的文件不算损坏", async () => {
 test("副本没通过格式检查时不落盘，工作区不留半成品", async () => {
   const directory = mkdtempSync(join(tmpdir(), "clownfish-office-validation-"));
   try {
+    // 用 PPTX：DOCX 已改走保真路径，不再经过这条已冻结的替换。
     const zip = new JSZip();
     zip.file("[Content_Types].xml", "<Types/>");
-    zip.file("word/document.xml", "<w:document><w:body><w:p><w:r><w:t>原内容</w:t></w:r></w:p>");
+    zip.file("ppt/presentation.xml", "<p:presentation/>");
+    zip.file("ppt/slides/slide1.xml", '<p:sld xmlns:a="x"><p:cSld><a:t>原内容</a:t></p:cSld>');
     const store = new OfficeFileSessionStore(directory);
-    const created = store.create("broken.docx", await zip.generateAsync({ type: "nodebuffer" }));
+    const created = store.create("broken.pptx", await zip.generateAsync({ type: "nodebuffer" }));
     await assert.rejects(
-      () => store.saveStructuredCopy(created.id, created.contentHash, [{ title: "正文", text: "新内容" }]),
+      () => store.saveStructuredCopy(created.id, created.contentHash, [{ title: "第一页", text: "新内容" }]),
       /没有通过格式检查/,
     );
     assert.deepEqual(store.scan().map((session) => session.id), [created.id]);
@@ -138,10 +140,10 @@ test("生成导出文件时同样过结构检查并带回回执", async () => {
 test("通过检查的副本会带回可复核的检查回执", async () => {
   const directory = mkdtempSync(join(tmpdir(), "clownfish-office-receipt-"));
   try {
-    const original = await exportOfficeDocument({ name: "报告", format: "docx", blocks: [{ title: "正文", text: "旧内容" }] });
+    const original = await exportOfficeDocument({ name: "报告", format: "pptx", blocks: [{ title: "第一页", text: "旧内容" }] });
     const store = new OfficeFileSessionStore(directory);
-    const created = store.create("报告.docx", original.data);
-    const result = await store.saveStructuredCopy(created.id, created.contentHash, [{ title: "正文", text: "新内容" }]);
+    const created = store.create("报告.pptx", original.data);
+    const result = await store.saveStructuredCopy(created.id, created.contentHash, [{ title: "第一页", text: "新内容" }]);
     assert.equal(result.validation.passed, true);
     assert.equal(result.validation.sha256, result.copy.contentHash);
     assert.equal(result.validation.byteLength, result.copy.byteLength);

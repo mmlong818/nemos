@@ -59,7 +59,11 @@
     return Boolean(record?.handle && typeof record.handle.createWritable === "function");
   }
 
-  async function writeText(documentId, text) {
+  /**
+   * 写回用户打开的那个文件。文本与二进制共用同一套守卫：
+   * 必须有写入权限，且原文件在打开后没被其他程序改动，否则拒绝覆盖。
+   */
+  async function writeSource(documentId, data) {
     const record = await get(documentId);
     const handle = record?.handle;
     if (!handle || typeof handle.createWritable !== "function") throw new Error("这次打开没有获得原文件写入权限，请重新用“打开文件”选择它");
@@ -72,7 +76,7 @@
     }
     const writable = await handle.createWritable({ keepExistingData: false });
     try {
-      await writable.write(String(text || ""));
+      await writable.write(data);
       await writable.close();
     } catch (error) {
       await writable.abort?.();
@@ -81,6 +85,16 @@
     const updated = await handle.getFile();
     await save(documentId, updated, handle);
     return { size: updated.size, lastModified: updated.lastModified };
+  }
+
+  async function writeText(documentId, text) {
+    return writeSource(documentId, String(text || ""));
+  }
+
+  /** Office 等二进制格式的写回；bytes 为 Uint8Array/ArrayBuffer。 */
+  async function writeBytes(documentId, bytes) {
+    if (!bytes || !(bytes instanceof Uint8Array || bytes instanceof ArrayBuffer)) throw new Error("没有可写回的文件内容");
+    return writeSource(documentId, bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes);
   }
 
   async function get(documentId) {
@@ -302,5 +316,5 @@
     else await renderDocument(root, current, record, sourceUrl, renderToken);
   }
 
-  window.ClownfishOfficeSource = Object.freeze({ save, get, remove, canWrite, writeText, render, renderMarkdown, release });
+  window.ClownfishOfficeSource = Object.freeze({ save, get, remove, canWrite, writeText, writeBytes, render, renderMarkdown, release });
 })();
