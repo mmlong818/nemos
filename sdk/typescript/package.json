@@ -80,7 +80,7 @@
     "@types/node": "^20.10.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.7.0",
-    "typescript": "^5.4.0"
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "brace-expansion": "5.0.9"
