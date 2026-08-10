@@ -3258,6 +3258,44 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
+    if (req.method === "GET" && pathname === "/api/files/session/pptx-blocks") {
+      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
+      try {
+        send(res, 200, { ok: true, blocks: await officeFileSessions.readPptxBlocks(id) });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
+      }
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/files/session/pptx-save") {
+      const body = (await readBody(req, 2 * 1024 * 1024)) as {
+        id?: string;
+        expectedHash?: string;
+        edits?: Array<{ slideIndex?: number; elementIndex?: number; paragraphIndex?: number; text?: string }>;
+      };
+      try {
+        const edits = Array.isArray(body.edits)
+          ? body.edits
+            .filter((edit) => [edit?.slideIndex, edit?.elementIndex, edit?.paragraphIndex].every((value) => Number.isInteger(value) && Number(value) >= 0))
+            .slice(0, 5_000)
+            .map((edit) => ({
+              slideIndex: Number(edit.slideIndex),
+              elementIndex: Number(edit.elementIndex),
+              paragraphIndex: Number(edit.paragraphIndex),
+              text: String(edit.text ?? "").slice(0, 120_000),
+            }))
+          : [];
+        const result = await officeFileSessions.savePptxTextEdits(String(body.id || ""), String(body.expectedHash || ""), edits);
+        taskFiles.refreshStorage(result.session.id, {
+          byteLength: result.session.byteLength,
+          contentHash: result.session.contentHash,
+        });
+        send(res, 200, { ok: true, ...result });
+      } catch (error) {
+        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
+      }
+      return;
+    }
     if (req.method === "POST" && pathname === "/api/files/session/docx-save") {
       const body = (await readBody(req, 2 * 1024 * 1024)) as {
         id?: string;

@@ -45,8 +45,12 @@ test("标为可编辑的格式必须有实机保真证据，否则只能是仅�
   assert.equal(docx?.sourceWritable, true);
   assert.equal(docx?.canSaveCopy, true, "写回之外仍要保留另存副本这个选项");
   assert.match(docx?.limitations[0] || "", /覆盖原文件/, "第一条限制必须先讲清写回会覆盖，以及改动前版本可取回");
-  // 仍走已冻结的有损路径，因此不能标为可编辑，也不能写回原文件。
-  for (const format of ["pptx", "xlsx", "pdf"]) {
+  const pptx = officeCapabilityOf("pptx");
+  assert.equal(pptx?.capability, "edit");
+  assert.equal(pptx?.savesTo, "original");
+  assert.match(pptx?.limitations[1] || "", /同一段格式/, "必须写明跨格式的改动会被拒绝");
+  // XLSX 仍走已冻结的有损路径，PDF 不提供写入，因此都不能标为可编辑。
+  for (const format of ["xlsx", "pdf"]) {
     assert.equal(officeCapabilityOf(format)?.capability, "view", `${format} 不应标为可编辑`);
     assert.equal(officeCapabilityOf(format)?.sourceWritable, false);
   }
