@@ -139,6 +139,10 @@ function safeDocument(item) {
       address: String(cell?.address || "").toUpperCase().slice(0, 16),
       value: String(cell?.value || "").slice(0, 32000),
     })).filter((cell) => /^[A-Z]{1,3}[1-9]\d{0,6}$/.test(cell.address)) : [],
+    pptxEdits: Array.isArray(item?.pptxEdits) ? item.pptxEdits.slice(0, 5000).map((edit) => ({
+      key: String(edit?.key || "").slice(0, 40),
+      text: String(edit?.text ?? "").slice(0, 120000),
+    })).filter((edit) => /^\d+:\d+:\d+$/.test(edit.key)) : [],
     docxEdits: Array.isArray(item?.docxEdits) ? item.docxEdits.slice(0, 5000).map((edit) => ({
       docxIndex: Math.max(0, Number(edit?.docxIndex || 0)),
       text: String(edit?.text ?? "").slice(0, 120000),
@@ -185,6 +189,9 @@ const activeStructuredSection = new Map();
 /** DOCX 的段落结构随时可以从会话重新取回，因此只放内存，不进本机状态。 */
 const docxBlocksByDocument = new Map();
 const docxBlocksRequested = new Set();
+/** PPTX 的页面/段落结构同理，只放内存。 */
+const pptxBlocksByDocument = new Map();
+const pptxBlocksRequested = new Set();
 
 function setActiveDocumentQuote(text, location) {
   const value = String(text || "").trim().slice(0, 8000);
@@ -580,6 +587,28 @@ function docxEditsOf(current) {
   return edits;
 }
 
+function pptxKey(block) {
+  return `${block.slideIndex}:${block.elementIndex}:${block.paragraphIndex}`;
+}
+
+function pptxEditsOf(current) {
+  const edits = new Map();
+  for (const edit of current.pptxEdits || []) edits.set(String(edit.key), String(edit.text ?? ""));
+  return edits;
+}
+
+/** 页面结构由服务端的 PPTX 引擎给出，界面按 (页, 元素, 段落) 定位。 */
+async function loadPptxBlocks(current) {
+  if (!current || current.kind !== "pptx" || !current.desktopSessionId) return;
+  try {
+    const response = await api(`/api/files/session/pptx-blocks?id=${encodeURIComponent(current.desktopSessionId)}`);
+    pptxBlocksByDocument.set(current.id, Array.isArray(response.blocks) ? response.blocks : []);
+    if (currentDocument()?.id === current.id) render();
+  } catch {
+    pptxBlocksByDocument.delete(current.id);
+  }
+}
+
 function docxParagraphText(current, block) {
   const pending = docxEditsOf(current);
   return pending.has(block.docxIndex) ? pending.get(block.docxIndex) : block.text;
@@ -661,7 +690,9 @@ function renderBlocks(current) {
     return;
   }
   if (current.kind === "pptx") {
-    renderPresentationWorkspace(root, current);
+    const pptxBlocks = pptxBlocksByDocument.get(current.id);
+    if (pptxBlocks?.length) renderPptxWorkspace(root, current, pptxBlocks);
+    else renderPresentationWorkspace(root, current);
     return;
   }
   if (current.kind === "xlsx") {
@@ -677,6 +708,39 @@ function renderBlocks(current) {
       <textarea class="block-text" id="block-text-${index}" data-field="text" maxlength="120000" placeholder="在这里输入内容…">${escapeHtml(block.text)}</textarea>
     </article>`).join("");
   root.querySelectorAll(".block-text").forEach(autoResize);
+}
+
+/** 保真路径：按 (页, 元素, 段落) 定位，只改指定段落，其余元素保持原字节。 */
+function renderPptxWorkspace(root, current, blocks) {
+  const slideCount = blocks.reduce((max, block) => Math.max(max, block.slideIndex + 1), 0);
+  const selected = Math.max(0, Math.min(slideCount - 1, Number(activeStructuredSection.get(current.id) || 0)));
+  const pending = pptxEditsOf(current);
+  const changedCount = blocks.filter((block) => pending.has(pptxKey(block)) && pending.get(pptxKey(block)) !== block.text).length;
+  const onSlide = blocks.filter((block) => block.slideIndex === selected);
+  const firstTextOf = (index) => blocks.find((block) => block.slideIndex === index && block.textEditable)?.text || "空白页面";
+  root.innerHTML = `
+    <div class="presentation-workspace">
+      <aside class="slide-filmstrip" aria-label="幻灯片页面">
+        <header><strong>${slideCount} 页</strong><span>${changedCount ? `${changedCount} 段待写入` : "保留原版式"}</span></header>
+        ${Array.from({ length: slideCount }, (_, index) => `<button type="button" class="slide-thumb${index === selected ? " is-current" : ""}" data-structured-section="${index}"><span>${index + 1}</span><strong>第 ${index + 1} 页</strong><small>${escapeHtml(firstTextOf(index).slice(0, 40))}</small></button>`).join("")}
+      </aside>
+      <article class="slide-editor">
+        <header><span>第 ${selected + 1} 页</span><strong>按段落修改文字</strong><small>只有你改过的段落会被写入；一次改动要落在同一段格式内。</small></header>
+        <div class="docx-paragraph-list">
+          ${onSlide.map((block, index) => block.textEditable
+            ? `<article class="docx-paragraph${pending.has(pptxKey(block)) && pending.get(pptxKey(block)) !== block.text ? " is-changed" : ""}">
+                 <span class="docx-paragraph-index" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>
+                 <label class="sr-only" for="pptx-para-${pptxKey(block)}">第 ${selected + 1} 页第 ${index + 1} 段</label>
+                 <textarea class="docx-paragraph-text" id="pptx-para-${pptxKey(block)}" data-pptx-key="${pptxKey(block)}" maxlength="120000" spellcheck="true">${escapeHtml(pending.has(pptxKey(block)) ? pending.get(pptxKey(block)) : block.text)}</textarea>
+               </article>`
+            : `<article class="docx-passthrough">
+                 <span class="docx-paragraph-index" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>
+                 <p><strong>${escapeHtml(block.label || "其他内容")}</strong><span>原样保留，不在这里编辑</span></p>
+               </article>`).join("")}
+        </div>
+      </article>
+    </div>`;
+  root.querySelectorAll(".docx-paragraph-text").forEach(autoResize);
 }
 
 function renderPresentationWorkspace(root, current) {
@@ -988,6 +1052,10 @@ function render() {
     docxBlocksRequested.add(current.id);
     void loadDocxBlocks(current);
   }
+  if (current.kind === "pptx" && current.desktopSessionId && !pptxBlocksRequested.has(current.id)) {
+    pptxBlocksRequested.add(current.id);
+    void loadPptxBlocks(current);
+  }
   renderBlocks(current);
   renderVersions(current);
   if (current.processing && ["queued", "running", "succeeded"].includes(current.processing.status)) state.view = "result";
@@ -1114,7 +1182,10 @@ async function refreshDesktopFile() {
     // 文件在外部变了，段落结构和未提交的段落修改都不再对得上。
     docxBlocksByDocument.delete(current.id);
     docxBlocksRequested.delete(current.id);
+    pptxBlocksByDocument.delete(current.id);
+    pptxBlocksRequested.delete(current.id);
     current.docxEdits = [];
+    current.pptxEdits = [];
     current.versions.unshift({
       id: uid("version"),
       name: "桌面修改",
@@ -1194,6 +1265,53 @@ async function saveDocxTextCopy(current) {
   }
 }
 
+/** PPTX 写回：只把改过的段落按 (页, 元素, 段落) 送出，其余元素保持原字节。 */
+async function writeBackPptx(current) {
+  const blocks = pptxBlocksByDocument.get(current.id) || [];
+  const pending = pptxEditsOf(current);
+  const edits = blocks
+    .filter((block) => block.textEditable && pending.has(pptxKey(block)) && pending.get(pptxKey(block)) !== block.text)
+    .map((block) => ({
+      slideIndex: block.slideIndex,
+      elementIndex: block.elementIndex,
+      paragraphIndex: block.paragraphIndex,
+      text: pending.get(pptxKey(block)),
+    }));
+  if (!edits.length) return showToast("还没有改动任何段落", true);
+  if (!window.confirm(`将把 ${edits.length} 段改动写回原文件，覆盖当前内容。改动前的版本会保留在版本记录里。继续？`)) return;
+  const button = document.querySelector("#writeBackSource");
+  button.disabled = true;
+  setSaveState("正在写回原文件…", true);
+  try {
+    const saved = await api("/api/files/session/pptx-save", {
+      method: "POST",
+      body: JSON.stringify({ id: current.desktopSessionId, expectedHash: current.desktopContentHash, edits }),
+    });
+    const response = await api("/api/files/session/refresh", {
+      method: "POST",
+      body: JSON.stringify({ id: current.desktopSessionId }),
+    });
+    const bytes = Uint8Array.from(atob(response.dataBase64), (character) => character.charCodeAt(0));
+    await window.ClownfishOfficeSource.writeBytes(current.id, bytes);
+    current.desktopContentHash = saved.session.contentHash;
+    current.sourceSize = saved.session.byteLength;
+    current.sourceStored = true;
+    current.pptxEdits = [];
+    pptxBlocksByDocument.delete(current.id);
+    pptxBlocksRequested.delete(current.id);
+    await loadSourceHistory(current);
+    persistState("原文件已更新");
+    render();
+    const skipped = Array.isArray(saved.skipped) ? saved.skipped.length : 0;
+    showToast(`已写回 ${saved.changed.length} 段到原文件${skipped ? `，${skipped} 段跨格式未写入` : ""}`, skipped > 0);
+  } catch (error) {
+    setSaveState("未写回");
+    showToast(error instanceof Error ? error.message : "原文件写回失败", true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 /** 副本是另一个真实文件，按新文件打开，不覆盖当前文档的历史。 */
 async function openCopiedSession(copy) {
   if (!copy?.id) return;
@@ -1260,6 +1378,7 @@ async function writeBackSource() {
   const current = currentDocument();
   if (!current || !capabilityOf(current.kind).sourceWritable) return;
   if (current.kind === "docx") return writeBackDocx(current);
+  if (current.kind === "pptx") return writeBackPptx(current);
   setSaveState("正在写回原文件…", true);
   try {
     await window.ClownfishOfficeSource.writeText(current.id, continuousDocumentText(current));
@@ -1679,6 +1798,16 @@ function bindEvents() {
       if (existing) existing.value = value; else changes.push({ sheetIndex, address, value });
       current.structuredCellChanges = changes.slice(-20000);
       updateSpreadsheetAnalysis(current, sheetIndex);
+      scheduleSave();
+      return;
+    }
+    if (current && event.target.matches("[data-pptx-key]")) {
+      const key = String(event.target.dataset.pptxKey || "");
+      if (!/^\d+:\d+:\d+$/.test(key)) return;
+      const edits = (current.pptxEdits || []).filter((edit) => edit.key !== key);
+      edits.push({ key, text: event.target.value.slice(0, 120000) });
+      current.pptxEdits = edits.slice(-5000);
+      autoResize(event.target);
       scheduleSave();
       return;
     }

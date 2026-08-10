@@ -40,11 +40,11 @@ test("文件重命名和删除会留下不暴露路径的状态事件", () => {
 test("已冻结的文字替换生成新文件，打开的文件保持不变", async () => {
   const directory = mkdtempSync(join(tmpdir(), "clownfish-office-structured-history-"));
   try {
-    // 这条路径现在只服务 PPTX/XLSX；DOCX 已改走保真的段落补丁。
-    const original = await exportOfficeDocument({ name: "deck", format: "pptx", blocks: [{ title: "第一页", text: "旧内容" }] });
+    // 这条路径现在只剩 XLSX；DOCX 与 PPTX 都已改走保真补丁。
+    const original = await exportOfficeDocument({ name: "table", format: "xlsx", blocks: [{ title: "数据", text: "A1: 旧值" }] });
     const store = new OfficeFileSessionStore(directory);
-    const created = store.create("deck.pptx", original.data);
-    const result = await store.saveStructuredCopy(created.id, created.contentHash, [{ title: "第一页", text: "新内容" }]);
+    const created = store.create("table.xlsx", original.data);
+    const result = await store.saveStructuredCopy(created.id, created.contentHash, [{ title: "数据", text: "A1: 新值" }]);
     assert.notEqual(result.copy.id, created.id);
     assert.notEqual(result.copy.contentHash, created.contentHash);
     assert.equal(store.inspect(created.id).contentHash, created.contentHash);
@@ -52,13 +52,14 @@ test("已冻结的文字替换生成新文件，打开的文件保持不变", as
     assert.match(result.copy.name, /文字副本/);
     assert.equal(store.eventHistory(created.id).at(-1)?.type, "structured-copy");
     assert.equal(store.history(result.copy.id)[0]?.reason, "imported");
-    assert.ok(result.warnings.some((warning) => warning.includes("行内格式")));
+    // 副本会带回该格式的全部限制说明；XLSX 的说明讲的是单元格样式而不是行内格式。
+    assert.ok(result.warnings.some((warning) => warning.includes("样式")));
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test("DOCX 不再走已冻结的有损路径", async () => {
+test("DOCX 与 PPTX 都不再走已冻结的有损路径", async () => {
   const directory = mkdtempSync(join(tmpdir(), "clownfish-office-docx-frozen-"));
   try {
     const original = await exportOfficeDocument({ name: "report", format: "docx", blocks: [{ title: "正文", text: "旧内容" }] });
@@ -66,6 +67,12 @@ test("DOCX 不再走已冻结的有损路径", async () => {
     const created = store.create("report.docx", original.data);
     await assert.rejects(
       () => store.saveStructuredCopy(created.id, created.contentHash, [{ title: "正文", text: "新内容" }]),
+      /不支持文字替换副本/,
+    );
+    const deck = await exportOfficeDocument({ name: "deck", format: "pptx", blocks: [{ title: "第一页", text: "旧内容" }] });
+    const deckSession = store.create("deck.pptx", deck.data);
+    await assert.rejects(
+      () => store.saveStructuredCopy(deckSession.id, deckSession.contentHash, [{ title: "第一页", text: "新内容" }]),
       /不支持文字替换副本/,
     );
   } finally {

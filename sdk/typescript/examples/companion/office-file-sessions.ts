@@ -4,6 +4,7 @@ import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { officeCapabilityOf } from "./office-capabilities.js";
 import { applyDocxTextEdits, readDocxText, type DocxTextBlock, type DocxTextEdit } from "./office-docx-text-edit.js";
+import { applyPptxTextEdits, readPptxText, type PptxTextBlock, type PptxTextEdit } from "./office-pptx-text-edit.js";
 import { UserFacingError } from "./office-errors.js";
 import { applyStructuredOfficeEdit, type StructuredOfficeBlock, type StructuredSpreadsheetCell } from "./office-structured-edit.js";
 import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
@@ -133,6 +134,47 @@ export class OfficeFileSessionStore {
     this.inspect(id);
     if (session.extension !== "docx") throw new UserFacingError("只有 Word 文件有段落结构");
     return readDocxText(readFileSync(session.file));
+  }
+
+  /** 读取 PPTX 的块结构：可改文字的段落，以及只能透传的表格、图片、图表。 */
+  async readPptxBlocks(id: string): Promise<PptxTextBlock[]> {
+    const session = this.requireRecord(id);
+    this.inspect(id);
+    if (session.extension !== "pptx") throw new UserFacingError("只有 PowerPoint 文件有页面结构");
+    return readPptxText(readFileSync(session.file));
+  }
+
+  /** PPTX 文字修改就地写入工作副本；与 DOCX 同样的校验与版本纪律。 */
+  async savePptxTextEdits(id: string, expectedHash: string, edits: PptxTextEdit[]): Promise<{
+    session: OfficeFileSession;
+    changed: string[];
+    skipped: string[];
+    warnings: string[];
+    validation: ValidationReceipt;
+  }> {
+    this.inspect(id);
+    const session = this.requireRecord(id);
+    if (!expectedHash || session.contentHash !== expectedHash) throw new UserFacingError("文件已在其他程序中变化，请重新载入后再保存");
+    if (session.extension !== "pptx") throw new UserFacingError("这条路径只处理 PowerPoint 文件");
+    if (!edits.length) throw new UserFacingError("没有需要写入的修改");
+    const edited = await applyPptxTextEdits(readFileSync(session.file), edits);
+    if (!edited.changed.length) {
+      throw new UserFacingError(edited.skipped.length
+        ? "这些改动跨越了多段不同格式的文字，无法在保证格式不乱的前提下写入。请分段修改。"
+        : "请求修改的内容没有实际变化，没有写入");
+    }
+    const validation = await validateOfficeFile("pptx", edited.data);
+    if (!validation.passed) throw new UserFacingError(`修改后的文件没有通过格式检查，已放弃写入：${failedChecksOf(validation)}`);
+    writeAtomic(session.file, edited.data);
+    session.byteLength = edited.data.byteLength;
+    session.contentHash = hash(edited.data);
+    session.updatedAt = new Date().toISOString();
+    this.captureVersion(session, edited.data, "text-edit");
+    this.captureEvent(session, "text-edit", { to: session.file, contentHash: session.contentHash });
+    this.persist();
+    const warnings: string[] = [];
+    if (edited.skipped.length) warnings.push(`有 ${edited.skipped.length} 处改动跨越了多段不同格式的文字，没有写入；请把它们分段修改。`);
+    return { session: structuredClone(session), changed: edited.changed, skipped: edited.skipped, warnings, validation };
   }
 
   /**
