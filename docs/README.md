@@ -4,7 +4,7 @@
 
 这里汇总小丑鱼应用、Nemos Memory SDK、开发接入和研究资料的主要入口。
 
-“开始使用”“开发与集成”“产品设计”属于当前文档；带日期的真实检查、RFC、论文和 `spec/` 是历史或研究记录，不代表当前界面和公开接口。
+“开始使用”“开发与集成”“架构设计”属于当前文档；RFC、论文和 `spec/` 是研究或归档记录，不代表当前界面和公开接口。
 
 ## 开始使用
 
@@ -25,12 +25,10 @@
 | [架构总览](architecture-overview.md) | 记忆分层、写入链路、召回和数据边界 |
 | [运行架构](../sdk/typescript/examples/companion/docs/agent-runtime-design.md) | 任务、工具、权限、恢复和扩展边界 |
 
-## 产品设计
+## 架构设计
 
 | 文档 | 内容 |
 | --- | --- |
-| [产品设计基线](../sdk/typescript/examples/companion/docs/clownfish-product-design-brief.md) | 用户路径与界面原则 |
-| [产品语言](../sdk/typescript/examples/companion/docs/clownfish-product-language.md) | 名称、状态和用户可见文案 |
 | [能力设计](../sdk/typescript/examples/companion/docs/capability-center-design.md) | 能力启动、执行和交付流程 |
 | [能力与记忆](../sdk/typescript/examples/companion/docs/capability-center-memory-design.md) | 习惯、格式和任务上下文 |
 | [能力运行系统](../sdk/typescript/examples/companion/docs/capability-os-design.md) | 聊天、能力、文件与任务的共享执行模型 |
@@ -43,7 +41,5 @@
 | [论文资料](../paper/README.md) | MnemoBench 论文、源码和结果说明 |
 | [评测说明](../bench/README.md) | 评测任务、运行方式和结果入口 |
 | [早期规范](../spec/README.md) | 已归档的 v0.1 设计记录 |
-| [2026-08-08 网页版十轮真实检查](../sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md) | 当日界面与修复证据，不代表当前状态 |
-| [2026-08-07 网页版十轮真实检查](../sdk/typescript/examples/companion/docs/reviews/2026-08-07-web-true-check-10-rounds.md) | 当日用户路径与问题记录，不代表当前状态 |
 
 公开接口以当前 SDK 类型、README、测试和发布记录为准。研究论文与归档资料用于解释设计背景，不替代当前接口文档。

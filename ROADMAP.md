@@ -74,11 +74,10 @@
 - 每次转换逐条列出这一份具体丢了什么，不含糊带过；
 - 导出走既有生成器，产出的是新文件。
 
-已退役：DOCX 与 PPTX 的原格式段落级写入（含 Word/PowerPoint 实机保真验证）。
-它们曾通过验证并短暂上线，记录保留在
-`sdk/typescript/examples/companion/docs/reviews/`。vendored 的 docx-engine 与
-pptx-engine 继续保留——它们的结构化解析是转换质量的来源（标题层级、列表、
-表格、讲者备注都靠它）。
+已退役：DOCX 与 PPTX 的原格式段落级写入。它们曾通过 Word/PowerPoint 实机
+保真验证并短暂上线，可在 git 历史中查到。vendored 的 docx-engine 与 pptx-engine
+继续保留——它们的结构化解析是转换质量的来源（标题层级、列表、表格、
+讲者备注都靠它）。
 
 尚未做：转换质量的实机回归（用真实 Office 文件核对内容不丢），
 以及从 Markdown 生成 Office 时的版式质量。
