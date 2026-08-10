@@ -12,6 +12,7 @@
     "node_modules",
     "dist",
     "examples/companion/client/dist",
-    "examples/companion/client/vendor"
+    "examples/companion/client/vendor",
+    "examples/companion/vendor"
   ]
 }

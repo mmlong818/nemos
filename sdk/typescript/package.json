@@ -42,15 +42,17 @@
     "test:v05": "tsx --test tests/v05/unit/*.test.ts tests/v05/integration/*.test.ts",
     "test:v06": "tsx --test \"tests/v06/unit/*.test.ts\" \"tests/v06/integration/*.test.ts\"",
     "test:v07": "tsx --test tests/v07/integration/*.test.ts",
+    "vendor:docx-engine": "tsc -p examples/companion/vendor/docx-engine/tsconfig.json",
     "prepublishOnly": "npm run build",
     "check": "npm run build && npm run typecheck && npm test"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^0.1.100",
     "@earendil-works/pi-coding-agent": "^0.84.1",
     "@modelcontextprotocol/client": "^2.0.0",
+    "@napi-rs/canvas": "^0.1.100",
     "better-sqlite3": "^12.10.0",
     "docx-preview": "^0.4.0",
+    "fast-xml-parser": "^5.10.1",
     "jszip": "^3.10.1",
     "pdfjs-dist": "^5.4.624",
     "pdfkit": "^0.17.2",

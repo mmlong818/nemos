@@ -1,0 +1,146 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import JSZip from "jszip";
+
+import { applyDocxTextEdits, readDocxText } from "../../examples/companion/office-docx-text-edit.js";
+import { applyStructuredOfficeEdit } from "../../examples/companion/office-structured-edit.js";
+import { validateOfficeFile } from "../../examples/companion/office-validation.js";
+
+const CONTENT_TYPES =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+  '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+  '<Default Extension="xml" ContentType="application/xml"/>' +
+  '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+  "</Types>";
+
+const PACKAGE_RELS =
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+  "</Relationships>";
+
+/** 第 0 段混排三种行内格式；第 1 段带未建模的 keepNext/tabs；随后是表格与 sectPr。 */
+const MIXED_BODY =
+  '<w:p><w:pPr><w:spacing w:line="360"/></w:pPr>' +
+  '<w:r><w:t xml:space="preserve">开头普通 </w:t></w:r>' +
+  '<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">这段加粗 </w:t></w:r>' +
+  '<w:r><w:rPr><w:color w:val="FF0000"/><w:sz w:val="32"/></w:rPr><w:t>这段红色大字</w:t></w:r>' +
+  "</w:p>" +
+  '<w:p><w:pPr><w:keepNext/><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr>' +
+  "<w:r><w:rPr><w:i/></w:rPr><w:t>第二段不动</w:t></w:r></w:p>" +
+  "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>单元格</w:t></w:r></w:p></w:tc></w:tr></w:tbl>" +
+  '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
+
+async function buildDocx(body: string): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", CONTENT_TYPES);
+  zip.file("_rels/.rels", PACKAGE_RELS);
+  zip.file(
+    "word/document.xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+      body +
+      "</w:body></w:document>",
+  );
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+async function documentXmlOf(data: Uint8Array): Promise<string> {
+  const zip = await JSZip.loadAsync(data);
+  return (await zip.file("word/document.xml")?.async("string")) || "";
+}
+
+test("读取 DOCX 时区分可改文字的段落与只能透传的内容", async () => {
+  const blocks = await readDocxText(await buildDocx(MIXED_BODY));
+  const texts = blocks.map((block) => `${block.kind}:${block.textEditable}:${block.text}`);
+  assert.deepEqual(texts.slice(0, 2), [
+    "paragraph:true:开头普通 这段加粗 这段红色大字",
+    "paragraph:true:第二段不动",
+  ]);
+  const table = blocks.find((block) => block.kind === "table");
+  assert.ok(table, "表格应被识别为独立块");
+  assert.equal(table.textEditable, false);
+  assert.ok(table.label);
+});
+
+test("改一个段落的文字，同段其他 run 的行内格式原样保留", async () => {
+  const original = await buildDocx(MIXED_BODY);
+  const result = await applyDocxTextEdits(original, [{ docxIndex: 0, text: "改写后的开头 这段加粗 这段红色大字" }]);
+  assert.deepEqual(result.changed, [0]);
+  assert.deepEqual(result.skipped, []);
+  const xml = await documentXmlOf(result.data);
+  assert.match(xml, /改写后的开头/);
+  assert.doesNotMatch(xml, /开头普通/);
+  // 未参与修改的 run 保留自己的格式
+  assert.match(xml, /<w:rPr><w:b\/><\/w:rPr><w:t[^>]*>这段加粗/);
+  assert.match(xml, /<w:color w:val="FF0000"\/><w:sz w:val="32"\/>/);
+  // 段落自身的属性也不变
+  assert.match(xml, /<w:pPr><w:spacing w:line="360"\/><\/w:pPr>/);
+});
+
+test("没有请求修改的段落、表格和 sectPr 字节不变", async () => {
+  const original = await buildDocx(MIXED_BODY);
+  const result = await applyDocxTextEdits(original, [{ docxIndex: 0, text: "只改第一段 这段加粗 这段红色大字" }]);
+  const xml = await documentXmlOf(result.data);
+  assert.match(xml, /<w:pPr><w:keepNext\/><w:tabs><w:tab w:val="left" w:pos="720"\/><\/w:tabs><\/w:pPr><w:r><w:rPr><w:i\/><\/w:rPr><w:t>第二段不动<\/w:t><\/w:r>/);
+  assert.match(xml, /<w:tbl><w:tr><w:tc><w:p><w:r><w:t>单元格<\/w:t><\/w:r><\/w:p><\/w:tc><\/w:tr><\/w:tbl>/);
+  assert.match(xml, /<w:sectPr><w:pgSz w:w="11906" w:h="16838"\/><\/w:sectPr>/);
+});
+
+test("文字没有变化时不产生改动", async () => {
+  const original = await buildDocx(MIXED_BODY);
+  const result = await applyDocxTextEdits(original, [{ docxIndex: 0, text: "开头普通 这段加粗 这段红色大字" }]);
+  assert.deepEqual(result.changed, []);
+  assert.deepEqual(result.skipped, []);
+});
+
+test("对非文字块请求修改时不动它并如实上报", async () => {
+  // 只有图形、没有 w:t 锚点的段落
+  const body = '<w:p><w:r><w:pict><v:rect xmlns:v="urn:schemas-microsoft-com:vml"/></w:pict></w:r></w:p>' +
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
+  const original = await buildDocx(body);
+  const result = await applyDocxTextEdits(original, [{ docxIndex: 0, text: "试图塞入文字" }]);
+  assert.deepEqual(result.changed, []);
+  assert.deepEqual(result.skipped, [0]);
+  const xml = await documentXmlOf(result.data);
+  assert.match(xml, /<v:rect/);
+  assert.doesNotMatch(xml, /试图塞入文字/);
+});
+
+test("对表格请求修改也计入未改动，不会静默丢失", async () => {
+  const original = await buildDocx(MIXED_BODY);
+  const blocks = await readDocxText(original);
+  const table = blocks.find((block) => block.kind === "table");
+  assert.ok(table);
+  const result = await applyDocxTextEdits(original, [{ docxIndex: table.docxIndex, text: "改表格" }]);
+  assert.deepEqual(result.changed, []);
+  assert.deepEqual(result.skipped, [table.docxIndex]);
+  assert.match(await documentXmlOf(result.data), /<w:t>单元格<\/w:t>/);
+});
+
+test("修改结果通过结构检查", async () => {
+  const original = await buildDocx(MIXED_BODY);
+  const result = await applyDocxTextEdits(original, [{ docxIndex: 1, text: "第二段改了" }]);
+  const receipt = await validateOfficeFile("docx", result.data);
+  const failed = receipt.checks.filter((check) => !check.passed).map((check) => check.name);
+  assert.deepEqual(failed, []);
+});
+
+test("对比已冻结的文字级替换：旧路径丢行内格式，新路径不丢", async () => {
+  const original = await buildDocx(MIXED_BODY);
+
+  const legacy = await applyStructuredOfficeEdit({
+    kind: "docx",
+    data: original,
+    blocks: [{ title: "正文", text: "改写后的开头 这段加粗 这段红色大字" }],
+    complete: false,
+  });
+  const legacyXml = await documentXmlOf(legacy.data);
+  assert.doesNotMatch(legacyXml, /<w:rPr><w:b\/><\/w:rPr><w:t[^>]*>这段加粗/, "旧路径本应丢掉加粗 run 的文字归属");
+
+  const engine = await applyDocxTextEdits(original, [{ docxIndex: 0, text: "改写后的开头 这段加粗 这段红色大字" }]);
+  const engineXml = await documentXmlOf(engine.data);
+  assert.match(engineXml, /<w:rPr><w:b\/><\/w:rPr><w:t[^>]*>这段加粗/);
+  assert.match(engineXml, /<w:color w:val="FF0000"\/>/);
+});
