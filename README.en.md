@@ -14,7 +14,7 @@ Clownfish combines four everyday surfaces:
 |---|---|---|
 | **Chat** | Create, search, switch, or delete independent conversations; upload images or files; and choose the right work mode | Automatic titles, parallel threads, isolated context, and delivery back to the originating conversation |
 | **Capabilities** | Describe an outcome or choose a capability directly | Background jobs, live progress, cancellation, retries, previews, and downloads |
-| **Files** | Open Word, PowerPoint, Excel, PDF, TXT, or Markdown | Original-format working copies, Word body editing, slide-by-slide text editing, spreadsheet cells and formulas, and version history |
+| **Files** | Open Word, PowerPoint, Excel, PDF, TXT, or Markdown | Faithful preview, a stated capability per format, direct editing and write-back for TXT/Markdown, text extraction and save-as-copy for Office, and version history |
 | **Work** | Review tasks, workspaces, automations, collaboration, resources, results, runs, and memory | Multi-task organization, scheduled execution, expert review, local resources, artifacts, and preference management |
 
 New users do not need to create a project or understand tool names first.
@@ -55,9 +55,8 @@ The file workspace supports DOCX, PPTX, XLSX, PDF, TXT, and Markdown:
 - Markdown has an outline, formatting tools, and live preview; TXT uses continuous text editing;
 - Working copies are saved by the local service, and revision checks prevent stale windows from overwriting newer edits;
 - PDFs retain their original layout; Office formats receive a structured preview while the original file is retained;
-- Word body edits can be applied to the real DOCX working copy while existing paragraph formatting, images, headers, and footers stay in place;
-- PowerPoint uses a slide filmstrip and page-level text editor while preserving existing text boxes, images, and layouts;
-- Excel provides sheet tabs, editable cells, formulas, and deterministic numeric summaries while retaining existing cell styles;
+- Every file states what Clownfish can actually do with it: TXT and Markdown are **editable**; Word, PowerPoint, Excel, and PDF are **view-only**;
+- Text in Word, PowerPoint, and Excel can be extracted and changed, but the result is always **saved as a new file** — the file you opened is left untouched. The page also states what is lost: inline formatting inside changed paragraphs is flattened, and headers, footers, comments, tracked changes, charts, and masters are out of scope;
 - TXT and Markdown can be written back only after explicit authorization and an external-change conflict check;
 - Editing, versions, AI progress, and results stay on the same page;
 - The file library supports name search and format filters; external edits, renames, moves, and deletions are recorded as file events;

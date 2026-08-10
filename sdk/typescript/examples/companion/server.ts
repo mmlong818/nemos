@@ -88,6 +88,7 @@ import { CONTACTABLE_PERSONA_IDS, normalizeAddedContactIds, visibleContactIds } 
 import { resolveGroupReplyRoute } from "./group-routing.js";
 import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
 import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
+import { officeCapabilityBrowserScript } from "./office-capabilities.js";
 import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
 import { OfficeFileSessionStore } from "./office-file-sessions.js";
 import { OfficeWorkbenchRevisionConflict, OfficeWorkbenchStateStore } from "./office-workbench-state.js";
@@ -3071,6 +3072,11 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
+    if (req.method === "GET" && url.split("?")[0] === "/assets/office-capabilities.js") {
+      res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(officeCapabilityBrowserScript());
+      return;
+    }
     if (req.method === "GET" && sendWebAsset(res, url)) {
       return;
     }
@@ -3219,7 +3225,7 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
-    if (req.method === "POST" && pathname === "/api/files/session/structured-edit") {
+    if (req.method === "POST" && pathname === "/api/files/session/structured-copy") {
       const body = (await readBody(req, 2 * 1024 * 1024)) as {
         id?: string;
         expectedHash?: string;
@@ -3237,11 +3243,7 @@ const server = createServer(async (req, res) => {
           address: String(cell?.address || "").slice(0, 16),
           value: String(cell?.value || "").slice(0, 32_000),
         })) : [];
-        const result = await officeFileSessions.applyStructuredEdit(String(body.id || ""), String(body.expectedHash || ""), blocks, cells, body.complete === true);
-        taskFiles.refreshStorage(result.session.id, {
-          byteLength: result.session.byteLength,
-          contentHash: result.session.contentHash,
-        });
+        const result = await officeFileSessions.saveStructuredCopy(String(body.id || ""), String(body.expectedHash || ""), blocks, cells, body.complete === true);
         send(res, 200, { ok: true, ...result });
       } catch (error) {
         send(res, 409, { error: error instanceof Error ? error.message : String(error) });

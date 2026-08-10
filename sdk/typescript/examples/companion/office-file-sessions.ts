@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
+import { officeCapabilityOf } from "./office-capabilities.js";
 import { applyStructuredOfficeEdit, type StructuredOfficeBlock, type StructuredSpreadsheetCell } from "./office-structured-edit.js";
 
 export interface OfficeFileSession {
@@ -28,7 +29,7 @@ export interface OfficeFileVersion {
 export interface OfficeFileEvent {
   id: string;
   sessionId: string;
-  type: "imported" | "external-change" | "structured-edit" | "restored" | "missing" | "renamed";
+  type: "imported" | "external-change" | "structured-edit" | "structured-copy" | "restored" | "missing" | "renamed";
   createdAt: string;
   from?: string;
   to?: string;
@@ -123,21 +124,28 @@ export class OfficeFileSessionStore {
     return (this.events.get(session.id) || []).map((event) => structuredClone(event));
   }
 
-  async applyStructuredEdit(id: string, expectedHash: string, blocks: StructuredOfficeBlock[], cells: StructuredSpreadsheetCell[] = [], complete = false): Promise<{ session: OfficeFileSession; warnings: string[]; changedParts: string[] }> {
+  /**
+   * 文字替换只生成另一个文件。当前的 OOXML 写入是文字级替换，
+   * 无法保证行内格式和未覆盖部件的完整性，因此不允许覆盖用户打开的那个文件。
+   */
+  async saveStructuredCopy(id: string, expectedHash: string, blocks: StructuredOfficeBlock[], cells: StructuredSpreadsheetCell[] = [], complete = false): Promise<{ source: OfficeFileSession; copy: OfficeFileSession; warnings: string[]; changedParts: string[] }> {
     this.inspect(id);
     const session = this.requireRecord(id);
-    if (!expectedHash || session.contentHash !== expectedHash) throw new Error("文件已在其他程序中变化，请重新载入后再应用修改");
-    if (session.extension !== "docx" && session.extension !== "pptx" && session.extension !== "xlsx") throw new Error("这个格式不支持结构化写入");
+    if (!expectedHash || session.contentHash !== expectedHash) throw new Error("文件已在其他程序中变化，请重新载入后再生成副本");
+    const kind = session.extension;
+    const capability = officeCapabilityOf(kind);
+    if (!capability?.copyOnly || (kind !== "docx" && kind !== "pptx" && kind !== "xlsx")) throw new Error("这个格式不支持文字替换副本");
     const source = readFileSync(session.file);
-    const edited = await applyStructuredOfficeEdit({ kind: session.extension, data: source, blocks, cells, complete });
-    writeAtomic(session.file, edited.data);
-    session.byteLength = edited.data.byteLength;
-    session.contentHash = hash(edited.data);
-    session.updatedAt = new Date().toISOString();
-    this.captureVersion(session, edited.data, "structured-edit");
-    this.captureEvent(session, "structured-edit", { to: session.file, contentHash: session.contentHash });
+    const edited = await applyStructuredOfficeEdit({ kind, data: source, blocks, cells, complete });
+    const copy = this.create(copyName(session.name, session.extension), edited.data);
+    this.captureEvent(session, "structured-copy", { from: session.file, to: copy.file, contentHash: copy.contentHash });
     this.persist();
-    return { session: structuredClone(session), warnings: edited.warnings, changedParts: edited.changedParts };
+    return {
+      source: structuredClone(session),
+      copy,
+      warnings: [...capability.limitations, ...edited.warnings],
+      changedParts: edited.changedParts,
+    };
   }
 
   scan(): OfficeFileSession[] {
@@ -319,6 +327,11 @@ function normalizeExtension(name: string): OfficeFileSession["extension"] {
   const extension = raw === "markdown" ? "md" : raw;
   if (!EXTENSIONS.has(extension)) throw new Error("不支持这个文件格式");
   return extension as OfficeFileSession["extension"];
+}
+
+function copyName(name: string, extension: string): string {
+  const base = name.toLowerCase().endsWith(`.${extension}`) ? name.slice(0, -(extension.length + 1)) : name;
+  return `${base.replace(/（文字副本(?: \d+)?）$/, "").slice(0, 150) || "文件"}（文字副本）.${extension}`;
 }
 
 function safeDisplayName(name: string, extension: string): string {

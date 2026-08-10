@@ -54,6 +54,27 @@ function formatLabel(kind) {
   return ({ docx: "DOCX", pptx: "PPTX", xlsx: "XLSX", pdf: "PDF", txt: "TXT", md: "Markdown" })[kind] || "文稿";
 }
 
+const FALLBACK_CAPABILITY = {
+  formatLabel: "文稿",
+  capability: "view",
+  capabilityLabel: "仅查看",
+  summary: "这个格式目前只能查看。",
+  textView: "extract",
+  sourceWritable: false,
+  copyOnly: false,
+  limitations: [],
+};
+
+/** 能力说明由服务端的同一张表提供，界面不按扩展名自行判断"可编辑"。 */
+function capabilityOf(kind) {
+  return window.ClownfishOfficeCapabilities?.capabilities?.[kind] || FALLBACK_CAPABILITY;
+}
+
+function textViewLabel(kind) {
+  if (capabilityOf(kind).textView === "edit") return kind === "md" ? "编辑 Markdown" : "编辑文本";
+  return "提取文字";
+}
+
 function kindTitle(kind, index) {
   if (kind === "pptx" || kind === "pdf") return `第 ${index + 1} 页`;
   if (kind === "xlsx") return `工作表 ${index + 1}`;
@@ -537,7 +558,7 @@ function renderBlocks(current) {
   const continuous = current.kind === "docx" || current.kind === "txt" || current.kind === "md";
   const importedStructured = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx"].includes(current.kind));
   document.querySelector("#addBlock").hidden = continuous || importedStructured;
-  document.querySelector("#editViewTab").textContent = current.kind === "docx" ? "编辑 Word" : current.kind === "pptx" ? "编辑页面" : current.kind === "xlsx" ? "编辑表格" : current.kind === "md" ? "编辑 Markdown" : current.kind === "txt" ? "编辑文本" : "编辑内容";
+  document.querySelector("#editViewTab").textContent = textViewLabel(current.kind);
   if (current.kind === "md") {
     root.innerHTML = `
       <div class="markdown-workspace">
@@ -561,8 +582,10 @@ function renderBlocks(current) {
     return;
   }
   if (continuous) {
-    const label = current.kind === "docx" ? "Word 内容编辑" : current.kind === "md" ? "Markdown 工作副本" : "文本工作副本";
-    const detail = current.kind === "docx" && current.desktopSessionId ? "点击“应用到原格式”后写入真实 DOCX 工作副本；原排版、图片和页眉页脚继续保留。" : current.kind === "docx" ? "连续编辑正文，导出时生成新的 Word 文件。" : "修改会自动保存在本机工作副本中。";
+    const label = current.kind === "docx" ? "从 Word 提取的文字" : current.kind === "md" ? "Markdown 工作副本" : "文本工作副本";
+    const detail = current.kind === "docx" && current.desktopSessionId
+      ? "这里只是提取出来的文字，不是 Word 编辑器。点击“另存为文字副本”会生成一个新的 DOCX，打开的文件不会被改动。"
+      : current.kind === "docx" ? "连续编辑正文，导出时生成新的 Word 文件。" : "修改会自动保存在本机工作副本中。";
     root.innerHTML = `
       <header class="continuous-editor-heading"><div><strong>${label}</strong><span>${detail}</span></div><span>自动保存</span></header>
       <label class="sr-only" for="continuousEditor">${label}</label>
@@ -684,7 +707,7 @@ function renderSpreadsheetWorkspace(root, current) {
       <nav class="sheet-tabs" aria-label="工作表">${current.blocks.map((item, index) => `<button type="button" class="${index === selected ? "is-current" : ""}" data-structured-section="${index}">${escapeHtml(item.title)}</button>`).join("")}</nav>
       <section class="sheet-analysis" aria-label="当前工作表概览"><div><strong data-sheet-stat="filled">${analysis.filled}</strong><span>有内容</span></div><div><strong data-sheet-stat="blank">${analysis.blank}</strong><span>空白格</span></div><div><strong data-sheet-stat="formulas">${analysis.formulas}</strong><span>公式</span></div><div><strong data-sheet-stat="duplicates">${analysis.duplicates}</strong><span>重复值</span></div><p data-sheet-summary>${analysis.summary}</p></section>
       <div class="spreadsheet-grid" tabindex="0"><table><thead><tr><th></th>${headings}</tr></thead><tbody>${body}</tbody></table></div>
-      <p class="sheet-note">输入 = 开头的内容可保存为公式。点击“应用到原格式”后写入真实 XLSX 工作副本，并保留原有单元格样式。</p>
+      <p class="sheet-note">输入 = 开头的内容会保存为公式。点击“另存为文字副本”生成新的 XLSX；只写入值和公式，不改动样式，打开的文件不会被改动。</p>
     </div>`;
 }
 
@@ -727,13 +750,13 @@ function renderVersions(current) {
       <button type="button" data-compare-version="${escapeHtml(version.id)}">比较</button>
       <button type="button" data-restore-version="${escapeHtml(version.id)}">恢复</button>
     </div>`).join("");
-  const reasonLabel = { imported: "导入原文件", "external-change": "桌面修改", "structured-edit": "页内结构化修改", restored: "恢复的原文件" };
+  const reasonLabel = { imported: "导入原文件", "external-change": "桌面修改", "structured-edit": "页内文字替换（旧版本）", restored: "恢复的原文件" };
   const sourceRows = sourceVersions.map((version) => `
     <div class="version-row source-version-row">
       <span class="version-row-copy"><strong>${reasonLabel[version.reason] || "原文件版本"}</strong><small>${displayDate(version.createdAt)} · ${displayFileSize(version.byteLength)}</small></span>
       <button type="button" data-restore-source-version="${escapeHtml(version.id)}">恢复原文件</button>
     </div>`).join("");
-  const eventLabel = { imported: "文件已加入工作区", "external-change": "检测到桌面修改", "structured-edit": "修改已写入原格式", restored: "已恢复历史版本", missing: "工作副本已被删除或移走", renamed: "工作副本已重命名或移动" };
+  const eventLabel = { imported: "文件已加入工作区", "external-change": "检测到桌面修改", "structured-edit": "文字替换已写入（旧版本）", "structured-copy": "已生成文字副本", restored: "已恢复历史版本", missing: "工作副本已被删除或移走", renamed: "工作副本已重命名或移动" };
   const eventRows = sourceEvents.slice().reverse().slice(0, 12).map((event) => `<div class="version-event"><span>${escapeHtml(eventLabel[event.type] || "文件状态已变化")}</span><small>${displayDate(event.createdAt)}</small></div>`).join("");
   root.innerHTML = `${workbenchRows}${sourceRows}${eventRows ? `<div class="version-events"><strong>文件动态</strong>${eventRows}</div>` : ""}`;
 }
@@ -882,14 +905,23 @@ function render() {
   document.querySelector("#openDesktopEditor").hidden = !desktopEditable;
   document.querySelector("#openDesktopEditor").textContent = desktopEditLabel(current.kind);
   document.querySelector("#refreshDesktopFile").hidden = !desktopEditable;
-  document.querySelector("#writeBackSource").hidden = !current.sourceWritable || !["txt", "md"].includes(current.kind);
+  const capability = capabilityOf(current.kind);
+  const badge = document.querySelector("#capabilityBadge");
+  badge.textContent = capability.capabilityLabel;
+  badge.dataset.capability = capability.capability;
+  badge.title = capability.summary;
+  const note = document.querySelector("#capabilityNote");
+  const noteText = [capability.summary, ...capability.limitations].join(" ");
+  note.textContent = noteText;
+  note.hidden = !noteText;
+  document.querySelector("#writeBackSource").hidden = !current.sourceWritable || !capability.sourceWritable;
   document.querySelector("#editViewTab").hidden = current.kind === "pdf";
-  document.querySelector("#applyStructuredEdit").hidden = !Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx"].includes(current.kind));
+  document.querySelector("#saveStructuredCopy").hidden = !Boolean(current.desktopSessionId && capability.copyOnly);
   document.querySelector("#documentSurface").classList.toggle("is-markdown", current.kind === "md");
   document.querySelector("#documentSurface").classList.toggle("is-presentation", current.kind === "pptx");
   document.querySelector("#documentSurface").classList.toggle("is-spreadsheet", current.kind === "xlsx");
   document.querySelector("#documentMeta").textContent = usesDesktopOriginalFormat(current)
-    ? current.kind === "pdf" ? `只读原格式工作副本${size}` : `可写入原格式工作副本${size} · 版式与对象继续保留`
+    ? `原格式文件${size} · ${capability.copyOnly ? "文字修改另存为副本，本文件不改动" : "只读"}`
     : `本机工作副本${size} · 原文件未改动`;
   renderBlocks(current);
   renderVersions(current);
@@ -1032,14 +1064,14 @@ async function refreshDesktopFile() {
   }
 }
 
-async function applyStructuredEdit() {
+async function saveStructuredCopy() {
   const current = currentDocument();
-  if (!current?.desktopSessionId || !["docx", "pptx", "xlsx"].includes(current.kind)) return;
-  const button = document.querySelector("#applyStructuredEdit");
+  if (!current?.desktopSessionId || !capabilityOf(current.kind).copyOnly) return;
+  const button = document.querySelector("#saveStructuredCopy");
   button.disabled = true;
-  setSaveState("正在写入原格式…", true);
+  setSaveState("正在生成副本…", true);
   try {
-    const response = await api("/api/files/session/structured-edit", {
+    const response = await api("/api/files/session/structured-copy", {
       method: "POST",
       body: JSON.stringify({
         id: current.desktopSessionId,
@@ -1050,18 +1082,54 @@ async function applyStructuredEdit() {
       }),
     });
     current.structuredCellChanges = [];
-    await refreshDesktopFile();
-    state.view = "edit";
-    setDocumentView("edit");
-    const warning = Array.isArray(response.warnings) ? response.warnings.join(" ") : "";
-    setSaveState("已写入原格式");
-    showToast(warning || "修改已写入真实工作副本，并保留了历史版本", Boolean(warning));
+    await openCopiedSession(response.copy);
+    setSaveState("副本已生成");
+    showToast("已生成新文件；打开的原文件没有改动");
   } catch (error) {
-    setSaveState("未写入");
-    showToast(error instanceof Error ? error.message : "无法写入原格式", true);
+    setSaveState("未生成副本");
+    showToast(error instanceof Error ? error.message : "无法生成副本", true);
   } finally {
     button.disabled = false;
   }
+}
+
+/** 副本是另一个真实文件，按新文件打开，不覆盖当前文档的历史。 */
+async function openCopiedSession(copy) {
+  if (!copy?.id) return;
+  const response = await api("/api/files/session/refresh", {
+    method: "POST",
+    body: JSON.stringify({ id: copy.id }),
+  });
+  const createdAt = now();
+  const bytes = Uint8Array.from(atob(response.dataBase64), (character) => character.charCodeAt(0));
+  const file = new File([bytes], response.session.name, { type: "application/octet-stream", lastModified: Date.now() });
+  const blocks = textToBlocks(response.extraction.text, response.extraction.kind);
+  const copiedDocument = safeDocument({
+    id: uid("document"),
+    name: response.session.name.replace(/\.[a-z0-9]+$/i, ""),
+    kind: response.extraction.kind,
+    sourceSize: response.session.byteLength,
+    sourceTruncated: Boolean(response.extraction.truncated),
+    createdAt,
+    updatedAt: createdAt,
+    sourceStored: false,
+    desktopSessionId: response.session.id,
+    desktopContentHash: response.session.contentHash,
+    blocks,
+    versions: [{ id: uid("version"), name: "文字副本", createdAt, blocks: blocks.map((block) => ({ ...block })) }],
+    lastCheckpointAt: createdAt,
+  });
+  try {
+    copiedDocument.sourceStored = await window.ClownfishOfficeSource.save(copiedDocument.id, file);
+  } catch {
+    copiedDocument.sourceStored = false;
+  }
+  state.documents.unshift(copiedDocument);
+  state.selectedId = copiedDocument.id;
+  state.view = "source";
+  await loadSourceHistory(copiedDocument);
+  persistState("文字副本已生成");
+  render();
 }
 
 async function openOfficeFile() {
@@ -1519,7 +1587,7 @@ function bindEvents() {
   document.querySelector("#writeBackSource").addEventListener("click", writeBackSource);
   document.querySelector("#openDesktopEditor").addEventListener("click", openDesktopEditor);
   document.querySelector("#refreshDesktopFile").addEventListener("click", refreshDesktopFile);
-  document.querySelector("#applyStructuredEdit").addEventListener("click", applyStructuredEdit);
+  document.querySelector("#saveStructuredCopy").addEventListener("click", saveStructuredCopy);
   document.querySelector("#startOfficeTask").addEventListener("click", startOfficeTask);
   document.querySelector("#cancelOfficeTask").addEventListener("click", cancelOfficeTask);
   document.querySelectorAll("[data-document-view]").forEach((button) => button.addEventListener("click", () => setDocumentView(button.dataset.documentView)));

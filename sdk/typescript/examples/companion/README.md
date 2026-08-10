@@ -87,7 +87,9 @@ npm run companion
 ## 文件工作台
 
 - 读取 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown；
+- 每个文件按 `office-capabilities.ts` 的真相表标注能力：TXT/Markdown 可编辑，Office 与 PDF 仅查看；
 - 原文件保留在浏览器本机存储中，不被工作副本覆盖；
+- Office 文字修改只生成新文件，界面同时列出会损失的格式；
 - PDF 使用原始文件预览，Office 文件提供结构化预览；
 - 编辑和 AI 处理都留在文件页；
 - 任务和能力结果可直接建立本机工作副本继续编辑；
