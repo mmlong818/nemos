@@ -101,8 +101,9 @@ function describe(block: Block): DocxTextBlock {
     docxIndex: block.docxIndex ?? -1,
     kind,
     text: isText ? plainTextOf(block) : "",
-    textEditable: isText && Boolean(block.originalXml && block.originalXml.includes("<w:t")),
-    label: isText ? undefined : localizedLabel(block, kind),
+    textEditable: isText && textEditableOf(block),
+    // 没有 w:t 锚点的段落是空段落，不能含糊地叫"其他内容"。
+    label: isText ? (textEditableOf(block) ? undefined : "空段落") : localizedLabel(block, kind),
   };
 }
 
@@ -112,6 +113,10 @@ function localizedLabel(block: Block, kind: DocxBlockKind): string {
   const size = upstream.match(/(\d+\s*[×x]\s*\d+)/)?.[1]?.replace(/\s*[×x]\s*/, "×");
   const base = defaultLabel(kind);
   return size ? `${base} ${size}` : base;
+}
+
+function textEditableOf(block: Block): boolean {
+  return Boolean(block.originalXml && block.originalXml.includes("<w:t"));
 }
 
 function blockKind(block: Block): DocxBlockKind {

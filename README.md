@@ -83,7 +83,7 @@
 - 删除工作文件时先进入垃圾桶，可恢复，也可明确永久删除；
 - 可以导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown。
 
-![小丑鱼办公文件页](docs/assets/readme/clownfish-office-2026-08-10-v2.png)
+![小丑鱼办公文件页](docs/assets/readme/clownfish-office-2026-08-11.png)
 
 ## 工作：持续任务和交付物集中管理
 

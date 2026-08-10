@@ -68,23 +68,30 @@ const englishReadme = readFileSync(join(root, "README.en.md"), "utf8");
 const zhTests = rootReadme.match(/(\d+) 项自动化测试全部通过/)?.[1];
 const enTests = englishReadme.match(/All (\d+) automated tests pass/)?.[1];
 if (!zhTests || zhTests !== enTests) fail("中英文 README 的测试数量不一致");
-const readmeScreens = ["chat", "capabilities", "office", "work", "memory", "model-connection"];
-const currentScreenshotDate = "2026-08-10";
-for (const screen of readmeScreens) {
-  // 同一天内重拍会带 -v2 这样的后缀，因此匹配"当天的某一版"，
-  // 真正要保证的是中英文用同一张、文件确实存在、日期是当前那一天。
-  const pattern = new RegExp(`docs/assets/readme/clownfish-${screen}-${currentScreenshotDate}(?:-v\\d+)?\\.png`, "g");
-  const zhUsed = [...new Set(rootReadme.match(pattern) ?? [])];
-  const enUsed = [...new Set(englishReadme.match(pattern) ?? [])];
-  if (zhUsed.length !== 1 || enUsed.length !== 1) {
-    fail(`README 应各引用一张 ${screen} 的当前截图（中文 ${zhUsed.length} 张，英文 ${enUsed.length} 张）`);
+/**
+ * 每个界面当前应使用的截图，逐项登记。
+ * 只有那个界面真的变了才重拍并改这里——用一个全局日期会逼着无关界面陪着重拍。
+ */
+const currentScreenshots = {
+  chat: "docs/assets/readme/clownfish-chat-2026-08-10.png",
+  capabilities: "docs/assets/readme/clownfish-capabilities-2026-08-10.png",
+  office: "docs/assets/readme/clownfish-office-2026-08-11.png",
+  work: "docs/assets/readme/clownfish-work-2026-08-10.png",
+  memory: "docs/assets/readme/clownfish-memory-2026-08-10.png",
+  "model-connection": "docs/assets/readme/clownfish-model-connection-2026-08-10.png",
+};
+for (const [screen, relativePath] of Object.entries(currentScreenshots)) {
+  if (!existsSync(join(root, relativePath))) fail(`当前 README 截图不存在：${relativePath}`);
+  if (!rootReadme.includes(relativePath) || !englishReadme.includes(relativePath)) {
+    fail(`中英文 README 没有共同使用当前截图：${relativePath}`);
     continue;
   }
-  if (zhUsed[0] !== enUsed[0]) {
-    fail(`中英文 README 没有共同使用当前截图：${zhUsed[0]} / ${enUsed[0]}`);
-    continue;
+  // 同一界面不能同时残留旧版本的引用。
+  const stale = new RegExp(`docs/assets/readme/clownfish-${screen}-\\d{4}-\\d{2}-\\d{2}(?:-v\\d+)?\\.(?:png|jpg)`, "g");
+  for (const [label, content] of [["中文", rootReadme], ["英文", englishReadme]]) {
+    const used = [...new Set(content.match(stale) ?? [])];
+    if (used.length > 1) fail(`${label} README 同时引用了 ${screen} 的多张截图：${used.join("、")}`);
   }
-  if (!existsSync(join(root, zhUsed[0]))) fail(`当前 README 截图不存在：${zhUsed[0]}`);
 }
 if (/clownfish-[^)]+-2026-08-08\.jpg/.test(`${rootReadme}\n${englishReadme}`)) {
   fail("README 仍引用旧版 2026-08-08 截图");
