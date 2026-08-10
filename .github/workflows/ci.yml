@@ -50,4 +50,5 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           npm run vendor:docx-engine
-          git diff --exit-code -- examples/companion/vendor/docx-engine/dist
+          npm run vendor:pptx-engine
+          git diff --exit-code -- examples/companion/vendor

@@ -70,6 +70,7 @@
 | 位置 | 组件 | 上游与提交 | 许可 |
 | --- | --- | --- | --- |
 | `sdk/typescript/examples/companion/vendor/docx-engine/` | GenOffice `packages/docx-engine`（DOCX 解析与段落级补丁保存） | genspark-ai/genoffice `185040fd2f9f3114db164ea435cf155f52aa0330` | Apache-2.0 |
+| `sdk/typescript/examples/companion/vendor/pptx-engine/` | GenOffice `packages/pptx-engine`（PPTX 解析与元素级补丁保存） | genspark-ai/genoffice `185040fd2f9f3114db164ea435cf155f52aa0330` | Apache-2.0 |
 
 要点：
 
@@ -78,7 +79,7 @@
 - 上游仓库的 `ee/` 目录采用 GenOffice Enterprise License（仅限开发测试，
   商业使用需单独协议），**未纳入本仓库，也不得纳入**。当前上游该目录除许可证
   与说明外为空。
-- 该目录位于 `examples/` 下，因此不进入 npm 包（`files` 白名单仅含 `dist`），
+- 这两个目录位于 `examples/` 下，因此不进入 npm 包（`files` 白名单仅含 `dist`），
   但会进入便携客户端打包产物——打包脚本必须把它的 `LICENSE` 一起带上。
 - 产品界面不出现该项目的名称、图标或术语。
 

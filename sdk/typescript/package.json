@@ -43,6 +43,7 @@
     "test:v06": "tsx --test \"tests/v06/unit/*.test.ts\" \"tests/v06/integration/*.test.ts\"",
     "test:v07": "tsx --test tests/v07/integration/*.test.ts",
     "vendor:docx-engine": "tsc -p examples/companion/vendor/docx-engine/tsconfig.json",
+    "vendor:pptx-engine": "tsc -p examples/companion/vendor/pptx-engine/tsconfig.json",
     "prepublishOnly": "npm run build",
     "check": "npm run build && npm run typecheck && npm test"
   },
