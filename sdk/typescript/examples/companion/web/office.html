@@ -68,12 +68,12 @@
             <div class="empty-mark" data-office-icon="file" aria-hidden="true"></div>
             <p class="section-label">从一个文件开始</p>
             <h1>打开文件，直接处理内容</h1>
-            <p>支持 Word、PowerPoint、Excel、PDF、TXT 和 Markdown。小丑鱼会先读取结构，再让你按段落、页面或工作表检查。</p>
+            <p>TXT 和 Markdown 可以直接编辑并写回原文件。Word、PowerPoint、Excel 和 PDF 保留原版式查看并提取文字，文字修改只会另存为副本。</p>
             <div class="empty-actions">
               <button class="toolbar-button primary large" type="button" data-open-office-file>打开办公文件</button>
               <button class="toolbar-button large" id="newDocumentEmpty" type="button">从空白文稿开始</button>
             </div>
-            <small>默认编辑本机工作副本，不会静默覆盖原文件。</small>
+            <small>小丑鱼不会静默覆盖原文件。</small>
           </div>
 
           <div class="editor-workspace" id="editorWorkspace" hidden>
@@ -84,6 +84,7 @@
                   <input id="documentName" maxlength="120" aria-label="文件名称">
                   <p id="documentMeta">本机工作副本</p>
                 </div>
+                <span class="capability-badge" id="capabilityBadge" data-capability="view" tabindex="0" role="note">仅查看</span>
               </div>
               <div class="document-actions">
                 <button class="toolbar-button danger" id="deleteDocument" type="button" data-office-icon="trash">删除</button>
@@ -91,7 +92,7 @@
                 <button class="toolbar-button" id="openVersionPanel" type="button" data-office-icon="bookmark" aria-controls="assistantPanel" aria-expanded="false">版本</button>
                 <button class="toolbar-button" id="openDesktopEditor" type="button" data-office-icon="document" hidden>用桌面应用编辑</button>
                 <button class="toolbar-button" id="refreshDesktopFile" type="button" data-office-icon="download" hidden>载入修改</button>
-                <button class="toolbar-button primary" id="applyStructuredEdit" type="button" data-office-icon="check" hidden>应用到原格式</button>
+                <button class="toolbar-button" id="saveStructuredCopy" type="button" data-office-icon="check" hidden>另存为文字副本</button>
                 <button class="toolbar-button" id="writeBackSource" type="button" data-office-icon="download" hidden>写回原文件</button>
                 <label class="export-choice"><span class="sr-only">导出格式</span><select id="exportFormat" aria-label="导出格式"><option value="docx">Word</option><option value="pdf">PDF</option><option value="pptx">PowerPoint</option><option value="xlsx">Excel</option><option value="html">网页</option><option value="md">Markdown</option></select></label>
                 <button class="toolbar-button" id="exportDraft" type="button" data-office-icon="download">导出</button>
@@ -100,14 +101,16 @@
 
             <div class="document-view-bar" role="tablist" aria-label="文件视图">
               <button class="is-current" type="button" role="tab" aria-selected="true" data-document-view="source">原文件</button>
-              <button id="editViewTab" type="button" role="tab" aria-selected="false" data-document-view="edit">编辑文字</button>
+              <button id="editViewTab" type="button" role="tab" aria-selected="false" data-document-view="edit">提取文字</button>
               <button type="button" role="tab" aria-selected="false" data-document-view="result" id="resultViewTab" hidden>处理结果</button>
               <span id="sourceState">原文件保留在本机</span>
             </div>
 
+            <p class="capability-note" id="capabilityNote" hidden></p>
+
             <div class="source-preview" id="sourcePreview" role="tabpanel" aria-label="原文件预览"></div>
 
-            <div class="document-surface" id="documentSurface" role="tabpanel" aria-label="可编辑内容" hidden>
+            <div class="document-surface" id="documentSurface" role="tabpanel" aria-label="文字内容" hidden>
               <div class="block-list" id="blockList"></div>
               <button class="add-block" id="addBlock" type="button" data-office-icon="plus">添加内容块</button>
             </div>
@@ -180,6 +183,7 @@
   <script src="/assets/app-icons.js"></script>
   <script src="/assets/vendor/jszip.min.js"></script>
   <script src="/assets/vendor/docx-preview.min.js"></script>
+  <script src="/assets/office-capabilities.js"></script>
   <script src="/assets/office-source-preview.js"></script>
   <script src="/assets/office-workbench.js"></script>
 </body>

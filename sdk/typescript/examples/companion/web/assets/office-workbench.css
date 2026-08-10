@@ -245,6 +245,32 @@ button, a, label { touch-action: manipulation; }
   font-weight: 750;
   letter-spacing: .07em;
 }
+.capability-badge {
+  align-self: center;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.capability-badge[data-capability="edit"] { color: #17603a; background: #e4f5ea; border-color: #bfe3cd; }
+.capability-badge[data-capability="annotate"] { color: #6a4413; background: #fbf0dc; border-color: #ecd6ab; }
+.capability-badge[data-capability="view"] { color: #4b5566; background: #eef1f5; border-color: #d7dde6; }
+.capability-badge[data-capability="convert"] { color: #5a3a72; background: #f2ebf8; border-color: #ddcbea; }
+.capability-badge[data-capability="unsupported"] { color: #7a2b2b; background: #fbe9e9; border-color: #eecccc; }
+.capability-note {
+  margin: 0;
+  padding: 9px 16px;
+  color: #566070;
+  background: #f7f8fa;
+  border-bottom: 1px solid #e6e9ee;
+  font-size: 12px;
+  line-height: 1.65;
+}
 .document-actions { min-width: min(100%, 580px); flex: 1 1 580px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .document-view-bar {
   position: sticky;

@@ -70,8 +70,8 @@ test("Office 文件可以交给桌面原生编辑器，并把修改重新载入�
   assert.match(officeJs, /function usesDesktopOriginalFormat/);
   assert.match(officeJs, /view === "edit" && current\?\.kind === "pdf"/);
   assert.match(officeJs, /document\.querySelector\("#editViewTab"\)\.hidden = current\.kind === "pdf"/);
-  assert.match(officeHtml, /id="applyStructuredEdit"[^>]*>应用到原格式/);
-  assert.match(officeJs, /\/api\/files\/session\/structured-edit/);
+  assert.match(officeHtml, /id="saveStructuredCopy"[^>]*>另存为文字副本/);
+  assert.match(officeJs, /\/api\/files\/session\/structured-copy/);
   assert.match(officeJs, /function renderPresentationWorkspace/);
   assert.match(officeJs, /function renderSpreadsheetWorkspace/);
   assert.match(officeJs, /用 Word 编辑/);
@@ -157,8 +157,8 @@ test("原文件保存在本机并提供格式化预览", () => {
   assert.doesNotMatch(officeCss, /\.docx-preview-stage[^}]+overscroll-behavior/);
 });
 
-test("Word 编辑状态使用连续文字工作副本而不是数百个段落表单", () => {
-  assert.match(officeHtml, /id="editViewTab"[^>]*>编辑文字/);
+test("Word 文字视图使用连续文字工作副本而不是数百个段落表单", () => {
+  assert.match(officeHtml, /id="editViewTab"[^>]*>提取文字/);
   assert.doesNotMatch(officeHtml, /surface-ruler/);
   assert.match(officeJs, /function continuousDocumentText/);
   assert.match(officeJs, /data-continuous-editor/);

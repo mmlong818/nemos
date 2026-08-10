@@ -1,5 +1,17 @@
 import JSZip from "jszip";
 
+/**
+ * 已冻结：这是文字级的 OOXML 替换，不是 Office 编辑内核。
+ *
+ * 它按位置重写 `<w:t>` / `<a:t>` 并把一个段落内的多个 run 合并成一个，
+ * 因此改动过的段落会丢失行内格式；页眉页脚、批注、修订、图表和母版都不在覆盖范围内。
+ * 结果只允许通过 `OfficeFileSessionStore.saveStructuredCopy` 生成新文件，
+ * 绝不覆盖用户打开的那个文件。
+ *
+ * 不要在这里继续扩写格式支持。真正的编辑能力由独立的编辑内核承担，
+ * 界面能力声明以 `office-capabilities.ts` 为准。
+ */
+
 export type StructuredOfficeKind = "docx" | "pptx" | "xlsx";
 
 export interface StructuredOfficeBlock {
