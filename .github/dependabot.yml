@@ -11,3 +11,15 @@ updates:
     labels:
       - dependencies
       - security
+    ignore:
+      # better-sqlite3 13 起不再提供 Node 22 win-x64 的预编译包，安装时会回落到
+      # node-gyp 源码编译；CI 的 windows-latest 上 Visual Studio 18 无法被
+      # node-gyp 11 识别，npm ci 直接失败（2026-08-10 实测，见提交
+      # "回退 better-sqlite3 13，它在 Windows CI 上无法安装"）。
+      #
+      # 小丑鱼是要分发的桌面产品，不能要求每台安装机器都具备原生编译环境，
+      # 因此锁在 12.x。上游恢复提供预编译包、或 CI 与打包脚本改用能识别
+      # VS 18 的 node-gyp 之后，再删掉这条并重新验证。
+      - dependency-name: better-sqlite3
+        update-types:
+          - version-update:semver-major
