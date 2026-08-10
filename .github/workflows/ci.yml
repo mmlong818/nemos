@@ -27,8 +27,8 @@ jobs:
       run:
         working-directory: sdk/typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22.19.0
           cache: npm
@@ -37,3 +37,17 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
+      # 文档核验此前只靠人工执行，红了一段时间没人发现，因此纳入 CI。
+      # 它只做内容与链接检查，与操作系统无关，跑一次即可。
+      - name: 文档核验
+        if: runner.os == 'Linux'
+        working-directory: .
+        run: node scripts/verify-docs.mjs
+      # vendored 引擎的 dist 入库，改了 src 不重建就会出现"跑的是旧代码"。
+      # 只在 Linux 上比对：Windows runner 的 autocrlf 会把检出文件转成 CRLF，
+      # 而 tsc 输出 LF，diff 会整片报差异。
+      - name: vendored 引擎产物与源码同步
+        if: runner.os == 'Linux'
+        run: |
+          npm run vendor:docx-engine
+          git diff --exit-code -- examples/companion/vendor/docx-engine/dist
