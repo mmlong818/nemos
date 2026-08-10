@@ -1,6 +1,21 @@
-# 小丑鱼
+# Nemos
 
 **中文** · [English](README.en.md)
+
+[![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
+[![SDK license: PolyForm Noncommercial](https://img.shields.io/badge/SDK-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#本地运行)
+
+这个仓库有两部分，授权不同：
+
+| 部分 | 是什么 | 授权 |
+|---|---|---|
+| **Nemos Memory SDK**<br>`sdk/typescript/src/` | 可嵌入的长期记忆内核：分层归档、结构化事实、失效与纠正、多路召回 | [PolyForm Noncommercial 1.0.0](LICENSE)，商业用途需另行授权 |
+| **小丑鱼**（Clownfish）<br>`sdk/typescript/examples/companion/` | 用这套内核做成的本机优先 AI 工作应用，也是 SDK 的完整参考实现 | 保留全部权利，[另行授权](sdk/typescript/examples/companion/LICENSE) |
+
+完整授权说明见 [LICENSING.md](LICENSING.md)。下面先介绍应用，SDK 用法见[作为记忆 SDK 使用](#作为记忆-sdk-使用)。
+
+## 小丑鱼
 
 > 一款本机优先、带长期记忆的 AI 工作应用。从一条新对话开始，按需要完成任务或进入学习辅导；复杂工作可以继续交给能力、文件和工作中心。
 
@@ -14,7 +29,7 @@
 |---|---|---|
 | **对话** | 直接新建、搜索、切换或删除独立对话，需要时切换为完成任务或学习辅导，并可上传图片或文件 | 内容自动命名、多任务并行、独立上下文、结果回到原对话 |
 | **能力** | 直接描述目标，或直接选择一种能力 | 后台任务、实时进度、取消与重试、结果预览和下载 |
-| **文件** | 打开 Word、PowerPoint、Excel、PDF、TXT 或 Markdown | 原版式预览、逐格式的真实能力标注、TXT/Markdown 直接编辑与写回、Office 文字提取与另存副本、版本记录 |
+| **文件** | 打开 Word、PowerPoint、Excel、PDF、TXT 或 Markdown | 统一转成 Markdown 处理、逐条列出转换损失、原文件保留可下载、原版式预览、版本记录 |
 | **工作** | 查看任务、工作空间、自动化、协作、资料、结果、运行和记忆 | 多任务归类、定时执行、专家协作、本地资料、交付物和习惯管理 |
 
 新用户不需要先创建项目，也不需要先理解工具名称。
@@ -148,12 +163,11 @@ Windows 下，密钥使用当前用户的 DPAPI 加密并保存在本机；接�
 ## 当前验证状态
 
 - TypeScript 构建通过；
-- 601 项自动化测试全部通过；
+- 590 项自动化测试全部通过；
 - 首页、能力、文件、工作、记忆和模型连接已用全新本机数据目录重新截图核对；
 - 能力产物严格区分已生成、已校验、已核验和已确认；演示文稿会用本机 Chromium 浏览器对关键页真实渲染截图并检查空白与画面层次，未执行真实复核时不会标为已核验；
 - 生成能力升级会重新执行准入矩阵并保存合同指纹，触发边界冲突或夹具缺失时拒绝安装；外部安装能力也必须包含可执行步骤和结果约定；
-- 三维验证基础设施会用本机 Blender 真实打开 `.blend` 文件，检查对象、网格和场景边界；这不会被宣传成已经提供 CAD 或仿真能力；
-- 最近一次完整真实使用检查见 [2026-08-08 十轮检查报告](sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md)。
+- 三维验证基础设施会用本机 Blender 真实打开 `.blend` 文件，检查对象、网格和场景边界；这不会被宣传成已经提供 CAD 或仿真能力。
 
 ## 本地运行
 
@@ -205,9 +219,10 @@ const context = await memory.getRelevantContext("起草一份方案");
 | [TypeScript SDK](sdk/typescript/README.md) | 当前可用的记忆 API |
 | [记忆架构](docs/architecture-overview.md) | 已实现结构与边界 |
 | [运行架构](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | 任务、工具、权限与恢复 |
-| [产品方向](sdk/typescript/examples/companion/docs/clownfish-product-direction.md) | 目标用户、核心工作链路与开发优先级 |
 | [路线图](ROADMAP.md) | 当前版本和后续重点 |
 | [文档导航](docs/README.md) | 使用、集成、架构与研究资料入口 |
+| [参与贡献](CONTRIBUTING.md) | 提交流程与入站授权条款 |
+| [安全策略](SECURITY.md) | 漏洞报告方式 |
 
 ## 许可
 
