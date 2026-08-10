@@ -1,8 +1,8 @@
-{
+﻿{
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "lib": ["ES2022"],
     "outDir": "dist",
     "rootDir": "src",
@@ -24,3 +24,4 @@
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests", "examples"]
 }
+
