@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameS
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { officeCapabilityOf } from "./office-capabilities.js";
+import { applyDocxTextEdits, readDocxText, type DocxTextBlock, type DocxTextEdit } from "./office-docx-text-edit.js";
 import { UserFacingError } from "./office-errors.js";
 import { applyStructuredOfficeEdit, type StructuredOfficeBlock, type StructuredSpreadsheetCell } from "./office-structured-edit.js";
 import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
@@ -126,6 +127,44 @@ export class OfficeFileSessionStore {
     return (this.events.get(session.id) || []).map((event) => structuredClone(event));
   }
 
+  /** 读取 DOCX 的块结构：可改文字的段落，以及只能透传的表格、图片、图形。 */
+  async readDocxBlocks(id: string): Promise<DocxTextBlock[]> {
+    const session = this.requireRecord(id);
+    this.inspect(id);
+    if (session.extension !== "docx") throw new UserFacingError("只有 Word 文件有段落结构");
+    return readDocxText(readFileSync(session.file));
+  }
+
+  /**
+   * DOCX 文字修改：按 docxIndex 定位，只改指定段落，其余部件保持原字节。
+   * 与下面已冻结的 saveStructuredCopy 不同，这条路径不会压平行内格式。
+   * 结果仍然写入新文件——覆盖用户打开的那个文件要等真实文件回归验证之后。
+   */
+  async saveDocxTextCopy(id: string, expectedHash: string, edits: DocxTextEdit[]): Promise<{
+    source: OfficeFileSession;
+    copy: OfficeFileSession;
+    changed: number[];
+    skipped: number[];
+    warnings: string[];
+    validation: ValidationReceipt;
+  }> {
+    this.inspect(id);
+    const session = this.requireRecord(id);
+    if (!expectedHash || session.contentHash !== expectedHash) throw new UserFacingError("文件已在其他程序中变化，请重新载入后再生成副本");
+    if (session.extension !== "docx") throw new UserFacingError("这条路径只处理 Word 文件");
+    if (!edits.length) throw new UserFacingError("没有需要写入的修改");
+    const edited = await applyDocxTextEdits(readFileSync(session.file), edits);
+    if (!edited.changed.length) throw new UserFacingError("请求修改的内容没有实际变化，没有生成副本");
+    const validation = await validateOfficeFile("docx", edited.data);
+    if (!validation.passed) throw new UserFacingError(`生成的副本没有通过格式检查，已放弃写入：${failedChecksOf(validation)}`);
+    const copy = this.create(copyName(session.name, session.extension), edited.data);
+    this.captureEvent(session, "structured-copy", { from: session.file, to: copy.file, contentHash: copy.contentHash });
+    this.persist();
+    const warnings: string[] = [];
+    if (edited.skipped.length) warnings.push(`有 ${edited.skipped.length} 处内容不是可改文字的段落（表格、图片或图形），没有改动。`);
+    return { source: structuredClone(session), copy, changed: edited.changed, skipped: edited.skipped, warnings, validation };
+  }
+
   /**
    * 文字替换只生成另一个文件。当前的 OOXML 写入是文字级替换，
    * 无法保证行内格式和未覆盖部件的完整性，因此不允许覆盖用户打开的那个文件。
@@ -140,10 +179,7 @@ export class OfficeFileSessionStore {
     const source = readFileSync(session.file);
     const edited = await applyStructuredOfficeEdit({ kind, data: source, blocks, cells, complete });
     const validation = await validateOfficeFile(kind, edited.data);
-    if (!validation.passed) {
-      const failed = validation.checks.filter((check) => !check.passed).map((check) => check.detail ? `${check.name}：${check.detail}` : check.name);
-      throw new UserFacingError(`生成的副本没有通过格式检查，已放弃写入：${failed.join("；")}`);
-    }
+    if (!validation.passed) throw new UserFacingError(`生成的副本没有通过格式检查，已放弃写入：${failedChecksOf(validation)}`);
     const copy = this.create(copyName(session.name, session.extension), edited.data);
     this.captureEvent(session, "structured-copy", { from: session.file, to: copy.file, contentHash: copy.contentHash });
     this.persist();
@@ -335,6 +371,13 @@ function normalizeExtension(name: string): OfficeFileSession["extension"] {
   const extension = raw === "markdown" ? "md" : raw;
   if (!EXTENSIONS.has(extension)) throw new UserFacingError("不支持这个文件格式");
   return extension as OfficeFileSession["extension"];
+}
+
+function failedChecksOf(validation: ValidationReceipt): string {
+  return validation.checks
+    .filter((check) => !check.passed)
+    .map((check) => (check.detail ? `${check.name}：${check.detail}` : check.name))
+    .join("；");
 }
 
 function copyName(name: string, extension: string): string {

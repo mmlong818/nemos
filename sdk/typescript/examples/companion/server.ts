@@ -3238,6 +3238,35 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
+    if (req.method === "GET" && pathname === "/api/files/session/docx-blocks") {
+      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
+      try {
+        send(res, 200, { ok: true, blocks: await officeFileSessions.readDocxBlocks(id) });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
+      }
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/files/session/docx-copy") {
+      const body = (await readBody(req, 2 * 1024 * 1024)) as {
+        id?: string;
+        expectedHash?: string;
+        edits?: Array<{ docxIndex?: number; text?: string }>;
+      };
+      try {
+        const edits = Array.isArray(body.edits)
+          ? body.edits
+            .filter((edit) => Number.isInteger(edit?.docxIndex) && Number(edit?.docxIndex) >= 0)
+            .slice(0, 5_000)
+            .map((edit) => ({ docxIndex: Number(edit.docxIndex), text: String(edit.text ?? "").slice(0, 120_000) }))
+          : [];
+        const result = await officeFileSessions.saveDocxTextCopy(String(body.id || ""), String(body.expectedHash || ""), edits);
+        send(res, 200, { ok: true, ...result });
+      } catch (error) {
+        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
+      }
+      return;
+    }
     if (req.method === "POST" && pathname === "/api/files/session/structured-copy") {
       const body = (await readBody(req, 2 * 1024 * 1024)) as {
         id?: string;
