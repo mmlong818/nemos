@@ -245,6 +245,37 @@ button, a, label { touch-action: manipulation; }
   font-weight: 750;
   letter-spacing: .07em;
 }
+.docx-paragraph-list { display: flex; flex-direction: column; gap: 10px; padding: 14px 0; }
+.docx-paragraph,
+.docx-passthrough { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; }
+.docx-paragraph-index { padding-top: 7px; color: #97a1b0; font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+.docx-paragraph-text {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #e2e6ec;
+  border-radius: 7px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  line-height: 1.75;
+  resize: none;
+}
+.docx-paragraph-text:focus-visible { outline: 2px solid var(--office-accent, #2f6fed); outline-offset: 1px; }
+.docx-paragraph.is-changed .docx-paragraph-text { border-color: #b9d5b9; background: #f6fbf7; }
+.docx-passthrough p {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 9px 11px;
+  border: 1px dashed #d9dee6;
+  border-radius: 7px;
+  background: #f7f8fa;
+}
+.docx-passthrough p span { color: #6b7684; font-size: 12px; }
+
 .capability-badge {
   align-self: center;
   height: 24px;

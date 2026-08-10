@@ -102,8 +102,16 @@ function describe(block: Block): DocxTextBlock {
     kind,
     text: isText ? plainTextOf(block) : "",
     textEditable: isText && Boolean(block.originalXml && block.originalXml.includes("<w:t")),
-    label: isText ? undefined : block.label || defaultLabel(kind),
+    label: isText ? undefined : localizedLabel(block, kind),
   };
+}
+
+/** 引擎给的标签是英文（如 "Table 3×4"），界面只说小丑鱼自己的产品语言。 */
+function localizedLabel(block: Block, kind: DocxBlockKind): string {
+  const upstream = String(block.label || "").trim();
+  const size = upstream.match(/(\d+\s*[×x]\s*\d+)/)?.[1]?.replace(/\s*[×x]\s*/, "×");
+  const base = defaultLabel(kind);
+  return size ? `${base} ${size}` : base;
 }
 
 function blockKind(block: Block): DocxBlockKind {
@@ -116,7 +124,7 @@ function blockKind(block: Block): DocxBlockKind {
 function defaultLabel(kind: DocxBlockKind): string {
   if (kind === "table") return "表格";
   if (kind === "image") return "图片";
-  return "其他内容";
+  return "图形或嵌入内容";
 }
 
 function plainTextOf(block: Block): string {

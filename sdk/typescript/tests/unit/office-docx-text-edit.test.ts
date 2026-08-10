@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import JSZip from "jszip";
 
 import { applyDocxTextEdits, readDocxText } from "../../examples/companion/office-docx-text-edit.js";
+import { OfficeFileSessionStore } from "../../examples/companion/office-file-sessions.js";
 import { applyStructuredOfficeEdit } from "../../examples/companion/office-structured-edit.js";
 import { validateOfficeFile } from "../../examples/companion/office-validation.js";
 
@@ -61,7 +65,9 @@ test("读取 DOCX 时区分可改文字的段落与只能透传的内容", async
   const table = blocks.find((block) => block.kind === "table");
   assert.ok(table, "表格应被识别为独立块");
   assert.equal(table.textEditable, false);
-  assert.ok(table.label);
+  // 标签只用小丑鱼自己的产品语言，尺寸保留
+  assert.match(table.label || "", /^表格( \d+×\d+)?$/);
+  assert.doesNotMatch(table.label || "", /Table|Image|Chart/);
 });
 
 test("改一个段落的文字，同段其他 run 的行内格式原样保留", async () => {
@@ -125,6 +131,60 @@ test("修改结果通过结构检查", async () => {
   const receipt = await validateOfficeFile("docx", result.data);
   const failed = receipt.checks.filter((check) => !check.passed).map((check) => check.name);
   assert.deepEqual(failed, []);
+});
+
+test("会话层按 docxIndex 生成保真副本，原文件字节不变", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "clownfish-docx-engine-"));
+  try {
+    const original = await buildDocx(MIXED_BODY);
+    const store = new OfficeFileSessionStore(directory);
+    const created = store.create("季度汇报.docx", original);
+
+    const blocks = await store.readDocxBlocks(created.id);
+    assert.equal(blocks[0]?.textEditable, true);
+    assert.ok(blocks.some((block) => block.kind === "table"));
+
+    const result = await store.saveDocxTextCopy(created.id, created.contentHash, [
+      { docxIndex: 0, text: "改写后的开头 这段加粗 这段红色大字" },
+    ]);
+    assert.deepEqual(result.changed, [0]);
+    assert.equal(result.validation.passed, true);
+    assert.match(result.copy.name, /文字副本/);
+    assert.equal(readFileSync(created.file).equals(original), true, "打开的文件必须字节不变");
+
+    const copyXml = await documentXmlOf(readFileSync(result.copy.file));
+    assert.match(copyXml, /<w:rPr><w:b\/><\/w:rPr><w:t[^>]*>这段加粗/);
+    assert.match(copyXml, /<w:keepNext\/>/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("会话层拒绝没有实际变化的请求，不产生空副本", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "clownfish-docx-engine-noop-"));
+  try {
+    const store = new OfficeFileSessionStore(directory);
+    const created = store.create("报告.docx", await buildDocx(MIXED_BODY));
+    await assert.rejects(
+      () => store.saveDocxTextCopy(created.id, created.contentHash, [{ docxIndex: 0, text: "开头普通 这段加粗 这段红色大字" }]),
+      /没有实际变化/,
+    );
+    assert.deepEqual(store.scan().map((session) => session.id), [created.id]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("非 Word 文件不走保真段落路径", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "clownfish-docx-engine-guard-"));
+  try {
+    const store = new OfficeFileSessionStore(directory);
+    const created = store.create("notes.md", Buffer.from("content"));
+    await assert.rejects(() => store.readDocxBlocks(created.id), /只有 Word 文件/);
+    await assert.rejects(() => store.saveDocxTextCopy(created.id, created.contentHash, [{ docxIndex: 0, text: "x" }]), /只处理 Word 文件/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("对比已冻结的文字级替换：旧路径丢行内格式，新路径不丢", async () => {
