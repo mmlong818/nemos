@@ -1084,7 +1084,8 @@ async function saveStructuredCopy() {
     current.structuredCellChanges = [];
     await openCopiedSession(response.copy);
     setSaveState("副本已生成");
-    showToast("已生成新文件；打开的原文件没有改动");
+    const checks = response.validation?.checks?.length || 0;
+    showToast(checks ? `已生成新文件，结构检查 ${checks} 项全部通过；打开的原文件没有改动` : "已生成新文件；打开的原文件没有改动");
   } catch (error) {
     setSaveState("未生成副本");
     showToast(error instanceof Error ? error.message : "无法生成副本", true);

@@ -4,6 +4,7 @@ import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { officeCapabilityOf } from "./office-capabilities.js";
 import { applyStructuredOfficeEdit, type StructuredOfficeBlock, type StructuredSpreadsheetCell } from "./office-structured-edit.js";
+import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
 
 export interface OfficeFileSession {
   id: string;
@@ -128,7 +129,7 @@ export class OfficeFileSessionStore {
    * 文字替换只生成另一个文件。当前的 OOXML 写入是文字级替换，
    * 无法保证行内格式和未覆盖部件的完整性，因此不允许覆盖用户打开的那个文件。
    */
-  async saveStructuredCopy(id: string, expectedHash: string, blocks: StructuredOfficeBlock[], cells: StructuredSpreadsheetCell[] = [], complete = false): Promise<{ source: OfficeFileSession; copy: OfficeFileSession; warnings: string[]; changedParts: string[] }> {
+  async saveStructuredCopy(id: string, expectedHash: string, blocks: StructuredOfficeBlock[], cells: StructuredSpreadsheetCell[] = [], complete = false): Promise<{ source: OfficeFileSession; copy: OfficeFileSession; warnings: string[]; changedParts: string[]; validation: ValidationReceipt }> {
     this.inspect(id);
     const session = this.requireRecord(id);
     if (!expectedHash || session.contentHash !== expectedHash) throw new Error("文件已在其他程序中变化，请重新载入后再生成副本");
@@ -137,6 +138,11 @@ export class OfficeFileSessionStore {
     if (!capability?.copyOnly || (kind !== "docx" && kind !== "pptx" && kind !== "xlsx")) throw new Error("这个格式不支持文字替换副本");
     const source = readFileSync(session.file);
     const edited = await applyStructuredOfficeEdit({ kind, data: source, blocks, cells, complete });
+    const validation = await validateOfficeFile(kind, edited.data);
+    if (!validation.passed) {
+      const failed = validation.checks.filter((check) => !check.passed).map((check) => check.detail ? `${check.name}：${check.detail}` : check.name);
+      throw new Error(`生成的副本没有通过格式检查，已放弃写入：${failed.join("；")}`);
+    }
     const copy = this.create(copyName(session.name, session.extension), edited.data);
     this.captureEvent(session, "structured-copy", { from: session.file, to: copy.file, contentHash: copy.contentHash });
     this.persist();
@@ -145,6 +151,7 @@ export class OfficeFileSessionStore {
       copy,
       warnings: [...capability.limitations, ...edited.warnings],
       changedParts: edited.changedParts,
+      validation,
     };
   }
 

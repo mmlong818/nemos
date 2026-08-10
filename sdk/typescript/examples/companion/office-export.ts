@@ -4,6 +4,9 @@ import { existsSync } from "node:fs";
 import JSZip from "jszip";
 import PptxGenJS from "pptxgenjs";
 
+import type { OfficeFileKind } from "./office-file-parser.js";
+import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
+
 const PDFDocument = require("pdfkit") as new (options?: Record<string, unknown>) => {
   pipe(stream: NodeJS.WritableStream): void;
   font(source: string): unknown;
@@ -33,18 +36,29 @@ export interface OfficeExportResult {
   filename: string;
   contentType: string;
   warnings: string[];
+  validation?: ValidationReceipt;
 }
 
 export async function exportOfficeDocument(input: OfficeExportInput): Promise<OfficeExportResult> {
   const name = safeName(input.name || "办公文稿");
   const blocks = normalizeBlocks(input.blocks);
   const warnings = validateLayout(blocks, input.format);
-  if (input.format === "docx") return result(await createDocx(blocks), name, input.format, warnings);
-  if (input.format === "pptx") return result(await createPptx(name, blocks), name, input.format, warnings);
-  if (input.format === "xlsx") return result(await createXlsx(blocks), name, input.format, warnings);
-  if (input.format === "pdf") return result(await createPdf(name, blocks), name, input.format, warnings);
+  if (input.format === "docx") return checked(result(await createDocx(blocks), name, input.format, warnings), "docx");
+  if (input.format === "pptx") return checked(result(await createPptx(name, blocks), name, input.format, warnings), "pptx");
+  if (input.format === "xlsx") return checked(result(await createXlsx(blocks), name, input.format, warnings), "xlsx");
+  if (input.format === "pdf") return checked(result(await createPdf(name, blocks), name, input.format, warnings), "pdf");
   if (input.format === "html") return result(Buffer.from(createHtml(name, blocks), "utf8"), name, input.format, warnings);
-  return result(Buffer.from(createMarkdown(name, blocks), "utf8"), name, "md", warnings);
+  return checked(result(Buffer.from(createMarkdown(name, blocks), "utf8"), name, "md", warnings), "md");
+}
+
+/** 生成的文件先过结构检查再交出去；不合格就报错，不给用户一个打不开的文件。 */
+async function checked(value: OfficeExportResult, format: OfficeFileKind): Promise<OfficeExportResult> {
+  const validation = await validateOfficeFile(format, value.data);
+  if (!validation.passed) {
+    const failed = validation.checks.filter((check) => !check.passed).map((check) => (check.detail ? `${check.name}：${check.detail}` : check.name));
+    throw new Error(`生成的 ${format.toUpperCase()} 没有通过结构检查：${failed.join("；")}`);
+  }
+  return { ...value, validation };
 }
 
 function normalizeBlocks(value: OfficeExportBlock[]): OfficeExportBlock[] {
