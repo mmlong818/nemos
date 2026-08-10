@@ -137,6 +137,10 @@ function safeDocument(item) {
       address: String(cell?.address || "").toUpperCase().slice(0, 16),
       value: String(cell?.value || "").slice(0, 32000),
     })).filter((cell) => /^[A-Z]{1,3}[1-9]\d{0,6}$/.test(cell.address)) : [],
+    docxEdits: Array.isArray(item?.docxEdits) ? item.docxEdits.slice(0, 5000).map((edit) => ({
+      docxIndex: Math.max(0, Number(edit?.docxIndex || 0)),
+      text: String(edit?.text ?? "").slice(0, 120000),
+    })).filter((edit) => Number.isInteger(edit.docxIndex)) : [],
     lastCheckpointAt: String(item?.lastCheckpointAt || ""),
     sourceVersions: Array.isArray(item?.sourceVersions) ? item.sourceVersions.slice(0, 40).map((version) => ({
       id: String(version?.id || "").slice(0, 80),
@@ -176,6 +180,9 @@ let activeDocumentQuote = null;
 let libraryQuery = "";
 let libraryFormat = "all";
 const activeStructuredSection = new Map();
+/** DOCX 的段落结构随时可以从会话重新取回，因此只放内存，不进本机状态。 */
+const docxBlocksByDocument = new Map();
+const docxBlocksRequested = new Set();
 
 function setActiveDocumentQuote(text, location) {
   const value = String(text || "").trim().slice(0, 8000);
@@ -553,12 +560,64 @@ function applyMarkdownAction(editor, action) {
   editor.focus();
 }
 
+/** 段落结构由服务端的 DOCX 引擎给出，界面按 docxIndex 定位，不按位置猜。 */
+async function loadDocxBlocks(current) {
+  if (!current || current.kind !== "docx" || !current.desktopSessionId) return;
+  try {
+    const response = await api(`/api/files/session/docx-blocks?id=${encodeURIComponent(current.desktopSessionId)}`);
+    docxBlocksByDocument.set(current.id, Array.isArray(response.blocks) ? response.blocks : []);
+    if (currentDocument()?.id === current.id) render();
+  } catch {
+    docxBlocksByDocument.delete(current.id);
+  }
+}
+
+function docxEditsOf(current) {
+  const edits = new Map();
+  for (const edit of current.docxEdits || []) edits.set(Number(edit.docxIndex), String(edit.text ?? ""));
+  return edits;
+}
+
+function docxParagraphText(current, block) {
+  const pending = docxEditsOf(current);
+  return pending.has(block.docxIndex) ? pending.get(block.docxIndex) : block.text;
+}
+
+function renderDocxWorkspace(root, current, blocks) {
+  const pending = docxEditsOf(current);
+  const changed = blocks.filter((block) => pending.has(block.docxIndex) && pending.get(block.docxIndex) !== block.text).length;
+  const editable = blocks.filter((block) => block.textEditable).length;
+  root.innerHTML = `
+    <header class="continuous-editor-heading">
+      <div><strong>按段落修改</strong><span>只有你改过的段落会被写入；其余内容、表格和图片保持原样。</span></div>
+      <span>${changed ? `${changed} 段待写入` : `${editable} 段可改`}</span>
+    </header>
+    <div class="docx-paragraph-list">
+      ${blocks.map((block, index) => block.textEditable
+        ? `<article class="docx-paragraph${pending.has(block.docxIndex) && pending.get(block.docxIndex) !== block.text ? " is-changed" : ""}">
+             <span class="docx-paragraph-index" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>
+             <label class="sr-only" for="docx-para-${block.docxIndex}">第 ${index + 1} 段</label>
+             <textarea class="docx-paragraph-text" id="docx-para-${block.docxIndex}" data-docx-index="${block.docxIndex}" maxlength="120000" spellcheck="true">${escapeHtml(docxParagraphText(current, block))}</textarea>
+           </article>`
+        : `<article class="docx-passthrough">
+             <span class="docx-paragraph-index" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>
+             <p><strong>${escapeHtml(block.label || "其他内容")}</strong><span>原样保留，不在这里编辑</span></p>
+           </article>`).join("")}
+    </div>`;
+  root.querySelectorAll(".docx-paragraph-text").forEach(autoResize);
+}
+
 function renderBlocks(current) {
   const root = window.document.querySelector("#blockList");
-  const continuous = current.kind === "docx" || current.kind === "txt" || current.kind === "md";
+  const docxBlocks = current.kind === "docx" ? docxBlocksByDocument.get(current.id) : null;
+  const continuous = (current.kind === "docx" && !docxBlocks?.length) || current.kind === "txt" || current.kind === "md";
   const importedStructured = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx"].includes(current.kind));
   document.querySelector("#addBlock").hidden = continuous || importedStructured;
   document.querySelector("#editViewTab").textContent = textViewLabel(current.kind);
+  if (docxBlocks?.length) {
+    renderDocxWorkspace(root, current, docxBlocks);
+    return;
+  }
   if (current.kind === "md") {
     root.innerHTML = `
       <div class="markdown-workspace">
@@ -923,6 +982,10 @@ function render() {
   document.querySelector("#documentMeta").textContent = usesDesktopOriginalFormat(current)
     ? `原格式文件${size} · ${capability.copyOnly ? "文字修改另存为副本，本文件不改动" : "只读"}`
     : `本机工作副本${size} · 原文件未改动`;
+  if (current.kind === "docx" && current.desktopSessionId && !docxBlocksRequested.has(current.id)) {
+    docxBlocksRequested.add(current.id);
+    void loadDocxBlocks(current);
+  }
   renderBlocks(current);
   renderVersions(current);
   if (current.processing && ["queued", "running", "succeeded"].includes(current.processing.status)) state.view = "result";
@@ -1046,6 +1109,10 @@ async function refreshDesktopFile() {
     current.sourceSize = response.session.byteLength;
     current.desktopContentHash = response.session.contentHash;
     current.sourceStored = await window.ClownfishOfficeSource.save(current.id, file);
+    // 文件在外部变了，段落结构和未提交的段落修改都不再对得上。
+    docxBlocksByDocument.delete(current.id);
+    docxBlocksRequested.delete(current.id);
+    current.docxEdits = [];
     current.versions.unshift({
       id: uid("version"),
       name: "桌面修改",
@@ -1067,6 +1134,7 @@ async function refreshDesktopFile() {
 async function saveStructuredCopy() {
   const current = currentDocument();
   if (!current?.desktopSessionId || !capabilityOf(current.kind).copyOnly) return;
+  if (docxBlocksByDocument.get(current.id)?.length) return saveDocxTextCopy(current);
   const button = document.querySelector("#saveStructuredCopy");
   button.disabled = true;
   setSaveState("正在生成副本…", true);
@@ -1086,6 +1154,36 @@ async function saveStructuredCopy() {
     setSaveState("副本已生成");
     const checks = response.validation?.checks?.length || 0;
     showToast(checks ? `已生成新文件，结构检查 ${checks} 项全部通过；打开的原文件没有改动` : "已生成新文件；打开的原文件没有改动");
+  } catch (error) {
+    setSaveState("未生成副本");
+    showToast(error instanceof Error ? error.message : "无法生成副本", true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** 保真路径：只把改过的段落按 docxIndex 送出，未改动的内容保持原字节。 */
+async function saveDocxTextCopy(current) {
+  const blocks = docxBlocksByDocument.get(current.id) || [];
+  const pending = docxEditsOf(current);
+  const edits = blocks
+    .filter((block) => block.textEditable && pending.has(block.docxIndex) && pending.get(block.docxIndex) !== block.text)
+    .map((block) => ({ docxIndex: block.docxIndex, text: pending.get(block.docxIndex) }));
+  if (!edits.length) return showToast("还没有改动任何段落", true);
+  const button = document.querySelector("#saveStructuredCopy");
+  button.disabled = true;
+  setSaveState("正在生成副本…", true);
+  try {
+    const response = await api("/api/files/session/docx-copy", {
+      method: "POST",
+      body: JSON.stringify({ id: current.desktopSessionId, expectedHash: current.desktopContentHash, edits }),
+    });
+    current.docxEdits = [];
+    await openCopiedSession(response.copy);
+    setSaveState("副本已生成");
+    const skipped = Array.isArray(response.skipped) ? response.skipped.length : 0;
+    const changed = Array.isArray(response.changed) ? response.changed.length : edits.length;
+    showToast(`已写入 ${changed} 段并生成新文件${skipped ? `，${skipped} 处内容未改动` : ""}；打开的原文件没有改动`, skipped > 0);
   } catch (error) {
     setSaveState("未生成副本");
     showToast(error instanceof Error ? error.message : "无法生成副本", true);
@@ -1533,6 +1631,16 @@ function bindEvents() {
       if (existing) existing.value = value; else changes.push({ sheetIndex, address, value });
       current.structuredCellChanges = changes.slice(-20000);
       updateSpreadsheetAnalysis(current, sheetIndex);
+      scheduleSave();
+      return;
+    }
+    if (current && event.target.matches("[data-docx-index]")) {
+      const docxIndex = Number(event.target.dataset.docxIndex);
+      if (!Number.isInteger(docxIndex)) return;
+      const edits = (current.docxEdits || []).filter((edit) => Number(edit.docxIndex) !== docxIndex);
+      edits.push({ docxIndex, text: event.target.value.slice(0, 120000) });
+      current.docxEdits = edits.slice(-5000);
+      autoResize(event.target);
       scheduleSave();
       return;
     }

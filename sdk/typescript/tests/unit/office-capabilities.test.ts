@@ -67,7 +67,20 @@ test("文件页不再声称能无损修改 Office 文件", () => {
     assert.doesNotMatch(officeJs, pattern, `office-workbench.js 仍含虚假编辑表述：${pattern}`);
   }
   assert.match(officeHtml, /id="capabilityBadge"/);
+  assert.match(officeJs, /querySelector\("#capabilityNote"\)/);
   assert.match(officeHtml, /id="capabilityNote"/);
   assert.match(officeJs, /function capabilityOf/);
   assert.match(officeJs, /badge\.dataset\.capability = capability\.capability/);
+});
+
+test("DOCX 文字修改按 docxIndex 定位，不按纯文本位置对齐", () => {
+  assert.match(officeJs, /\/api\/files\/session\/docx-blocks\?id=/);
+  assert.match(officeJs, /function renderDocxWorkspace/);
+  assert.match(officeJs, /data-docx-index="\$\{block\.docxIndex\}"/);
+  assert.match(officeJs, /block\.textEditable/);
+  // 只把真正改过的段落送出
+  assert.match(officeJs, /pending\.get\(block\.docxIndex\) !== block\.text/);
+  // 外部改动后必须丢弃对不上的段落结构与未提交修改
+  assert.match(officeJs, /docxBlocksByDocument\.delete\(current\.id\)/);
+  assert.match(officeJs, /current\.docxEdits = \[\]/);
 });
