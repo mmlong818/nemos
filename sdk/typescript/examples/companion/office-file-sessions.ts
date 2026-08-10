@@ -25,14 +25,14 @@ export interface OfficeFileVersion {
   contentHash: string;
   byteLength: number;
   createdAt: string;
-  reason: "imported" | "external-change" | "structured-edit" | "restored";
+  reason: "imported" | "external-change" | "structured-edit" | "text-edit" | "restored";
   file: string;
 }
 
 export interface OfficeFileEvent {
   id: string;
   sessionId: string;
-  type: "imported" | "external-change" | "structured-edit" | "structured-copy" | "restored" | "missing" | "renamed";
+  type: "imported" | "external-change" | "structured-edit" | "structured-copy" | "text-edit" | "restored" | "missing" | "renamed";
   createdAt: string;
   from?: string;
   to?: string;
@@ -136,9 +136,42 @@ export class OfficeFileSessionStore {
   }
 
   /**
-   * DOCX 文字修改：按 docxIndex 定位，只改指定段落，其余部件保持原字节。
-   * 与下面已冻结的 saveStructuredCopy 不同，这条路径不会压平行内格式。
-   * 结果仍然写入新文件——覆盖用户打开的那个文件要等真实文件回归验证之后。
+   * DOCX 文字修改就地写入工作副本，供前端随后写回用户打开的那个文件。
+   *
+   * 写入前先过结构校验，不通过就不落盘；写入前的字节由 captureVersion 留在
+   * 版本历史里，因此即使用户随后覆盖了原文件，也还能取回改动前的版本。
+   */
+  async saveDocxTextEdits(id: string, expectedHash: string, edits: DocxTextEdit[]): Promise<{
+    session: OfficeFileSession;
+    changed: number[];
+    skipped: number[];
+    warnings: string[];
+    validation: ValidationReceipt;
+  }> {
+    this.inspect(id);
+    const session = this.requireRecord(id);
+    if (!expectedHash || session.contentHash !== expectedHash) throw new UserFacingError("文件已在其他程序中变化，请重新载入后再保存");
+    if (session.extension !== "docx") throw new UserFacingError("这条路径只处理 Word 文件");
+    if (!edits.length) throw new UserFacingError("没有需要写入的修改");
+    const edited = await applyDocxTextEdits(readFileSync(session.file), edits);
+    if (!edited.changed.length) throw new UserFacingError("请求修改的内容没有实际变化，没有写入");
+    const validation = await validateOfficeFile("docx", edited.data);
+    if (!validation.passed) throw new UserFacingError(`修改后的文件没有通过格式检查，已放弃写入：${failedChecksOf(validation)}`);
+    writeAtomic(session.file, edited.data);
+    session.byteLength = edited.data.byteLength;
+    session.contentHash = hash(edited.data);
+    session.updatedAt = new Date().toISOString();
+    this.captureVersion(session, edited.data, "text-edit");
+    this.captureEvent(session, "text-edit", { to: session.file, contentHash: session.contentHash });
+    this.persist();
+    const warnings: string[] = [];
+    if (edited.skipped.length) warnings.push(`有 ${edited.skipped.length} 处内容不是可改文字的段落（表格、图片或图形），没有改动。`);
+    return { session: structuredClone(session), changed: edited.changed, skipped: edited.skipped, warnings, validation };
+  }
+
+  /**
+   * 同上，但把结果写进一个新文件而不是就地保存。
+   * 用户想保留改动前的那份时用这条路径。
    */
   async saveDocxTextCopy(id: string, expectedHash: string, edits: DocxTextEdit[]): Promise<{
     source: OfficeFileSession;
