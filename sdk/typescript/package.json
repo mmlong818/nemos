@@ -50,7 +50,7 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.1",
     "@modelcontextprotocol/client": "^2.0.0",
-    "@napi-rs/canvas": "^0.1.100",
+    "@napi-rs/canvas": "^1.0.3",
     "better-sqlite3": "^12.11.1",
     "docx-preview": "^0.4.0",
     "fast-xml-parser": "^5.10.1",
