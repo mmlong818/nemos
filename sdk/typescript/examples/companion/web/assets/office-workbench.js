@@ -64,6 +64,7 @@ const FALLBACK_CAPABILITY = {
   savesTo: "none",
   sourceWritable: false,
   copyOnly: false,
+  canSaveCopy: false,
   limitations: [],
 };
 
@@ -810,13 +811,13 @@ function renderVersions(current) {
       <button type="button" data-compare-version="${escapeHtml(version.id)}">比较</button>
       <button type="button" data-restore-version="${escapeHtml(version.id)}">恢复</button>
     </div>`).join("");
-  const reasonLabel = { imported: "导入原文件", "external-change": "桌面修改", "structured-edit": "页内文字替换（旧版本）", restored: "恢复的原文件" };
+  const reasonLabel = { imported: "导入原文件", "external-change": "桌面修改", "structured-edit": "页内文字替换（旧版本）", "text-edit": "段落修改", restored: "恢复的原文件" };
   const sourceRows = sourceVersions.map((version) => `
     <div class="version-row source-version-row">
       <span class="version-row-copy"><strong>${reasonLabel[version.reason] || "原文件版本"}</strong><small>${displayDate(version.createdAt)} · ${displayFileSize(version.byteLength)}</small></span>
       <button type="button" data-restore-source-version="${escapeHtml(version.id)}">恢复原文件</button>
     </div>`).join("");
-  const eventLabel = { imported: "文件已加入工作区", "external-change": "检测到桌面修改", "structured-edit": "文字替换已写入（旧版本）", "structured-copy": "已生成文字副本", restored: "已恢复历史版本", missing: "工作副本已被删除或移走", renamed: "工作副本已重命名或移动" };
+  const eventLabel = { imported: "文件已加入工作区", "external-change": "检测到桌面修改", "structured-edit": "文字替换已写入（旧版本）", "structured-copy": "已生成文字副本", "text-edit": "段落修改已写入", restored: "已恢复历史版本", missing: "工作副本已被删除或移走", renamed: "工作副本已重命名或移动" };
   const eventRows = sourceEvents.slice().reverse().slice(0, 12).map((event) => `<div class="version-event"><span>${escapeHtml(eventLabel[event.type] || "文件状态已变化")}</span><small>${displayDate(event.createdAt)}</small></div>`).join("");
   root.innerHTML = `${workbenchRows}${sourceRows}${eventRows ? `<div class="version-events"><strong>文件动态</strong>${eventRows}</div>` : ""}`;
 }
@@ -976,7 +977,7 @@ function render() {
   note.hidden = !noteText;
   document.querySelector("#writeBackSource").hidden = !current.sourceWritable || !capability.sourceWritable;
   document.querySelector("#editViewTab").hidden = current.kind === "pdf";
-  document.querySelector("#saveStructuredCopy").hidden = !Boolean(current.desktopSessionId && capability.copyOnly);
+  document.querySelector("#saveStructuredCopy").hidden = !Boolean(current.desktopSessionId && capability.canSaveCopy);
   document.querySelector("#documentSurface").classList.toggle("is-markdown", current.kind === "md");
   document.querySelector("#documentSurface").classList.toggle("is-presentation", current.kind === "pptx");
   document.querySelector("#documentSurface").classList.toggle("is-spreadsheet", current.kind === "xlsx");
@@ -1257,7 +1258,8 @@ async function openOfficeFile() {
 
 async function writeBackSource() {
   const current = currentDocument();
-  if (!current || !["txt", "md"].includes(current.kind)) return;
+  if (!current || !capabilityOf(current.kind).sourceWritable) return;
+  if (current.kind === "docx") return writeBackDocx(current);
   setSaveState("正在写回原文件…", true);
   try {
     await window.ClownfishOfficeSource.writeText(current.id, continuousDocumentText(current));
@@ -1267,6 +1269,51 @@ async function writeBackSource() {
   } catch (error) {
     setSaveState("未写回");
     showToast(error instanceof Error ? error.message : "原文件写回失败", true);
+  }
+}
+
+/**
+ * DOCX 写回：先让服务端按 docxIndex 打补丁并过结构检查，再把校验通过的字节
+ * 写回用户打开的那个文件。改动前的版本留在版本记录里，可以取回。
+ */
+async function writeBackDocx(current) {
+  const blocks = docxBlocksByDocument.get(current.id) || [];
+  const pending = docxEditsOf(current);
+  const edits = blocks
+    .filter((block) => block.textEditable && pending.has(block.docxIndex) && pending.get(block.docxIndex) !== block.text)
+    .map((block) => ({ docxIndex: block.docxIndex, text: pending.get(block.docxIndex) }));
+  if (!edits.length) return showToast("还没有改动任何段落", true);
+  if (!window.confirm(`将把 ${edits.length} 段改动写回原文件，覆盖当前内容。改动前的版本会保留在版本记录里。继续？`)) return;
+  const button = document.querySelector("#writeBackSource");
+  button.disabled = true;
+  setSaveState("正在写回原文件…", true);
+  try {
+    const saved = await api("/api/files/session/docx-save", {
+      method: "POST",
+      body: JSON.stringify({ id: current.desktopSessionId, expectedHash: current.desktopContentHash, edits }),
+    });
+    const response = await api("/api/files/session/refresh", {
+      method: "POST",
+      body: JSON.stringify({ id: current.desktopSessionId }),
+    });
+    const bytes = Uint8Array.from(atob(response.dataBase64), (character) => character.charCodeAt(0));
+    await window.ClownfishOfficeSource.writeBytes(current.id, bytes);
+    current.desktopContentHash = saved.session.contentHash;
+    current.sourceSize = saved.session.byteLength;
+    current.sourceStored = true;
+    current.docxEdits = [];
+    docxBlocksByDocument.delete(current.id);
+    docxBlocksRequested.delete(current.id);
+    await loadSourceHistory(current);
+    persistState("原文件已更新");
+    render();
+    const skipped = Array.isArray(saved.skipped) ? saved.skipped.length : 0;
+    showToast(`已写回 ${saved.changed.length} 段到原文件${skipped ? `，${skipped} 处内容未改动` : ""}`, skipped > 0);
+  } catch (error) {
+    setSaveState("未写回");
+    showToast(error instanceof Error ? error.message : "原文件写回失败", true);
+  } finally {
+    button.disabled = false;
   }
 }
 

@@ -36,19 +36,32 @@ test("能力标注、文字视图与保存位置三者必须自洽", () => {
 });
 
 test("标为可编辑的格式必须有实机保真证据，否则只能是仅查看", () => {
-  // 有 Word 实机验证的：TXT/MD 直接写回，DOCX 段落补丁另存新文件。
+  // 有 Word 实机验证的：TXT/MD 与 DOCX 都可写回原文件。
   assert.equal(officeCapabilityOf("txt")?.savesTo, "original");
   assert.equal(officeCapabilityOf("md")?.savesTo, "original");
   const docx = officeCapabilityOf("docx");
   assert.equal(docx?.capability, "edit");
-  assert.equal(docx?.savesTo, "copy");
-  assert.equal(docx?.sourceWritable, false, "DOCX 还不能覆盖原文件");
-  assert.match(docx?.limitations[0] || "", /不会覆盖/, "第一条限制必须先讲清不覆盖原文件");
-  // 仍走已冻结的有损路径，因此不能标为可编辑。
+  assert.equal(docx?.savesTo, "original");
+  assert.equal(docx?.sourceWritable, true);
+  assert.equal(docx?.canSaveCopy, true, "写回之外仍要保留另存副本这个选项");
+  assert.match(docx?.limitations[0] || "", /覆盖原文件/, "第一条限制必须先讲清写回会覆盖，以及改动前版本可取回");
+  // 仍走已冻结的有损路径，因此不能标为可编辑，也不能写回原文件。
   for (const format of ["pptx", "xlsx", "pdf"]) {
     assert.equal(officeCapabilityOf(format)?.capability, "view", `${format} 不应标为可编辑`);
     assert.equal(officeCapabilityOf(format)?.sourceWritable, false);
   }
+});
+
+test("只能另存副本与提供另存副本是两件事", () => {
+  for (const entry of OFFICE_FORMAT_CAPABILITIES) {
+    if (entry.copyOnly) {
+      assert.equal(entry.canSaveCopy, true, `${entry.format} 只能另存副本，就必须提供这个选项`);
+      assert.equal(entry.sourceWritable, false, `${entry.format} 只能另存副本，不该能写回原文件`);
+    }
+  }
+  // DOCX 既能写回也能另存，因此不是 copyOnly。
+  assert.equal(officeCapabilityOf("docx")?.copyOnly, false);
+  assert.equal(officeCapabilityOf("txt")?.canSaveCopy, false);
 });
 
 test("只生成副本的格式必须写明会损失什么", () => {
@@ -58,6 +71,7 @@ test("只生成副本的格式必须写明会损失什么", () => {
     assert.match(entry.summary, /副本|新文件/, `${entry.format} 的说明必须点明结果存到别处`);
     assert.equal(entry.savesTo, "copy");
   }
+  assert.equal(officeCapabilityOf("pdf")?.copyOnly, false);
   assert.equal(officeCapabilityOf("pdf")?.copyOnly, false);
   assert.equal(officeCapabilityOf("markdown")?.format, "md");
   assert.equal(officeCapabilityOf("exe"), null);

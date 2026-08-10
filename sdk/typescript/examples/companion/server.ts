@@ -2089,6 +2089,17 @@ function contentType(path: string): string {
   return "application/octet-stream";
 }
 
+function normalizeDocxEdits(edits: unknown): Array<{ docxIndex: number; text: string }> {
+  if (!Array.isArray(edits)) return [];
+  return edits
+    .filter((edit) => Number.isInteger((edit as { docxIndex?: unknown })?.docxIndex) && Number((edit as { docxIndex: number }).docxIndex) >= 0)
+    .slice(0, 5_000)
+    .map((edit) => ({
+      docxIndex: Number((edit as { docxIndex: number }).docxIndex),
+      text: String((edit as { text?: unknown }).text ?? "").slice(0, 120_000),
+    }));
+}
+
 function officeSessionContentType(extension: string): string {
   return ({
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -3247,6 +3258,24 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
+    if (req.method === "POST" && pathname === "/api/files/session/docx-save") {
+      const body = (await readBody(req, 2 * 1024 * 1024)) as {
+        id?: string;
+        expectedHash?: string;
+        edits?: Array<{ docxIndex?: number; text?: string }>;
+      };
+      try {
+        const result = await officeFileSessions.saveDocxTextEdits(String(body.id || ""), String(body.expectedHash || ""), normalizeDocxEdits(body.edits));
+        taskFiles.refreshStorage(result.session.id, {
+          byteLength: result.session.byteLength,
+          contentHash: result.session.contentHash,
+        });
+        send(res, 200, { ok: true, ...result });
+      } catch (error) {
+        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
+      }
+      return;
+    }
     if (req.method === "POST" && pathname === "/api/files/session/docx-copy") {
       const body = (await readBody(req, 2 * 1024 * 1024)) as {
         id?: string;
@@ -3254,13 +3283,7 @@ const server = createServer(async (req, res) => {
         edits?: Array<{ docxIndex?: number; text?: string }>;
       };
       try {
-        const edits = Array.isArray(body.edits)
-          ? body.edits
-            .filter((edit) => Number.isInteger(edit?.docxIndex) && Number(edit?.docxIndex) >= 0)
-            .slice(0, 5_000)
-            .map((edit) => ({ docxIndex: Number(edit.docxIndex), text: String(edit.text ?? "").slice(0, 120_000) }))
-          : [];
-        const result = await officeFileSessions.saveDocxTextCopy(String(body.id || ""), String(body.expectedHash || ""), edits);
+        const result = await officeFileSessions.saveDocxTextCopy(String(body.id || ""), String(body.expectedHash || ""), normalizeDocxEdits(body.edits));
         send(res, 200, { ok: true, ...result });
       } catch (error) {
         send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });

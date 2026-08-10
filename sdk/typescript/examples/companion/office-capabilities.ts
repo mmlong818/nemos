@@ -24,8 +24,13 @@ export interface OfficeFormatCapability {
   savesTo: "original" | "copy" | "none";
   /** 修改后的文字能否写回打开的那个文件。等价于 savesTo === "original"。 */
   sourceWritable: boolean;
-  /** 结构化写入只允许生成另一个文件，不覆盖打开的文件。 */
+  /**
+   * 只能另存为副本：该格式的写入路径不足以安全覆盖原文件。
+   * 与 canSaveCopy 是两件事——copyOnly 是限制，canSaveCopy 是提供的选项。
+   */
   copyOnly: boolean;
+  /** 是否提供"另存为副本"这个选项。 */
+  canSaveCopy: boolean;
   limitations: string[];
 }
 
@@ -49,6 +54,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     savesTo: "original",
     sourceWritable: true,
     copyOnly: false,
+    canSaveCopy: false,
     limitations: ["写回时保持原有的编码和换行符。"],
   },
   md: {
@@ -62,6 +68,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     savesTo: "original",
     sourceWritable: true,
     copyOnly: false,
+    canSaveCopy: false,
     limitations: ["图片按相对路径引用，移动文件后需要自己核对路径。"],
   },
   docx: {
@@ -69,14 +76,15 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     formatLabel: "Word 文档",
     capability: "edit",
     capabilityLabel: OFFICE_CAPABILITY_LABELS.edit,
-    summary: "可以逐段修改段落文字，未改动的内容保持原字节；结果另存为新文件，不覆盖你打开的这个文件。",
+    summary: "可以逐段修改段落文字并写回原文件，未改动的内容保持原字节；也可以另存为新文件。",
     textView: "edit",
     textViewLabel: "编辑段落",
-    savesTo: "copy",
-    sourceWritable: false,
-    copyOnly: true,
+    savesTo: "original",
+    sourceWritable: true,
+    copyOnly: false,
+    canSaveCopy: true,
     limitations: [
-      "修改结果另存为新文件，不会覆盖你打开的这个文件。",
+      "写回会覆盖原文件；改动前的版本保留在版本记录里，可以随时取回。",
       "只能修改段落文字。表格、图片、图表和图形保持原样，无法在这里编辑。",
       "不能增删段落、调整样式，也不能改动页眉页脚、脚注尾注、批注和修订。",
       "修改过的段落保留自己的行内格式；无法安全定位的段落会跳过并告知你。",
@@ -93,6 +101,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     savesTo: "copy",
     sourceWritable: false,
     copyOnly: true,
+    canSaveCopy: true,
     limitations: [
       "每页文字按出现顺序整体替换，原有的分行、占位符归属和行内格式会被合并。",
       "无法增删页面、移动元素，也无法修改版式与母版。",
@@ -110,6 +119,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     savesTo: "copy",
     sourceWritable: false,
     copyOnly: true,
+    canSaveCopy: true,
     limitations: [
       "只写入单元格的值和公式，不改动样式、条件格式和数据验证。",
       "写入公式后不重新计算，数值需要在 Excel 中打开后刷新。",
@@ -128,6 +138,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     savesTo: "none",
     sourceWritable: false,
     copyOnly: false,
+    canSaveCopy: false,
     limitations: [
       "提取出来的文字不能写回 PDF。",
       "不提供高亮、批注、签名、表单填写和页面增删。",
