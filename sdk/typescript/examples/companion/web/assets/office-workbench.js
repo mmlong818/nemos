@@ -60,6 +60,8 @@ const FALLBACK_CAPABILITY = {
   capabilityLabel: "仅查看",
   summary: "这个格式目前只能查看。",
   textView: "extract",
+  textViewLabel: "提取文字",
+  savesTo: "none",
   sourceWritable: false,
   copyOnly: false,
   limitations: [],
@@ -71,8 +73,7 @@ function capabilityOf(kind) {
 }
 
 function textViewLabel(kind) {
-  if (capabilityOf(kind).textView === "edit") return kind === "md" ? "编辑 Markdown" : "编辑文本";
-  return "提取文字";
+  return capabilityOf(kind).textViewLabel || FALLBACK_CAPABILITY.textViewLabel;
 }
 
 function kindTitle(kind, index) {

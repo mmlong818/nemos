@@ -55,8 +55,9 @@ The file workspace supports DOCX, PPTX, XLSX, PDF, TXT, and Markdown:
 - Markdown has an outline, formatting tools, and live preview; TXT uses continuous text editing;
 - Working copies are saved by the local service, and revision checks prevent stale windows from overwriting newer edits;
 - PDFs retain their original layout; Office formats receive a structured preview while the original file is retained;
-- Every file states what Clownfish can actually do with it: TXT and Markdown are **editable**; Word, PowerPoint, Excel, and PDF are **view-only**;
-- Text in Word, PowerPoint, and Excel can be extracted and changed, but the result is always **saved as a new file** — the file you opened is left untouched. The page also states what is lost: inline formatting inside changed paragraphs is flattened, and headers, footers, comments, tracked changes, charts, and masters are out of scope;
+- Every file states what Clownfish can actually do with it: TXT, Markdown, and Word are **editable**; PowerPoint, Excel, and PDF are **view-only**. The stated capability and "can it overwrite the original" are separate facts, never conflated;
+- Word edits are per paragraph: only the paragraphs you changed are rewritten. Every other paragraph, plus tables, images, charts, headers, footers, comments, and tracked changes, keeps its original bytes — and bold, size, and color inside a changed paragraph survive too. The result is **saved as a new file**; the file you opened is left untouched. Verified against real Microsoft Word with repair disabled (see `sdk/typescript/examples/companion/docs/reviews/2026-08-10-docx-fidelity-with-word.md`);
+- PowerPoint and Excel text can also be changed and saved as a new file, but they still use the older text-level replacement, which flattens inline formatting at the changed spots. The page says so item by item, which is why they remain view-only;
 - TXT and Markdown can be written back only after explicit authorization and an external-change conflict check;
 - Editing, versions, AI progress, and results stay on the same page;
 - The file library supports name search and format filters; external edits, renames, moves, and deletions are recorded as file events;
@@ -129,7 +130,7 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 ## Current verification
 
 - The TypeScript build passes;
-- All 570 automated tests pass;
+- All 601 automated tests pass;
 - Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
 - See the [2026-08-08 ten-round real-world audit](sdk/typescript/examples/companion/docs/reviews/2026-08-08-web-true-check-10-rounds.md).
 

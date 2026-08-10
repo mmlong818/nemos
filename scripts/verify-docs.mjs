@@ -4,7 +4,8 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ignoredDirectories = new Set([".git", "dist", "node_modules", "vendor"]);
+// 与 .gitignore 对齐：本机工作目录与参考代码不属于本仓库的文档，不参与检查。
+const ignoredDirectories = new Set([".git", "dist", "node_modules", "vendor", ".tmp", "tmp", "output", ".cache"]);
 const failures = [];
 
 function fail(message) {
@@ -68,12 +69,22 @@ const zhTests = rootReadme.match(/(\d+) 项自动化测试全部通过/)?.[1];
 const enTests = englishReadme.match(/All (\d+) automated tests pass/)?.[1];
 if (!zhTests || zhTests !== enTests) fail("中英文 README 的测试数量不一致");
 const readmeScreens = ["chat", "capabilities", "office", "work", "memory", "model-connection"];
+const currentScreenshotDate = "2026-08-10";
 for (const screen of readmeScreens) {
-  const relativePath = `docs/assets/readme/clownfish-${screen}-2026-08-10.png`;
-  if (!rootReadme.includes(relativePath) || !englishReadme.includes(relativePath)) {
-    fail(`中英文 README 没有共同使用当前截图：${relativePath}`);
+  // 同一天内重拍会带 -v2 这样的后缀，因此匹配"当天的某一版"，
+  // 真正要保证的是中英文用同一张、文件确实存在、日期是当前那一天。
+  const pattern = new RegExp(`docs/assets/readme/clownfish-${screen}-${currentScreenshotDate}(?:-v\\d+)?\\.png`, "g");
+  const zhUsed = [...new Set(rootReadme.match(pattern) ?? [])];
+  const enUsed = [...new Set(englishReadme.match(pattern) ?? [])];
+  if (zhUsed.length !== 1 || enUsed.length !== 1) {
+    fail(`README 应各引用一张 ${screen} 的当前截图（中文 ${zhUsed.length} 张，英文 ${enUsed.length} 张）`);
+    continue;
   }
-  if (!existsSync(join(root, relativePath))) fail(`当前 README 截图不存在：${relativePath}`);
+  if (zhUsed[0] !== enUsed[0]) {
+    fail(`中英文 README 没有共同使用当前截图：${zhUsed[0]} / ${enUsed[0]}`);
+    continue;
+  }
+  if (!existsSync(join(root, zhUsed[0]))) fail(`当前 README 截图不存在：${zhUsed[0]}`);
 }
 if (/clownfish-[^)]+-2026-08-08\.jpg/.test(`${rootReadme}\n${englishReadme}`)) {
   fail("README 仍引用旧版 2026-08-08 截图");

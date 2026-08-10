@@ -23,17 +23,31 @@ test("每种可打开的格式都声明了真实能力", () => {
   }
 });
 
-test("只有能写回原文件的格式才标为可编辑", () => {
+test("能力标注、文字视图与保存位置三者必须自洽", () => {
   for (const entry of OFFICE_FORMAT_CAPABILITIES) {
-    assert.equal(entry.capability === "edit", entry.sourceWritable, `${entry.format} 的能力标注与写回行为不一致`);
-    assert.equal(entry.textView === "edit", entry.sourceWritable, `${entry.format} 的文字视图与写回行为不一致`);
+    // "可编辑"与"能覆盖原文件"是两件事，必须分开表达，不能互相冒充。
+    assert.equal(entry.sourceWritable, entry.savesTo === "original", `${entry.format} 的 sourceWritable 与 savesTo 不一致`);
+    assert.equal(entry.textView === "edit", entry.capability === "edit", `${entry.format} 的文字视图与能力标注不一致`);
+    if (entry.capability === "edit") {
+      assert.notEqual(entry.savesTo, "none", `${entry.format} 标为可编辑却没有保存去处`);
+    }
+    assert.ok(entry.textViewLabel.length > 0, `${entry.format} 缺少文字视图标签`);
   }
-  assert.equal(officeCapabilityOf("txt")?.capability, "edit");
-  assert.equal(officeCapabilityOf("md")?.capability, "edit");
-  for (const format of ["docx", "pptx", "xlsx", "pdf"]) {
-    const entry = officeCapabilityOf(format);
-    assert.equal(entry?.capability, "view", `${format} 不应标为可编辑`);
-    assert.equal(entry?.sourceWritable, false);
+});
+
+test("标为可编辑的格式必须有实机保真证据，否则只能是仅查看", () => {
+  // 有 Word 实机验证的：TXT/MD 直接写回，DOCX 段落补丁另存新文件。
+  assert.equal(officeCapabilityOf("txt")?.savesTo, "original");
+  assert.equal(officeCapabilityOf("md")?.savesTo, "original");
+  const docx = officeCapabilityOf("docx");
+  assert.equal(docx?.capability, "edit");
+  assert.equal(docx?.savesTo, "copy");
+  assert.equal(docx?.sourceWritable, false, "DOCX 还不能覆盖原文件");
+  assert.match(docx?.limitations[0] || "", /不会覆盖/, "第一条限制必须先讲清不覆盖原文件");
+  // 仍走已冻结的有损路径，因此不能标为可编辑。
+  for (const format of ["pptx", "xlsx", "pdf"]) {
+    assert.equal(officeCapabilityOf(format)?.capability, "view", `${format} 不应标为可编辑`);
+    assert.equal(officeCapabilityOf(format)?.sourceWritable, false);
   }
 });
 
@@ -41,7 +55,8 @@ test("只生成副本的格式必须写明会损失什么", () => {
   for (const entry of OFFICE_FORMAT_CAPABILITIES) {
     if (!entry.copyOnly) continue;
     assert.ok(entry.limitations.length >= 2, `${entry.format} 缺少副本限制说明`);
-    assert.match(entry.summary, /副本/);
+    assert.match(entry.summary, /副本|新文件/, `${entry.format} 的说明必须点明结果存到别处`);
+    assert.equal(entry.savesTo, "copy");
   }
   assert.equal(officeCapabilityOf("pdf")?.copyOnly, false);
   assert.equal(officeCapabilityOf("markdown")?.format, "md");
