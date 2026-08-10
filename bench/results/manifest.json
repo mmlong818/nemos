@@ -21,7 +21,7 @@
       "items": 50,
       "resultCommit": "0190986020fe6a4aea4a7a782e34a21e72d3ffe8",
       "committedAt": "2026-06-27T18:50:25+08:00",
-      "sha256": "79eb6af8fa14b719ae0a1f49a7269fa6ba5e0b707d6ee5557704b28f9dd54619"
+      "sha256": "e30cb20ec6855ee75c88db5125d97e3736dc939fe093e84237eff282a6433e49"
     },
     {
       "file": "buc-mem0.json",
@@ -30,7 +30,7 @@
       "system": "mem0 2.0.8",
       "resultCommit": "10f729dbb9a7e8e1af77a6f0c9084454c701aa23",
       "committedAt": "2026-06-27T19:03:54+08:00",
-      "sha256": "94da8477616504d5301cde65915c158ad6857485436b8fd31e3bdab34a2727cb"
+      "sha256": "8cb352c432e3ee04cf9f05f9ce4f3d670e284a5e9b828dc7c4b0a261ba49d116"
     },
     {
       "file": "asp.json",
@@ -39,7 +39,7 @@
       "probes": 250,
       "resultCommit": "c55762d0d1049b663ff83012421dd8418e3354dd",
       "committedAt": "2026-07-03T15:41:56+08:00",
-      "sha256": "a5725aae781fc42d388700627fb17eed87b4db1cc7dba50c71c178af66ad56bd"
+      "sha256": "24dd90f917cc4441480a746b93cd606be2969f513fba04f830f75727a6f67927"
     },
     {
       "file": "for.json",
@@ -48,7 +48,7 @@
       "probes": 146,
       "resultCommit": "c55762d0d1049b663ff83012421dd8418e3354dd",
       "committedAt": "2026-07-03T15:41:56+08:00",
-      "sha256": "5f314ffe2e2c6fd2352790d09b763f3ff1fb492e14dd4b6b78e8b469784fdf16"
+      "sha256": "3ada60ea8c247a6d298c8772b8fe52279516e224f22f2751ab94bfdd800669b5"
     },
     {
       "file": "longmemeval-ku.json",
@@ -56,7 +56,7 @@
       "questions": 30,
       "resultCommit": "39d1573688e707f6582c3ff9e188e82ee5f88190",
       "committedAt": "2026-06-27T21:37:44+08:00",
-      "sha256": "d3a3b812f9430c8aeaa273b95a361c97c56a3474b858afc00e9b4e3c9a218380"
+      "sha256": "2024c066c6d9547f4cf517e4da9147d400ab532ff19528463cb7d7fa1b609582"
     }
   ]
 }
