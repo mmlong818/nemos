@@ -5499,6 +5499,11 @@ const server = createServer(async (req, res) => {
     send(res, 404, { error: "not found" });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    // 客户端收到的是脱敏文案，因此内部错误必须在本机日志里留下栈，
+    // 否则线上只剩一句"内部处理暂时失败"，无从排查。
+    if (message !== "请求内容过大") {
+      console.error(`[companion] ${req.method} ${String(req.url || "/").split("?")[0]} 处理失败：`, e instanceof Error ? e.stack || e.message : String(e));
+    }
     send(res, message === "请求内容过大" ? 413 : 500, { error: message });
   }
 });
