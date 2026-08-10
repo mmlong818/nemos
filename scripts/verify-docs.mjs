@@ -104,7 +104,11 @@ if (memoryDesign.includes("## 7. 当前尚未实现")) fail("当前记忆文档�
 const manifest = JSON.parse(readFileSync(join(root, "bench", "results", "manifest.json"), "utf8"));
 for (const result of manifest.results) {
   const path = join(root, "bench", "results", result.file);
-  const actual = createHash("sha256").update(readFileSync(path)).digest("hex");
+  // 归一化换行后再哈希：直接哈希原始字节会把"哪台机器检出的"也算进去
+  // （Windows 的 autocrlf 检出是 CRLF，Linux 是 LF），同一份数据得出两个值。
+  // 冻结结果的哈希必须标识数据本身。
+  const normalized = readFileSync(path, "utf8").split("\r\n").join("\n");
+  const actual = createHash("sha256").update(normalized, "utf8").digest("hex");
   if (actual !== result.sha256) fail(`冻结结果哈希不一致：${result.file}`);
 }
 
