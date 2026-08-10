@@ -10,6 +10,10 @@ tmp/
 .tmp/
 output/
 
+# Vendored 第三方引擎的编译产物需要入库：运行时（tsx）直接引用 dist，
+# 主项目的严格检查靠它的声明文件，不入库则一份干净检出跑不起来。
+!sdk/typescript/examples/companion/vendor/docx-engine/dist/
+
 # Local packaged desktop client artifacts
 sdk/typescript/examples/companion/client/dist/
 sdk/typescript/examples/companion/client/vendor/
