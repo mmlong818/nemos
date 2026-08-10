@@ -13,6 +13,7 @@ import {
 const webRoot = join(__dirname, "..", "..", "examples", "companion", "web");
 const officeHtml = readFileSync(join(webRoot, "office.html"), "utf8");
 const officeJs = readFileSync(join(webRoot, "assets", "office-workbench.js"), "utf8");
+const server = readFileSync(join(__dirname, "..", "..", "examples", "companion", "server.ts"), "utf8");
 
 test("每种可打开的格式都声明了真实能力", () => {
   const formats = OFFICE_FORMAT_CAPABILITIES.map((entry) => entry.format).sort();
@@ -20,6 +21,7 @@ test("每种可打开的格式都声明了真实能力", () => {
   for (const entry of OFFICE_FORMAT_CAPABILITIES) {
     assert.equal(entry.capabilityLabel, OFFICE_CAPABILITY_LABELS[entry.capability]);
     assert.ok(entry.summary.length > 0);
+    assert.ok(entry.textViewLabel.length > 0);
   }
 });
 
@@ -28,55 +30,38 @@ test("能力标注、文字视图与保存位置三者必须自洽", () => {
     // "可编辑"与"能覆盖原文件"是两件事，必须分开表达，不能互相冒充。
     assert.equal(entry.sourceWritable, entry.savesTo === "original", `${entry.format} 的 sourceWritable 与 savesTo 不一致`);
     assert.equal(entry.textView === "edit", entry.capability === "edit", `${entry.format} 的文字视图与能力标注不一致`);
-    if (entry.capability === "edit") {
-      assert.notEqual(entry.savesTo, "none", `${entry.format} 标为可编辑却没有保存去处`);
-    }
-    assert.ok(entry.textViewLabel.length > 0, `${entry.format} 缺少文字视图标签`);
+    if (entry.capability === "edit") assert.notEqual(entry.savesTo, "none", `${entry.format} 标为可编辑却没有保存去处`);
   }
 });
 
-test("标为可编辑的格式必须有实机保真证据，否则只能是仅查看", () => {
-  // 有 Word 实机验证的：TXT/MD 与 DOCX 都可写回原文件。
-  assert.equal(officeCapabilityOf("txt")?.savesTo, "original");
-  assert.equal(officeCapabilityOf("md")?.savesTo, "original");
-  const docx = officeCapabilityOf("docx");
-  assert.equal(docx?.capability, "edit");
-  assert.equal(docx?.savesTo, "original");
-  assert.equal(docx?.sourceWritable, true);
-  assert.equal(docx?.canSaveCopy, true, "写回之外仍要保留另存副本这个选项");
-  assert.match(docx?.limitations[0] || "", /覆盖原文件/, "第一条限制必须先讲清写回会覆盖，以及改动前版本可取回");
-  const pptx = officeCapabilityOf("pptx");
-  assert.equal(pptx?.capability, "edit");
-  assert.equal(pptx?.savesTo, "original");
-  assert.match(pptx?.limitations[1] || "", /同一段格式/, "必须写明跨格式的改动会被拒绝");
-  // XLSX 仍走已冻结的有损路径，PDF 不提供写入，因此都不能标为可编辑。
-  for (const format of ["xlsx", "pdf"]) {
-    assert.equal(officeCapabilityOf(format)?.capability, "view", `${format} 不应标为可编辑`);
-    assert.equal(officeCapabilityOf(format)?.sourceWritable, false);
-  }
-});
-
-test("只能另存副本与提供另存副本是两件事", () => {
+test("需要转换的格式一律不写回原文件", () => {
   for (const entry of OFFICE_FORMAT_CAPABILITIES) {
-    if (entry.copyOnly) {
-      assert.equal(entry.canSaveCopy, true, `${entry.format} 只能另存副本，就必须提供这个选项`);
-      assert.equal(entry.sourceWritable, false, `${entry.format} 只能另存副本，不该能写回原文件`);
-    }
+    assert.equal(entry.convertsToMarkdown, entry.capability === "convert", `${entry.format} 的转换标记与能力标注不一致`);
+    if (!entry.convertsToMarkdown) continue;
+    // 转换出来的是 Markdown，写回原文件会把 .docx 写成 Markdown 文本。
+    assert.equal(entry.sourceWritable, false, `${entry.format} 转换后不该能写回原文件`);
+    assert.equal(entry.copyOnly, false);
+    assert.equal(entry.canSaveCopy, false);
+    assert.match(entry.summary, /转成 Markdown/, `${entry.format} 的说明必须点明会先转换`);
+    assert.match(entry.summary, /原文件保留/, `${entry.format} 的说明必须点明原文件不被改写`);
+    assert.ok(entry.limitations.length >= 2, `${entry.format} 必须列出转换会丢什么`);
+    assert.ok(
+      entry.limitations.some((item) => item.includes("每次转换都会列出")),
+      `${entry.format} 必须说明每份文件都会给出具体的丢失清单`,
+    );
   }
-  // DOCX 既能写回也能另存，因此不是 copyOnly。
-  assert.equal(officeCapabilityOf("docx")?.copyOnly, false);
-  assert.equal(officeCapabilityOf("txt")?.canSaveCopy, false);
 });
 
-test("只生成副本的格式必须写明会损失什么", () => {
-  for (const entry of OFFICE_FORMAT_CAPABILITIES) {
-    if (!entry.copyOnly) continue;
-    assert.ok(entry.limitations.length >= 2, `${entry.format} 缺少副本限制说明`);
-    assert.match(entry.summary, /副本|新文件/, `${entry.format} 的说明必须点明结果存到别处`);
-    assert.equal(entry.savesTo, "copy");
+test("只有 TXT 与 Markdown 直接编辑并写回原文件", () => {
+  for (const format of ["txt", "md"]) {
+    const entry = officeCapabilityOf(format);
+    assert.equal(entry?.capability, "edit");
+    assert.equal(entry?.savesTo, "original");
+    assert.equal(entry?.convertsToMarkdown, false);
   }
-  assert.equal(officeCapabilityOf("pdf")?.copyOnly, false);
-  assert.equal(officeCapabilityOf("pdf")?.copyOnly, false);
+  for (const format of ["docx", "pptx", "xlsx", "pdf"]) {
+    assert.equal(officeCapabilityOf(format)?.capability, "convert", `${format} 应标为需转换`);
+  }
   assert.equal(officeCapabilityOf("markdown")?.format, "md");
   assert.equal(officeCapabilityOf("exe"), null);
 });
@@ -93,6 +78,27 @@ test("浏览器读到的是服务端同一张表", () => {
   assert.match(officeJs, /window\.ClownfishOfficeCapabilities\?\.capabilities/);
 });
 
+test("上传后统一转成 Markdown，转换损失显示给用户", () => {
+  assert.match(server, /convertOfficeToMarkdown/);
+  assert.match(server, /conversion,/, "extract 接口要把转换结果一起返回");
+  assert.match(officeJs, /const conversion = response\.conversion/);
+  assert.match(officeJs, /conversionNotes/);
+  // 转换来的文档不能写回原文件
+  assert.match(officeJs, /importedDocument\.sourceWritable = !converted/);
+  assert.match(officeJs, /convertedFrom/);
+});
+
+test("原格式编辑已退出产品，界面与接口都不再提供", () => {
+  const retiredUi = [/renderDocxWorkspace/, /renderPptxWorkspace/, /data-docx-index/, /data-pptx-key/, /writeBackDocx/, /writeBackPptx/];
+  for (const pattern of retiredUi) {
+    assert.doesNotMatch(officeJs, pattern, `office-workbench.js 仍残留已退出的原格式编辑：${pattern}`);
+  }
+  const retiredRoutes = ["docx-blocks", "docx-save", "docx-copy", "pptx-blocks", "pptx-save", "structured-copy"];
+  for (const route of retiredRoutes) {
+    assert.doesNotMatch(server, new RegExp(`/api/files/session/${route}`), `server.ts 仍暴露已退出的接口：${route}`);
+  }
+});
+
 test("文件页不再声称能无损修改 Office 文件", () => {
   const banned = [/应用到原格式/, /可写入原格式/, /版式与对象继续保留/, /编辑 Word/, /编辑页面/, /编辑表格/];
   for (const pattern of banned) {
@@ -100,20 +106,6 @@ test("文件页不再声称能无损修改 Office 文件", () => {
     assert.doesNotMatch(officeJs, pattern, `office-workbench.js 仍含虚假编辑表述：${pattern}`);
   }
   assert.match(officeHtml, /id="capabilityBadge"/);
-  assert.match(officeJs, /querySelector\("#capabilityNote"\)/);
   assert.match(officeHtml, /id="capabilityNote"/);
   assert.match(officeJs, /function capabilityOf/);
-  assert.match(officeJs, /badge\.dataset\.capability = capability\.capability/);
-});
-
-test("DOCX 文字修改按 docxIndex 定位，不按纯文本位置对齐", () => {
-  assert.match(officeJs, /\/api\/files\/session\/docx-blocks\?id=/);
-  assert.match(officeJs, /function renderDocxWorkspace/);
-  assert.match(officeJs, /data-docx-index="\$\{block\.docxIndex\}"/);
-  assert.match(officeJs, /block\.textEditable/);
-  // 只把真正改过的段落送出
-  assert.match(officeJs, /pending\.get\(block\.docxIndex\) !== block\.text/);
-  // 外部改动后必须丢弃对不上的段落结构与未提交修改
-  assert.match(officeJs, /docxBlocksByDocument\.delete\(current\.id\)/);
-  assert.match(officeJs, /current\.docxEdits = \[\]/);
 });

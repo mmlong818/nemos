@@ -87,15 +87,19 @@ npm run companion
 ## 文件工作台
 
 - 读取 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown；
-- 每个文件按 `office-capabilities.ts` 的真相表标注能力：TXT/Markdown/Word/PowerPoint 可编辑，XLSX/PDF 仅查看；
-- 原文件保留在浏览器本机存储中，不被工作副本覆盖；
-- Word 与 PowerPoint 按段落改文字，只重写改过的段落，其余部件保持原字节（`office-docx-text-edit.ts`、`office-pptx-text-edit.ts`）；
-- Word 与 PowerPoint 的修改可写回原文件或另存为新文件；XLSX 只能另存为新文件，界面逐条列出会损失的格式；
-- PDF 使用原始文件预览，Office 文件提供结构化预览；
+- **上传后统一转成 Markdown 再处理**（`office-to-markdown.ts`）：Word 的标题层级、
+  列表和表格，PowerPoint 的每页文字、表格和讲者备注，Excel 的每个工作表，
+  都会转成对应的 Markdown 结构；
+- 每次转换返回一份"丢了什么"的清单，界面逐条显示，不写在文档里含糊带过；
+- 原文件完整保留在会话与本机存储中，可下载、可在“原文件”页签查看原版式，
+  也可用桌面 Office 打开；**不会被 Markdown 写回**；
+- 写回原文件只对 TXT 和 Markdown 开放，写回前检查原文件是否已被其他程序修改；
+- 能力标注见 `office-capabilities.ts`：TXT/Markdown 可编辑，
+  DOCX/PPTX/XLSX/PDF 为需转换；
 - 编辑和 AI 处理都留在文件页；
 - 任务和能力结果可直接建立本机工作副本继续编辑；
 - 支持版本记录与恢复；
-- 导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown。
+- 导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown，产出的是新文件。
 
 ## 记忆行为
 
