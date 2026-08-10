@@ -3087,7 +3087,14 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/files/extract") {
-      const body = (await readBody(req, 12 * 1024 * 1024)) as { name?: string; dataBase64?: string };
+      // 请求体上限会先于下面的 8 MB 判断触发，这里翻译成用户能照做的说明。
+      let body: { name?: string; dataBase64?: string };
+      try {
+        body = (await readBody(req, 12 * 1024 * 1024)) as { name?: string; dataBase64?: string };
+      } catch {
+        send(res, 400, { error: "请求内容过大", userMessage: "单个办公文件不能超过 8 MB" });
+        return;
+      }
       const name = String(body.name ?? "").trim();
       const encoded = String(body.dataBase64 ?? "");
       if (!name || !encoded || !/^[a-z0-9+/=\r\n]+$/i.test(encoded)) {
