@@ -55,10 +55,12 @@ The file workspace supports DOCX, PPTX, XLSX, PDF, TXT, and Markdown:
 - Markdown has an outline, formatting tools, and live preview; TXT uses continuous text editing;
 - Working copies are saved by the local service, and revision checks prevent stale windows from overwriting newer edits;
 - PDFs retain their original layout; Office formats receive a structured preview while the original file is retained;
-- Every file states what Clownfish can actually do with it: TXT, Markdown, Word, and PowerPoint are **editable**; Excel and PDF are **view-only**. The stated capability and "can it overwrite the original" are separate facts, never conflated;
-- Word edits are per paragraph: only the paragraphs you changed are rewritten. Every other paragraph, plus tables, images, charts, headers, footers, comments, and tracked changes, keeps its original bytes — and bold, size, and color inside a changed paragraph survive too. Changes can be **written back to the original file** or saved as a new one; the pre-write version stays in the version history and can be restored. Verified against real Microsoft Word with repair disabled (see `sdk/typescript/examples/companion/docs/reviews/2026-08-10-docx-fidelity-with-word.md`). Compatibility is claimed for Microsoft Word only — not WPS or LibreOffice;
-- PowerPoint edits are per paragraph: only the paragraphs you changed are rewritten. Other shapes on the slide, other slides, tables, images, charts, and speaker notes keep their original bytes. A single edit must stay inside one formatting run; edits that span different formatting are refused with a "split it up" hint rather than scrambling the formatting. Verified against real Microsoft PowerPoint (see `sdk/typescript/examples/companion/docs/reviews/2026-08-11-pptx-fidelity-with-powerpoint.md`);
-- Excel still uses the older text-level replacement, which loses cell styling at the changed spots, so it saves to a new file only and stays view-only;
+- Uploaded documents are converted to **Markdown** and processed there. Word, PowerPoint, Excel, and PDF convert on open; TXT and Markdown are edited directly;
+- **The original file is kept intact, stays downloadable, and is never rewritten.** The conversion is a derived working document; write-back is offered only for TXT and Markdown;
+- Every conversion lists exactly what **this file** lost: for Word, fonts/sizes/colors/alignment, headers and footers, comments and tracked changes, and images; for PowerPoint, layouts, masters, themes, and animation; for Excel, cell styling, conditional formats, and charts; for PDF, layout and table rules. Heading levels, paragraphs, lists, tables, and speaker notes do carry over;
+- Editing happens in the Markdown editor: outline, formatting tools, and side-by-side source and live preview;
+- The original layout stays one click away in the "original file" tab, or open it in desktop Office;
+- Results export to DOCX, PDF, PPTX, XLSX, HTML, or Markdown — always as a new file, never overwriting the original;
 - TXT and Markdown can be written back only after explicit authorization and an external-change conflict check;
 - Editing, versions, AI progress, and results stay on the same page;
 - The file library supports name search and format filters; external edits, renames, moves, and deletions are recorded as file events;

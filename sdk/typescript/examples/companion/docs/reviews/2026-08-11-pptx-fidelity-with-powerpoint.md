@@ -1,5 +1,10 @@
 # PPTX 文字修改保真性验证（Microsoft PowerPoint 实机）
 
+> **历史评审记录。** 这里验证的原格式段落级写入能力已于 2026-08-11 退役——
+> 产品改为把上传的文档统一转成 Markdown 再处理（见 ROADMAP「文件能力：统一转 Markdown」）。
+> 本文保留当时的方法与结论，用于说明这套验证纪律是怎么做的；文中提到的模块与脚本
+> 已随能力一并移除，可在 git 历史中查到。
+
 日期：2026-08-11
 验证对象：`office-pptx-text-edit.ts` 的段落级文字补丁路径
 工具：`scripts/pptx-fidelity/Test-PptxFidelity.ps1`
