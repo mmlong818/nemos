@@ -34,6 +34,15 @@ jobs:
           cache: npm
           cache-dependency-path: sdk/typescript/package-lock.json
       - run: npm ci
+      # 必须在 typecheck 之前：vendored 引擎的 dist 是主项目类型检查的依据，
+      # 一旦漏提交，本机（有构建产物）会通过而 CI 报"找不到模块"。
+      # git diff 检不出这种情况——被忽略且不存在的目录不会产生差异，
+      # 所以这里直接确认它们已被 git 跟踪。
+      - name: vendored 引擎产物已入库
+        run: |
+          git ls-files --error-unmatch examples/companion/vendor/docx-engine/dist/index.js > /dev/null
+          git ls-files --error-unmatch examples/companion/vendor/pptx-engine/dist/index.js > /dev/null
+        shell: bash
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
