@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import JSZip from "jszip";
 import PptxGenJS from "pptxgenjs";
 
+import { UserFacingError } from "./office-errors.js";
 import type { OfficeFileKind } from "./office-file-parser.js";
 import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
 
@@ -56,7 +57,7 @@ async function checked(value: OfficeExportResult, format: OfficeFileKind): Promi
   const validation = await validateOfficeFile(format, value.data);
   if (!validation.passed) {
     const failed = validation.checks.filter((check) => !check.passed).map((check) => (check.detail ? `${check.name}：${check.detail}` : check.name));
-    throw new Error(`生成的 ${format.toUpperCase()} 没有通过结构检查：${failed.join("；")}`);
+    throw new UserFacingError(`生成的 ${format.toUpperCase()} 没有通过结构检查：${failed.join("；")}`);
   }
   return { ...value, validation };
 }

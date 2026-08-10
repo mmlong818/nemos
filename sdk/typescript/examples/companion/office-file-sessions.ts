@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameS
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { officeCapabilityOf } from "./office-capabilities.js";
+import { UserFacingError } from "./office-errors.js";
 import { applyStructuredOfficeEdit, type StructuredOfficeBlock, type StructuredSpreadsheetCell } from "./office-structured-edit.js";
 import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
 
@@ -108,7 +109,7 @@ export class OfficeFileSessionStore {
 
   openDesktop(id: string): OfficeFileSession {
     const session = this.inspect(id);
-    if (process.platform !== "win32") throw new Error("桌面完整编辑目前仅支持 Windows");
+    if (process.platform !== "win32") throw new UserFacingError("桌面完整编辑目前仅支持 Windows");
     const child = spawn("explorer.exe", [session.file], { detached: true, stdio: "ignore", windowsHide: true });
     child.unref();
     return session;
@@ -132,16 +133,16 @@ export class OfficeFileSessionStore {
   async saveStructuredCopy(id: string, expectedHash: string, blocks: StructuredOfficeBlock[], cells: StructuredSpreadsheetCell[] = [], complete = false): Promise<{ source: OfficeFileSession; copy: OfficeFileSession; warnings: string[]; changedParts: string[]; validation: ValidationReceipt }> {
     this.inspect(id);
     const session = this.requireRecord(id);
-    if (!expectedHash || session.contentHash !== expectedHash) throw new Error("文件已在其他程序中变化，请重新载入后再生成副本");
+    if (!expectedHash || session.contentHash !== expectedHash) throw new UserFacingError("文件已在其他程序中变化，请重新载入后再生成副本");
     const kind = session.extension;
     const capability = officeCapabilityOf(kind);
-    if (!capability?.copyOnly || (kind !== "docx" && kind !== "pptx" && kind !== "xlsx")) throw new Error("这个格式不支持文字替换副本");
+    if (!capability?.copyOnly || (kind !== "docx" && kind !== "pptx" && kind !== "xlsx")) throw new UserFacingError("这个格式不支持文字替换副本");
     const source = readFileSync(session.file);
     const edited = await applyStructuredOfficeEdit({ kind, data: source, blocks, cells, complete });
     const validation = await validateOfficeFile(kind, edited.data);
     if (!validation.passed) {
       const failed = validation.checks.filter((check) => !check.passed).map((check) => check.detail ? `${check.name}：${check.detail}` : check.name);
-      throw new Error(`生成的副本没有通过格式检查，已放弃写入：${failed.join("；")}`);
+      throw new UserFacingError(`生成的副本没有通过格式检查，已放弃写入：${failed.join("；")}`);
     }
     const copy = this.create(copyName(session.name, session.extension), edited.data);
     this.captureEvent(session, "structured-copy", { from: session.file, to: copy.file, contentHash: copy.contentHash });
@@ -164,9 +165,9 @@ export class OfficeFileSessionStore {
   restore(id: string, versionId: string, expectedHash: string): OfficeFileSession {
     const session = this.requireRecord(id);
     this.inspect(id);
-    if (!expectedHash || session.contentHash !== expectedHash) throw new Error("文件已在其他程序中变化，请重新载入后再恢复版本");
+    if (!expectedHash || session.contentHash !== expectedHash) throw new UserFacingError("文件已在其他程序中变化，请重新载入后再恢复版本");
     const version = (this.versions.get(id) || []).find((item) => item.id === versionId);
-    if (!version || !this.isManagedHistoryFile(version.file)) throw new Error("文件版本不存在或已经清理");
+    if (!version || !this.isManagedHistoryFile(version.file)) throw new UserFacingError("文件版本不存在或已经清理");
     const data = readFileSync(version.file);
     writeAtomic(session.file, data);
     session.byteLength = data.byteLength;
@@ -179,9 +180,9 @@ export class OfficeFileSessionStore {
   }
 
   private requireRecord(id: string): OfficeFileSession {
-    if (!/^office-[a-f0-9-]{36}$/i.test(id)) throw new Error("文件会话编号无效");
+    if (!/^office-[a-f0-9-]{36}$/i.test(id)) throw new UserFacingError("文件会话编号无效");
     const session = this.sessions.get(id);
-    if (!session) throw new Error("文件工作副本不存在或已经清理");
+    if (!session) throw new UserFacingError("文件工作副本不存在或已经清理");
     return session;
   }
 
@@ -190,12 +191,12 @@ export class OfficeFileSessionStore {
     if (!existsSync(session.file)) {
       this.captureEvent(session, "missing", { from: session.file, contentHash: session.contentHash });
       this.persist();
-      throw new Error("文件工作副本不可用；删除事件已记录");
+      throw new UserFacingError("文件工作副本不可用；删除事件已记录");
     }
     const file = realpathSync(resolve(session.file));
     const comparableRoot = process.platform === "win32" ? root.toLowerCase() : root;
     const comparableFile = process.platform === "win32" ? file.toLowerCase() : file;
-    if (!comparableFile.startsWith(comparableRoot) || !statSync(file).isFile()) throw new Error("文件工作副本不可用");
+    if (!comparableFile.startsWith(comparableRoot) || !statSync(file).isFile()) throw new UserFacingError("文件工作副本不可用");
   }
 
   private load(): void {
@@ -332,7 +333,7 @@ export class OfficeFileSessionStore {
 function normalizeExtension(name: string): OfficeFileSession["extension"] {
   const raw = extname(name).slice(1).toLowerCase();
   const extension = raw === "markdown" ? "md" : raw;
-  if (!EXTENSIONS.has(extension)) throw new Error("不支持这个文件格式");
+  if (!EXTENSIONS.has(extension)) throw new UserFacingError("不支持这个文件格式");
   return extension as OfficeFileSession["extension"];
 }
 

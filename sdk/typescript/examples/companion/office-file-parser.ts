@@ -1,6 +1,8 @@
 import { posix } from "node:path";
 import JSZip from "jszip";
 
+import { UserFacingError } from "./office-errors.js";
+
 export const MAX_OFFICE_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_EXTRACTED_CHARACTERS = 120_000;
 
@@ -38,7 +40,7 @@ function decodePlainText(data: Uint8Array): string {
 function extractPlainText(data: Uint8Array): { text: string; sections: number } {
   const text = decodePlainText(data).replace(/^\uFEFF/, "");
   const controlCharacters = [...text].filter((character) => character < " " && !"\n\r\t".includes(character)).length;
-  if (text.includes("\0") || controlCharacters > Math.max(4, text.length * 0.01)) throw new Error("这个文本文件包含无法读取的二进制内容");
+  if (text.includes("\0") || controlCharacters > Math.max(4, text.length * 0.01)) throw new UserFacingError("这个文本文件包含无法读取的二进制内容");
   const sections = text.split(/\n\s*\n+/).filter((section) => section.trim()).length;
   return { text, sections: Math.max(1, sections) };
 }
@@ -78,7 +80,7 @@ async function zipEntryText(zip: JSZip, path: string): Promise<string> {
 async function extractDocx(data: Uint8Array): Promise<{ text: string; sections: number }> {
   const zip = await JSZip.loadAsync(data);
   const xml = await zipEntryText(zip, "word/document.xml");
-  if (!xml) throw new Error("这个 Word 文件缺少正文，可能已经损坏");
+  if (!xml) throw new UserFacingError("这个 Word 文件缺少正文，可能已经损坏");
   const paragraphs = paragraphText(xml, "w:p", "w:t");
   return { text: paragraphs.join("\n\n"), sections: paragraphs.length };
 }
@@ -92,7 +94,7 @@ async function extractPptx(data: Uint8Array): Promise<{ text: string; sections: 
   const slides = Object.keys(zip.files)
     .filter((path) => /^ppt\/slides\/slide\d+\.xml$/i.test(path))
     .sort((left, right) => numberedPath(left) - numberedPath(right));
-  if (!slides.length) throw new Error("这个演示文稿没有可读取的页面");
+  if (!slides.length) throw new UserFacingError("这个演示文稿没有可读取的页面");
   const pages: string[] = [];
   for (let index = 0; index < slides.length; index += 1) {
     const xml = await zipEntryText(zip, slides[index]!);
@@ -165,7 +167,7 @@ async function extractXlsx(data: Uint8Array): Promise<{ text: string; sections: 
       .sort((left, right) => numberedPath(left) - numberedPath(right))
       .map((path, index) => ({ name: `工作表 ${index + 1}`, path }));
   }
-  if (!sheets.length) throw new Error("这个表格没有可读取的工作表");
+  if (!sheets.length) throw new UserFacingError("这个表格没有可读取的工作表");
   const output: string[] = [];
   for (const sheet of sheets) {
     const xml = await zipEntryText(zip, sheet.path);
@@ -204,9 +206,9 @@ async function extractPdf(data: Uint8Array): Promise<{ text: string; sections: n
 
 export async function extractOfficeFile(fileName: string, data: Uint8Array): Promise<OfficeFileExtraction> {
   const kind = extensionOf(fileName);
-  if (!kind) throw new Error("仅支持 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown 文件");
-  if (!data.byteLength) throw new Error("文件内容为空");
-  if (data.byteLength > MAX_OFFICE_FILE_BYTES) throw new Error("单个文件不能超过 8 MB");
+  if (!kind) throw new UserFacingError("仅支持 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown 文件");
+  if (!data.byteLength) throw new UserFacingError("文件内容为空");
+  if (data.byteLength > MAX_OFFICE_FILE_BYTES) throw new UserFacingError("单个文件不能超过 8 MB");
 
   let extracted: { text: string; sections: number };
   try {
@@ -216,13 +218,12 @@ export async function extractOfficeFile(fileName: string, data: Uint8Array): Pro
     else if (kind === "xlsx") extracted = await extractXlsx(data);
     else extracted = await extractPdf(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (/^这个|^仅支持|^文件|^单个/.test(message)) throw error;
-    throw new Error(`无法读取这个 ${kind.toUpperCase()} 文件，请确认文件没有损坏或加密`);
+    if (error instanceof UserFacingError) throw error;
+    throw new UserFacingError(`无法读取这个 ${kind.toUpperCase()} 文件，请确认文件没有损坏或加密`);
   }
 
   const normalized = normalizeText(extracted.text);
-  if (!normalized) throw new Error("文件中没有可提取的文字内容");
+  if (!normalized) throw new UserFacingError("文件中没有可提取的文字内容");
   const truncated = normalized.length > MAX_EXTRACTED_CHARACTERS;
   const text = truncated
     ? `${normalized.slice(0, MAX_EXTRACTED_CHARACTERS)}\n\n[内容较长，已保留前 ${MAX_EXTRACTED_CHARACTERS.toLocaleString("zh-CN")} 个字符]`

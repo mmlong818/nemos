@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import JSZip from "jszip";
 
+import { userFacingMessage } from "../../examples/companion/office-errors.js";
 import { exportOfficeDocument } from "../../examples/companion/office-export.js";
 import { OfficeFileSessionStore } from "../../examples/companion/office-file-sessions.js";
 import { validateOfficeFile } from "../../examples/companion/office-validation.js";
@@ -67,7 +68,7 @@ test("XML 校验容忍注释、CDATA、自闭合与属性里的尖括号", async
   zip.file("[Content_Types].xml", "<Types/>");
   zip.file(
     "word/document.xml",
-    '<?xml version="1.0"?><!-- <w:p> 注释里的假标签 --><w:document><w:body><w:p w:rsidR="a>b"><w:br/><w:t><![CDATA[</w:t> 原样文本]]></w:t></w:p></w:body></w:document>',
+    '<?xml version="1.0"?><!-- <w:p> 注释里的假标签 --><w:document><w:body><w:p w:rsidR="a>b"><w:br/><w:tab /><w:t><![CDATA[</w:t> 原样文本]]></w:t></w:p></w:body></w:document>',
   );
   const receipt = await validateOfficeFile("docx", await zip.generateAsync({ type: "nodebuffer" }));
   assert.equal(checkOf(receipt, "XML 部件结构完整").passed, true);
@@ -107,6 +108,22 @@ test("副本没通过格式检查时不落盘，工作区不留半成品", async
       /没有通过格式检查/,
     );
     assert.deepEqual(store.scan().map((session) => session.id), [created.id]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("只有写给用户看的提示才允许原样展示", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "clownfish-office-usermsg-"));
+  try {
+    const store = new OfficeFileSessionStore(directory);
+    const created = store.create("notes.md", Buffer.from("content"));
+    // 我们自己写的提示：可以展示
+    const stale = await store.saveStructuredCopy(created.id, "stale", []).catch((error: unknown) => error);
+    assert.equal(userFacingMessage(stale), "文件已在其他程序中变化，请重新载入后再生成副本");
+    // 依赖库或运行时抛出的异常：不进入白名单
+    assert.equal(userFacingMessage(new Error("ENOENT: no such file or directory, open 'C:\\\\secret'")), undefined);
+    assert.equal(userFacingMessage("字符串异常"), undefined);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

@@ -89,6 +89,7 @@ import { resolveGroupReplyRoute } from "./group-routing.js";
 import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
 import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
 import { officeCapabilityBrowserScript } from "./office-capabilities.js";
+import { userFacingMessage } from "./office-errors.js";
 import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
 import { OfficeFileSessionStore } from "./office-file-sessions.js";
 import { OfficeWorkbenchRevisionConflict, OfficeWorkbenchStateStore } from "./office-workbench-state.js";
@@ -2060,14 +2061,19 @@ function seedPersonaBiosInBackground(targetEngine: CompanionEngine): void {
 }
 
 function send(res: ServerResponse, code: number, body: unknown, type = "application/json"): void {
-  const publicBody = code >= 400 && body && typeof body === "object" && "error" in body
-    ? {
-      ...body,
-      error: code >= 500
-        ? "内部处理暂时失败，请稍后重试。"
-        : "请求无法完成，请检查输入后重试。",
-    }
-    : body;
+  let publicBody = body;
+  if (code >= 400 && body && typeof body === "object" && "error" in body) {
+    // 异常原文一律不外泄；只有路由显式给出的 userMessage（由我们自己写、确认可展示）才原样透出。
+    const { userMessage, ...rest } = body as Record<string, unknown>;
+    publicBody = {
+      ...rest,
+      error: typeof userMessage === "string" && userMessage.trim()
+        ? userMessage.trim().slice(0, 300)
+        : code >= 500
+          ? "内部处理暂时失败，请稍后重试。"
+          : "请求无法完成，请检查输入后重试。",
+    };
+  }
   const data = typeof publicBody === "string" ? publicBody : JSON.stringify(publicBody);
   res.writeHead(code, { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache" });
   res.end(data);
@@ -3068,7 +3074,7 @@ const server = createServer(async (req, res) => {
         });
         res.end(exported.data);
       } catch (error) {
-        send(res, 500, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 500, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3085,12 +3091,12 @@ const server = createServer(async (req, res) => {
       const name = String(body.name ?? "").trim();
       const encoded = String(body.dataBase64 ?? "");
       if (!name || !encoded || !/^[a-z0-9+/=\r\n]+$/i.test(encoded)) {
-        send(res, 400, { error: "文件内容不完整" });
+        send(res, 400, { error: "文件内容不完整", userMessage: "文件内容不完整，请重新选择文件" });
         return;
       }
       const data = Buffer.from(encoded, "base64");
       if (!data.byteLength || data.byteLength > MAX_OFFICE_FILE_BYTES) {
-        send(res, 400, { error: "单个办公文件不能超过 8 MB" });
+        send(res, 400, { error: "单个办公文件不能超过 8 MB", userMessage: "单个办公文件不能超过 8 MB" });
         return;
       }
       try {
@@ -3108,7 +3114,7 @@ const server = createServer(async (req, res) => {
         });
         send(res, 200, { ok: true, extraction, session, fileRecord });
       } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3128,7 +3134,7 @@ const server = createServer(async (req, res) => {
         send(res, 200, { ok: true, state });
       } catch (error) {
         if (error instanceof OfficeWorkbenchRevisionConflict) send(res, 409, { error: error.message, state: error.current });
-        else send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        else send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3147,7 +3153,7 @@ const server = createServer(async (req, res) => {
         const file = taskFiles.link(String(body.id || ""), body.ownerKind, String(body.ownerId || ""), String(body.sourceKey || "") || undefined);
         send(res, 200, { ok: true, file });
       } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3158,7 +3164,7 @@ const server = createServer(async (req, res) => {
         const file = taskFiles.setStatus(String(body.id || ""), body.status);
         send(res, 200, { ok: true, file });
       } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3175,7 +3181,7 @@ const server = createServer(async (req, res) => {
         });
         res.end(data);
       } catch (error) {
-        send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3191,7 +3197,7 @@ const server = createServer(async (req, res) => {
         });
         send(res, 200, { ok: true, session: action.value, auditRunId: action.runId });
       } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3203,7 +3209,7 @@ const server = createServer(async (req, res) => {
         const extraction = await extractOfficeFile(session.name, data);
         send(res, 200, { ok: true, changed, session, extraction, dataBase64: data.toString("base64") });
       } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3212,7 +3218,7 @@ const server = createServer(async (req, res) => {
       try {
         send(res, 200, { ok: true, versions: officeFileSessions.history(id) });
       } catch (error) {
-        send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3221,7 +3227,7 @@ const server = createServer(async (req, res) => {
       try {
         send(res, 200, { ok: true, events: officeFileSessions.eventHistory(id) });
       } catch (error) {
-        send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3246,7 +3252,7 @@ const server = createServer(async (req, res) => {
         const result = await officeFileSessions.saveStructuredCopy(String(body.id || ""), String(body.expectedHash || ""), blocks, cells, body.complete === true);
         send(res, 200, { ok: true, ...result });
       } catch (error) {
-        send(res, 409, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3256,7 +3262,7 @@ const server = createServer(async (req, res) => {
         const session = officeFileSessions.restore(String(body.id || ""), String(body.versionId || ""), String(body.expectedHash || ""));
         send(res, 200, { ok: true, session });
       } catch (error) {
-        send(res, 409, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3510,7 +3516,7 @@ const server = createServer(async (req, res) => {
       const capabilityPersonaId = body.kind === "capability-adhoc" ? "clownfish" : body.personaId;
       if (body.kind === "capability-adhoc" && body.capabilityId === "project-development") {
         try { validateDevelopmentWorkspace(String(body.workspacePath || "")); }
-        catch (error) { send(res, 400, { error: error instanceof Error ? error.message : String(error) }); return; }
+        catch (error) { send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) }); return; }
       }
       const parentJobId = String(body.parentJobId || "").trim();
       const parentJob = parentJobId ? agentJobQueue.get(parentJobId) : null;
@@ -3939,7 +3945,7 @@ const server = createServer(async (req, res) => {
             });
         send(res, 200, { ok: true, item, items: knowledgeLibrary.list() });
       } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
@@ -3950,7 +3956,7 @@ const server = createServer(async (req, res) => {
         const item = url.endsWith("/restore") ? knowledgeLibrary.restore(b.id) : knowledgeLibrary.archive(b.id);
         send(res, 200, { ok: true, item, items: knowledgeLibrary.list(true) });
       } catch (error) {
-        send(res, 404, { error: error instanceof Error ? error.message : String(error) });
+        send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }
       return;
     }
