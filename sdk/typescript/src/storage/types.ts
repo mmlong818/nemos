@@ -14,6 +14,10 @@ import type {
   Memory,
   MemoryDomain,
   MemoryOperation,
+  MemoryViewer,
+  Storyline,
+  StorylinePatch,
+  StorylineStatus,
   ProvenanceEdge,
   IdentityOperation,
   ReflectionState,
@@ -23,6 +27,15 @@ import type {
 } from "../types.js";
 
 /** v0.5：前瞻条目可变字段（reflect 修正 / 命中更新）。 */
+/** v0.8：故事线列表查询条件；全部可选，默认按最近活跃倒序取 50 条。 */
+export interface StorylineQuery {
+  status?: StorylineStatus[];
+  scope?: string;
+  /** 只要这个角色参与过的线。 */
+  participantId?: string;
+  limit?: number;
+}
+
 export interface ProspectivePatch {
   projection?: string;
   confidence?: number;
@@ -65,6 +78,11 @@ export interface SearchFilter {
   includeCold?: boolean;
   /** v0.6（RFC 0007/0008）：是否包含已失效记录（belief_state != 'active'）。默认 false。 */
   includeInvalidated?: boolean;
+  /**
+   * v0.8：读取方身份，决定能看见哪些作用域的记忆。
+   * 不传则不做可见性过滤（内部维护任务、导出、迁移等需要全量视图的路径）。
+   */
+  viewer?: MemoryViewer;
 }
 
 /** v0.4：批量 decay scan 候选行（轻量字段，避免每行全量 rowToMemory）。 */
@@ -345,6 +363,19 @@ export interface Storage {
   ): void;
 
   // v0.5 前瞻记忆（RFC 0006）---------------------------------------------------
+  // v0.8：故事线 ------------------------------------------------------------
+  upsertStoryline(tenantId: string, userId: string, s: Storyline): Storyline;
+  getStoryline(tenantId: string, userId: string, id: string): Storyline | null;
+  listStorylines(tenantId: string, userId: string, query?: StorylineQuery): Storyline[];
+  patchStoryline(
+    tenantId: string,
+    userId: string,
+    id: string,
+    patch: StorylinePatch,
+    now: string,
+  ): Storyline | null;
+  deleteStoryline(tenantId: string, userId: string, id: string): boolean;
+
   insertProspective(tenantId: string, userId: string, p: Prospective): Prospective;
   getProspective(tenantId: string, userId: string, id: string): Prospective | null;
   listProspective(

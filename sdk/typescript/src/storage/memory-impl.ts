@@ -1,5 +1,6 @@
 // storage/memory-impl.ts — Storage 的纯内存实现（仅测试用）
 
+import { canView, defaultVisibility } from "../visibility.js";
 import {
   GLOBAL_DOMAIN_ID,
   LAYERS,
@@ -20,6 +21,8 @@ import {
   type Prospective,
   type RecallTimeRange,
   type ReflectionState,
+  type Storyline,
+  type StorylinePatch,
 } from "../types.js";
 import type {
   DecayCandidate,
@@ -27,6 +30,7 @@ import type {
   ProspectivePatch,
   SearchFilter,
   Storage,
+  StorylineQuery,
 } from "./types.js";
 import { cosineSimLocal } from "./row-mapper.js";
 import { nowIso } from "../utils/id.js";
@@ -42,6 +46,7 @@ export class InMemoryStorage implements Storage {
   private readonly eventSequences = new Map<string, number>();
   private readonly lifecycleStages = new Map<string, LifecycleStageRecord>();
   private readonly reflectionStates = new Map<string, ReflectionState>();
+  private readonly storylines = new Map<string, Storyline>();
   private readonly claims = new Map<string, ClaimIndexEntry>();
   private readonly operations = new Map<string, MemoryOperation>();
   private readonly provenance = new Map<string, ProvenanceEdge>();
@@ -72,6 +77,8 @@ export class InMemoryStorage implements Storage {
     }
     // v0.6（RFC 0007）：derived 默认 valid_at=created_at；archival 不参与双时间。
     if (m.layer !== "archival" && m.valid_at === undefined) m.valid_at = m.created_at;
+    // v0.8：与 SQLite 实现保持一致，未声明归属时落到「该用户私有」。
+    if (!m.visibility) m.visibility = defaultVisibility(userId);
     this.data.set(this.key(tenantId, userId, m.layer, m.id), m);
     return m;
   }
@@ -157,6 +164,7 @@ export class InMemoryStorage implements Storage {
         if (!filter.includeCold && m.cold) continue;
         // v0.6（RFC 0007/0008）：默认隐藏已失效记录
         if (!filter.includeInvalidated && m.belief_state && m.belief_state !== "active") continue;
+        if (filter.viewer && !canView(m.visibility, filter.viewer)) continue;
         const lc = m.content.toLowerCase();
         let hits = 0;
         for (const t of tokens) {
@@ -203,6 +211,7 @@ export class InMemoryStorage implements Storage {
       if (!filter.includeCold && mem.cold) continue;
       // v0.6：默认隐藏已失效记录
       if (!filter.includeInvalidated && mem.belief_state && mem.belief_state !== "active") continue;
+      if (filter.viewer && !canView(mem.visibility, filter.viewer)) continue;
       out.push({ memory: mem, score: s.score });
     }
     return out;
@@ -228,6 +237,7 @@ export class InMemoryStorage implements Storage {
         if (!filter.sensitiveOnly && !filter.includeSensitive && memory.sensitive) continue;
         if (!filter.includeCold && memory.cold) continue;
         if (!filter.includeInvalidated && memory.belief_state && memory.belief_state !== "active") continue;
+        if (filter.viewer && !canView(memory.visibility, filter.viewer)) continue;
         const timestamp = memory.event_at ?? memory.valid_at ?? memory.created_at;
         if (range.from && timestamp < range.from) continue;
         if (range.to && timestamp > range.to) continue;
@@ -841,6 +851,61 @@ export class InMemoryStorage implements Storage {
   }
 
   // v0.5 前瞻记忆 -------------------------------------------------------------
+  upsertStoryline(tenantId: string, userId: string, s: Storyline): Storyline {
+    const stored: Storyline = { ...s, tenant_id: tenantId, user_id: userId };
+    this.storylines.set(`${tenantId}|${userId}|${s.id}`, stored);
+    return stored;
+  }
+  getStoryline(tenantId: string, userId: string, id: string): Storyline | null {
+    const found = this.storylines.get(`${tenantId}|${userId}|${id}`);
+    return found ? { ...found } : null;
+  }
+  listStorylines(tenantId: string, userId: string, query: StorylineQuery = {}): Storyline[] {
+    const prefix = `${tenantId}|${userId}|`;
+    const all = [...this.storylines.entries()]
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([, value]) => ({ ...value }))
+      .filter((s) => !query.status || query.status.length === 0 || query.status.includes(s.status))
+      .filter((s) => !query.scope || s.scope === query.scope)
+      .filter((s) => !query.participantId || s.participant_ids.includes(query.participantId));
+    // 与 SQLite 实现同一套 tiebreak，保证两种存储给出相同顺序。
+    all.sort(
+      (a, b) =>
+        b.last_event_at.localeCompare(a.last_event_at) ||
+        b.created_at.localeCompare(a.created_at) ||
+        b.id.localeCompare(a.id),
+    );
+    return all.slice(0, query.limit ?? 50);
+  }
+  patchStoryline(
+    tenantId: string,
+    userId: string,
+    id: string,
+    patch: StorylinePatch,
+    now: string,
+  ): Storyline | null {
+    const current = this.storylines.get(`${tenantId}|${userId}|${id}`);
+    if (!current) return null;
+    const participants = [...current.participant_ids];
+    for (const participant of patch.add_participants ?? []) {
+      if (participant && !participants.includes(participant)) participants.push(participant);
+    }
+    const next: Storyline = {
+      ...current,
+      title: patch.title ?? current.title,
+      status: patch.status ?? current.status,
+      participant_ids: participants,
+      open_threads: patch.open_threads ?? current.open_threads,
+      updated_at: now,
+      last_event_at: patch.touch ? now : current.last_event_at,
+    };
+    if (patch.digest !== undefined) next.digest = patch.digest;
+    return this.upsertStoryline(tenantId, userId, next);
+  }
+  deleteStoryline(tenantId: string, userId: string, id: string): boolean {
+    return this.storylines.delete(`${tenantId}|${userId}|${id}`);
+  }
+
   insertProspective(tenantId: string, userId: string, p: Prospective): Prospective {
     this.prospectives.set(`${tenantId}|${userId}|${p.id}`, { ...p });
     return p;

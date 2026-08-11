@@ -41,6 +41,34 @@ export interface CapabilityToolSummary {
   requires: string[];
 }
 
+/**
+ * 某个角色能用哪些后台工具。
+ *
+ * 条目既可以是工具 id（web.search），也可以是整个工具集（source），
+ * 这样绑定不必随工具增删而不停维护。deny 优先于 allow：明确禁掉的不会被 allow 放回来。
+ */
+export interface PersonaToolBinding {
+  /** 不设或为空表示不限制。 */
+  allow?: string[];
+  deny?: string[];
+}
+
+/** 工具 id 与它所属的 toolset 都算命中，便于按工具集整体授权或禁用。 */
+function bindingMatches(tool: { id: string; toolset: string }, entries: string[] | undefined): boolean {
+  if (!entries || entries.length === 0) return false;
+  return entries.some((entry) => entry === tool.id || entry === tool.toolset);
+}
+
+export function isToolAllowedForPersona(
+  tool: { id: string; toolset: string },
+  binding: PersonaToolBinding | undefined,
+): boolean {
+  if (!binding) return true;
+  if (bindingMatches(tool, binding.deny)) return false;
+  if (binding.allow && binding.allow.length > 0) return bindingMatches(tool, binding.allow);
+  return true;
+}
+
 export class CapabilityToolRegistry {
   private readonly tools = new Map<string, CapabilityTool>();
 
@@ -63,17 +91,17 @@ export class CapabilityToolRegistry {
       }));
   }
 
-  listAvailableForInstruction(instruction: string): CapabilityToolSummary[] {
+  listAvailableForInstruction(instruction: string, binding?: PersonaToolBinding): CapabilityToolSummary[] {
     const matchedConnectors = new Set(matchSourceConnectors(instruction).map((item) => item.connector.id));
-    return this.list().filter((tool) => {
+    return this.list().filter((tool) => isToolAllowedForPersona(tool, binding)).filter((tool) => {
       if (tool.toolset !== "source") return tool.available;
       if (tool.id === "source.discovery") return true;
       return matchedConnectors.has(tool.id.replace(/^source\./, ""));
     });
   }
 
-  buildPromptBlock(instruction: string): string {
-    const tools = this.listAvailableForInstruction(instruction);
+  buildPromptBlock(instruction: string, binding?: PersonaToolBinding): string {
+    const tools = this.listAvailableForInstruction(instruction, binding);
     const toolLines = tools.length
       ? tools.map((tool) => `- ${tool.id} [${tool.available ? "available" : "not configured"}]: ${tool.description}`).join("\n")
       : "- no configured backend tools";
@@ -91,12 +119,12 @@ export class CapabilityToolRegistry {
     ].join("\n");
   }
 
-  toAgentTools(instruction: string): AgentTool[] {
+  toAgentTools(instruction: string, binding?: PersonaToolBinding): AgentTool[] {
     const sourceMatches = matchSourceConnectors(instruction);
     const includeDiscovery = sourceMatches.some((item) => item.connector.id !== "source-discovery")
       || /(来源|查证|核实|验证|可靠数据|source|verify)/i.test(instruction);
     const available = new Set(
-      this.listAvailableForInstruction(instruction)
+      this.listAvailableForInstruction(instruction, binding)
         .filter((tool) => tool.available && (tool.id !== "source.discovery" || includeDiscovery))
         .map((tool) => tool.id),
     );
@@ -114,7 +142,7 @@ export class CapabilityToolRegistry {
           const result = await this.run(tool.id, args, {
             instruction,
             signal: context.signal,
-          });
+          }, binding);
           return {
             content: result.text,
             isError: !result.ok,
@@ -128,10 +156,25 @@ export class CapabilityToolRegistry {
       }));
   }
 
-  async run(id: string, args: Record<string, unknown>, context: Partial<CapabilityToolContext> = {}): Promise<CapabilityToolResult> {
+  async run(
+    id: string,
+    args: Record<string, unknown>,
+    context: Partial<CapabilityToolContext> = {},
+    binding?: PersonaToolBinding,
+  ): Promise<CapabilityToolResult> {
     const tool = this.tools.get(id);
     if (!tool) {
       return { ok: false, text: `Unknown capability tool: ${id}`, checkedAt: new Date().toISOString(), needsVerification: true };
+    }
+    // 在执行处再拦一次：「没暴露给这个角色」和「这个角色不准用」是两回事，
+    // 只靠不暴露，任何拿到工具名的调用路径都能绕过绑定。
+    if (!isToolAllowedForPersona(tool, binding)) {
+      return {
+        ok: false,
+        text: `Capability tool is not available to this persona: ${id}`,
+        checkedAt: new Date().toISOString(),
+        needsVerification: true,
+      };
     }
     if (!this.isAvailable(tool)) {
       return {

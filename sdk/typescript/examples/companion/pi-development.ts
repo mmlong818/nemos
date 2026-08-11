@@ -18,6 +18,14 @@ const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", ".next", "dist", "b
 
 export type DevelopmentAccessMode = "inspect" | "develop";
 
+/**
+ * 会话延续方式。
+ * - continue：接着这个工作区最近一次开发会话往下做（默认）
+ * - new：另起一条会话，不带入上一轮上下文
+ * - resume：接着 sessionFile 指定的那一条，用于中断后精确恢复
+ */
+export type DevelopmentSessionMode = "continue" | "new" | "resume";
+
 export interface PiDevelopmentInput {
   workspacePath: string;
   instruction: string;
@@ -27,6 +35,31 @@ export interface PiDevelopmentInput {
   signal?: AbortSignal;
   onProgress?: (message: string, percent: number) => void;
   proposalStore?: DevelopmentProposalStore;
+  /** 默认 continue：同一工作区的后续指令天然是同一条开发线的延续。 */
+  sessionMode?: DevelopmentSessionMode;
+  /** sessionMode="resume" 时必填，取上一轮返回的 sessionFile。 */
+  sessionFile?: string;
+  /**
+   * nemos 侧的技能目录（每个子目录一个 SKILL.md）。
+   * 必须在工作区之外——工作区里的技能文件等于让被检查的仓库改写运行指令。
+   */
+  skillPaths?: string[];
+  /** nemos 侧的提示模板目录，同样必须在工作区之外。 */
+  promptTemplatePaths?: string[];
+  /**
+   * nemos 自己实现的内联扩展。
+   * 只接受进程内构造的扩展，不从工作区或磁盘发现——那等于执行任意仓库的代码。
+   */
+  extensions?: unknown[];
+  /** 运行遥测：每个会话事件回调一次，交给 nemos 侧的审计与观测。 */
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+}
+
+/** 一条开发运行遥测。type 直接透传 pi 的会话事件类型，不做二次归类。 */
+export interface DevelopmentTelemetryEvent {
+  type: string;
+  at: string;
+  toolName?: string;
 }
 
 export interface PiDevelopmentResult {
@@ -41,6 +74,16 @@ export interface PiDevelopmentResult {
   unverifiedRisks: string[];
   proposal?: DevelopmentProposalSummary;
   toolCalls: number;
+  /** 本轮所用会话；把它回传给下一次调用即可精确续期。 */
+  sessionId: string;
+  sessionFile?: string;
+  /** 本轮是接着已有会话做的，还是新开的一条。 */
+  sessionResumed: boolean;
+  /** 本轮加载到的技能与提示模板数量；0 说明资源没被喂进来。 */
+  loadedSkills: number;
+  loadedPromptTemplates: number;
+  /** 按事件类型统计的会话遥测。 */
+  telemetry: Record<string, number>;
 }
 
 export interface DevelopmentProposalSummary {
@@ -71,6 +114,8 @@ export interface DevelopmentCheckReceipt {
 }
 
 type PiModule = typeof import("@earendil-works/pi-coding-agent");
+// SessionManager 的构造函数是私有的，只能从工厂方法的返回类型反推实例类型。
+type DevelopmentSessionManager = ReturnType<PiModule["SessionManager"]["create"]>;
 
 export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDevelopmentResult> {
   if (Number(process.versions.node.split(".")[0]) < 22) throw new Error("开发能力需要 Node.js 22.19 或更高版本。");
@@ -104,6 +149,15 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
   const model = modelRuntime.getModel(providerId, input.connection.model);
   if (!model) throw new Error("开发能力无法使用当前模型连接。");
 
+  // 关掉的是「从工作区自动发现」，不是子系统本身。被检查的项目可能是任何人的仓库，
+  // 让它往运行时注入扩展等于执行它的代码，注入技能/模板等于改写我们的操作指令。
+  // 资源一律由 nemos 显式喂入：noSkills=true 时 additionalSkillPaths 仍会被加载。
+  const skillPaths = assertOutsideWorkspace(input.skillPaths ?? [], workspace, "技能目录");
+  const promptTemplatePaths = assertOutsideWorkspace(
+    input.promptTemplatePaths ?? [],
+    workspace,
+    "提示模板目录",
+  );
   const resourceLoader = new pi.DefaultResourceLoader({
     cwd: workspace,
     agentDir: input.agentDir,
@@ -111,9 +165,14 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
+    additionalSkillPaths: skillPaths,
+    additionalPromptTemplatePaths: promptTemplatePaths,
+    extensionFactories: (input.extensions ?? []) as never,
     systemPrompt: developmentSystemPrompt(workspace, input.accessMode),
   });
   await resourceLoader.reload();
+  const sessionManager = openDevelopmentSession(pi, workspace, input);
+  const sessionResumed = sessionManager.entryCount > 0;
   const { session } = await pi.createAgentSession({
     cwd: workspace,
     agentDir: input.agentDir,
@@ -123,11 +182,24 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     noTools: "builtin",
     customTools: createDevelopmentTools(workspace, input.accessMode, checks, contextReceipts, proposalSession) as never,
     resourceLoader,
-    sessionManager: pi.SessionManager.inMemory(workspace),
+    sessionManager: sessionManager.manager,
   });
 
   let toolCalls = 0;
+  const telemetry: Record<string, number> = {};
   const unsubscribe = session.subscribe((event) => {
+    const type = String(event.type || "unknown");
+    telemetry[type] = (telemetry[type] ?? 0) + 1;
+    // 遥测不能让开发本身失败：观测出问题时丢事件，不丢这次运行。
+    try {
+      input.onTelemetry?.({
+        type,
+        at: new Date().toISOString(),
+        toolName: event.type === "tool_execution_start" ? String(event.toolName || "") : undefined,
+      });
+    } catch {
+      // 忽略：观测侧的异常与开发结果无关。
+    }
     if (event.type !== "tool_execution_start") return;
     toolCalls += 1;
     input.onProgress?.(`正在执行：${developmentToolLabel(String(event.toolName || ""))}`, Math.min(78, 22 + toolCalls * 8));
@@ -157,6 +229,12 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
       unverifiedRisks: developmentRisks(input.accessMode, checks),
       proposal: staged ? developmentProposalSummary(staged) : undefined,
       toolCalls,
+      sessionId: sessionManager.manager.getSessionId(),
+      sessionFile: sessionManager.manager.getSessionFile(),
+      sessionResumed,
+      loadedSkills: resourceLoader.getSkills().skills.length,
+      loadedPromptTemplates: resourceLoader.getPrompts().prompts.length,
+      telemetry,
     };
   } catch (error) {
     proposalSession?.fail(error);
@@ -166,6 +244,56 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     unsubscribe();
     session.dispose();
   }
+}
+
+/**
+ * 确认喂给 pi 的资源目录都在工作区之外。
+ *
+ * 这是「打开子系统」与「让被检查的仓库注入内容」之间唯一的分界线：
+ * 一旦技能或模板可以来自工作区，读一个陌生仓库就足以改写开发指令。
+ */
+function assertOutsideWorkspace(paths: string[], workspace: string, label: string): string[] {
+  const resolvedWorkspace = workspace.toLowerCase();
+  return paths.map((candidate) => {
+    const value = String(candidate || "").trim();
+    if (!value) throw new Error(`${label}不能为空。`);
+    if (!isAbsolute(value)) throw new Error(`${label}必须是绝对路径：${value}`);
+    const resolved = resolve(value);
+    const lower = resolved.toLowerCase();
+    if (lower === resolvedWorkspace || lower.startsWith(resolvedWorkspace + sep)) {
+      throw new Error(`${label}不能位于被开发的项目内：${resolved}`);
+    }
+    return resolved;
+  });
+}
+
+/**
+ * 打开本轮要用的开发会话。
+ *
+ * 会话落盘在 agentDir/sessions 下——同一工作区的后续指令接着上一轮做，
+ * 中断后也能靠 sessionFile 精确恢复；这是 inMemory 会话给不了的。
+ */
+function openDevelopmentSession(
+  pi: PiModule,
+  workspace: string,
+  input: PiDevelopmentInput,
+): { manager: DevelopmentSessionManager; entryCount: number } {
+  const sessionDir = join(input.agentDir, "sessions");
+  mkdirSync(sessionDir, { recursive: true });
+  const mode = input.sessionMode ?? "continue";
+  let manager: DevelopmentSessionManager;
+  if (mode === "resume") {
+    const file = String(input.sessionFile || "").trim();
+    if (!file) throw new Error("恢复开发会话需要上一轮返回的 sessionFile。");
+    if (!existsSync(file)) throw new Error("上一轮的开发会话文件已不存在，无法恢复。");
+    manager = pi.SessionManager.open(file, sessionDir, workspace);
+  } else if (mode === "new") {
+    manager = pi.SessionManager.create(workspace, sessionDir);
+  } else {
+    // continueRecent 在没有历史会话时会自己建一条新的，不需要额外兜底。
+    manager = pi.SessionManager.continueRecent(workspace, sessionDir);
+  }
+  return { manager, entryCount: manager.getEntries().length };
 }
 
 export function validateDevelopmentWorkspace(value: string): string {
@@ -185,12 +313,9 @@ function createDevelopmentTools(
   contextReceipts: DevelopmentContextReceipt[],
   proposal?: DevelopmentProposalSession,
 ): Array<Record<string, unknown>> {
-  const checkCommandSchema = accessMode === "inspect"
-    ? Type.Union([Type.Literal("git_status"), Type.Literal("git_diff")])
-    : Type.Union([
-      Type.Literal("git_status"), Type.Literal("git_diff"), Type.Literal("npm_test"), Type.Literal("npm_build"), Type.Literal("npm_typecheck"), Type.Literal("npm_check"),
-      Type.Literal("pnpm_test"), Type.Literal("pnpm_build"), Type.Literal("pnpm_typecheck"), Type.Literal("pnpm_check"), Type.Literal("pytest"), Type.Literal("dotnet_test"), Type.Literal("cargo_test"), Type.Literal("cargo_check"),
-    ]);
+  // 按项目实际情况探测，只把适用的检查暴露给模型。
+  const availableChecks = detectDevelopmentChecks(workspace, accessMode);
+  const checkCommandSchema = Type.Union(availableChecks.map((command) => Type.Literal(command)));
   const readOnlyTools = [
     {
       name: "list_files", label: "查看文件",
@@ -232,8 +357,12 @@ function createDevelopmentTools(
         : "Run one approved project verification command. Project-owned scripts may execute only because the user selected development mode.",
       parameters: Type.Object({ command: checkCommandSchema }),
       execute: async (_id: string, params: { command: DevelopmentCheck }) => {
-        if (accessMode === "inspect" && !["git_status", "git_diff"].includes(params.command)) {
+        if (accessMode === "inspect" && !READ_ONLY_CHECKS.includes(params.command as (typeof READ_ONLY_CHECKS)[number])) {
           throw new Error("只读检查不会运行项目自带脚本。请切换到开发模式后再执行构建或测试。");
+        }
+        // schema 已经限定了取值，这里再挡一次：模型仍可能给出这个项目里不存在的检查。
+        if (!availableChecks.includes(params.command)) {
+          throw new Error(`这个项目没有可用的 ${params.command} 检查。`);
         }
         const receipt = await runDevelopmentCheck(workspace, params.command);
         receipts.push(receipt);
@@ -412,18 +541,114 @@ function writeWorkspaceFile(workspace: string, path: string, content: string, pr
   return `已写入 ${relative(workspace, file).replace(/\\/g, "/")}`;
 }
 
-export type DevelopmentCheck = "git_status" | "git_diff" | "npm_test" | "npm_build" | "npm_typecheck" | "npm_check" | "pnpm_test" | "pnpm_build" | "pnpm_typecheck" | "pnpm_check" | "pytest" | "dotnet_test" | "cargo_test" | "cargo_check";
+/** 只读检查：不跑项目自带脚本，任何模式下都可用。 */
+export const READ_ONLY_CHECKS = ["git_status", "git_diff"] as const;
+
+/** Node 包管理器与它们的 lockfile；顺序即优先级。 */
+const NODE_PACKAGE_MANAGERS = [
+  { id: "pnpm", lockfile: "pnpm-lock.yaml", runPrefix: ["run"] },
+  { id: "yarn", lockfile: "yarn.lock", runPrefix: ["run"] },
+  { id: "bun", lockfile: "bun.lockb", runPrefix: ["run"] },
+  { id: "npm", lockfile: "package-lock.json", runPrefix: ["run"] },
+] as const;
+
+/** 会被暴露给模型的 package.json 脚本名。别的脚本可能是部署或发布，不能进来。 */
+const NODE_SCRIPTS = ["test", "build", "typecheck", "check", "lint"] as const;
+
+interface CheckDefinition {
+  file: string;
+  args: string[];
+  /** 这个项目里出现哪个文件才算适用；空表示由调用方另行判断。 */
+  markers: string[];
+}
+
+/**
+ * 非 Node 生态的检查注册表。
+ *
+ * 这里是白名单——模型只能从中挑选，不能自己拼命令。扩宽语言支持等于往这张表里加行，
+ * 而不是放开执行任意命令。
+ */
+const NATIVE_CHECKS: Record<string, CheckDefinition> = {
+  pytest: { file: "pytest", args: [], markers: ["pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini"] },
+  ruff_check: { file: "ruff", args: ["check", "."], markers: ["pyproject.toml", "ruff.toml", ".ruff.toml"] },
+  mypy: { file: "mypy", args: ["."], markers: ["mypy.ini", ".mypy.ini", "pyproject.toml"] },
+  cargo_test: { file: "cargo", args: ["test"], markers: ["Cargo.toml"] },
+  cargo_check: { file: "cargo", args: ["check"], markers: ["Cargo.toml"] },
+  cargo_clippy: { file: "cargo", args: ["clippy"], markers: ["Cargo.toml"] },
+  go_test: { file: "go", args: ["test", "./..."], markers: ["go.mod"] },
+  go_build: { file: "go", args: ["build", "./..."], markers: ["go.mod"] },
+  go_vet: { file: "go", args: ["vet", "./..."], markers: ["go.mod"] },
+  dotnet_test: { file: "dotnet", args: ["test"], markers: ["global.json", "Directory.Build.props"] },
+  dotnet_build: { file: "dotnet", args: ["build"], markers: ["global.json", "Directory.Build.props"] },
+  gradle_test: { file: "gradle", args: ["test"], markers: ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"] },
+  gradle_build: { file: "gradle", args: ["build"], markers: ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"] },
+  maven_test: { file: "mvn", args: ["-B", "test"], markers: ["pom.xml"] },
+  maven_verify: { file: "mvn", args: ["-B", "verify"], markers: ["pom.xml"] },
+};
+
+export type DevelopmentCheck = string;
+
+/** Windows 上 npm/pnpm/yarn/gradle 这类是批处理包装器，必须带 .cmd 才能 execFile 到。 */
+function platformExecutable(file: string): string {
+  if (process.platform !== "win32") return file;
+  return ["npm", "pnpm", "yarn", "bun", "gradle", "mvn"].includes(file) ? `${file}.cmd` : file;
+}
+
+function readPackageScripts(workspace: string): string[] {
+  try {
+    const parsed = JSON.parse(readFileSync(join(workspace, "package.json"), "utf8")) as {
+      scripts?: Record<string, unknown>;
+    };
+    return Object.keys(parsed.scripts ?? {});
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 探测这个项目实际适用的检查。
+ *
+ * 只暴露探测到的检查，而不是把整张表塞给模型：在 Node 项目里提供 cargo_test
+ * 只会诱导模型去跑一条注定失败的命令，并把失败当成代码有问题。
+ */
+export function detectDevelopmentChecks(workspace: string, mode: DevelopmentAccessMode): DevelopmentCheck[] {
+  const detected: string[] = [...READ_ONLY_CHECKS];
+  if (mode === "inspect") return detected;
+
+  const has = (name: string) => existsSync(join(workspace, name));
+  if (has("package.json")) {
+    const scripts = new Set(readPackageScripts(workspace));
+    const manager = NODE_PACKAGE_MANAGERS.find((candidate) => has(candidate.lockfile)) ?? NODE_PACKAGE_MANAGERS[3];
+    for (const script of NODE_SCRIPTS) {
+      // 只有 package.json 里真有这个脚本才暴露；否则跑出来的是包管理器的报错。
+      if (scripts.has(script)) detected.push(`${manager.id}_${script}`);
+    }
+  }
+  for (const [id, definition] of Object.entries(NATIVE_CHECKS)) {
+    if (definition.markers.some(has)) detected.push(id);
+  }
+  return detected;
+}
+
+function resolveCheckCommand(workspace: string, command: DevelopmentCheck): [string, string[]] {
+  if (command === "git_status") return ["git", ["status", "--short"]];
+  if (command === "git_diff") return ["git", ["diff", "--"]];
+  const native = NATIVE_CHECKS[command];
+  if (native) return [platformExecutable(native.file), native.args];
+  const manager = NODE_PACKAGE_MANAGERS.find((candidate) => command.startsWith(`${candidate.id}_`));
+  const script = manager ? command.slice(manager.id.length + 1) : undefined;
+  if (!manager || !script || !NODE_SCRIPTS.includes(script as (typeof NODE_SCRIPTS)[number])) {
+    throw new Error(`未知的项目检查：${command}`);
+  }
+  // 重新探测一次而不是信任传入值：模型可能给出这个项目里并不存在的检查。
+  if (!detectDevelopmentChecks(workspace, "develop").includes(command)) {
+    throw new Error(`这个项目没有可用的 ${command} 检查。`);
+  }
+  return [platformExecutable(manager.id), [...manager.runPrefix, script]];
+}
 
 async function runDevelopmentCheck(workspace: string, command: DevelopmentCheck): Promise<DevelopmentCheckReceipt> {
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  const commands: Record<DevelopmentCheck, [string, string[]]> = {
-    git_status: ["git", ["status", "--short"]], git_diff: ["git", ["diff", "--"]],
-    npm_test: [npm, ["test", "--"]], npm_build: [npm, ["run", "build"]], npm_typecheck: [npm, ["run", "typecheck"]], npm_check: [npm, ["run", "check"]],
-    pnpm_test: [pnpm, ["test"]], pnpm_build: [pnpm, ["build"]], pnpm_typecheck: [pnpm, ["typecheck"]], pnpm_check: [pnpm, ["check"]],
-    pytest: ["pytest", []], dotnet_test: ["dotnet", ["test"]], cargo_test: ["cargo", ["test"]], cargo_check: ["cargo", ["check"]],
-  };
-  const [file, args] = commands[command];
+  const [file, args] = resolveCheckCommand(workspace, command);
   try {
     const result = await execFileAsync(file, args, { cwd: workspace, windowsHide: true, timeout: 120_000, maxBuffer: 1_500_000 });
     return { command, passed: true, output: [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "检查通过（无额外输出）。", checkedAt: new Date().toISOString() };
@@ -450,7 +675,9 @@ function developmentFileReceipt(workspace: string, path: string): DevelopmentFil
 }
 
 function developmentRisks(mode: DevelopmentAccessMode, checks: DevelopmentCheckReceipt[]): string[] {
-  const verification = checks.filter((item) => !["git_status", "git_diff"].includes(item.command));
+  const verification = checks.filter(
+    (item) => !READ_ONLY_CHECKS.includes(item.command as (typeof READ_ONLY_CHECKS)[number]),
+  );
   const risks: string[] = [];
   if (mode === "develop" && verification.length === 0) risks.push("未运行构建、测试或类型检查，修改尚未通过项目级验证。");
   if (verification.some((item) => !item.passed)) risks.push("至少一项项目检查失败，结果不能视为已验证完成。");

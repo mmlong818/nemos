@@ -66,7 +66,11 @@ export const COMMON_COLS = `
   legacy_unstructured INTEGER NOT NULL DEFAULT 0,
   salience_json TEXT,
   evidence_coverage TEXT,
-  evidence_count INTEGER NOT NULL DEFAULT 0
+  evidence_count INTEGER NOT NULL DEFAULT 0,
+  scope_kind      TEXT,
+  scope_owner_id  TEXT,
+  shared_keys     TEXT,
+  shared_with_json TEXT
 `;
 
 // v0.2 新增列（用于 migration v0.1 → v0.2）
@@ -144,10 +148,26 @@ const V074_NEW_COLUMNS: Array<{ name: string; ddl: string }> = [
   { name: "evidence_count", ddl: "ALTER TABLE %TABLE% ADD COLUMN evidence_count INTEGER NOT NULL DEFAULT 0" },
 ];
 
+// v0.8 新增列：可见性作用域（agent/user/storyline/team/global）。
+// 全部可空，存量行保持 scope_kind IS NULL，读取层把 NULL 解释为「按老语义可见」。
+// 不做 backfill：archival 的 immutable trigger 会 ABORT 任何 UPDATE。
+const V08_NEW_COLUMNS: Array<{ name: string; ddl: string }> = [
+  { name: "scope_kind", ddl: "ALTER TABLE %TABLE% ADD COLUMN scope_kind TEXT" },
+  { name: "scope_owner_id", ddl: "ALTER TABLE %TABLE% ADD COLUMN scope_owner_id TEXT" },
+  { name: "shared_keys", ddl: "ALTER TABLE %TABLE% ADD COLUMN shared_keys TEXT" },
+  { name: "shared_with_json", ddl: "ALTER TABLE %TABLE% ADD COLUMN shared_with_json TEXT" },
+];
+
 const INDEX_DDL = (table: string): string => `
   CREATE INDEX IF NOT EXISTS idx_${table}_tu ON ${table}(tenant_id, user_id);
   CREATE INDEX IF NOT EXISTS idx_${table}_tu_scope ON ${table}(tenant_id, user_id, scope);
   CREATE INDEX IF NOT EXISTS idx_${table}_tu_created ON ${table}(tenant_id, user_id, created_at DESC);
+`;
+
+/** v0.8：可见性过滤索引；建表迁移补列之后才能建，故与 INDEX_DDL 分开。 */
+const VISIBILITY_INDEX_DDL = (table: string): string => `
+  CREATE INDEX IF NOT EXISTS idx_${table}_visibility
+    ON ${table}(tenant_id, user_id, scope_kind, scope_owner_id);
 `;
 
 /**
@@ -221,6 +241,10 @@ export function applyMigrations(db: Database.Database): void {
     for (const col of V074_NEW_COLUMNS) {
       if (!existing.has(col.name)) db.exec(col.ddl.replace("%TABLE%", layer));
     }
+    for (const col of V08_NEW_COLUMNS) {
+      if (!existing.has(col.name)) db.exec(col.ddl.replace("%TABLE%", layer));
+    }
+    db.exec(VISIBILITY_INDEX_DDL(layer));
     if (layer === "personal_semantic") {
       db.exec(`UPDATE personal_semantic SET legacy_unstructured=1 WHERE claim_key IS NULL;`);
     }
@@ -582,6 +606,28 @@ function applyV05Migrations(db: Database.Database): void {
       PRIMARY KEY (tenant_id, user_id, id)
     );
     CREATE INDEX IF NOT EXISTS idx_prosp_tu ON prospective(tenant_id, user_id);
+  `);
+
+  // v0.8：故事线。与记忆表分开——一条线的生命周期比其中任何一条记忆都长。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS storylines (
+      id                  TEXT NOT NULL,
+      tenant_id           TEXT NOT NULL,
+      user_id             TEXT NOT NULL,
+      title               TEXT NOT NULL,
+      status              TEXT NOT NULL DEFAULT 'open',
+      participant_ids_json TEXT NOT NULL,
+      scope               TEXT NOT NULL,
+      digest              TEXT,
+      open_threads_json   TEXT NOT NULL,
+      created_at          TEXT NOT NULL,
+      updated_at          TEXT NOT NULL,
+      last_event_at       TEXT NOT NULL,
+      PRIMARY KEY (tenant_id, user_id, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_storylines_tu ON storylines(tenant_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_storylines_active
+      ON storylines(tenant_id, user_id, status, last_event_at DESC);
   `);
 
   // 前瞻 cue 全局通道（不受领域路由约束，RFC 0006）。

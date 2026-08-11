@@ -10,6 +10,12 @@ import {
   type MemorySurprise,
 } from "../types.js";
 import { ensureMemoryQualityMetadata } from "../salience.js";
+import {
+  isMemoryScopeKind,
+  normalizeScopeRef,
+  parseSharedWith,
+  type MemoryVisibility,
+} from "../visibility.js";
 
 export interface RowMemory {
   id: string;
@@ -69,6 +75,10 @@ export interface RowMemory {
   salience_json: string | null;
   evidence_coverage: string | null;
   evidence_count: number | null;
+  scope_kind: string | null;
+  scope_owner_id: string | null;
+  shared_keys: string | null;
+  shared_with_json: string | null;
 }
 
 export function rowToMemory(row: RowMemory): Memory {
@@ -89,6 +99,15 @@ export function rowToMemory(row: RowMemory): Memory {
     schema_version: row.schema_version || SCHEMA_VERSION,
     generation: row.layer === "archival" ? 0 : (row.generation ?? 1),
   };
+  // v0.8：scope_kind 为 NULL 表示迁移前写入的记忆，不带归属层，读取层按老语义放行。
+  if (isMemoryScopeKind(row.scope_kind)) {
+    const visibility: MemoryVisibility = {
+      owner: normalizeScopeRef(row.scope_kind, row.scope_owner_id ?? undefined),
+    };
+    const sharedWith = parseSharedWith(row.shared_with_json);
+    if (sharedWith) visibility.sharedWith = sharedWith;
+    m.visibility = visibility;
+  }
   if (row.event_at) m.event_at = row.event_at;
   if (row.sensitive) m.sensitive = true;
   if (row.scenario) m.scenario = row.scenario;

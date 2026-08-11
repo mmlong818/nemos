@@ -3,5 +3,5 @@
 // 保留此文件是为了让外部 `import { ... } from "./storage.js"`（包括 tests
 // 通过 `../../../src/storage.js`）继续工作；真实实现已拆到 storage/ 子目录。
 
-export type { Storage, IngestQueueRow, SearchFilter } from "./storage/index.js";
+export type { Storage, IngestQueueRow, SearchFilter, StorylineQuery } from "./storage/index.js";
 export { SqliteStorage, InMemoryStorage, makeStorage } from "./storage/index.js";

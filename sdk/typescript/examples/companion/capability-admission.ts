@@ -18,9 +18,19 @@ export interface CapabilityAdmissionOutcome {
   detail: string;
 }
 
+/**
+ * 回执档位。
+ * - generated-ability / installed-skill：对能力内容做静态检查
+ * - admission-probes:*：对矩阵声明的运行期场景跑真实夹具探针
+ */
+export type CapabilityAdmissionProfileId =
+  | "generated-ability"
+  | "installed-skill"
+  | `admission-probes:${"native" | "development" | "generated"}`;
+
 export interface CapabilityAdmissionReceipt {
   version: 1;
-  profile: "generated-ability" | "installed-skill";
+  profile: CapabilityAdmissionProfileId;
   contractHash: string;
   checkedAt: string;
   passed: boolean;
