@@ -47,9 +47,31 @@ export interface CapabilityHandoffReceipt {
   status: "received" | "returned" | "failed";
   receivedAt: string;
   returnedAt?: string;
+  /** 失败落点时间；与 returnedAt 互斥，failed 回执不得带交付时间。 */
+  failedAt?: string;
   targetCapabilityId: string;
   resultArtifactId?: string;
   error?: string;
+  /** 失败原因分类，决定「能不能重试」而不是让调用方猜错误文本。 */
+  failureKind?: CapabilityHandoffFailureKind;
+  retryable?: boolean;
+}
+
+/**
+ * 交接失败的类型。
+ * - execution：接收能力跑了但没跑成
+ * - timeout：超时，动作可能已部分执行
+ * - missing-capability：目标能力不存在或已下线
+ * - rejected：接收方拒绝接手（权限、边界或输入不合约）
+ */
+export type CapabilityHandoffFailureKind = "execution" | "timeout" | "missing-capability" | "rejected";
+
+/** 只有这些失败值得重试；missing-capability 和 rejected 重试多少次都一样。 */
+const RETRYABLE_FAILURES = new Set<CapabilityHandoffFailureKind>(["execution", "timeout"]);
+
+/** 交接是否已经真正交付。用它判断「完成」，不要直接看 status 字符串。 */
+export function isCapabilityHandoffDelivered(receipt: CapabilityHandoffReceipt | undefined): boolean {
+  return receipt?.status === "returned" && !!receipt.resultArtifactId;
 }
 
 export interface CapabilityHandoffInput {
@@ -150,12 +172,61 @@ export function returnCapabilityHandoff(
   resultArtifactId: string,
   now = new Date(),
 ): CapabilityHandoffReceipt {
-  return {
+  const artifactId = boundedText(resultArtifactId, 160) || undefined;
+  // 没有产物就不是交付。允许 returned 而无产物，等于把空手而归显示成完成。
+  if (!artifactId) {
+    return failCapabilityHandoff(receipt, {
+      kind: "execution",
+      error: "接收能力没有返回可交付产物。",
+    }, now);
+  }
+  const next: CapabilityHandoffReceipt = {
     ...receipt,
     status: "returned",
     returnedAt: now.toISOString(),
-    resultArtifactId: boundedText(resultArtifactId, 160) || undefined,
+    resultArtifactId: artifactId,
   };
+  // 从失败状态重试成功后要清干净失败痕迹，否则界面会同时看到交付和失败。
+  delete next.failedAt;
+  delete next.failureKind;
+  delete next.retryable;
+  delete next.error;
+  return next;
+}
+
+/**
+ * 把交接标记为失败。
+ *
+ * 失败必须有自己的落点：只保留 received 会让中断的交接一直显示为「进行中」，
+ * 而复用 returned 会让它显示为「已完成」。两者都会骗人。
+ */
+export function failCapabilityHandoff(
+  receipt: CapabilityHandoffReceipt,
+  failure: { kind: CapabilityHandoffFailureKind; error?: string },
+  now = new Date(),
+): CapabilityHandoffReceipt {
+  const next: CapabilityHandoffReceipt = {
+    ...receipt,
+    status: "failed",
+    failedAt: now.toISOString(),
+    failureKind: failure.kind,
+    retryable: RETRYABLE_FAILURES.has(failure.kind),
+    error: boundedText(failure.error, 2_000) || failureText(failure.kind),
+  };
+  // 失败回执不得携带交付痕迹，否则「失败不显示完成」这条门形同虚设。
+  delete next.returnedAt;
+  delete next.resultArtifactId;
+  return next;
+}
+
+function failureText(kind: CapabilityHandoffFailureKind): string {
+  const labels: Record<CapabilityHandoffFailureKind, string> = {
+    execution: "接收能力执行失败。",
+    timeout: "接收能力超时，动作可能已部分执行，重试前需先对账。",
+    "missing-capability": "目标能力不存在或已下线。",
+    rejected: "接收能力拒绝接手这次交接。",
+  };
+  return labels[kind];
 }
 
 function normalizeMessages(value: unknown): CapabilityHandoffMessage[] {

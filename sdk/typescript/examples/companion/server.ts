@@ -71,6 +71,7 @@ import {
 } from "./capabilities.js";
 import {
   createCapabilityHandoffEnvelope,
+  failCapabilityHandoff,
   receiveCapabilityHandoff,
   renderCapabilityHandoffContext,
   returnCapabilityHandoff,
@@ -85,6 +86,8 @@ import {
   imagePromptVisionPrompt,
 } from "./image-prompt-reconstruction.js";
 import { CONTACTABLE_PERSONA_IDS, normalizeAddedContactIds, visibleContactIds } from "./contact-roster.js";
+import { RelationshipMemory, type CounterpartPatch } from "./relationship-memory.js";
+import { PersonaToolBindings, type PersonaToolBinding } from "./persona-tool-bindings.js";
 import { resolveGroupReplyRoute } from "./group-routing.js";
 import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
 import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
@@ -343,6 +346,8 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
 });
 const developmentProposals = new DevelopmentProposalStore(join(DATA_DIR, "development-proposals"));
 const knowledgeLibrary = new KnowledgeLibrary(DATA_DIR);
+const relationships = new RelationshipMemory(DATA_DIR);
+const personaToolBindings = new PersonaToolBindings(DATA_DIR);
 const capabilities = new CapabilityRuntime({
   dataDir: DATA_DIR,
   personas: () => engine.listPersonas().map((p) => ({
@@ -353,6 +358,8 @@ const capabilities = new CapabilityRuntime({
   })),
   toolRegistry: capabilityTools,
   knowledgeContext: (ids) => knowledgeLibrary.buildPromptBlock(ids),
+  counterpartContext: (counterpartId) => relationships.buildPromptBlock(counterpartId),
+  toolBinding: (personaId) => personaToolBindings.get(personaId),
   runDeveloper: async (input) => {
     if (!modelConnection) throw new Error("请先在设置中连接一个可用模型。");
     const result = await runPiDevelopment({
@@ -360,6 +367,9 @@ const capabilities = new CapabilityRuntime({
       connection: modelConnection,
       agentDir: join(DATA_DIR, "pi-development"),
       proposalStore: developmentProposals,
+      // 复用小丑鱼自己的技能库：pi 负责加载与编排，技能来源仍由能力层掌握。
+      // 目录在 DATA_DIR 下，不在被开发的项目里，所以过得了工作区隔离检查。
+      skillPaths: [join(DATA_DIR, "skills")],
     });
     return result;
   },
@@ -499,7 +509,18 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
         jobId: job.id,
       },
       onProgress: (message, percent) => context.checkpoint(message, percent),
-    }, context.signal);
+    }, context.signal).catch((error: unknown) => {
+      // 交接失败必须有自己的落点。只留在 received 上，中断的交接会一直显示为「进行中」；
+      // 作业本身仍然抛出失败，这里只保证回执被持久记录下来。
+      if (handoffReceipt) {
+        const failed = failCapabilityHandoff(handoffReceipt, {
+          kind: context.signal?.aborted ? "timeout" : "execution",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        context.checkpoint("交接执行失败", 100, { handoffReceipt: failed });
+      }
+      throw error;
+    });
     context.checkpoint("产物已保存", 100, { artifactId: notification.artifact.id });
     return {
       summary: notification.text,
@@ -4413,6 +4434,57 @@ const server = createServer(async (req, res) => {
       const artifact = capabilities.updateDevelopmentProposalState(proposal.id, proposal.state, proposal.conflicts);
       if (proposal.state === "conflicted") {
         send(res, 409, { error: "项目文件在提案生成后发生了变化，未自动覆盖。", proposal, artifact });
+      } else {
+        send(res, 200, { ok: true, proposal, artifact, snapshot: capabilities.snapshot() });
+      }
+      return;
+    }
+    if (req.method === "GET" && url === "/api/persona-tools") {
+      send(res, 200, { ok: true, bindings: personaToolBindings.list() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/persona-tools") {
+      const body = (await readBody(req)) as { personaId?: string } & PersonaToolBinding;
+      if (!body.personaId) { send(res, 400, { error: "missing persona id" }); return; }
+      send(res, 200, { ok: true, binding: personaToolBindings.set(body.personaId, body) });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/persona-tools/clear") {
+      const body = (await readBody(req)) as { personaId?: string };
+      if (!body.personaId) { send(res, 400, { error: "missing persona id" }); return; }
+      send(res, 200, { ok: personaToolBindings.clear(body.personaId) });
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/relationships") {
+      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
+      if (id) {
+        const profile = relationships.get(id);
+        if (!profile) send(res, 404, { error: "counterpart not found" });
+        else send(res, 200, { ok: true, profile });
+      } else {
+        send(res, 200, { ok: true, profiles: relationships.list() });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/relationships") {
+      const body = (await readBody(req)) as { id?: string } & CounterpartPatch;
+      if (!body.id) { send(res, 400, { error: "missing counterpart id" }); return; }
+      send(res, 200, { ok: true, profile: relationships.upsert(body.id, body) });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/relationships/delete") {
+      const body = (await readBody(req)) as { id?: string };
+      if (!body.id) { send(res, 400, { error: "missing counterpart id" }); return; }
+      send(res, 200, { ok: relationships.remove(body.id) });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/proposal/rollback") {
+      const body = (await readBody(req)) as { id?: string };
+      if (!body.id) { send(res, 400, { error: "missing proposal id" }); return; }
+      const proposal = developmentProposals.rollback(body.id);
+      const artifact = capabilities.updateDevelopmentProposalState(proposal.id, proposal.state, proposal.conflicts);
+      if (proposal.state === "conflicted") {
+        send(res, 409, { error: "文件在写入之后又被改过，回滚会覆盖这些修改，已停止。", proposal, artifact });
       } else {
         send(res, 200, { ok: true, proposal, artifact, snapshot: capabilities.snapshot() });
       }

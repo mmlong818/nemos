@@ -1,5 +1,5 @@
 import type { AgentTool, Nemos } from "../../src/index.js";
-import type { CapabilityRuntime } from "./capabilities.js";
+import type { CapabilityRuntime, CapabilityTaskWorkspace } from "./capabilities.js";
 import type { ChatAgentContext } from "./engine.js";
 import type { AgentToolProvider } from "./llm.js";
 import { expertAssignmentPrompt, expertContract, finalDeliveryPrompt } from "./expert-contracts.js";
@@ -30,6 +30,7 @@ const TASK_CREATE_CUE = /((创建|新增|登记|保存|安排|设为).{0,12}(能
 const SKILL_INSTALL_CUE = /((安装|导入|添加|注册).{0,24}(skill|skills|SKILL\.md|技能包|能力包)|((skill|skills|SKILL\.md|技能包|能力包).{0,24}(安装|导入|添加|注册)))/i;
 const DELEGATION_CUE = /(多.{0,4}(角色|专家|人)|团队|分工|并行|分别.{0,10}(分析|研究|核验|给出)|不同.{0,6}(角度|视角)|交叉.{0,4}(验证|复核)|让.{0,12}(可行性顾问|产品顾问|决策顾问|思考教练|原理工程师|产品主理人|决策分析师|思辨教练).{0,12}(和|与|、))/i;
 const ARTIFACT_CUE = /(产物|交付物|生成的.{0,6}(报告|文件|文档)|最近的.{0,6}(报告|文件|文档)|artifact|deliverable)/i;
+const DEVELOPMENT_CUE = /(开发|写代码|改代码|修复.{0,8}(问题|bug)|重构|项目检查|代码库|仓库|构建失败|测试失败)/i;
 
 /**
  * 把产品内部的只读能力暴露为按请求加载的 Agent 工具。
@@ -63,6 +64,15 @@ export function createCompanionAgentToolProvider(
     }
     if (ARTIFACT_CUE.test(instruction)) {
       tools.push(artifactListTool(dependencies, context));
+    }
+    // 只有在用户此前授权过工作区时才提供开发工具；没有已授权目录就没有可选项，
+    // 这时把工具挂出来只会诱导模型去猜路径。
+    if (
+      context.personaId === "clownfish" &&
+      DEVELOPMENT_CUE.test(instruction) &&
+      authorizedWorkspaces(dependencies).length > 0
+    ) {
+      tools.push(developmentTaskCreateTool(dependencies, context));
     }
     return tools;
   };
@@ -516,4 +526,98 @@ function boundedLimit(value: unknown, fallback: number, maximum: number): number
 
 function ensureActive(signal: AbortSignal): void {
   if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Tool call cancelled");
+}
+
+/** 取已授权工作区；运行时没实现这个方法时按「没有授权」处理，而不是让整个工具装载失败。 */
+function authorizedWorkspaces(
+  dependencies: CompanionAgentToolDependencies,
+): CapabilityTaskWorkspace[] {
+  const runtime = dependencies.capabilities();
+  if (typeof runtime?.listDevelopmentWorkspaces !== "function") return [];
+  return runtime.listDevelopmentWorkspaces();
+}
+
+/**
+ * 让角色在长任务里自己拆出开发子任务。
+ *
+ * 两条边界必须同时成立，缺一条这个工具就不该存在：
+ * 1. 工作区只能从用户已授权的清单里选，模型不能自己填路径；
+ * 2. develop 模式的产出是提案，仍要用户确认才写进项目——模型改不了盘上的代码。
+ */
+function developmentTaskCreateTool(
+  dependencies: CompanionAgentToolDependencies,
+  context: ChatAgentContext,
+): AgentTool {
+  const workspaces = authorizedWorkspaces(dependencies);
+  return {
+    definition: {
+      name: "development_task_create",
+      description:
+        "Create a development task inside a workspace the user has already authorized. " +
+        "Use when the goal genuinely requires reading or changing project code. " +
+        "Changes are staged as a proposal and never written to the project without the user's confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Short Chinese task title" },
+          instruction: { type: "string", description: "Complete development requirement and delivery criteria" },
+          workspacePath: {
+            type: "string",
+            description: "Must be one of the authorized workspaces: " + workspaces.map((item) => item.path).join(" | "),
+            enum: workspaces.map((item) => item.path),
+          },
+          accessMode: {
+            type: "string",
+            enum: ["inspect", "develop"],
+            description: "inspect only reads the project; develop stages changes as a proposal for the user to confirm",
+          },
+        },
+        required: ["title", "instruction", "workspacePath", "accessMode"],
+        additionalProperties: false,
+      },
+      effect: "write",
+      timeoutMs: 10_000,
+    },
+    execute: async (input, toolContext) => {
+      ensureActive(toolContext.signal);
+      const title = String(input.title ?? "").trim();
+      const instruction = String(input.instruction ?? "").trim();
+      if (!title || !instruction) return { content: "title and instruction are required", isError: true };
+
+      // enum 只是给模型的提示，不是保证：这里按清单重新核对一次。
+      const requested = String(input.workspacePath ?? "").trim();
+      const authorized = authorizedWorkspaces(dependencies);
+      const workspace = authorized.find((item) => item.path === requested);
+      if (!workspace) {
+        return {
+          content: `工作区未被授权：${requested || "(空)"}。只能选择用户此前使用过的项目目录。`,
+          isError: true,
+        };
+      }
+      const accessMode = input.accessMode === "develop" ? "develop" : "inspect";
+
+      const runtime = dependencies.capabilities();
+      const task = runtime.createTask({
+        title,
+        personaId: context.personaId,
+        capabilityId: "project-development",
+        instruction,
+        enabled: true,
+        schedule: { mode: "manual" },
+        workspace: { path: workspace.path, accessMode },
+      });
+      ensureActive(toolContext.signal);
+      return {
+        content: JSON.stringify({
+          task: { id: task.id, title: task.title },
+          workspacePath: workspace.path,
+          accessMode,
+          note: accessMode === "develop"
+            ? "修改会先进入提案，需用户在能力页确认后才写入项目。"
+            : "只读检查，不会改动项目文件。",
+        }, null, 2),
+        data: { taskId: task.id, workspacePath: workspace.path, accessMode },
+      };
+    },
+  };
 }

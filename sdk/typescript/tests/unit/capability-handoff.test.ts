@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   createCapabilityHandoffEnvelope,
+  failCapabilityHandoff,
+  isCapabilityHandoffDelivered,
   receiveCapabilityHandoff,
   renderCapabilityHandoffContext,
   returnCapabilityHandoff,
@@ -50,4 +52,70 @@ test("交接回执保留同一个内容指纹并绑定返回产物", () => {
 
 test("空交接不会制造持久任务上下文", () => {
   assert.equal(createCapabilityHandoffEnvelope({}, "document-draft"), undefined);
+});
+
+test("交接失败有自己的落点，不会显示为已完成", () => {
+  const envelope = createCapabilityHandoffEnvelope(
+    { goal: "整理这份材料", summary: "提要" },
+    "research-brief",
+  );
+  assert.ok(envelope);
+  const received = receiveCapabilityHandoff(envelope);
+  assert.equal(received.status, "received");
+  assert.equal(isCapabilityHandoffDelivered(received), false, "刚接手不算交付");
+
+  const failed = failCapabilityHandoff(received, { kind: "execution", error: "工具返回空结果" });
+  assert.equal(failed.status, "failed");
+  assert.ok(failed.failedAt);
+  assert.equal(failed.error, "工具返回空结果");
+  assert.equal(failed.retryable, true);
+  // 关键：失败回执不得携带任何交付痕迹。
+  assert.equal(failed.returnedAt, undefined);
+  assert.equal(failed.resultArtifactId, undefined);
+  assert.equal(isCapabilityHandoffDelivered(failed), false);
+});
+
+test("失败类型决定可重试性，不靠猜错误文本", () => {
+  const envelope = createCapabilityHandoffEnvelope({ goal: "目标" }, "research-brief");
+  assert.ok(envelope);
+  const received = receiveCapabilityHandoff(envelope);
+  const kinds = [
+    ["execution", true],
+    ["timeout", true],
+    ["missing-capability", false],
+    ["rejected", false],
+  ] as const;
+  for (const [kind, retryable] of kinds) {
+    const failed = failCapabilityHandoff(received, { kind });
+    assert.equal(failed.retryable, retryable, `${kind} 的可重试性`);
+    assert.ok(failed.error, `${kind} 应当有默认失败说明`);
+  }
+  // 超时要提示先对账，避免重复副作用。
+  assert.match(failCapabilityHandoff(received, { kind: "timeout" }).error!, /对账/);
+});
+
+test("returned 但没有产物按失败处理，不算交付", () => {
+  const envelope = createCapabilityHandoffEnvelope({ goal: "目标" }, "research-brief");
+  assert.ok(envelope);
+  const received = receiveCapabilityHandoff(envelope);
+  const empty = returnCapabilityHandoff(received, "   ");
+  assert.equal(empty.status, "failed", "空手而归不能显示成完成");
+  assert.equal(isCapabilityHandoffDelivered(empty), false);
+
+  const delivered = returnCapabilityHandoff(received, "artifact-1");
+  assert.equal(delivered.status, "returned");
+  assert.equal(isCapabilityHandoffDelivered(delivered), true);
+});
+
+test("失败后重试成功会清掉失败痕迹，不会同时显示交付和失败", () => {
+  const envelope = createCapabilityHandoffEnvelope({ goal: "目标" }, "research-brief");
+  assert.ok(envelope);
+  const failed = failCapabilityHandoff(receiveCapabilityHandoff(envelope), { kind: "timeout" });
+  const retried = returnCapabilityHandoff(failed, "artifact-2");
+  assert.equal(retried.status, "returned");
+  assert.equal(retried.failedAt, undefined);
+  assert.equal(retried.failureKind, undefined);
+  assert.equal(retried.retryable, undefined);
+  assert.equal(retried.error, undefined);
+  assert.equal(isCapabilityHandoffDelivered(retried), true);
 });
