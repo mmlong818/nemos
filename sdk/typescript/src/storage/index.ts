@@ -8,7 +8,7 @@ import { SqliteStorage } from "./sqlite-impl.js";
 import { InMemoryStorage } from "./memory-impl.js";
 import type { Storage } from "./types.js";
 
-export type { Storage, IngestQueueRow, SearchFilter } from "./types.js";
+export type { Storage, IngestQueueRow, SearchFilter, StorylineQuery } from "./types.js";
 export { SqliteStorage } from "./sqlite-impl.js";
 export { InMemoryStorage } from "./memory-impl.js";
 

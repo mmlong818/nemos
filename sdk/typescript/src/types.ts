@@ -3,6 +3,16 @@
 // 类型大体对齐 spec/10-data-schema.md 与 spec/40-sdk-contract.md，但 v0.1
 // 嵌入式 SDK 实施简化（详见 README §「Spec 对齐度」）。
 
+import type { MemoryViewer, MemoryVisibility } from "./visibility.js";
+
+export type {
+  MemoryScopeKind,
+  MemoryScopeRef,
+  MemoryVisibility,
+  MemoryViewer,
+} from "./visibility.js";
+export { MEMORY_SCOPE_KINDS } from "./visibility.js";
+
 export const LAYERS = [
   "archival",
   "episodic",
@@ -231,6 +241,11 @@ export interface Memory {
   content: string;
   /** "global" / "project:xxx" / "task:xxx" / "scope:work" */
   scope: string;
+  /**
+   * v0.8：可见性归属层与显式共享目标，与 scope 正交。
+   * 未写时按「该用户私有」处理，保持迁移前的语义。
+   */
+  visibility?: MemoryVisibility;
 
   source: MemorySource;
   arousal: MemoryArousal;
@@ -538,6 +553,8 @@ export interface WriteMemoryInput {
   content: string;
   type?: MemoryType;
   scope?: string;
+  /** v0.8：写入这条记忆的归属层与共享目标；不传则落到「该用户私有」。 */
+  visibility?: MemoryVisibility;
   source: Partial<MemorySource> & Pick<MemorySource, "authoritative" | "origin">;
   arousal?: Partial<MemoryArousal>;
   surprise?: Partial<MemorySurprise>;
@@ -596,6 +613,11 @@ export interface SearchOptions {
    * 当前采信的事实（「从不踩雷」）。设 true 取全集（审计 / 时间旅行）。
    */
   includeInvalidated?: boolean;
+  /**
+   * v0.8：本次检索的身份上下文，决定能看见哪些作用域的记忆。
+   * 不传则不做可见性过滤——保持既有调用方的行为不变。
+   */
+  viewer?: MemoryViewer;
 }
 
 export type RecallIntent =
@@ -870,6 +892,47 @@ export interface Prospective {
   created_at: string;
   last_accessed: string;
   last_verified_at?: string;
+}
+
+/** v0.8：故事线状态。abandoned 与 done 的区别是「没做完就停了」，续期时要区别对待。 */
+export type StorylineStatus = "open" | "paused" | "done" | "abandoned";
+
+/**
+ * v0.8：故事线——把跨会话、跨任务的一段协作串成可续期的线。
+ *
+ * 它同时是 visibility 的一层（scope_kind='storyline'）：写进这条线的记忆默认只对
+ * 这条线可见，角色重新接手时靠 digest + open_threads 知道「上次做到哪」。
+ */
+export interface Storyline {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  title: string;
+  status: StorylineStatus;
+  /** 参与过这条线的角色 id。 */
+  participant_ids: string[];
+  /** 主题域，与 Memory.scope 同一套取值，便于按项目归集。 */
+  scope: string;
+  /** 「上次做到哪」的可读摘要；续期时先读它，再按需展开记忆。 */
+  digest?: string;
+  /** 尚未收口的问题；空数组表示这条线目前没有悬空项。 */
+  open_threads: string[];
+  created_at: string;
+  updated_at: string;
+  /** 最近一次有实质进展的时间，用于把最近活跃的线排在前面。 */
+  last_event_at: string;
+}
+
+/** 续期一条故事线时需要改的字段；未给的字段保持原值。 */
+export interface StorylinePatch {
+  title?: string;
+  status?: StorylineStatus;
+  digest?: string;
+  open_threads?: string[];
+  /** 追加参与角色；已在列表里的会被忽略。 */
+  add_participants?: string[];
+  /** 标记这次是实质进展，刷新 last_event_at。 */
+  touch?: boolean;
 }
 
 // ============================================================================

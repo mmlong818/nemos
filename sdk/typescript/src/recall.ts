@@ -136,6 +136,7 @@ export class RecallService {
       sensitiveOnly: recallOptions.sensitiveOnly === true,
       includeCold: recallOptions.includeCold === true,
       includeInvalidated: plan.include_historical,
+      viewer: recallOptions.viewer,
     };
     const scope = plan.scopes.length === 0 ? undefined : plan.scopes.length === 1 ? plan.scopes[0] : plan.scopes;
     const claimChannel = await this.runChannel("claim", () => this.claimCandidates(plan));
@@ -346,6 +347,7 @@ export class RecallService {
       sensitiveOnly: options.sensitiveOnly === true,
       includeCold: true,
       includeInvalidated: true,
+      viewer: options.viewer,
     };
     const compositional = isCompositionalQuery(plan.query);
     const limit = Math.min(compositional ? 20 : 8, plan.max_candidates_per_channel);

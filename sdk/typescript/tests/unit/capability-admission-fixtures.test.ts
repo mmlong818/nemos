@@ -8,6 +8,7 @@ import { parseNativeCapabilityPayload } from "../../examples/companion/native-ca
 import { validateDevelopmentWorkspace } from "../../examples/companion/pi-development.js";
 import { assessProfessionalArtifact } from "../../examples/companion/professional-artifact-gate.js";
 import { admitGeneratedAbilitySpec, admitInstalledSkillContent, CAPABILITY_ADMISSION_MATRIX } from "../../examples/companion/capability-admission.js";
+import { missingAdmissionProbes, runCapabilityAdmissionProbes } from "../../examples/companion/capability-admission-probes.js";
 import type { GeneratedAbilitySpec } from "../../examples/companion/native-capability-contracts.js";
 
 const validResearch = JSON.stringify({
@@ -79,12 +80,40 @@ const generatedSpec: GeneratedAbilitySpec = {
   ],
 };
 
-test("完整准入矩阵覆盖蓝图规定的八类失败路径", () => {
+test("矩阵声明的八类场景全部有可运行的夹具探针", () => {
   const covered = new Set(Object.values(CAPABILITY_ADMISSION_MATRIX).flat());
   assert.deepEqual(covered, new Set([
     "normal", "empty-result", "malformed-input", "tool-failure", "handoff-recovery",
     "windows-path", "damaged-format", "model-refusal",
   ]));
+  // 上面只证明「声明了八个字符串」。真正要守的是每个场景都有代码去评估它——
+  // 此前 tool-failure / handoff-recovery / windows-path / damaged-format 四类
+  // 只存在于矩阵里，零评估点，而当时的测试照样通过。
+  assert.deepEqual(missingAdmissionProbes(), [], "矩阵声明了场景却没有对应探针");
+});
+
+test("三档准入都真实跑完自己声明的场景并逐条给出回执", () => {
+  for (const profile of ["native", "development", "generated"] as const) {
+    const receipt = runCapabilityAdmissionProbes(profile);
+    const scenarios = CAPABILITY_ADMISSION_MATRIX[profile];
+    assert.equal(receipt.profile, `admission-probes:${profile}`);
+    assert.equal(receipt.outcomes.length, scenarios.length, `${profile} 的回执条数`);
+    assert.deepEqual(
+      receipt.outcomes.map((item) => item.scenario),
+      [...scenarios],
+      `${profile} 的场景逐条对应`,
+    );
+    assert.equal(receipt.passed, true, `${profile} 未通过：${JSON.stringify(receipt.outcomes.filter((o) => !o.passed))}`);
+    // 每条都要有可读的判定依据，不能只有 true。
+    assert.ok(receipt.outcomes.every((item) => item.detail.length > 0));
+  }
+});
+
+test("场景声明变化会改变合同指纹，旧结论不能沿用", () => {
+  const native = runCapabilityAdmissionProbes("native");
+  const development = runCapabilityAdmissionProbes("development");
+  assert.match(native.contractHash, /^[a-f0-9]{64}$/);
+  assert.notEqual(native.contractHash, development.contractHash);
 });
 
 test("生成能力每次写入前都生成绑定合同指纹的准入回执", () => {

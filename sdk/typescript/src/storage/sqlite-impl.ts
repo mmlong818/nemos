@@ -10,6 +10,12 @@
 
 import Database from "better-sqlite3";
 import {
+  canView,
+  defaultVisibility,
+  serializeSharedKeys,
+  visibilitySqlClause,
+} from "../visibility.js";
+import {
   LAYERS,
   type ClaimIndexEntry,
   type EventMetadata,
@@ -24,8 +30,16 @@ import {
   type IdentityOperation,
   type ReflectionState,
   type RecallTimeRange,
+  type Storyline,
+  type StorylinePatch,
 } from "../types.js";
-import type { DecayCandidate, IngestQueueRow, SearchFilter, Storage } from "./types.js";
+import type {
+  DecayCandidate,
+  IngestQueueRow,
+  SearchFilter,
+  Storage,
+  StorylineQuery,
+} from "./types.js";
 import { applyMigrations, tryLoadSqliteVec } from "./schema.js";
 import {
   bufferToFloat32,
@@ -42,6 +56,7 @@ import * as lifecycleOps from "./lifecycle-ops-sqlite.js";
 import * as claimOps from "./claim-ops-sqlite.js";
 import * as domainOps from "./domain-ops-sqlite.js";
 import * as prospectiveOps from "./prospective-ops-sqlite.js";
+import * as storylineOps from "./storyline-ops-sqlite.js";
 import type {
   Domain,
   DomainAffinity,
@@ -99,7 +114,8 @@ export class SqliteStorage implements Storage {
         context_dimensions_json, object_json, canonical_object_hash,
         claim_key, claim_key_version, normalizer_version, trust_tier,
         utterance_mode, specificity, source_event_ids_json, legacy_unstructured,
-        salience_json, evidence_coverage, evidence_count
+        salience_json, evidence_coverage, evidence_count,
+        scope_kind, scope_owner_id, shared_keys, shared_with_json
       ) VALUES (
         @id, @tenant_id, @user_id, @layer, @type, @scope, @content,
         @source_json, @arousal_json, @surprise_json, @ownership_json,
@@ -114,9 +130,12 @@ export class SqliteStorage implements Storage {
         @context_dimensions_json, @object_json, @canonical_object_hash,
         @claim_key, @claim_key_version, @normalizer_version, @trust_tier,
         @utterance_mode, @specificity, @source_event_ids_json, @legacy_unstructured,
-        @salience_json, @evidence_coverage, @evidence_count
+        @salience_json, @evidence_coverage, @evidence_count,
+        @scope_kind, @scope_owner_id, @shared_keys, @shared_with_json
       )
     `);
+    // 写入方没声明归属时落到「该用户私有」，与迁移前的 tenant/user 隔离等价。
+    const visibility = m.visibility ?? defaultVisibility(userId);
     stmt.run({
       id: m.id,
       tenant_id: tenantId,
@@ -180,6 +199,10 @@ export class SqliteStorage implements Storage {
       salience_json: m.salience ? JSON.stringify(m.salience) : null,
       evidence_coverage: m.evidence_coverage ?? null,
       evidence_count: m.evidence_count ?? 0,
+      scope_kind: visibility.owner.kind,
+      scope_owner_id: visibility.owner.id ?? null,
+      shared_keys: serializeSharedKeys(visibility.sharedWith),
+      shared_with_json: visibility.sharedWith ? JSON.stringify(visibility.sharedWith) : null,
     });
 
     // 同步写 FTS
@@ -325,6 +348,7 @@ export class SqliteStorage implements Storage {
       if (!filter.includeInvalidated) {
         sql += ` AND m.belief_state = 'active'`;
       }
+      sql = this.appendVisibilityFilter(sql, params, filter, "m");
       sql += ` ORDER BY fts.rank LIMIT ?`;
       params.push(topK);
       let rows: Array<RowMemory & { fts_rank: number }>;
@@ -365,6 +389,7 @@ export class SqliteStorage implements Storage {
       if (!filter.includeCold && mem.cold) continue;
       // v0.6：默认隐藏已失效（rowToMemory 把 active 归一为 undefined）
       if (!filter.includeInvalidated && mem.belief_state && mem.belief_state !== "active") continue;
+      if (filter.viewer && !canView(mem.visibility, filter.viewer)) continue;
       out.push({ memory: mem, score: s.score });
     }
     return out;
@@ -392,6 +417,7 @@ export class SqliteStorage implements Storage {
       }
       if (!filter.includeCold) sql += " AND cold = 0";
       if (!filter.includeInvalidated) sql += " AND belief_state = 'active'";
+      sql = this.appendVisibilityFilter(sql, params, filter, layer);
       if (range.from) {
         sql += ` AND ${timeExpr} >= ?`;
         params.push(range.from);
@@ -412,6 +438,22 @@ export class SqliteStorage implements Storage {
     return matches.slice(0, topK).map((item) => item.memory);
   }
   /** scope 条件拼接（两条扫描路径共用）。 */
+  /**
+   * v0.8：追加可见性过滤。filter.viewer 缺省时不加条件——内部维护路径需要全量视图。
+   * alias 传记忆表的别名或表名，两者在 SQL 里都能限定列。
+   */
+  private appendVisibilityFilter(
+    sql: string,
+    params: unknown[],
+    filter: SearchFilter,
+    alias: string,
+  ): string {
+    if (!filter.viewer) return sql;
+    const clause = visibilitySqlClause(alias, filter.viewer);
+    params.push(...clause.params);
+    return sql + ` AND ${clause.sql}`;
+  }
+
   private appendScopeFilter(
     sql: string,
     params: unknown[],
@@ -884,6 +926,28 @@ export class SqliteStorage implements Storage {
   }
 
   // v0.5 前瞻记忆 -------------------------------------------------------------
+  upsertStoryline(tenantId: string, userId: string, s: Storyline): Storyline {
+    return storylineOps.upsertStoryline(this.db, tenantId, userId, s);
+  }
+  getStoryline(tenantId: string, userId: string, id: string): Storyline | null {
+    return storylineOps.getStoryline(this.db, tenantId, userId, id);
+  }
+  listStorylines(tenantId: string, userId: string, query?: StorylineQuery): Storyline[] {
+    return storylineOps.listStorylines(this.db, tenantId, userId, query);
+  }
+  patchStoryline(
+    tenantId: string,
+    userId: string,
+    id: string,
+    patch: StorylinePatch,
+    now: string,
+  ): Storyline | null {
+    return storylineOps.patchStoryline(this.db, tenantId, userId, id, patch, now);
+  }
+  deleteStoryline(tenantId: string, userId: string, id: string): boolean {
+    return storylineOps.deleteStoryline(this.db, tenantId, userId, id);
+  }
+
   insertProspective(tenantId: string, userId: string, p: Prospective): Prospective {
     return prospectiveOps.insertProspective(this.db, tenantId, userId, p);
   }

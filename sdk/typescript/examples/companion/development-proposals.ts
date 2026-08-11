@@ -2,7 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
-export type DevelopmentProposalState = "staging" | "pending" | "applied" | "rejected" | "conflicted" | "failed";
+export type DevelopmentProposalState =
+  | "staging"
+  | "pending"
+  | "applied"
+  | "rejected"
+  | "conflicted"
+  | "failed"
+  | "rolled_back";
 
 export interface DevelopmentProposalFile {
   path: string;
@@ -181,13 +188,88 @@ export class DevelopmentProposalStore {
       this.persist(proposal);
       return structuredClone(proposal);
     }
-    for (const file of proposal.files) {
-      const target = proposalTarget(proposal.workspacePath, file.path);
-      mkdirSync(dirname(target), { recursive: true });
-      writeAtomic(target, Buffer.from(file.proposedContentBase64, "base64"));
+    // 写入过程中任何一步出问题，都要把已经落下的文件还原回去——
+    // 半套修改留在项目里比完全没写更难收拾。
+    const written: Array<{ target: string; base?: Buffer }> = [];
+    try {
+      for (const file of proposal.files) {
+        const target = proposalTarget(proposal.workspacePath, file.path);
+        written.push({
+          target,
+          base: file.baseContentBase64 ? Buffer.from(file.baseContentBase64, "base64") : undefined,
+        });
+        mkdirSync(dirname(target), { recursive: true });
+        writeAtomic(target, Buffer.from(file.proposedContentBase64, "base64"));
+      }
+      // 写完再逐个核对落盘结果：写调用没报错不等于盘上内容就是提案内容。
+      const mismatched = proposal.files
+        .filter((file) => !fileHasHash(proposalTarget(proposal.workspacePath, file.path), file.proposedHash))
+        .map((file) => file.path);
+      if (mismatched.length) throw new Error(`写入结果与提案不一致：${mismatched.join("、")}`);
+    } catch (error) {
+      for (const entry of [...written].reverse()) restoreFile(entry.target, entry.base);
+      proposal.state = "failed";
+      proposal.error = error instanceof Error ? error.message : String(error);
+      proposal.updatedAt = new Date().toISOString();
+      this.persist(proposal);
+      // 已经还原干净，但调用方必须知道这次没写成，不能当作成功继续往下走。
+      throw new Error(`开发提案写入失败，项目已还原到写入前：${proposal.error}`);
     }
     proposal.state = "applied";
     delete proposal.conflicts;
+    delete proposal.error;
+    proposal.updatedAt = new Date().toISOString();
+    this.persist(proposal);
+    return structuredClone(proposal);
+  }
+
+  /**
+   * 把一个已写入的提案回滚到写入前。
+   *
+   * 只有当盘上内容仍然是我们写下的那份时才回滚；否则说明这之后有人改过，
+   * 直接回滚会把别人的修改一起抹掉，所以标成 conflicted 交回用户判断。
+   */
+  rollback(id: string): DevelopmentProposal {
+    const proposal = this.require(id);
+    if (proposal.state !== "applied") throw new Error("只有已写入项目的提案可以回滚。");
+    const drifted = proposal.files
+      .filter((file) => !fileHasHash(proposalTarget(proposal.workspacePath, file.path), file.proposedHash))
+      .map((file) => file.path);
+    if (drifted.length) {
+      proposal.state = "conflicted";
+      proposal.conflicts = drifted;
+      proposal.updatedAt = new Date().toISOString();
+      this.persist(proposal);
+      return structuredClone(proposal);
+    }
+    const restored: Array<{ target: string; proposed: Buffer }> = [];
+    try {
+      for (const file of proposal.files) {
+        const target = proposalTarget(proposal.workspacePath, file.path);
+        restored.push({ target, proposed: Buffer.from(file.proposedContentBase64, "base64") });
+        restoreFile(target, file.baseContentBase64 ? Buffer.from(file.baseContentBase64, "base64") : undefined);
+      }
+      const failed = proposal.files
+        .filter((file) => {
+          const target = proposalTarget(proposal.workspacePath, file.path);
+          // 新建的文件应当消失；被修改的文件应当回到 baseHash。
+          return file.operation === "create"
+            ? existsSync(target)
+            : !file.baseHash || !fileHasHash(target, file.baseHash);
+        })
+        .map((file) => file.path);
+      if (failed.length) throw new Error(`回滚结果与写入前不一致：${failed.join("、")}`);
+    } catch (error) {
+      // 回滚失败就把已还原的文件重新写回去，保持「要么全回滚，要么维持已写入」。
+      for (const entry of [...restored].reverse()) writeAtomic(entry.target, entry.proposed);
+      proposal.error = error instanceof Error ? error.message : String(error);
+      proposal.updatedAt = new Date().toISOString();
+      this.persist(proposal);
+      throw new Error(`开发提案回滚失败，项目维持在已写入状态：${proposal.error}`);
+    }
+    proposal.state = "rolled_back";
+    delete proposal.conflicts;
+    delete proposal.error;
     proposal.updatedAt = new Date().toISOString();
     this.persist(proposal);
     return structuredClone(proposal);
@@ -305,7 +387,7 @@ function digest(content: Buffer): string {
 
 export function renderDevelopmentProposalHtml(proposal: DevelopmentProposal): string {
   const stateLabels: Record<DevelopmentProposalState, string> = {
-    staging: "正在生成", pending: "等待确认", applied: "已写入项目", rejected: "已放弃", conflicted: "项目已变化", failed: "生成失败",
+    staging: "正在生成", pending: "等待确认", applied: "已写入项目", rejected: "已放弃", conflicted: "项目已变化", failed: "生成失败", rolled_back: "已回滚",
   };
   const sections = proposal.files.map((file) => {
     const before = file.baseContentBase64 ? Buffer.from(file.baseContentBase64, "base64").toString("utf8") : "（新文件）";

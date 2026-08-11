@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import type { ServerResponse } from "node:http";
 import type { AgentExtensionManifest } from "../../src/index.js";
-import type { CapabilityToolRegistry, CapabilityToolSummary } from "./capability-tools.js";
+import type { CapabilityToolRegistry, CapabilityToolSummary, PersonaToolBinding } from "./capability-tools.js";
 import { buildCapabilityRoadmap, type CapabilityRoadmap } from "./capability-roadmap.js";
 import { buildDemandIntakeReport, type DemandIntakeReport } from "./demand-intake.js";
 import { buildSourceConnectorGuide, listSourceConnectors, type SourceConnector } from "./source-connectors.js";
@@ -168,6 +168,8 @@ export interface CapabilityTask {
   execution?: CapabilityTaskExecution;
   origin?: CapabilityTaskOrigin;
   workspace?: CapabilityTaskWorkspace;
+  /** v0.8：这次交付面向的沟通对象；决定注入哪份关系档案。 */
+  counterpartId?: string;
   spaceId?: string;
   knowledgeIds?: string[];
   oneOff?: boolean;
@@ -236,11 +238,15 @@ export interface CapabilityDevelopmentReceipt {
   unverifiedRisks: string[];
   proposal?: {
     id: string;
-    state: "staging" | "pending" | "applied" | "rejected" | "conflicted" | "failed";
+    state: "staging" | "pending" | "applied" | "rejected" | "conflicted" | "failed" | "rolled_back";
     files: Array<{ path: string; operation: "create" | "update"; proposedHash: string; byteLength: number }>;
     conflicts?: string[];
   };
   toolCalls: number;
+  /** v0.8：本轮所用的开发会话；回传即可在下一条指令上接着做。 */
+  sessionId?: string;
+  sessionFile?: string;
+  sessionResumed?: boolean;
 }
 
 export interface CapabilityArtifactProof {
@@ -343,12 +349,18 @@ export interface CapabilityRuntimeOptions {
   personas: () => CapabilityPersona[];
   toolRegistry?: CapabilityToolRegistry;
   knowledgeContext?: (ids: string[]) => string;
+  /** v0.8：按沟通对象取关系档案提示块；没有档案时返回空串。 */
+  counterpartContext?: (counterpartId: string) => string;
+  /** v0.8：取某个角色的后台工具绑定；返回 undefined 表示不限制。 */
+  toolBinding?: (personaId: string) => PersonaToolBinding | undefined;
   runDeveloper?: (input: {
     workspacePath: string;
     instruction: string;
     accessMode: "inspect" | "develop";
     signal?: AbortSignal;
     onProgress?: (message: string, percent: number) => void;
+    sessionMode?: "continue" | "new" | "resume";
+    sessionFile?: string;
   }) => Promise<{ reply: string } & CapabilityDevelopmentReceipt>;
 }
 
@@ -895,6 +907,8 @@ export class CapabilityRuntime {
     enabled?: boolean;
     spaceId?: string;
     knowledgeIds?: string[];
+    workspace?: CapabilityTaskWorkspace;
+    counterpartId?: string;
   }): CapabilityTask {
     const ability = this.requireAbility(input.capabilityId);
     const now = new Date().toISOString();
@@ -909,6 +923,8 @@ export class CapabilityRuntime {
       enabled: input.enabled ?? true,
       spaceId: input.spaceId ? this.requireSpace(input.spaceId, true).id : undefined,
       knowledgeIds: normalizeKnowledgeIds(input.knowledgeIds),
+      workspace: input.workspace ? { ...input.workspace } : undefined,
+      counterpartId: input.counterpartId?.trim() || undefined,
       createdAt: now,
       updatedAt: now,
       storyline: createTaskStoryline(now),
@@ -916,6 +932,24 @@ export class CapabilityRuntime {
     this.tasks.push(task);
     this.saveTasks();
     return task;
+  }
+
+  /**
+   * 用户此前已经授权过的开发工作区。
+   *
+   * 角色自主发起开发时只能从这份清单里选——让模型自由填路径，等于把「读写哪个目录」
+   * 的决定权从用户手里交给模型。清单只由用户亲自发起过的开发任务与产物累积而成。
+   */
+  listDevelopmentWorkspaces(): CapabilityTaskWorkspace[] {
+    const seen = new Map<string, CapabilityTaskWorkspace>();
+    for (const task of this.tasks) {
+      if (task.workspace?.path) seen.set(task.workspace.path, { ...task.workspace });
+    }
+    for (const artifact of this.artifacts) {
+      const path = artifact.metadata?.development?.workspacePath;
+      if (path && !seen.has(path)) seen.set(path, { path, accessMode: "inspect" });
+    }
+    return [...seen.values()];
   }
 
   updateTask(input: {
@@ -930,8 +964,12 @@ export class CapabilityRuntime {
     promote?: boolean;
     spaceId?: string | null;
     knowledgeIds?: string[];
+    counterpartId?: string | null;
   }): CapabilityTask {
     const task = this.requireTask(input.id);
+    if (input.counterpartId !== undefined) {
+      task.counterpartId = input.counterpartId?.trim() || undefined;
+    }
     if (typeof input.title === "string") task.title = text(input.title, task.title, 60);
     if (typeof input.personaId === "string") task.personaId = input.personaId;
     if (typeof input.capabilityId === "string") task.capabilityId = this.requireAbility(input.capabilityId).id;
@@ -1399,7 +1437,13 @@ export class CapabilityRuntime {
   }
 
   private async runDevelopmentTask(
-    input: { workspacePath?: string; accessMode?: "inspect" | "develop"; onProgress?: (message: string, percent: number) => void },
+    input: {
+      workspacePath?: string;
+      accessMode?: "inspect" | "develop";
+      onProgress?: (message: string, percent: number) => void;
+      sessionMode?: "continue" | "new" | "resume";
+      sessionFile?: string;
+    },
     task: CapabilityTask,
     signal?: AbortSignal,
   ): Promise<({ reply: string; facts: string[] } & CapabilityDevelopmentReceipt)> {
@@ -1410,6 +1454,8 @@ export class CapabilityRuntime {
       accessMode: input.accessMode === "inspect" ? "inspect" : "develop",
       signal,
       onProgress: input.onProgress,
+      sessionMode: input.sessionMode,
+      sessionFile: input.sessionFile,
     });
     return { ...result, checks: result.checks.map((check) => ({ ...check, output: check.output.slice(0, 12_000) })), facts: [] };
   }
@@ -1805,13 +1851,22 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     const isImagePrompt = ability.id === IMAGE_PROMPT_CAPABILITY_ID;
     const nativeId = isNativeCapabilityId(ability.id) ? ability.id : null;
     const isVisualOnly = isOcr || isImagePrompt;
-    const backendTools = isImagePrompt ? "" : this.opts.toolRegistry?.buildPromptBlock(task.instruction) ?? buildSourceConnectorGuide(task.instruction);
+    // 工具清单按执行这次任务的角色收窄：角色各自持有工具集，不再共享一个全局池。
+    const toolBinding = this.opts.toolBinding?.(task.personaId);
+    const backendTools = isImagePrompt
+      ? ""
+      : this.opts.toolRegistry?.buildPromptBlock(task.instruction, toolBinding)
+        ?? buildSourceConnectorGuide(task.instruction);
     const demandIntake = isImagePrompt ? "" : this.intakeDemand({ request: task.instruction, targetFormat: task.format, persist: false }).promptBlock;
     const sourceVerification = isVisualOnly ? "" : sourceVerificationPromptBlock(buildSourceVerificationReport(task.instruction));
     const privateSources = isVisualOnly ? "" : await buildPrivateSourcePromptBlock(this.opts.dataDir, task.instruction);
     const retrievalBlock = isVisualOnly ? "" : this.localRetrievalPromptBlock(task.instruction);
     const skillBlock = this.skillPromptBlock(ability);
     const knowledgeBlock = this.opts.knowledgeContext?.(task.knowledgeIds || []) || "";
+    // 关系档案放在能力规则之后、正文之前：它约束怎么说，不改变要做什么。
+    const counterpartBlock = task.counterpartId
+      ? this.opts.counterpartContext?.(task.counterpartId) || ""
+      : "";
     const executionRequirements = nativeId
       ? [
         "Execution requirements:",
@@ -1865,6 +1920,7 @@ ${ability.prompt}`,
       privateSources,
       retrievalBlock,
       knowledgeBlock,
+      counterpartBlock,
       `Current local time: ${currentTimeBlock()}`,
       `Date rule: never invent weekdays, dates, deadlines, booking times, or recurrence limits. If the user did not specify the date/time, mark it as missing or ask for it.`,
       `Task title: ${task.title}`,

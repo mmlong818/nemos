@@ -20,7 +20,7 @@ import {
 import { createRouter } from "./router.js";
 import { reinforceStability } from "./decay.js";
 import type { ReflectResult } from "./reflect.js";
-import type { Storage } from "./storage.js";
+import type { Storage, StorylineQuery } from "./storage.js";
 import type { NemosWorker } from "./queue.js";
 import type { LifecycleOrchestrator } from "./lifecycle.js";
 import {
@@ -51,6 +51,8 @@ import {
   type RecallTrace,
   type RouteResult,
   type SearchOptions,
+  type Storyline,
+  type StorylinePatch,
   type WriteMemoryInput,
 } from "./types.js";
 import {
@@ -64,7 +66,8 @@ import {
   estimateArousal,
   estimateSurprise,
 } from "./utils/arousal.js";
-import { newId, nowIso } from "./utils/id.js";
+import { newId, newPrefixedId, nowIso } from "./utils/id.js";
+import { normalizeScopeRef } from "./visibility.js";
 
 export class UserMemory {
   constructor(
@@ -315,6 +318,7 @@ export class UserMemory {
       layer: input.layer,
       type: input.type ?? "user",
       scope,
+      visibility: input.visibility,
       content,
       source,
       arousal,
@@ -364,6 +368,91 @@ export class UserMemory {
    * 语义搜索。若配了 embedding → 向量检索；否则降级为 FTS5 / LIKE 关键词。
    */
   /** Run the v0.7.2 multi-channel recall pipeline and retain an explainable trace. */
+  // ===========================================================================
+  // 故事线（v0.8）
+  // ===========================================================================
+
+  /** 起一条新线。scope 不传时沿用默认主题域。 */
+  async startStoryline(input: {
+    title: string;
+    scope?: string;
+    participants?: string[];
+    digest?: string;
+    openThreads?: string[];
+  }): Promise<Storyline> {
+    const title = input.title.trim();
+    if (!title) throw new Error("[nemos] storyline title is empty");
+    const now = nowIso();
+    const storyline: Storyline = {
+      id: newPrefixedId("story"),
+      tenant_id: this.tenantId,
+      user_id: this.userId,
+      title,
+      status: "open",
+      participant_ids: [...new Set(input.participants ?? [])].filter(Boolean),
+      scope: input.scope || this.config.defaultScope,
+      open_threads: input.openThreads ?? [],
+      created_at: now,
+      updated_at: now,
+      last_event_at: now,
+    };
+    if (input.digest) storyline.digest = input.digest;
+    return this.storage.upsertStoryline(this.tenantId, this.userId, storyline);
+  }
+
+  async getStoryline(id: string): Promise<Storyline | null> {
+    return this.storage.getStoryline(this.tenantId, this.userId, id);
+  }
+
+  async listStorylines(query: StorylineQuery = {}): Promise<Storyline[]> {
+    return this.storage.listStorylines(this.tenantId, this.userId, query);
+  }
+
+  /** 续期一条线的状态、摘要或悬空项；patch.touch=true 才刷新活跃时间。 */
+  async updateStoryline(id: string, patch: StorylinePatch): Promise<Storyline | null> {
+    return this.storage.patchStoryline(this.tenantId, this.userId, id, patch, nowIso());
+  }
+
+  /**
+   * 把一条记忆写进指定故事线：归属层设为该线，默认只对这条线可见。
+   * 写入同时把线标记为有进展，这样 listStorylines 的排序才反映真实活跃度。
+   */
+  async writeToStoryline(storylineId: string, input: WriteMemoryInput): Promise<Memory> {
+    const storyline = await this.getStoryline(storylineId);
+    if (!storyline) throw new Error(`[nemos] 故事线不存在：${storylineId}`);
+    const memory = await this.write({
+      ...input,
+      scope: input.scope ?? storyline.scope,
+      visibility: input.visibility ?? { owner: normalizeScopeRef("storyline", storylineId) },
+    });
+    await this.updateStoryline(storylineId, { touch: true });
+    return memory;
+  }
+
+  /**
+   * 接手一条线：先给 digest 和悬空项，再按需给最近的线内记忆。
+   * 「上次做到哪」应当先读摘要——把整条线的记忆全铺开既慢又淹没重点。
+   */
+  async resumeStoryline(
+    id: string,
+    options: { recentLimit?: number; agentId?: string } = {},
+  ): Promise<{ storyline: Storyline; recent: Memory[] } | null> {
+    const storyline = await this.getStoryline(id);
+    if (!storyline) return null;
+    const recent = this.storage.searchByTime(
+      this.tenantId,
+      this.userId,
+      {},
+      ["episodic", "semantic", "personal_semantic", "procedural"],
+      undefined,
+      options.recentLimit ?? 20,
+      { viewer: { userId: this.userId, storylineId: id, agentId: options.agentId } },
+    );
+    // 只保留归属于这条线的；viewer 同时持有 user 身份，否则会把用户私有记忆混进来。
+    const own = recent.filter((memory) => memory.visibility?.owner.id === id);
+    return { storyline, recent: own };
+  }
+
   async recall(query: string, options: RecallOptions = {}): Promise<MemoryPacket> {
     const service = new RecallService({
       storage: this.storage,
