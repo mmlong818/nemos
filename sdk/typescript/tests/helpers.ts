@@ -1,6 +1,6 @@
 // helpers.ts — 测试用 mock LLM provider，避免烧真 token
 
-import type { LLMConfig } from "../src/types.js";
+import type { LLMConfig } from "@nemos/sdk";
 
 interface MockResponse {
   archival: { arousal: { value: number; signal_sources: string[] }; surprise: { value: number; basis: string } };
