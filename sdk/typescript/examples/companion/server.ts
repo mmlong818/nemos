@@ -101,6 +101,7 @@ import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
+import { buildReviewQueue, developmentEnvironment, DOMAIN_CAPABILITY_PACKS, platformConnectorStatuses } from "./product-platform.js";
 import { routeCapability } from "./capability-router.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
 import {
@@ -3833,6 +3834,27 @@ const server = createServer(async (req, res) => {
           sandboxPythonVersion,
           unapprovedExecutables: "blocked",
         },
+      });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/platform/readiness") {
+      const extensions = agentExtensions.list();
+      send(res, 200, {
+        ok: true,
+        development: developmentEnvironment(),
+        connectors: platformConnectorStatuses(extensions),
+        capabilityPacks: DOMAIN_CAPABILITY_PACKS,
+      });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/review-queue") {
+      send(res, 200, {
+        ok: true,
+        items: buildReviewQueue({
+          approvals: agentApprovalStore.list({ status: "pending", limit: 200 }),
+          jobs: agentJobQueue.list({ limit: 200 }),
+          proposals: developmentProposals.list(),
+        }),
       });
       return;
     }
