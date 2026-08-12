@@ -95,6 +95,11 @@ export interface SendOptions {
   toolMode?: "auto" | "read-only" | "off";
   /** 单次任务可关闭用户习惯与事实的召回；角色自身状态仍保留。 */
   memoryMode?: "default" | "preferences" | "off";
+  /**
+   * 控制本轮用户原文如何进入记忆。
+   * archive-only 只保留可恢复的对话原文，不把测试、附件或虚构材料抽取成长期用户事实。
+   */
+  memoryWriteMode?: "default" | "archive-only" | "off";
 }
 
 export interface CompanionEngineOptions {
@@ -566,6 +571,8 @@ export class CompanionEngine {
     const legacyNames = [persona.id, persona.name, ...(persona.id === "feifei" ? ["飞飞"] : [])];
     const contents = packet.items
       .filter(({ memory }) => {
+        // 原始归档用于恢复对话，不等于已经确认的长期事实；这里只向角色提供分类后的记忆。
+        if (memory.layer === "archival") return false;
         const origin = memory.source.origin_agent;
         if (!origin || !personaIdentityAliases(personaId).includes(origin)) return true;
         return !legacyNames.some((name) => memory.content.toLocaleLowerCase().includes(name.toLocaleLowerCase()));
@@ -650,6 +657,7 @@ export class CompanionEngine {
     text: string,
     opts: SendOptions,
   ): Promise<void> {
+    if (opts.memoryWriteMode === "off") return;
     await this.nemos.forUser(userId).ingest(text, {
       scope,
       identity: {
@@ -660,6 +668,7 @@ export class CompanionEngine {
       },
       // 语音条走 SDK voice-transcript profile（异步语音的文本侧）；该 profile 不标 sensitive。
       ...(opts.voice ? { scenario: "voice-transcript" } : {}),
+      ...(opts.memoryWriteMode === "archive-only" ? { skipAnalysis: true } : {}),
       // 在线服务：抽取移后台，回复不等它（记忆下一轮可用）。
       ...(this.opts.asyncIngest ? { background: true } : {}),
     });

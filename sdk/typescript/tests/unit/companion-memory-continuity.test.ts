@@ -60,6 +60,29 @@ test("one-on-one user messages stay in the user namespace without persona attrib
   }
 });
 
+test("测试、附件和虚构材料可以保留对话原文，但不会抽取成长期用户事实", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-memory-archive-only-"));
+  const memory = makeMemory(dir);
+  const engine = new CompanionEngine(memory, [persona], async () => "已按测试材料回答。", { asyncIngest: false });
+
+  try {
+    await engine.send("me", "feifei", "这是测试故事：菲菲喜欢芒果，不代表用户本人。", {
+      memoryWriteMode: "archive-only",
+    });
+    const scope = convScope("me", "feifei");
+    const archives = await memory.forUser("me").listByLayer("archival", { scope, limit: 10 });
+    assert.ok(archives.some((item) => item.content.includes("菲菲喜欢芒果")));
+    for (const layer of ["personal_semantic", "semantic", "episodic", "procedural"] as const) {
+      assert.equal((await memory.forUser("me").listByLayer(layer, { scope, limit: 10 })).length, 0);
+    }
+    const recalled = await engine.recall("me", "feifei", "菲菲喜欢什么");
+    assert.doesNotMatch(recalled.userFacts, /菲菲喜欢芒果/);
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
 test("memory off isolates expert tasks from user facts and previous persona statements", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-memory-isolation-"));
   const memory = makeMemory(dir);
