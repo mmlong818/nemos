@@ -47,6 +47,42 @@ export const OFFICE_CAPABILITY_LABELS: Record<FileCapability, string> = {
   unsupported: "不支持",
 };
 
+function convertedCapability(
+  format: OfficeFileKind,
+  formatLabel: string,
+  summary: string,
+  limitations: string[],
+): OfficeFormatCapability {
+  return {
+    format,
+    formatLabel,
+    capability: "convert",
+    capabilityLabel: OFFICE_CAPABILITY_LABELS.convert,
+    summary: `${summary}转成 Markdown 处理；原文件保留、可下载，不会被改写。`,
+    textView: "extract",
+    textViewLabel: "原文预览",
+    savesTo: "copy",
+    sourceWritable: false,
+    copyOnly: false,
+    canSaveCopy: false,
+    convertsToMarkdown: true,
+    limitations: [...limitations, "每次转换都会列出这一份具体发生变化的内容。"],
+  };
+}
+
+const TEXT_DOCUMENT_LIMITATIONS = [
+  "标题、段落、列表和表格会尽量转成 Markdown。",
+  "复杂排版、字体、分页、宏、批注和嵌入对象可能无法保留。",
+];
+const PRESENTATION_LIMITATIONS = [
+  "页面文字、列表和表格会尽量转成 Markdown。",
+  "版式、母版、主题、动画、宏和媒体对象可能无法保留。",
+];
+const SPREADSHEET_LIMITATIONS = [
+  "单元格内容会尽量转成 Markdown 表格。",
+  "公式、样式、图表、宏和数据验证可能降级或无法保留。",
+];
+
 const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
   txt: {
     format: "txt",
@@ -78,6 +114,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     convertsToMarkdown: false,
     limitations: ["图片按相对路径引用，移动文件后需要自己核对路径。"],
   },
+  doc: convertedCapability("doc", "旧版 Word 文档", "打开后读取正文并", TEXT_DOCUMENT_LIMITATIONS),
   docx: {
     format: "docx",
     formatLabel: "Word 文档",
@@ -98,6 +135,13 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
       "每次转换都会列出这一份具体丢了什么。",
     ],
   },
+  docm: convertedCapability("docm", "启用宏的 Word 文档", "打开后读取正文并", TEXT_DOCUMENT_LIMITATIONS),
+  odt: convertedCapability("odt", "OpenDocument 文档", "打开后读取正文并", TEXT_DOCUMENT_LIMITATIONS),
+  rtf: convertedCapability("rtf", "RTF 文档", "打开后读取正文并", TEXT_DOCUMENT_LIMITATIONS),
+  epub: convertedCapability("epub", "EPUB 电子书", "打开后读取章节并", TEXT_DOCUMENT_LIMITATIONS),
+  ppt: convertedCapability("ppt", "旧版 PowerPoint", "打开后读取页面内容并", PRESENTATION_LIMITATIONS),
+  pps: convertedCapability("pps", "PowerPoint 放映", "打开后读取页面内容并", PRESENTATION_LIMITATIONS),
+  pot: convertedCapability("pot", "PowerPoint 模板", "打开后读取页面内容并", PRESENTATION_LIMITATIONS),
   pptx: {
     format: "pptx",
     formatLabel: "PowerPoint 演示",
@@ -118,6 +162,11 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
       "每次转换都会列出这一份具体丢了什么。",
     ],
   },
+  pptm: convertedCapability("pptm", "启用宏的 PowerPoint", "打开后读取页面内容并", PRESENTATION_LIMITATIONS),
+  ppsx: convertedCapability("ppsx", "PowerPoint 放映", "打开后读取页面内容并", PRESENTATION_LIMITATIONS),
+  ppsm: convertedCapability("ppsm", "启用宏的 PowerPoint 放映", "打开后读取页面内容并", PRESENTATION_LIMITATIONS),
+  odp: convertedCapability("odp", "OpenDocument 演示", "打开后读取页面内容并", PRESENTATION_LIMITATIONS),
+  xls: convertedCapability("xls", "旧版 Excel 表格", "打开后读取单元格并", SPREADSHEET_LIMITATIONS),
   xlsx: {
     format: "xlsx",
     formatLabel: "Excel 表格",
@@ -137,6 +186,10 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
       "每次转换都会列出这一份具体丢了什么。",
     ],
   },
+  xlsm: convertedCapability("xlsm", "启用宏的 Excel 表格", "打开后读取单元格并", SPREADSHEET_LIMITATIONS),
+  xlsb: convertedCapability("xlsb", "Excel 二进制表格", "打开后读取单元格并", SPREADSHEET_LIMITATIONS),
+  ods: convertedCapability("ods", "OpenDocument 表格", "打开后读取单元格并", SPREADSHEET_LIMITATIONS),
+  csv: convertedCapability("csv", "CSV 表格", "打开后读取表格并", SPREADSHEET_LIMITATIONS),
   pdf: {
     format: "pdf",
     formatLabel: "PDF",

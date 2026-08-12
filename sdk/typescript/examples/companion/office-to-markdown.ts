@@ -1,9 +1,11 @@
-import { extractOfficeFile, type OfficeFileKind } from "./office-file-parser.js";
+import { readDocumentAsMarkdown } from "./document-markdown-reader.js";
+import { extractOfficeFile, officeFileKindOf, type OfficeFileKind } from "./office-file-parser.js";
 import { UserFacingError } from "./office-errors.js";
 import { parseDocx, type Block, type TableModel } from "./vendor/docx-engine/dist/index.js";
 import { getSlideNotes, openPptx, type Slide, type SlideElement, type TableElement as PptxTableElement, type TextElement } from "./vendor/pptx-engine/dist/index.js";
 import { isNativeCapabilityId, parseNativeCapabilityPayload } from "./native-capability-contracts.js";
 import { renderNativeCapabilityMarkdown } from "./native-capability-renderer.js";
+import { markdownToStructuredDocument, type StructuredDocument } from "./structured-document.js";
 
 /**
  * 把上传的文档统一转成 Markdown 之后再处理。
@@ -20,6 +22,8 @@ export interface MarkdownConversion {
   /** 这次转换丢掉或降级了什么。必须展示给用户，不能只写在文档里。 */
   notes: string[];
   truncated: boolean;
+  /** 转换后的可编辑副本。Markdown 仍作为兼容交换格式。 */
+  document: StructuredDocument;
 }
 
 const MAX_MARKDOWN_CHARACTERS = 200_000;
@@ -31,14 +35,37 @@ export async function convertOfficeToMarkdown(fileName: string, data: Uint8Array
   if (kind === "docx") return finish(kind, ...(await docxToMarkdown(data)));
   if (kind === "pptx") return finish(kind, ...(await pptxToMarkdown(data)));
   if (kind === "xlsx") return finish(kind, ...(await xlsxToMarkdown(fileName, data)));
-  return finish(kind, ...(await pdfToMarkdown(fileName, data)));
+  if (kind === "pdf") return finish(kind, ...(await pdfToMarkdown(fileName, data)));
+  return finish(kind, await readDocumentAsMarkdown(fileName, data), conversionNotes(kind));
 }
 
 function formatOf(fileName: string): OfficeFileKind {
-  const extension = fileName.trim().toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
-  if (extension === "markdown") return "md";
-  if (extension === "docx" || extension === "pptx" || extension === "xlsx" || extension === "pdf" || extension === "txt" || extension === "md") return extension;
-  throw new UserFacingError("仅支持 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown 文件");
+  const kind = officeFileKindOf(fileName);
+  if (kind) return kind;
+  throw new UserFacingError("仅支持常见文档、演示文稿、表格、PDF、EPUB、TXT 和 Markdown 文件");
+}
+
+function conversionNotes(kind: OfficeFileKind): string[] {
+  const common = ["每次转换都会列出这一份具体发生变化的内容；原文件仍完整保留。"];
+  if (["doc", "docm", "odt", "rtf", "epub"].includes(kind)) {
+    return [
+      "正文、标题、列表和表格会尽量转成 Markdown；复杂排版、宏、批注与嵌入对象可能无法保留。",
+      "字体、字号、分页、页眉页脚等视觉呈现不在 Markdown 的表达范围内。",
+      ...common,
+    ];
+  }
+  if (["ppt", "pps", "pot", "pptm", "ppsx", "ppsm", "odp"].includes(kind)) {
+    return [
+      "页面文字、列表和表格会转成 Markdown；版式、母版、动画、宏与媒体对象不保证保留。",
+      "工作副本用于处理内容，不等同于原演示文稿的逐页视觉还原。",
+      ...common,
+    ];
+  }
+  return [
+    "单元格内容会转成 Markdown 表格；公式、样式、图表、宏和数据验证可能降级或不保留。",
+    "工作副本用于处理数据内容，不等同于原表格的完整计算与排版环境。",
+    ...common,
+  ];
 }
 
 function finish(sourceFormat: OfficeFileKind, markdown: string, notes: string[]): MarkdownConversion {
@@ -46,13 +73,15 @@ function finish(sourceFormat: OfficeFileKind, markdown: string, notes: string[])
   const normalized = repaired.markdown.replace(/\r/g, "").replace(/\n{4,}/g, "\n\n\n").trim();
   const completeNotes = repaired.repaired ? [...notes, "检测到旧版结构化结果，已转换成可读正文；内部数据不会作为正文显示。"] : notes;
   const truncated = normalized.length > MAX_MARKDOWN_CHARACTERS;
+  const renderedMarkdown = truncated
+    ? `${normalized.slice(0, MAX_MARKDOWN_CHARACTERS)}\n\n> 内容较长，已保留前 ${MAX_MARKDOWN_CHARACTERS.toLocaleString("zh-CN")} 个字符。原文件完整保留，可以下载。`
+    : normalized;
   return {
     sourceFormat,
-    markdown: truncated
-      ? `${normalized.slice(0, MAX_MARKDOWN_CHARACTERS)}\n\n> 内容较长，已保留前 ${MAX_MARKDOWN_CHARACTERS.toLocaleString("zh-CN")} 个字符。原文件完整保留，可以下载。`
-      : normalized,
+    markdown: renderedMarkdown,
     notes: truncated ? [...completeNotes, "内容超出单文档上限，Markdown 只保留了前半部分。"] : completeNotes,
     truncated,
+    document: markdownToStructuredDocument(sourceFormat, renderedMarkdown),
   };
 }
 

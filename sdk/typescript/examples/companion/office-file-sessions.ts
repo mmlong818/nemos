@@ -2,13 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
+import { OFFICE_FILE_KINDS, type OfficeFileKind } from "./office-file-parser.js";
 import { UserFacingError } from "./office-errors.js";
 
 export interface OfficeFileSession {
   id: string;
   name: string;
   file: string;
-  extension: "docx" | "pptx" | "xlsx" | "pdf" | "txt" | "md";
+  extension: OfficeFileKind;
   byteLength: number;
   contentHash: string;
   createdAt: string;
@@ -35,7 +36,7 @@ export interface OfficeFileEvent {
   contentHash?: string;
 }
 
-const EXTENSIONS = new Set(["docx", "pptx", "xlsx", "pdf", "txt", "md"]);
+const EXTENSIONS = new Set<string>(OFFICE_FILE_KINDS);
 
 export class OfficeFileSessionStore {
   private readonly sessions = new Map<string, OfficeFileSession>();

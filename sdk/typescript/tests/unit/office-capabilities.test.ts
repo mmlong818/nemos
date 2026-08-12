@@ -9,6 +9,7 @@ import {
   officeCapabilityBrowserScript,
   officeCapabilityOf,
 } from "../../examples/companion/office-capabilities.js";
+import { OFFICE_FILE_KINDS } from "../../examples/companion/office-file-parser.js";
 
 const webRoot = join(__dirname, "..", "..", "examples", "companion", "web");
 const officeHtml = readFileSync(join(webRoot, "office.html"), "utf8");
@@ -17,7 +18,7 @@ const server = readFileSync(join(__dirname, "..", "..", "examples", "companion",
 
 test("每种可打开的格式都声明了真实能力", () => {
   const formats = OFFICE_FORMAT_CAPABILITIES.map((entry) => entry.format).sort();
-  assert.deepEqual(formats, ["docx", "md", "pdf", "pptx", "txt", "xlsx"]);
+  assert.deepEqual(formats, [...OFFICE_FILE_KINDS].sort());
   for (const entry of OFFICE_FORMAT_CAPABILITIES) {
     assert.equal(entry.capabilityLabel, OFFICE_CAPABILITY_LABELS[entry.capability]);
     assert.ok(entry.summary.length > 0);
@@ -59,7 +60,7 @@ test("只有 TXT 与 Markdown 直接编辑并写回原文件", () => {
     assert.equal(entry?.savesTo, "original");
     assert.equal(entry?.convertsToMarkdown, false);
   }
-  for (const format of ["docx", "pptx", "xlsx", "pdf"]) {
+  for (const format of OFFICE_FILE_KINDS.filter((kind) => kind !== "txt" && kind !== "md")) {
     assert.equal(officeCapabilityOf(format)?.capability, "convert", `${format} 应标为需转换`);
   }
   assert.equal(officeCapabilityOf("markdown")?.format, "md");

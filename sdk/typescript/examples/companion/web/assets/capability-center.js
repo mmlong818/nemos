@@ -366,9 +366,9 @@ function renderMaterials() {
 
 async function addMaterial(file) {
   if (!file) return;
-  const isText = /\.(txt|md|markdown|csv|json|html?|htm)$/i.test(file.name);
-  const isOffice = /\.(docx|pptx|xlsx|pdf)$/i.test(file.name);
-  if (!isText && !isOffice) return showToast("支持文字、Word、PowerPoint、Excel 和 PDF 材料", true);
+  const isText = /\.(txt|md|markdown|json|html?|htm)$/i.test(file.name);
+  const isOffice = /\.(doc|docx|docm|odt|rtf|epub|ppt|pps|pot|pptx|pptm|ppsx|ppsm|odp|xls|xlsx|xlsm|xlsb|ods|csv|pdf)$/i.test(file.name);
+  if (!isText && !isOffice) return showToast("支持文字、常见文档、演示文稿、表格、PDF 和 EPUB 材料", true);
   if (isText && file.size > 1024 * 1024) return showToast("文字材料不能超过 1 MB", true);
   if (isOffice && file.size > 8 * 1024 * 1024) return showToast("办公文件不能超过 8 MB", true);
   try {

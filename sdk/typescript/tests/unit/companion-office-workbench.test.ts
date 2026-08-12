@@ -35,10 +35,11 @@ test("带结果参数的办公文件地址可以打开，并通过浏览器下�
   assert.doesNotMatch(officeJs, /URL\.createObjectURL\(blob\)/);
 });
 
-test("工作台真实读取六类文件并默认保护原文件", () => {
-  assert.match(officeHtml, /\.docx,\.pptx,\.xlsx,\.pdf,\.txt,\.md,\.markdown/);
+test("工作台真实读取常见文档格式并默认保护原文件", () => {
+  assert.match(officeHtml, /\.doc,\.docx,\.docm,\.odt,\.rtf,\.epub/);
+  assert.match(officeHtml, /\.xls,\.xlsx,\.xlsm,\.xlsb,\.ods,\.csv,\.pdf,\.txt,\.md,\.markdown/);
   assert.match(officeJs, /\/api\/files\/extract/);
-  assert.match(officeJs, /docx\|pptx\|xlsx\|pdf\|txt\|md\|markdown/);
+  assert.match(officeJs, /SUPPORTED_FILE_PATTERN/);
   assert.match(officeJs, /文件不能超过 8 MB/);
   assert.match(officeHtml, /不会静默覆盖原文件/);
   assert.match(officeJs, /原文件未改动/);
@@ -72,7 +73,7 @@ test("Office 文件可以交给桌面原生编辑器，并把修改重新载入�
   assert.match(officeJs, /document\.querySelector\("#editViewTab"\)\.hidden = current\.kind === "pdf"/);
   assert.match(officeJs, /function renderPresentationWorkspace/);
   assert.match(officeJs, /function renderSpreadsheetWorkspace/);
-  assert.match(officeJs, /用 Word 编辑/);
+  assert.match(officeJs, /用文字应用打开/);
   // 原格式编辑已退出产品：桌面应用仍可打开原文件，但页内不再提供原格式写入。
   assert.doesNotMatch(officeJs, /\/api\/files\/session\/structured-copy/);
   assert.doesNotMatch(officeJs, /\/api\/files\/session\/docx-copy/);
@@ -253,5 +254,5 @@ test("移动端文件列表支持遮罩和键盘关闭", () => {
 test("工作台只呈现小丑鱼自己的产品语言", () => {
   const combined = [officeHtml, officeJs, officeCss].join("\n");
   assert.match(combined, /小丑鱼/);
-  assert.doesNotMatch(combined, /参考项目|外部仓库|第三方产品/);
+  assert.doesNotMatch(combined, /参考项目|外部仓库|第三方产品|anydoc|firecrawl/i);
 });

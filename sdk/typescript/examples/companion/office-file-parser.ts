@@ -1,12 +1,22 @@
 import { posix } from "node:path";
 import JSZip from "jszip";
 
+import { readDocumentAsMarkdown } from "./document-markdown-reader.js";
 import { UserFacingError } from "./office-errors.js";
 
 export const MAX_OFFICE_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_EXTRACTED_CHARACTERS = 120_000;
 
-export type OfficeFileKind = "docx" | "pptx" | "xlsx" | "pdf" | "txt" | "md";
+export const OFFICE_FILE_KINDS = [
+  "doc", "docx", "docm", "odt", "rtf", "epub",
+  "ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "odp",
+  "xls", "xlsx", "xlsm", "xlsb", "ods", "csv",
+  "pdf", "txt", "md",
+] as const;
+
+export type OfficeFileKind = typeof OFFICE_FILE_KINDS[number];
+
+const OFFICE_FILE_KIND_SET = new Set<string>(OFFICE_FILE_KINDS);
 
 export interface OfficeFileExtraction {
   kind: OfficeFileKind;
@@ -16,11 +26,10 @@ export interface OfficeFileExtraction {
   truncated: boolean;
 }
 
-function extensionOf(fileName: string): OfficeFileKind | null {
+export function officeFileKindOf(fileName: string): OfficeFileKind | null {
   const extension = fileName.trim().toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
-  return extension === "docx" || extension === "pptx" || extension === "xlsx" || extension === "pdf" || extension === "txt" || extension === "md" || extension === "markdown"
-    ? extension === "markdown" ? "md" : extension
-    : null;
+  const normalized = extension === "markdown" ? "md" : extension;
+  return normalized && OFFICE_FILE_KIND_SET.has(normalized) ? normalized as OfficeFileKind : null;
 }
 
 function decodePlainText(data: Uint8Array): string {
@@ -205,8 +214,8 @@ async function extractPdf(data: Uint8Array): Promise<{ text: string; sections: n
 }
 
 export async function extractOfficeFile(fileName: string, data: Uint8Array): Promise<OfficeFileExtraction> {
-  const kind = extensionOf(fileName);
-  if (!kind) throw new UserFacingError("仅支持 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown 文件");
+  const kind = officeFileKindOf(fileName);
+  if (!kind) throw new UserFacingError("仅支持常见文档、演示文稿、表格、PDF、EPUB、TXT 和 Markdown 文件");
   if (!data.byteLength) throw new UserFacingError("文件内容为空");
   if (data.byteLength > MAX_OFFICE_FILE_BYTES) throw new UserFacingError("单个文件不能超过 8 MB");
 
@@ -216,17 +225,36 @@ export async function extractOfficeFile(fileName: string, data: Uint8Array): Pro
     else if (kind === "docx") extracted = await extractDocx(data);
     else if (kind === "pptx") extracted = await extractPptx(data);
     else if (kind === "xlsx") extracted = await extractXlsx(data);
-    else extracted = await extractPdf(data);
+    else if (kind === "pdf") extracted = await extractPdf(data);
+    else {
+      const text = await readDocumentAsMarkdown(fileName, data);
+      extracted = { text, sections: markdownSectionCount(text) };
+    }
   } catch (error) {
     if (error instanceof UserFacingError) throw error;
     throw new UserFacingError(`无法读取这个 ${kind.toUpperCase()} 文件，请确认文件没有损坏或加密`);
   }
 
-  const normalized = normalizeText(extracted.text);
+  return officeExtractionFromMarkdown(kind, extracted.text, false, extracted.sections);
+}
+
+export function officeExtractionFromMarkdown(
+  kind: OfficeFileKind,
+  markdown: string,
+  conversionTruncated = false,
+  sections = markdownSectionCount(markdown),
+): OfficeFileExtraction {
+  const normalized = normalizeText(markdown);
   if (!normalized) throw new UserFacingError("文件中没有可提取的文字内容");
   const truncated = normalized.length > MAX_EXTRACTED_CHARACTERS;
   const text = truncated
     ? `${normalized.slice(0, MAX_EXTRACTED_CHARACTERS)}\n\n[内容较长，已保留前 ${MAX_EXTRACTED_CHARACTERS.toLocaleString("zh-CN")} 个字符]`
     : normalized;
-  return { kind, text, characters: text.length, sections: extracted.sections, truncated };
+  return { kind, text, characters: text.length, sections: Math.max(1, sections), truncated: truncated || conversionTruncated };
+}
+
+function markdownSectionCount(markdown: string): number {
+  const headings = String(markdown || "").match(/^#{1,6}\s+\S.*$/gm)?.length || 0;
+  if (headings) return headings;
+  return Math.max(1, String(markdown || "").split(/\n\s*\n+/).filter((section) => section.trim()).length);
 }

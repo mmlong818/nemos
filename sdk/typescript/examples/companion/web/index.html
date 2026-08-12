@@ -3644,7 +3644,7 @@
             <button id="imgbtn" title="发图片（识图）" data-icon="image"></button>
             <input type="file" id="imgfile" accept="image/*" style="display:none" />
             <button id="filebtn" type="button" title="上传文件" aria-label="上传文件" data-icon="file"></button>
-            <input type="file" id="chatfile" accept=".docx,.pptx,.xlsx,.pdf,.txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" style="display:none" />
+            <input type="file" id="chatfile" accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown,.json" style="display:none" />
             <button id="composerTool" type="button" title="翻译、语音转写和文字润色" aria-label="打开小工具"><span data-icon="wrench" aria-hidden="true"></span><span>小工具</span></button>
             <button id="composerCapability" type="button" title="把当前目标交给能力" aria-label="把当前目标交给能力"><span data-icon="boxes" aria-hidden="true"></span><span>交给能力</span></button>
           </div>
@@ -4579,9 +4579,9 @@ async function chatFileToBase64(file) {
 }
 async function prepareChatFile(file) {
   const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || "";
-  const office = ["docx", "pptx", "xlsx", "pdf"].includes(extension);
-  const textFile = ["txt", "md", "csv", "json"].includes(extension);
-  if (!office && !textFile) throw new Error("支持 Word、PowerPoint、Excel、PDF、TXT、Markdown、CSV 和 JSON 文件");
+  const office = ["doc", "docx", "docm", "odt", "rtf", "epub", "ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "odp", "xls", "xlsx", "xlsm", "xlsb", "ods", "csv", "pdf"].includes(extension);
+  const textFile = ["txt", "md", "markdown", "json"].includes(extension);
+  if (!office && !textFile) throw new Error("支持常见文档、演示文稿、表格、PDF、EPUB、TXT、Markdown 和 JSON 文件");
   const limit = office ? 8 * 1024 * 1024 : 2 * 1024 * 1024;
   if (!file.size || file.size > limit) throw new Error(office ? "办公文件不能超过 8 MB" : "文本文件不能超过 2 MB");
   if (office) {
@@ -4591,7 +4591,7 @@ async function prepareChatFile(file) {
   const raw = (await file.text()).replace(/\0/g, "").trim();
   if (!raw) throw new Error("文件中没有可读取的文字内容");
   const truncated = raw.length > 120000;
-  return { name: file.name, kind: extension, text: raw.slice(0, 120000), truncated, size: file.size, fileRecordId: "file-" + crypto.randomUUID() };
+  return { name: file.name, kind: extension === "markdown" ? "md" : extension, text: raw.slice(0, 120000), truncated, size: file.size, fileRecordId: "file-" + crypto.randomUUID() };
 }
 function requestNativeScreenshot() {
   const btn = $("#shotbtn");

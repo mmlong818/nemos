@@ -6,6 +6,13 @@ const MAX_VERSIONS = 8;
 const MAX_TRASH_DOCUMENTS = 30;
 const JOB_POLL_INTERVAL = 1400;
 const AUTO_CHECKPOINT_INTERVAL = 5 * 60 * 1000;
+const CONVERTED_FILE_KINDS = [
+  "doc", "docx", "docm", "odt", "rtf", "epub",
+  "ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "odp",
+  "xls", "xlsx", "xlsm", "xlsb", "ods", "csv", "pdf",
+];
+const CONVERTED_FILE_KIND_SET = new Set(CONVERTED_FILE_KINDS);
+const SUPPORTED_FILE_PATTERN = /\.(doc|docx|docm|odt|rtf|epub|ppt|pps|pot|pptx|pptm|ppsx|ppsm|odp|xls|xlsx|xlsm|xlsb|ods|csv|pdf|txt|md|markdown)$/i;
 
 const ICON_PATHS = {
   ...window.ClownfishIcons.paths,
@@ -51,7 +58,25 @@ function displayFileSize(bytes) {
 }
 
 function formatLabel(kind) {
-  return ({ docx: "DOCX", pptx: "PPTX", xlsx: "XLSX", pdf: "PDF", txt: "TXT", md: "Markdown" })[kind] || "文稿";
+  return ({
+    doc: "DOC", docx: "DOCX", docm: "DOCM", odt: "ODT", rtf: "RTF", epub: "EPUB",
+    ppt: "PPT", pps: "PPS", pot: "POT", pptx: "PPTX", pptm: "PPTM", ppsx: "PPSX", ppsm: "PPSM", odp: "ODP",
+    xls: "XLS", xlsx: "XLSX", xlsm: "XLSM", xlsb: "XLSB", ods: "ODS", csv: "CSV",
+    pdf: "PDF", txt: "TXT", md: "Markdown",
+  })[kind] || "文稿";
+}
+
+function sourceKind(document) {
+  return document?.convertedFrom || document?.kind || "md";
+}
+
+function formatGroup(kind) {
+  if (["doc", "docx", "docm", "odt", "rtf"].includes(kind)) return "word";
+  if (["ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "odp"].includes(kind)) return "presentation";
+  if (["xls", "xlsx", "xlsm", "xlsb", "ods", "csv"].includes(kind)) return "spreadsheet";
+  if (kind === "epub") return "ebook";
+  if (kind === "pdf") return "pdf";
+  return "text";
 }
 
 const FALLBACK_CAPABILITY = {
@@ -226,7 +251,7 @@ function safeDocument(item) {
     id: String(item?.id || uid("document")),
     originArtifactId: String(item?.originArtifactId || "").slice(0, 180),
     // 由哪种格式转换而来（空表示不是转换来的）；以及这次转换丢了什么。
-    convertedFrom: ["docx", "pptx", "xlsx", "pdf"].includes(item?.convertedFrom) ? item.convertedFrom : "",
+    convertedFrom: CONVERTED_FILE_KIND_SET.has(item?.convertedFrom) ? item.convertedFrom : "",
     conversionNotes: Array.isArray(item?.conversionNotes)
       ? item.conversionNotes.slice(0, 20).map((note) => String(note || "").slice(0, 300)).filter(Boolean)
       : [],
@@ -585,7 +610,7 @@ function renderRecentFiles() {
     return;
   }
   const visible = state.documents.filter((document) => {
-    const formatMatches = libraryFormat === "all" || document.kind === libraryFormat;
+    const formatMatches = libraryFormat === "all" || formatGroup(sourceKind(document)) === libraryFormat;
     return formatMatches && (!libraryQuery || document.name.toLocaleLowerCase("zh-CN").includes(libraryQuery));
   });
   if (!visible.length) {
@@ -595,7 +620,7 @@ function renderRecentFiles() {
   root.innerHTML = visible.map((document) => `
     <button class="file-row${document.id === state.selectedId ? " is-current" : ""}" type="button" data-document-id="${escapeHtml(document.id)}">
       <span class="file-row-icon" aria-hidden="true">${iconSvg("file")}</span>
-      <span class="file-row-copy"><strong>${escapeHtml(document.name)}</strong><small>${formatLabel(document.kind)} · ${displayDate(document.updatedAt)}</small></span>
+      <span class="file-row-copy"><strong>${escapeHtml(document.name)}</strong><small>${formatLabel(sourceKind(document))} · ${displayDate(document.updatedAt)}</small></span>
     </button>`).join("");
   root.querySelectorAll("[data-document-id]").forEach((button) => button.addEventListener("click", () => {
     state.selectedId = button.dataset.documentId;
@@ -862,11 +887,50 @@ function updateSpreadsheetAnalysis(current, sheetIndex) {
 }
 
 function usesDesktopOriginalFormat(current) {
-  return Boolean(current?.sourceSize && ["docx", "pptx", "xlsx", "pdf"].includes(current.kind));
+  return Boolean(current?.desktopSessionId && sourceKind(current) !== "txt" && sourceKind(current) !== "md");
+}
+
+function structuredDocumentToBlocks(document, fallbackText, kind) {
+  if (!document || document.schema !== "clownfish.document.v1" || !Array.isArray(document.blocks) || !document.blocks.length) {
+    return textToBlocks(fallbackText, kind);
+  }
+  const blocks = [];
+  let section = null;
+  const flush = () => {
+    if (!section) return;
+    blocks.push(safeBlock(section, blocks.length, kind));
+    section = null;
+  };
+  document.blocks.slice(0, 600).forEach((block) => {
+    const blockKind = String(block?.kind || "paragraph");
+    if (blockKind === "heading") {
+      flush();
+      section = { id: String(block.id || uid("block")), title: String(block.text || "未命名段落"), text: "" };
+      return;
+    }
+    if (!section) section = { id: String(block?.id || uid("block")), title: blocks.length ? `段落 ${blocks.length + 1}` : "正文", text: "" };
+    let text = String(block?.text || "");
+    if (blockKind === "list") {
+      const marker = block.ordered ? (_, index) => `${index + 1}. ` : () => "- ";
+      text = text.split("\n").map((item, index) => `${marker(item, index)}${item}`).join("\n");
+    } else if (blockKind === "quote") {
+      text = text.split("\n").map((line) => `> ${line}`).join("\n");
+    } else if (blockKind === "code") {
+      text = `\`\`\`\n${text}\n\`\`\``;
+    } else if (blockKind === "table" && Array.isArray(block.rows)) {
+      text = block.rows.map((row) => `| ${row.join(" | ")} |`).join("\n");
+    }
+    section.text = [section.text, text].filter(Boolean).join("\n\n");
+  });
+  flush();
+  return blocks.length ? blocks : textToBlocks(fallbackText, kind);
 }
 
 function desktopEditLabel(kind) {
-  return ({ docx: "用 Word 编辑", pptx: "用 PowerPoint 编辑", xlsx: "用 Excel 编辑", pdf: "用默认应用打开" })[kind] || "用桌面应用编辑";
+  if (["doc", "docx", "docm", "odt", "rtf"].includes(kind)) return "用文字应用打开";
+  if (["ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "odp"].includes(kind)) return "用演示应用打开";
+  if (["xls", "xlsx", "xlsm", "xlsb", "ods", "csv"].includes(kind)) return "用表格应用打开";
+  return "用默认应用打开";
 }
 
 function renderVersions(current) {
@@ -1031,7 +1095,8 @@ function render() {
     renderProcessingState(null);
     return;
   }
-  document.querySelector("#formatBadge").textContent = formatLabel(current.kind);
+  const originalKind = sourceKind(current);
+  document.querySelector("#formatBadge").textContent = formatLabel(originalKind);
   document.querySelector("#documentName").value = current.name;
   const size = current.sourceSize ? ` · ${Math.max(1, Math.round(current.sourceSize / 1024))} KB` : "";
   const hasWorkingContent = current.blocks.some((block) => block.text.trim());
@@ -1040,20 +1105,20 @@ function render() {
     : current.sourceSize || current.convertedFrom || (["docx", "pptx", "xlsx", "pdf"].includes(current.kind) && hasWorkingContent)
       ? "原文件未绑定，可重新打开恢复"
       : "新建文件";
-  const desktopEditable = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx", "pdf"].includes(current.kind));
+  const desktopEditable = usesDesktopOriginalFormat(current);
   document.querySelector("#openDesktopEditor").hidden = !desktopEditable;
-  document.querySelector("#openDesktopEditor").textContent = desktopEditLabel(current.kind);
+  document.querySelector("#openDesktopEditor").textContent = desktopEditLabel(originalKind);
   document.querySelector("#refreshDesktopFile").hidden = !desktopEditable;
   // 转换过的文档：工作文档是 Markdown，但要按来源格式说明这次转换丢了什么。
   const sourceCapability = current.convertedFrom ? capabilityOf(current.convertedFrom) : null;
   const capability = capabilityOf(current.kind);
   const badge = document.querySelector("#capabilityBadge");
-  badge.textContent = sourceCapability ? `${sourceCapability.formatLabel} → Markdown` : capability.capabilityLabel;
+  badge.textContent = sourceCapability ? `${sourceCapability.formatLabel} → 可编辑副本` : capability.capabilityLabel;
   badge.dataset.capability = sourceCapability ? "convert" : capability.capability;
   badge.title = sourceCapability ? sourceCapability.summary : capability.summary;
   const note = document.querySelector("#capabilityNote");
   const noteText = sourceCapability
-    ? ["已转成 Markdown 处理，原文件保留、可下载，不会被改写。", ...(current.conversionNotes || [])].join(" ")
+    ? ["已转换为可编辑副本，原文件保留、可下载，不会被改写。", ...(current.conversionNotes || [])].join(" ")
     : [capability.summary, ...capability.limitations].join(" ");
   note.textContent = noteText;
   note.hidden = !noteText;
@@ -1117,8 +1182,8 @@ async function fileToBase64(file) {
 
 async function importFile(file, handle = null) {
   if (!file) return;
-  if (!/\.(docx|pptx|xlsx|pdf|txt|md|markdown)$/i.test(file.name)) {
-    showOperation("无法打开：仅支持 Word、PowerPoint、Excel、PDF、TXT 和 Markdown 文件", "error", () => document.querySelector("#officeFileInput").click());
+  if (!SUPPORTED_FILE_PATTERN.test(file.name)) {
+    showOperation("无法打开：请选择常见文档、演示文稿、表格、PDF、EPUB、TXT 或 Markdown 文件", "error", () => document.querySelector("#officeFileInput").click());
     return;
   }
   if (file.size > 8 * 1024 * 1024) {
@@ -1139,10 +1204,13 @@ async function importFile(file, handle = null) {
     const converted = Boolean(conversion?.convertedFrom || (conversion && conversion.sourceFormat !== "md" && conversion.sourceFormat !== "txt"));
     const workingKind = conversion ? (conversion.sourceFormat === "txt" ? "txt" : "md") : extraction.kind;
     const workingText = conversion ? conversion.markdown : extraction.text;
+    const workingBlocks = conversion?.document
+      ? structuredDocumentToBlocks(conversion.document, workingText, workingKind)
+      : textToBlocks(workingText, workingKind);
     const createdAt = now();
     const importedDocument = safeDocument({
       id: uid("document"),
-      name: file.name.replace(/\.(docx|pptx|xlsx|pdf|txt|md|markdown)$/i, ""),
+      name: file.name.replace(SUPPORTED_FILE_PATTERN, ""),
       kind: workingKind,
       convertedFrom: converted ? conversion.sourceFormat : "",
       conversionNotes: Array.isArray(conversion?.notes) ? conversion.notes : [],
@@ -1154,19 +1222,19 @@ async function importFile(file, handle = null) {
       desktopSessionId: extraction && response.session?.id,
       desktopContentHash: response.session?.contentHash,
       fileRecordId: response.fileRecord?.id,
-      blocks: textToBlocks(workingText, workingKind),
-      versions: [{ id: uid("version"), name: "导入原稿", createdAt, blocks: textToBlocks(workingText, workingKind).map((block) => ({ ...block })) }],
+      blocks: workingBlocks,
+      versions: [{ id: uid("version"), name: "导入原稿", createdAt, blocks: workingBlocks.map((block) => ({ ...block })) }],
       lastCheckpointAt: createdAt,
     });
     try {
       importedDocument.sourceStored = await window.ClownfishOfficeSource.save(importedDocument.id, file, handle);
-      // 转换过的文档不提供写回：Markdown 文本不能覆盖原来的 .docx/.pptx/.xlsx/.pdf。
+      // 转换过的文档不提供写回：Markdown 文本不能覆盖原来的二进制或排版文件。
       importedDocument.sourceWritable = !converted && Boolean(handle && await window.ClownfishOfficeSource.canWrite(importedDocument.id));
     } catch {
       importedDocument.sourceStored = false;
     }
-    const replaced = state.documents.filter((item) => item.name === importedDocument.name && item.kind === importedDocument.kind);
-    state.documents = state.documents.filter((item) => !(item.name === importedDocument.name && item.kind === importedDocument.kind));
+    const replaced = state.documents.filter((item) => item.name === importedDocument.name && sourceKind(item) === sourceKind(importedDocument));
+    state.documents = state.documents.filter((item) => !(item.name === importedDocument.name && sourceKind(item) === sourceKind(importedDocument)));
     replaced.forEach((item) => void window.ClownfishOfficeSource.remove(item.id).catch(() => {}));
     state.documents.unshift(importedDocument);
     state.selectedId = importedDocument.id;
@@ -1175,7 +1243,7 @@ async function importFile(file, handle = null) {
     persistState(importedDocument.sourceTruncated ? "已读取可处理的前半部分" : "文件已读取");
     render();
     showToast(converted
-      ? `已转成 Markdown 处理${importedDocument.conversionNotes.length ? `；${importedDocument.conversionNotes.length} 项内容有变化，见下方说明` : ""}。原文件保留，可随时下载`
+      ? `已转换为可编辑副本${importedDocument.conversionNotes.length ? `；${importedDocument.conversionNotes.length} 项内容有变化，见下方说明` : ""}。原文件保留，可随时下载`
       : importedDocument.sourceStored ? "文件已打开，原始版本保留在本机" : "文件已打开，工作副本不会覆盖原文件", converted && importedDocument.conversionNotes.length > 0);
     showOperation(converted
       ? `已打开「${file.name}」，并建立可编辑工作副本；原文件未改动`
@@ -1218,7 +1286,13 @@ async function refreshDesktopFile() {
     }
     const bytes = Uint8Array.from(atob(response.dataBase64), (character) => character.charCodeAt(0));
     const file = new File([bytes], response.session.name, { type: "application/octet-stream", lastModified: Date.now() });
-    current.blocks = textToBlocks(response.extraction.text, response.extraction.kind);
+    const converted = response.conversion && !["txt", "md"].includes(response.conversion.sourceFormat);
+    current.kind = response.conversion?.sourceFormat === "txt" ? "txt" : "md";
+    current.convertedFrom = converted ? response.conversion.sourceFormat : "";
+    current.conversionNotes = Array.isArray(response.conversion?.notes) ? response.conversion.notes : [];
+    current.blocks = response.conversion?.document
+      ? structuredDocumentToBlocks(response.conversion.document, response.conversion.markdown, current.kind)
+      : textToBlocks(response.conversion?.markdown || response.extraction.text, current.kind);
     current.sourceSize = response.session.byteLength;
     current.desktopContentHash = response.session.contentHash;
     current.sourceStored = await window.ClownfishOfficeSource.save(current.id, file);
@@ -1250,11 +1324,17 @@ async function openCopiedSession(copy) {
   const createdAt = now();
   const bytes = Uint8Array.from(atob(response.dataBase64), (character) => character.charCodeAt(0));
   const file = new File([bytes], response.session.name, { type: "application/octet-stream", lastModified: Date.now() });
-  const blocks = textToBlocks(response.extraction.text, response.extraction.kind);
+  const converted = response.conversion && !["txt", "md"].includes(response.conversion.sourceFormat);
+  const kind = response.conversion?.sourceFormat === "txt" ? "txt" : "md";
+  const blocks = response.conversion?.document
+    ? structuredDocumentToBlocks(response.conversion.document, response.conversion.markdown, kind)
+    : textToBlocks(response.conversion?.markdown || response.extraction.text, kind);
   const copiedDocument = safeDocument({
     id: uid("document"),
     name: response.session.name.replace(/\.[a-z0-9]+$/i, ""),
-    kind: response.extraction.kind,
+    kind,
+    convertedFrom: converted ? response.conversion.sourceFormat : "",
+    conversionNotes: Array.isArray(response.conversion?.notes) ? response.conversion.notes : [],
     sourceSize: response.session.byteLength,
     sourceTruncated: Boolean(response.extraction.truncated),
     createdAt,
@@ -1290,8 +1370,9 @@ async function openOfficeFile() {
       types: [{
         description: "办公与文本文件",
         accept: {
-          "application/octet-stream": [".docx", ".pptx", ".xlsx"],
+          "application/octet-stream": [".doc", ".docx", ".docm", ".odt", ".rtf", ".epub", ".ppt", ".pps", ".pot", ".pptx", ".pptm", ".ppsx", ".ppsm", ".odp", ".xls", ".xlsx", ".xlsm", ".xlsb", ".ods"],
           "application/pdf": [".pdf"],
+          "text/csv": [".csv"],
           "text/plain": [".txt", ".md", ".markdown"],
         },
       }],

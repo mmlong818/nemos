@@ -51,11 +51,11 @@
           <div class="file-panel-actions" aria-label="文件操作">
             <button class="toolbar-button" id="newDocument" type="button" data-office-icon="plus">新建文件</button>
             <button class="toolbar-button primary" type="button" data-open-office-file data-office-icon="upload">打开文件</button>
-            <input id="officeFileInput" type="file" hidden accept=".docx,.pptx,.xlsx,.pdf,.txt,.md,.markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,text/plain,text/markdown">
+            <input id="officeFileInput" type="file" hidden accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown">
           </div>
           <div class="file-library-tools" aria-label="筛选文件">
             <label><span class="sr-only">搜索文件</span><input id="fileLibrarySearch" type="search" maxlength="80" placeholder="搜索文件"></label>
-            <label><span class="sr-only">按格式筛选</span><select id="fileLibraryFormat"><option value="all">全部格式</option><option value="docx">Word</option><option value="pptx">PowerPoint</option><option value="xlsx">Excel</option><option value="pdf">PDF</option><option value="txt">TXT</option><option value="md">Markdown</option></select></label>
+            <label><span class="sr-only">按格式筛选</span><select id="fileLibraryFormat"><option value="all">全部格式</option><option value="word">文字文档</option><option value="presentation">演示文稿</option><option value="spreadsheet">表格</option><option value="pdf">PDF</option><option value="ebook">电子书</option><option value="text">TXT / Markdown</option></select></label>
           </div>
           <div class="recent-files" id="recentFiles"></div>
           <details class="trash-panel" id="trashPanel">
@@ -64,7 +64,7 @@
           </details>
           <div class="local-note">
             <span data-office-icon="shield" aria-hidden="true"></span>
-            <p><strong>内容留在本机</strong><small>TXT 和 Markdown 可以写回原文件；其他格式转成 Markdown 后处理，原文件保留但不被改写。</small></p>
+            <p><strong>内容留在本机</strong><small>TXT 和 Markdown 可以写回原文件；其他格式在本机转成 Markdown 后处理，原文件保留但不被改写。</small></p>
           </div>
         </aside>
         <button class="file-panel-backdrop" id="filePanelBackdrop" type="button" aria-label="关闭文件列表" tabindex="-1"></button>
@@ -74,7 +74,7 @@
             <div class="empty-mark" data-office-icon="file" aria-hidden="true"></div>
             <p class="section-label">从一个文件开始</p>
             <h1>打开文件，直接处理内容</h1>
-            <p>TXT 和 Markdown 可以直接编辑并写回原文件。Word、PowerPoint、Excel 和 PDF 打开后转成 Markdown 处理，原文件保留、可下载，不会被改写。</p>
+            <p>TXT 和 Markdown 可以直接编辑并写回原文件。常见文档、演示文稿、表格、PDF 和 EPUB 打开后转成 Markdown 处理，原文件保留、可下载，不会被改写。</p>
             <div class="empty-actions">
               <button class="toolbar-button primary large" type="button" data-open-office-file>打开办公文件</button>
               <button class="toolbar-button large" id="newDocumentEmpty" type="button">从空白文稿开始</button>

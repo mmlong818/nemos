@@ -5,8 +5,7 @@ import JSZip from "jszip";
 import PptxGenJS from "pptxgenjs";
 
 import { UserFacingError } from "./office-errors.js";
-import type { OfficeFileKind } from "./office-file-parser.js";
-import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
+import { validateOfficeFile, type OfficeValidationFormat, type ValidationReceipt } from "./office-validation.js";
 
 const PDFDocument = require("pdfkit") as new (options?: Record<string, unknown>) => {
   pipe(stream: NodeJS.WritableStream): void;
@@ -53,7 +52,7 @@ export async function exportOfficeDocument(input: OfficeExportInput): Promise<Of
 }
 
 /** 生成的文件先过结构检查再交出去；不合格就报错，不给用户一个打不开的文件。 */
-async function checked(value: OfficeExportResult, format: OfficeFileKind): Promise<OfficeExportResult> {
+async function checked(value: OfficeExportResult, format: OfficeValidationFormat): Promise<OfficeExportResult> {
   const validation = await validateOfficeFile(format, value.data);
   if (!validation.passed) {
     const failed = validation.checks.filter((check) => !check.passed).map((check) => (check.detail ? `${check.name}：${check.detail}` : check.name));

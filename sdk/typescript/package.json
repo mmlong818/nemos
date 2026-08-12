@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@firecrawl/anydoc": "^0.1.8",
     "@modelcontextprotocol/client": "^2.0.0",
     "@napi-rs/canvas": "^1.0.3",
     "@nemos/sdk": "github:mmlong818/nemos-memory#v0.7.5-alpha.18",
