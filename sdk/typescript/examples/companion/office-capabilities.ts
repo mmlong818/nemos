@@ -32,8 +32,8 @@ export interface OfficeFormatCapability {
   /** 是否提供"另存为副本"这个选项。 */
   canSaveCopy: boolean;
   /**
-   * 打开时是否先转成 Markdown 再处理。
-   * 转换过的文档在工作台里是 Markdown，原文件保留、可下载，但不再被写回。
+   * 打开时是否生成结构化可编辑副本。字段名为兼容旧数据暂不改名。
+   * 原文件保留、可下载，但不被工作副本写回。
    */
   convertsToMarkdown: boolean;
   limitations: string[];
@@ -58,7 +58,7 @@ function convertedCapability(
     formatLabel,
     capability: "convert",
     capabilityLabel: OFFICE_CAPABILITY_LABELS.convert,
-    summary: `${summary}转成 Markdown 处理；原文件保留、可下载，不会被改写。`,
+    summary: `${summary}生成可编辑副本；原文件保留、可下载，不会被改写。`,
     textView: "extract",
     textViewLabel: "原文预览",
     savesTo: "copy",
@@ -71,15 +71,15 @@ function convertedCapability(
 }
 
 const TEXT_DOCUMENT_LIMITATIONS = [
-  "标题、段落、列表和表格会尽量转成 Markdown。",
+  "标题、段落、列表和表格会尽量保留为结构化内容。",
   "复杂排版、字体、分页、宏、批注和嵌入对象可能无法保留。",
 ];
 const PRESENTATION_LIMITATIONS = [
-  "页面文字、列表和表格会尽量转成 Markdown。",
+  "页面文字、列表和表格会尽量保留为结构化内容。",
   "版式、母版、主题、动画、宏和媒体对象可能无法保留。",
 ];
 const SPREADSHEET_LIMITATIONS = [
-  "单元格内容会尽量转成 Markdown 表格。",
+  "单元格内容会尽量保留为结构化表格。",
   "公式、样式、图表、宏和数据验证可能降级或无法保留。",
 ];
 
@@ -120,7 +120,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     formatLabel: "Word 文档",
     capability: "convert",
     capabilityLabel: OFFICE_CAPABILITY_LABELS.convert,
-    summary: "打开后转成 Markdown 处理；原文件保留、可下载，不会被改写。",
+    summary: "打开后生成结构化可编辑副本；原文件保留、可下载，不会被改写。",
     textView: "extract",
     textViewLabel: "原文预览",
     savesTo: "copy",
@@ -129,8 +129,8 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     canSaveCopy: false,
     convertsToMarkdown: true,
     limitations: [
-      "标题层级、段落、列表和表格会转成 Markdown。",
-      "字体、字号、颜色、对齐、页眉页脚、批注和修订不在 Markdown 的表达范围内。",
+      "标题层级、段落、列表和表格会保留为结构化内容。",
+      "字体、字号、颜色、对齐、页眉页脚、批注和修订目前可能降级。",
       "图片留位置说明，图片本身仍在原文件里。",
       "每次转换都会列出这一份具体丢了什么。",
     ],
@@ -147,7 +147,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     formatLabel: "PowerPoint 演示",
     capability: "convert",
     capabilityLabel: OFFICE_CAPABILITY_LABELS.convert,
-    summary: "打开后转成 Markdown 处理；原文件保留、可下载，不会被改写。",
+    summary: "打开后生成结构化可编辑副本；原文件保留、可下载，不会被改写。",
     textView: "extract",
     textViewLabel: "原文预览",
     savesTo: "copy",
@@ -156,8 +156,8 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     canSaveCopy: false,
     convertsToMarkdown: true,
     limitations: [
-      "每页文字、表格和讲者备注会转成 Markdown。",
-      "版式、母版、主题和动画不在 Markdown 的表达范围内。",
+      "每页文字、表格和讲者备注会保留为结构化内容。",
+      "版式、母版、主题和动画目前可能降级。",
       "图片和图表没有带过来，仍在原文件里。",
       "每次转换都会列出这一份具体丢了什么。",
     ],
@@ -172,7 +172,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     formatLabel: "Excel 表格",
     capability: "convert",
     capabilityLabel: OFFICE_CAPABILITY_LABELS.convert,
-    summary: "打开后转成 Markdown 表格处理；原文件保留、可下载，不会被改写。",
+    summary: "打开后生成结构化表格副本；原文件保留、可下载，不会被改写。",
     textView: "extract",
     textViewLabel: "原文预览",
     savesTo: "copy",
@@ -181,7 +181,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     canSaveCopy: false,
     convertsToMarkdown: true,
     limitations: [
-      "每个工作表转成一个 Markdown 表格，公式只保留计算结果。",
+      "每个工作表转成一个结构化表格，公式暂时只保留计算结果。",
       "单元格样式、条件格式、数据验证和图表没有带过来。",
       "每次转换都会列出这一份具体丢了什么。",
     ],
@@ -195,7 +195,7 @@ const CAPABILITIES: Record<OfficeFileKind, OfficeFormatCapability> = {
     formatLabel: "PDF",
     capability: "convert",
     capabilityLabel: OFFICE_CAPABILITY_LABELS.convert,
-    summary: "打开后提取文字转成 Markdown 处理；原文件保留、可下载，不会被改写。",
+    summary: "打开后提取文字生成可编辑副本；原文件保留、可下载，不会被改写。",
     textView: "extract",
     textViewLabel: "原文预览",
     savesTo: "copy",
