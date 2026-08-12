@@ -113,7 +113,7 @@ test("Office 文件可以交给桌面原生编辑器，并把修改重新载入�
 });
 
 test("工作台提供本机自动保存、版本比较与页内处理", () => {
-  assert.match(officeJs, /clownfish-office-workbench-v1/);
+  assert.match(officeJs, /clownfish-office-workbench-v20260813b/);
   assert.match(officeJs, /\/api\/files\/workbench/);
   assert.match(officeJs, /expectedRevision: state\.revision/);
   assert.match(officeJs, /state\.saveQueue/);

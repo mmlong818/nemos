@@ -1,7 +1,7 @@
 {
   "name": "@nemos/clownfish",
   "version": "0.7.5-alpha.17",
-  "description": "Application-agnostic, local-first memory engine for AI systems with provenance, temporal facts, lifecycle reconciliation, and controllable recall.",
+  "description": "Clownfish local-first AI work application and auditable Agent runtime, using the separately maintained @nemos/sdk memory core.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "nemos founding team",
   "homepage": "https://github.com/mmlong818/nemos",

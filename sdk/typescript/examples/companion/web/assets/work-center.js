@@ -6,7 +6,7 @@ const viewFromLocation = () => {
   return workViews.has(route) ? route : "tasks";
 };
 let view = viewFromLocation();
-const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [] };
+const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [], productReviews: [], productReviewSummary: null };
 const loadedViews = new Set();
 let loadSequence = 0;
 let activeStoryTaskId = "";
@@ -94,8 +94,8 @@ async function load() {
     }
     if (requestedView === "artifacts") result = await api("/api/capabilities");
     if (requestedView === "runs") {
-      const [jobs, runs, reviewQueue] = await Promise.all([api("/api/agent/jobs?limit=100"), api("/api/agent/runs?limit=100"), api("/api/review-queue")]);
-      result = { jobs: jobs.jobs || [], runs: runs.runs || [], reviewQueue: reviewQueue.items || [] };
+      const [jobs, runs, reviewQueue, productReviews] = await Promise.all([api("/api/agent/jobs?limit=100"), api("/api/agent/runs?limit=100"), api("/api/review-queue"), api("/api/product-reviews")]);
+      result = { jobs: jobs.jobs || [], runs: runs.runs || [], reviewQueue: reviewQueue.items || [], productReviews: productReviews.runs || [], productReviewSummary: productReviews.summary || null };
     }
     if (requestedView === "memory") result = (await api("/api/memory?who=me")).facts || [];
     if (sequence !== loadSequence || requestedView !== view) return;
@@ -122,6 +122,8 @@ async function load() {
       state.jobs = result.jobs;
       state.runs = result.runs;
       state.reviewQueue = result.reviewQueue;
+      state.productReviews = result.productReviews;
+      state.productReviewSummary = result.productReviewSummary;
     }
     if (requestedView === "memory") state.memories = result;
     loadedViews.add(requestedView);
@@ -649,7 +651,7 @@ function connectionCards() {
 
 function platformCards() {
   const labels = { ready: "已连接", available: "已安装，未启用", "not-installed": "未安装" };
-  return (state.platform?.connectors || []).map((item) => `<article class="connection-card"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(labels[item.state] || item.state)} · ${escapeHtml(item.purpose)}</small></article>`).join("");
+  return (state.platform?.connectors || []).map((item) => `<article class="connection-card"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(labels[item.state] || item.state)} · ${escapeHtml(item.purpose)}</small><small>默认权限：${escapeHtml((item.minimumPermissions || []).join("、"))}</small><small>${escapeHtml(item.fallback || "")}</small>${item.state === "ready" ? `<button data-test-connector="${escapeHtml(item.id)}">测试连接</button>` : `<button data-import-connector="${escapeHtml(item.id)}">添加 ${escapeHtml(item.name)} 连接</button>`}</article>`).join("");
 }
 
 function extensionRows() {
@@ -658,7 +660,8 @@ function extensionRows() {
 }
 
 function capabilityPackRows() {
-  return (state.platform?.capabilityPacks || []).map((pack) => `<article class="compact-row"><div><h3>${escapeHtml(pack.name)}</h3><p>${escapeHtml(pack.quality.join(" · "))}</p></div><span class="pill">${pack.abilities.length} 项能力</span></article>`).join("");
+  const labels = { experimental: "实验", available: "可用", verified: "已验证", "production-ready": "生产就绪" };
+  return (state.platform?.capabilityPacks || []).map((pack) => `<article class="compact-row"><div><h3>${escapeHtml(pack.name)}</h3><p>${escapeHtml(pack.quality.join(" · "))}</p><p>${pack.verifiedAbilities?.length || 0}/${pack.abilities.length} 项已有真实核验产物</p></div><span class="pill">${escapeHtml(labels[pack.state] || pack.state)}</span></article>`).join("");
 }
 
 function developmentReadiness() {
@@ -671,14 +674,41 @@ function renderResources() {
   const active = state.knowledge.filter((item) => !item.archivedAt);
   const archived = state.knowledge.filter((item) => item.archivedAt);
   const rows = active.map((item) => `<article class="compact-row"><div><span class="resource-kind">${resourceKindLabel(item.kind)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.excerpt || item.sourceUrl || "无文字摘要")} · ${item.characterCount || 0} 字</p></div><div class="actions"><button data-preview-resource="${item.id}">查看</button><button data-archive-resource="${item.id}">归档</button></div></article>`).join("");
-  $("#content").innerHTML = `<div class="platform-grid"><section class="platform-panel"><header><div><h2>任务资料</h2><p>需要时明确选入任务，不会默认把所有内容都塞给模型。</p></div><button class="primary" id="newKnowledge">添加资料</button></header><div class="compact-list">${rows || '<div class="resource-empty">还没有资料。可以添加笔记、文本文件或网页链接。</div>'}</div>${archived.length ? `<details><summary>${archived.length} 项已归档资料</summary><div class="compact-list">${archived.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.title)}</h3></div><button data-restore-resource="${item.id}">恢复</button></article>`).join("")}</div></details>` : ""}</section><section class="platform-panel"><header><div><h2>数据连接</h2><p>只有扩展真实启用后才显示为已连接。</p></div></header><div class="connection-grid">${connectionCards()}${platformCards()}</div><header class="subsection-head"><div><h2>开发环境</h2><p>开发能力会先检查这些本机工具，不要求新手打开命令行。</p></div></header><div class="connection-grid">${developmentReadiness()}</div></section><section class="platform-panel"><header><div><h2>领域能力包</h2><p>按工作类型组合能力、结果形式和交付检查。</p></div></header><div class="compact-list">${capabilityPackRows()}</div></section><section class="platform-panel"><header><div><h2>能力扩展</h2><p>在一处查看、启用、停用和卸载；权限扩大时仍需单独确认。</p></div></header><div class="compact-list">${extensionRows()}</div></section></div>`;
+  $("#content").innerHTML = `<input id="connectorFile" type="file" accept="application/json,.json" hidden><div class="platform-grid"><section class="platform-panel"><header><div><h2>任务资料</h2><p>需要时明确选入任务，不会默认把所有内容都塞给模型。</p></div><button class="primary" id="newKnowledge">添加资料</button></header><div class="compact-list">${rows || '<div class="resource-empty">还没有资料。可以添加笔记、文本文件或网页链接。</div>'}</div>${archived.length ? `<details><summary>${archived.length} 项已归档资料</summary><div class="compact-list">${archived.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.title)}</h3></div><button data-restore-resource="${item.id}">恢复</button></article>`).join("")}</div></details>` : ""}</section><section class="platform-panel"><header><div><h2>数据连接</h2><p>只有扩展真实启用并通过连接测试后才可使用。</p></div><button id="importConnector">导入连接器</button></header><div class="connection-grid">${connectionCards()}${platformCards()}</div><header class="subsection-head"><div><h2>开发环境</h2><p>开发能力会先检查这些本机工具，不要求新手打开命令行。</p></div></header><div class="connection-grid">${developmentReadiness()}</div></section><section class="platform-panel"><header><div><h2>领域能力包</h2><p>按工作类型组合能力、结果形式和交付检查。</p></div></header><div class="compact-list">${capabilityPackRows()}</div></section><section class="platform-panel"><header><div><h2>能力扩展</h2><p>在一处查看、启用、停用和卸载；权限扩大时仍需单独确认。</p></div></header><div class="compact-list">${extensionRows()}</div></section></div>`;
   $("#newKnowledge").onclick = openKnowledgeDialog;
+  $("#importConnector").onclick = () => $("#connectorFile").click();
+  $("#connectorFile").onchange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const manifest = JSON.parse(await file.text());
+      const validation = await api("/api/agent/extension/validate", { method: "POST", body: JSON.stringify({ manifest }) });
+      const review = validation.validation || {};
+      const expanded = Array.isArray(review.permissionExpansion) ? review.permissionExpansion : [];
+      const risks = [review.requiresExecutableConfirmation ? "会启动本机程序" : "", review.requiresUnsandboxedConfirmation ? "无法使用受限沙箱" : "", expanded.length ? `新增权限：${expanded.join("、")}` : ""].filter(Boolean);
+      if (risks.length && !confirm(`连接器“${manifest.name || manifest.id}”${risks.join("，")}。确认安装吗？`)) return;
+      await api("/api/agent/extension/install", { method: "POST", body: JSON.stringify({ manifest, confirmExecutable: !!review.requiresExecutableConfirmation, confirmUnsandboxed: !!review.requiresUnsandboxedConfirmation, confirmPermissionExpansion: expanded.length > 0 }) });
+      toast("连接器已安装，启用后可以测试连接。");
+      await load();
+    } catch (error) { toast(error.message || "连接器文件无效", true); }
+  };
   $("#content").onclick = async (event) => {
     const preview = event.target.closest("[data-preview-resource]");
     const archive = event.target.closest("[data-archive-resource]");
     const restore = event.target.closest("[data-restore-resource]");
     const toggleExtension = event.target.closest("[data-toggle-extension]");
     const uninstallExtension = event.target.closest("[data-uninstall-extension]");
+    const testConnector = event.target.closest("[data-test-connector]");
+    const importConnector = event.target.closest("[data-import-connector]");
+    if (importConnector) { $("#connectorFile").click(); return; }
+    if (testConnector) {
+      try {
+        const result = await api("/api/platform/connector/test", { method: "POST", body: JSON.stringify({ id: testConnector.dataset.testConnector }) });
+        toast(`连接正常，发现 ${result.toolCount} 个可用工具`);
+      } catch (error) { toast(error.message, true); }
+      return;
+    }
     if (toggleExtension) {
       await api("/api/agent/extension/enabled", { method: "POST", body: JSON.stringify({ id: toggleExtension.dataset.toggleExtension, enabled: toggleExtension.dataset.enabled !== "1" }) });
       await load();
@@ -787,8 +817,10 @@ function renderRuns() {
     return `<article class="card"><div><h2>${escapeHtml(job.payload?.title || job.type || "后台任务")}</h2><p>${escapeHtml(job.result?.summary || job.error || (job.status === "uncertain" ? "执行结果无法自动确认，请先核对，系统不会自动重试。" : "由小丑鱼在后台执行"))}</p>${orchestrationDetail(job)}<div class="meta"><span class="pill ${statusPill(job.status)}">${escapeHtml(jobStatusLabel(job.status))}</span><span class="pill">${date(job.updatedAt || job.createdAt)}</span><span class="pill">尝试 ${job.attempts || 0}/${job.maxAttempts || 1}</span></div></div><div class="actions">${["queued", "running"].includes(job.status) ? `<button data-cancel-job="${job.id}">取消</button>` : ""}${["failed", "cancelled"].includes(job.status) ? `<button data-retry-job="${job.id}">重试</button>` : ""}${uncertainActions}</div></article>`;
   }).join("");
   const runCards = runs.slice(0, 20).map((run) => `<article class="card"><div><h2>${escapeHtml(runDisplayTitle(run))}</h2><p>${escapeHtml(run.output?.slice(0, 180) || run.error || "已保存执行记录，需要时可以恢复或排查。")}</p><div class="meta"><span class="pill ${statusPill(run.status)}">${escapeHtml(jobStatusLabel(run.status))}</span><span class="pill">${date(run.updatedAt || run.createdAt)}</span></div></div><div class="actions">${["interrupted", "paused", "failed"].includes(run.status) ? `<button data-resume-run="${run.runId}">恢复</button>` : ""}</div></article>`).join("");
-  const reviewCards = state.reviewQueue.map((item) => `<article class="compact-row"><div><span class="resource-kind">${item.kind === "approval" ? "等待确认" : item.kind === "development-proposal" ? "修改待审" : "运行异常"}</span><h3>${escapeHtml(item.title)}</h3><p>${date(item.at)}</p></div><a class="button" href="${item.kind === "development-proposal" ? `/api/development/proposal/preview?id=${encodeURIComponent(item.sourceId)}` : item.kind === "approval" ? "/runs" : `/api/agent/job?id=${encodeURIComponent(item.sourceId)}`}">查看</a></article>`).join("");
-  $("#content").innerHTML = `<section class="platform-panel review-queue"><header><div><h2>待你审阅</h2><p>只集中展示需要决定或人工核对的事项；普通后台任务不会打扰你。</p></div><span class="pill ${state.reviewQueue.length ? "warn" : "ok"}">${state.reviewQueue.length} 项</span></header><div class="compact-list">${reviewCards || '<div class="resource-empty">当前没有需要你处理的事项。</div>'}</div></section><div class="toolbar"><span></span><button id="refreshRuns">刷新</button></div><div class="list">${jobCards || runCards ? jobCards + runCards : '<div class="empty">还没有运行记录。</div>'}</div>`;
+  const reviewCards = state.reviewQueue.map((item) => `<article class="compact-row"><div><span class="resource-kind">${item.kind === "approval" ? "等待确认" : item.kind === "development-proposal" ? "修改待审" : "运行异常"}</span><h3>${escapeHtml(item.title)}</h3><p>${date(item.at)}</p></div><a class="button" href="${item.kind === "development-proposal" ? `/development?id=${encodeURIComponent(item.sourceId)}` : item.kind === "approval" ? "/runs" : `/api/agent/job?id=${encodeURIComponent(item.sourceId)}`}">查看</a></article>`).join("");
+  const qaSummary = state.productReviewSummary || { total: 0, openIssues: 0, highIssues: 0 };
+  const qaCards = state.productReviews.slice(0, 20).map((item) => `<article class="compact-row"><div><span class="resource-kind">第 ${escapeHtml(item.round)} 轮 · ${escapeHtml(item.persona)}</span><h3>${escapeHtml(item.scenario)}</h3><p>${escapeHtml(item.route)} · ${date(item.createdAt)} · ${escapeHtml((item.observations || []).join("；"))}</p></div><span class="pill ${item.status === "passed" ? "ok" : item.status === "blocked" ? "bad" : "warn"}">${item.status === "passed" ? "通过" : item.status === "blocked" ? "受阻" : "发现问题"}</span></article>`).join("");
+  $("#content").innerHTML = `<section class="platform-panel review-queue"><header><div><h2>待你审阅</h2><p>只集中展示需要决定或人工核对的事项；普通后台任务不会打扰你。</p></div><span class="pill ${state.reviewQueue.length ? "warn" : "ok"}">${state.reviewQueue.length} 项</span></header><div class="compact-list">${reviewCards || '<div class="resource-empty">当前没有需要你处理的事项。</div>'}</div></section><section class="platform-panel"><header><div><h2>产品真实检查</h2><p>保留不同用户从进入、操作到交付的完整检查记录，问题修复后仍可追溯。</p></div><span class="pill ${qaSummary.openIssues ? "warn" : "ok"}">${qaSummary.total} 轮 · ${qaSummary.openIssues} 个待修</span></header><div class="compact-list">${qaCards || '<div class="resource-empty">还没有产品真实检查记录。</div>'}</div></section><div class="toolbar"><span></span><button id="refreshRuns">刷新</button></div><div class="list">${jobCards || runCards ? jobCards + runCards : '<div class="empty">还没有运行记录。</div>'}</div>`;
   $("#refreshRuns").onclick = load;
   $("#content").onclick = async (event) => {
     const cancel = event.target.closest("[data-cancel-job]");

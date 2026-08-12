@@ -9,7 +9,7 @@ const officeHtml = readFileSync(join(companionRoot, "web", "office.html"), "utf8
 const officeJs = readFileSync(join(companionRoot, "web", "assets", "office-workbench.js"), "utf8");
 
 test("每个对话独立保存未发送草稿并在切换后恢复", () => {
-  assert.match(chatHtml, /clownfish-conversation-drafts-v1/);
+  assert.match(chatHtml, /clownfish-conversation-drafts-v20260813b/);
   assert.match(chatHtml, /function saveConversationDraft/);
   assert.match(chatHtml, /function restoreConversationDraft/);
   assert.match(chatHtml, /saveConversationDraft\(\);[\s\S]{0,100}tree\.activeId = id/);

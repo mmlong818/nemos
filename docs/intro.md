@@ -1,12 +1,12 @@
 # 小丑鱼与 Nemos
 
-更新：2026-08-10
+更新：2026-08-13
 
 ## 两个层次
 
 **小丑鱼**是用户直接使用的本机 AI 应用，提供聊天、能力、办公文件、任务、工作空间、结果、运行和记忆管理。
 
-**Nemos Memory SDK** 是同仓库的 TypeScript 长期记忆内核，也可以独立嵌入其他 AI 应用。
+**Nemos Memory SDK** 是独立仓库 `mmlong818/nemos-memory` 维护的 TypeScript 长期记忆内核。本仓库按固定 tag 引入 `@nemos/sdk`，不再保留第二份内核源码。
 
 两者关系：
 

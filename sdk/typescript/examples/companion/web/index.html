@@ -4067,7 +4067,8 @@ async function api(path, body) {
 
 // —— 每个会话的聊天记录（客户端持久化，切换/刷新都保留）——
 let chatLogs = {};
-try { chatLogs = JSON.parse(localStorage.getItem("companion_logs") || "{}"); } catch { chatLogs = {}; }
+const CHAT_LOGS_KEY = "clownfish-chat-logs-v20260813b";
+try { chatLogs = JSON.parse(localStorage.getItem(CHAT_LOGS_KEY) || "{}"); } catch { chatLogs = {}; }
 function migrateStoredChatIdentities() {
   let changed = false;
   const migrated = {};
@@ -4094,7 +4095,7 @@ function migrateStoredChatIdentities() {
   }
   if (changed) {
     chatLogs = migrated;
-    try { localStorage.setItem("companion_logs", JSON.stringify(chatLogs)); } catch {}
+    try { localStorage.setItem(CHAT_LOGS_KEY, JSON.stringify(chatLogs)); } catch {}
   }
 }
 migrateStoredChatIdentities();
@@ -4120,7 +4121,7 @@ function migrateLegacyOnboarding() {
     chatLogs[key] = cleaned;
     changed = true;
   }
-  if (changed) try { localStorage.setItem("companion_logs", JSON.stringify(chatLogs)); } catch {}
+  if (changed) try { localStorage.setItem(CHAT_LOGS_KEY, JSON.stringify(chatLogs)); } catch {}
 }
 migrateLegacyOnboarding();
 function dedupeAppOnboarding() {
@@ -4161,8 +4162,8 @@ function dedupeAppOnboarding() {
   saveLogs();
 }
 dedupeAppOnboarding();
-const CONVERSATION_TREE_KEY = "clownfish-conversation-trees-v1";
-const CONVERSATION_DRAFTS_KEY = "clownfish-conversation-drafts-v1";
+const CONVERSATION_TREE_KEY = "clownfish-conversation-trees-v20260813b";
+const CONVERSATION_DRAFTS_KEY = "clownfish-conversation-drafts-v20260813b";
 let conversationTrees = {};
 try { conversationTrees = JSON.parse(localStorage.getItem(CONVERSATION_TREE_KEY) || "{}"); } catch { conversationTrees = {}; }
 let conversationDrafts = {};
@@ -4395,7 +4396,7 @@ function saveConversationSettings() {
   renderConversationPanel();
 }
 function saveLogs() {
-  try { localStorage.setItem("companion_logs", JSON.stringify(chatLogs)); } catch {}
+  try { localStorage.setItem(CHAT_LOGS_KEY, JSON.stringify(chatLogs)); } catch {}
   saveConversationTrees();
 }
 function logKey(t) { t = t || state.target; return t ? t.kind + ":" + t.id : ""; }
@@ -7225,6 +7226,9 @@ function renderSkillAudit() {
     const updateBtn = item.canUpdate
       ? '<button class="skill-upgrade primary" type="button">更新</button>'
       : '<button type="button" disabled title="当前能力没有可用更新">更新</button>';
+    const rollbackBtn = item.canRollback
+      ? '<button class="skill-rollback" type="button">恢复上一版</button>'
+      : '<button type="button" disabled title="当前能力还没有历史版本">恢复上一版</button>';
     const toggleBtn = paused
       ? '<button class="skill-restore primary" type="button">启用</button>'
       : '<button class="skill-archive" type="button">停用</button>';    const pinBtn = item.pinned
@@ -7244,11 +7248,14 @@ function renderSkillAudit() {
       + '<span class="skill-pill">使用 ' + esc(String(item.useCount || 0)) + '</span>'
       + '<span class="skill-pill">任务 ' + esc(String(item.taskCount || 0)) + '</span>'
       + '<span class="skill-pill">产物 ' + esc(String(item.artifactCount || 0)) + '</span>'
+      + (item.version ? '<span class="skill-pill">版本 ' + esc(item.version) + '</span>' : '')
+      + '<span class="skill-pill ' + (item.integrityValid ? 'active' : 'paused') + '">' + esc(item.integrityValid ? '文件正常' : '需要恢复') + '</span>'
       + '</div>'
       + '<span>更新：' + esc(updated) + ' · 最近使用：' + esc(lastUsed) + '</span>'
       + '</div>'
       + '<div class="skill-actions">'
       + updateBtn
+      + rollbackBtn
       + toggleBtn
       + pinBtn
       + staleBtn
@@ -7268,6 +7275,9 @@ function renderSkillAudit() {
     + rows;
   box.querySelectorAll(".skill-upgrade").forEach((btn) => {
     btn.onclick = () => upgradeSkill(btn.closest(".cap-row").dataset.id);
+  });
+  box.querySelectorAll(".skill-rollback").forEach((btn) => {
+    btn.onclick = () => rollbackSkill(btn.closest(".cap-row").dataset.id);
   });
   box.querySelectorAll(".skill-archive").forEach((btn) => {
     btn.onclick = () => archiveAbility(btn.closest(".cap-row").dataset.id);
@@ -7468,6 +7478,11 @@ async function restoreAbility(id) {
 }
 async function upgradeSkill(id) {
   const data = await api("/api/capabilities/skill/upgrade", { id });
+  capState = data.snapshot || capState;
+  renderCapabilityLists();
+}
+async function rollbackSkill(id) {
+  const data = await api("/api/capabilities/skill/rollback", { id });
   capState = data.snapshot || capState;
   renderCapabilityLists();
 }

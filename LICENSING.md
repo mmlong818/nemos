@@ -1,6 +1,6 @@
 # 授权结构
 
-更新：2026-08-10
+更新：2026-08-13
 
 本仓库采用**双授权结构**。这份文件是授权范围的权威说明；`LICENSE` 文件只是其中一部分的许可证正文。
 
@@ -8,7 +8,8 @@
 
 | 范围 | 路径 | 对外授权 | 说明 |
 |---|---|---|---|
-| **Nemos Memory SDK** | `sdk/typescript/src/`、`spec/`、`rfcs/`、`bench/`、`docs/` | PolyForm Noncommercial 1.0.0（见 `LICENSE`） | 研究、个人与非营利用途免费；商业用途需另行取得授权 |
+| **Nemos TypeScript 接入层与研究资料** | `sdk/typescript/src/`、`spec/`、`rfcs/`、`bench/`、`docs/` | PolyForm Noncommercial 1.0.0（见 `LICENSE`） | 本仓库的 Agent 运行时、接入层和研究资料；商业用途需另行取得授权 |
+| **独立记忆内核依赖** | `@nemos/sdk`，来源 `mmlong818/nemos-memory` 固定 tag | 以该依赖随附的 `LICENSE` 为准 | 本仓库不再维护第二份记忆内核源码，也不改变该依赖的授权范围 |
 | **小丑鱼应用** | `sdk/typescript/examples/companion/` | 保留全部权利，另行授权（见该目录下 `LICENSE`） | 不在 PolyForm Noncommercial 覆盖范围内 |
 | **示例与基准** | `sdk/typescript/examples/`（companion 以外）、`bench/` | 同 SDK | 用于说明与复现 |
 
@@ -21,13 +22,14 @@
 打包产物 `sdk/typescript/examples/companion/client/dist/portable/小丑鱼/app/` 同时包含：
 
 - `examples/` — 应用本体；
-- `src/` — Nemos Memory SDK。
+- `src/agent/` 与应用代码 — 本仓库的 Agent 运行时和小丑鱼应用；
+- `node_modules/@nemos/sdk/` — 由固定 tag 安装的独立记忆内核依赖。
 
 也就是说**小丑鱼在分发时把 SDK 一起装进去了**。这在法律上成立的前提是：SDK 的著作权由本项目所有者持有，所有者可以在对外发布 PolyForm Noncommercial 版本的同时，为自己的商业产品保留另一份使用授权。同一份代码由权利人以不同条款分发是允许的；受 PolyForm Noncommercial 约束的是被许可方，不是权利人本人。
 
 **著作权归属已核实：仓库自首个提交起没有第三方贡献者**，全部提交来自同一权利主体的 git 身份。因此 SDK 与应用的全部著作权归属单一所有者，权利人有权在对外发布 PolyForm Noncommercial 版本的同时，为自有商业产品保留另一份使用授权。
 
-`sdk/typescript/src/` 全量检索 `adapted from`、`based on`、`ported from`、`derived from`、`SPDX-License`、`copyright (c)` 等外部代码标记为**零命中**：没有从第三方仓库拷贝或改编的代码。随包分发的第三方代码单独列在下文，并保留各自的许可证。
+`sdk/typescript/src/agent/` 是本仓库维护的 Agent 运行时代码。独立记忆内核不参与本仓库的源码归属判断，其来源、版本和许可证由 `@nemos/sdk` 依赖记录证明。随包分发的其他第三方代码单独列在下文，并保留各自的许可证。
 
 **需要持续维持的条件：外部贡献必须附带足以支持商业再授权的许可授予。** 见下节。
 
@@ -51,6 +53,8 @@
 2026-08-10 增补：`fast-xml-parser` 提升为直接依赖（MIT）。它此前已作为
 `@aws-sdk/xml-builder` 的传递依赖存在于树中，因此没有引入新的许可证主体。
 复核后依赖树共 245 个包，受限许可仍为零。
+
+2026-08-13 本机重新统计当前安装树为 263 个包。这个数字只证明依赖数量，不等同于新的许可证审计；正式发布前仍须对当前锁文件重新执行完整许可证复核，不能沿用 2026-08-10 的结论冒充最新结果。
 
 ### 一条与分发方式相关的依赖约束
 

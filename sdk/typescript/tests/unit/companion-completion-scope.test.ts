@@ -32,7 +32,8 @@ test("工作页提供任务、结果、运行和记忆的独立新手入口", ()
   assert.match(script, /event\.preventDefault\(\)/);
   assert.match(stability, /scrollbar-gutter:\s*stable/);
   assert.match(stability, /display:\s*flow-root/);
-  assert.match(chat, /clownfish-conversation-trees-v1/);
+  assert.match(chat, /clownfish-conversation-trees-v20260813b/);
+  assert.match(chat, /clownfish-chat-logs-v20260813b/);
   assert.match(chat, /branchConversation/);
   assert.match(chat, /rollbackConversation/);
   assert.match(chat, /conversationRequestOptions/);

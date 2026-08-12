@@ -10,7 +10,7 @@ This repository holds two things under different licenses:
 
 | Part | What it is | License |
 |---|---|---|
-| **Nemos Memory SDK**<br>`sdk/typescript/src/` | An embeddable long-term memory core: layered archival, structured claims, invalidation and correction, multi-path recall | [PolyForm Noncommercial 1.0.0](LICENSE); commercial use requires a separate grant |
+| **Nemos TypeScript integration**<br>`sdk/typescript/` | Uses the separately maintained `@nemos/sdk` memory core and adds the Agent runtime and Clownfish application in this repository | [PolyForm Noncommercial 1.0.0](LICENSE); commercial use requires a separate grant |
 | **Clownfish**<br>`sdk/typescript/examples/companion/` | A local-first AI work application built on that core, and the SDK's full reference implementation | All rights reserved, [licensed separately](sdk/typescript/examples/companion/LICENSE) |
 
 See [LICENSING.md](LICENSING.md) for the full terms. The application is described first; for SDK usage jump to [Use the memory SDK independently](#use-the-memory-sdk-independently).
@@ -59,6 +59,8 @@ Selection opens the task form immediately, without an extra preparation step. Jo
 
 Built-in capabilities cover presentation creation, formal documents, deep research, Hong Kong market briefs, complex-problem framing, product interface design, project development, meeting minutes, web reports, option comparison, business development, market opportunity simulation, and new-capability generation.
 
+Project development opens a dedicated workbench with a project tree, per-file before/after review, environment and check receipts, selective apply, conflict protection, and rollback. Clean Git projects run in an isolated worktree before any selected changes are written back.
+
 Outputs include PPTX, DOCX, PDF, XLSX, HTML, Markdown, and structured data.
 
 ## Files: original, working copy, and result stay together
@@ -106,6 +108,8 @@ New users can still begin in a conversation without creating a workspace. Worksp
 
 The resource library is local by default. WeChat sources, X, and web search show their actual connection state instead of presenting planned adapters as live integrations.
 
+Resources also shows the real state of GitHub, browser, email, and calendar connectors. Users can import a connector manifest from this page; executable, unsandboxed, and permission-expanding changes are reviewed before installation. Runs keeps a durable product-review record with the test persona, scenario, route, observations, issues, and evidence.
+
 ![Clownfish work center](docs/assets/readme/clownfish-work-2026-08-10.png)
 
 ## Memory: focused, visible, and user-controlled
@@ -148,7 +152,7 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 ## Current verification
 
 - The TypeScript build passes;
-- All 590 automated tests pass;
+- All 351 automated tests pass; memory-core tests are maintained in the separate `nemos-memory` repository and are not counted twice here;
 - Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
 
 ## Run locally
@@ -210,5 +214,5 @@ const context = await memory.getRelevantContext("Draft a proposal");
 
 This repository uses a dual licensing structure. See [LICENSING.md](LICENSING.md) for the authoritative scope:
 
-- **Nemos Memory SDK** (`sdk/typescript/src/`, `spec/`, `rfcs/`, `bench/`, `docs/`) uses the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, modification, and distribution are allowed; commercial use requires separate permission.
+- **Nemos TypeScript integration and research material** (`sdk/typescript/src/`, `spec/`, `rfcs/`, `bench/`, `docs/`) uses the [PolyForm Noncommercial License 1.0.0](LICENSE). The memory-core source is maintained in `mmlong818/nemos-memory` and enters this repository as the `@nemos/sdk` dependency under its own license notice.
 - **The Clownfish application** (`sdk/typescript/examples/companion/`) is **not** covered by that license. All rights reserved; licensed separately. See its [LICENSE](sdk/typescript/examples/companion/LICENSE).
