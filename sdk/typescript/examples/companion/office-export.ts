@@ -23,6 +23,8 @@ export type OfficeExportFormat = "docx" | "pptx" | "xlsx" | "pdf" | "html" | "md
 export interface OfficeExportBlock {
   title: string;
   text: string;
+  titleAlignment?: "left" | "center" | "right" | "justify";
+  paragraphAlignments?: Array<"left" | "center" | "right" | "justify">;
 }
 
 export interface OfficeExportInput {
@@ -62,9 +64,13 @@ async function checked(value: OfficeExportResult, format: OfficeValidationFormat
 }
 
 function normalizeBlocks(value: OfficeExportBlock[]): OfficeExportBlock[] {
+  const alignment = (input: unknown): "left" | "center" | "right" | "justify" =>
+    ["center", "right", "justify"].includes(String(input)) ? String(input) as "center" | "right" | "justify" : "left";
   const blocks = Array.isArray(value) ? value.slice(0, 200).map((block, index) => ({
     title: String(block?.title || `第 ${index + 1} 部分`).trim().slice(0, 160),
     text: String(block?.text || "").replace(/\r\n/g, "\n").slice(0, 120_000),
+    titleAlignment: alignment(block?.titleAlignment),
+    paragraphAlignments: Array.isArray(block?.paragraphAlignments) ? block.paragraphAlignments.slice(0, 1000).map(alignment) : [],
   })) : [];
   return blocks.length ? blocks : [{ title: "正文", text: "" }];
 }
@@ -90,10 +96,18 @@ async function createDocx(blocks: OfficeExportBlock[]): Promise<Buffer> {
   zip.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
   zip.file("word/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Microsoft YaHei" w:eastAsia="Microsoft YaHei"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="34"/><w:color w:val="8F2F59"/></w:rPr></w:style></w:styles>`);
   const body = blocks.map((block) => {
+    const paragraphProperties = (alignment: OfficeExportBlock["titleAlignment"], style = "") => {
+      const value = alignment === "justify" ? "both" : alignment;
+      const justify = value && value !== "left" ? `<w:jc w:val="${value}"/>` : "";
+      return style || justify ? `<w:pPr>${style}${justify}</w:pPr>` : "";
+    };
     const title = blocks.length === 1 && /^(正文|Markdown)$/.test(block.title)
       ? ""
-      : `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t xml:space="preserve">${xml(block.title)}</w:t></w:r></w:p>`;
-    const paragraphs = block.text.split(/\n/).map((line) => `<w:p><w:r><w:t xml:space="preserve">${xml(line || " ")}</w:t></w:r></w:p>`).join("");
+      : `<w:p>${paragraphProperties(block.titleAlignment, '<w:pStyle w:val="Heading1"/>')}<w:r><w:t xml:space="preserve">${xml(block.title)}</w:t></w:r></w:p>`;
+    const paragraphs = block.text.split(/\n{2,}/).map((paragraph, index) => {
+      const runs = paragraph.split("\n").map((line, lineIndex) => `${lineIndex ? "<w:br/>" : ""}<w:t xml:space="preserve">${xml(line || " ")}</w:t>`).join("");
+      return `<w:p>${paragraphProperties(block.paragraphAlignments?.[index])}<w:r>${runs}</w:r></w:p>`;
+    }).join("");
     return title + paragraphs;
   }).join("");
   zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`);

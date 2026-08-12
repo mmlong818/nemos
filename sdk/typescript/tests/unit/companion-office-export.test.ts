@@ -10,6 +10,18 @@ const blocks = [
   { title: "数据", text: "项目\t数值\n完成\t82\n待办\t18" },
 ];
 
+test("Word 导出保留标题和段落对齐", async () => {
+  const output = await exportOfficeDocument({
+    name: "对齐测试",
+    format: "docx",
+    blocks: [{ title: "居中标题", titleAlignment: "center", text: "右对齐正文", paragraphAlignments: ["right"] }],
+  });
+  const zip = await JSZip.loadAsync(output.data);
+  const xml = await zip.file("word/document.xml")!.async("string");
+  assert.match(xml, /<w:jc w:val="center"\/>/);
+  assert.match(xml, /<w:jc w:val="right"\/>/);
+});
+
 test("办公工作台生成真实 DOCX、XLSX、PPTX 和 PDF 文件", async () => {
   const docx = await exportOfficeDocument({ name: "季度汇报", format: "docx", blocks });
   const docxZip = await JSZip.loadAsync(docx.data);

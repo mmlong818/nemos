@@ -1,11 +1,11 @@
 import { readDocumentAsMarkdown } from "./document-markdown-reader.js";
 import { extractOfficeFile, officeFileKindOf, type OfficeFileKind } from "./office-file-parser.js";
 import { UserFacingError } from "./office-errors.js";
-import { parseDocx, type Block, type TableModel } from "./vendor/docx-engine/dist/index.js";
+import { computeListMarkers, parseDocx, type Block, type TableModel } from "./vendor/docx-engine/dist/index.js";
 import { getSlideNotes, openPptx, type Slide, type SlideElement, type TableElement as PptxTableElement, type TextElement } from "./vendor/pptx-engine/dist/index.js";
 import { isNativeCapabilityId, parseNativeCapabilityPayload } from "./native-capability-contracts.js";
 import { renderNativeCapabilityMarkdown } from "./native-capability-renderer.js";
-import { markdownToStructuredDocument, type StructuredDocument } from "./structured-document.js";
+import { markdownToStructuredDocument, type ParagraphAlignment, type StructuredDocument } from "./structured-document.js";
 
 /**
  * 把上传文件转换成结构化可编辑副本；Markdown 保留为兼容交换表示。
@@ -27,7 +27,12 @@ export async function convertOfficeToMarkdown(fileName: string, data: Uint8Array
   const kind = formatOf(fileName);
   if (kind === "md") return finish(kind, decodeText(data), []);
   if (kind === "txt") return finish(kind, decodeText(data), ["纯文本按原样作为 Markdown 正文，没有推断标题层级。"]);
-  if (kind === "docx") return finish(kind, ...(await docxToMarkdown(data)));
+  if (kind === "docx") {
+    const [markdown, notes, alignments, document] = await docxToMarkdown(data);
+    const conversion = finish(kind, markdown, notes, alignments);
+    conversion.document = document;
+    return conversion;
+  }
   if (kind === "pptx") return finish(kind, ...(await pptxToMarkdown(data)));
   if (kind === "xlsx") return finish(kind, ...(await xlsxToMarkdown(fileName, data)));
   if (kind === "pdf") return finish(kind, ...(await pdfToMarkdown(fileName, data)));
@@ -63,7 +68,7 @@ function conversionNotes(kind: OfficeFileKind): string[] {
   ];
 }
 
-function finish(sourceFormat: OfficeFileKind, markdown: string, notes: string[]): MarkdownConversion {
+function finish(sourceFormat: OfficeFileKind, markdown: string, notes: string[], alignments: Array<{ text: string; alignment: ParagraphAlignment }> = []): MarkdownConversion {
   const repaired = repairLegacyStructuredResult(markdown);
   const normalized = repaired.markdown.replace(/\r/g, "").replace(/\n{4,}/g, "\n\n\n").trim();
   const completeNotes = repaired.repaired ? [...notes, "检测到旧版结构化结果，已转换成可读正文；内部数据不会作为正文显示。"] : notes;
@@ -71,12 +76,20 @@ function finish(sourceFormat: OfficeFileKind, markdown: string, notes: string[])
   const renderedMarkdown = truncated
     ? `${normalized.slice(0, MAX_MARKDOWN_CHARACTERS)}\n\n> 内容较长，已保留前 ${MAX_MARKDOWN_CHARACTERS.toLocaleString("zh-CN")} 个字符。原文件完整保留，可以下载。`
     : normalized;
+  const document = markdownToStructuredDocument(sourceFormat, renderedMarkdown);
+  const unused = [...alignments];
+  for (const block of document.blocks) {
+    const matchIndex = unused.findIndex((hint) => hint.text.trim() === block.text.trim());
+    if (matchIndex < 0) continue;
+    block.alignment = unused[matchIndex]!.alignment;
+    unused.splice(matchIndex, 1);
+  }
   return {
     sourceFormat,
     markdown: renderedMarkdown,
     notes: truncated ? [...completeNotes, "内容超出单文档上限，Markdown 只保留了前半部分。"] : completeNotes,
     truncated,
-    document: markdownToStructuredDocument(sourceFormat, renderedMarkdown),
+    document,
   };
 }
 
@@ -104,28 +117,45 @@ function decodeText(data: Uint8Array): string {
 
 // ── DOCX ──────────────────────────────────────────────────────────────
 
-async function docxToMarkdown(data: Uint8Array): Promise<[string, string[]]> {
+async function docxToMarkdown(data: Uint8Array): Promise<[string, string[], Array<{ text: string; alignment: ParagraphAlignment }>, StructuredDocument]> {
   const parsed = await parseDocx(data);
   const notes: string[] = [];
   const lines: string[] = [];
   let imageCount = 0;
   let passthroughCount = 0;
+  const alignments: Array<{ text: string; alignment: ParagraphAlignment }> = [];
+  const listBlocks = parsed.blocks.filter((block) => block.type === "listItem" && !block.hidden);
+  const listMarkers = computeListMarkers(listBlocks.map((block) => ({ numId: block.list?.numId || null, ilvl: block.list?.ilvl || 0 })), parsed.numbering);
+  let listIndex = 0;
+  let sourceLine = 0;
+  const structuredBlocks: StructuredDocument["blocks"] = [];
 
   for (const block of parsed.blocks) {
     if (block.hidden) continue;
+    const blockText = plainText(block);
+    const exactText = (block.runs || []).map((run) => run.text).join("").replace(/\r/g, "");
+    const alignment = block.format?.align === "distribute" ? "justify" : block.format?.align;
+    if (blockText && alignment && ["left", "center", "right", "justify"].includes(alignment)) {
+      alignments.push({ text: blockText, alignment: alignment as ParagraphAlignment });
+    }
     if (block.type === "heading") {
       const level = Math.min(6, Math.max(1, Number(block.level || 1)));
-      lines.push(`${"#".repeat(level)} ${plainText(block)}`, "");
+      if (exactText) lines.push(`${"#".repeat(level)} ${plainText(block)}`, "");
+      else lines.push("");
+      structuredBlocks.push({ id: `block-${structuredBlocks.length + 1}`, kind: exactText ? "heading" : "paragraph", level: exactText ? level : undefined, text: exactText, alignment: normalizedAlignment(block.format?.align), indentLeft: block.format?.indentLeft, indentFirstLine: block.format?.indentFirstLine, preserveWhitespace: true, source: { startLine: ++sourceLine, endLine: sourceLine } });
       continue;
     }
     if (block.type === "listItem") {
       const depth = Math.max(0, Number(block.list?.ilvl || 0));
       const marker = block.list?.kind === "ordered" ? "1." : "-";
       lines.push(`${"  ".repeat(depth)}${marker} ${plainText(block)}`);
+      structuredBlocks.push({ id: `block-${structuredBlocks.length + 1}`, kind: "list", ordered: block.list?.kind === "ordered", text: exactText, listMarker: listMarkers[listIndex++] || (block.list?.kind === "ordered" ? "1." : "•"), listLevel: depth, alignment: normalizedAlignment(block.format?.align), indentLeft: block.format?.indentLeft, indentFirstLine: block.format?.indentFirstLine, preserveWhitespace: true, source: { startLine: ++sourceLine, endLine: sourceLine } });
       continue;
     }
     if (block.type === "table" && block.table) {
       lines.push("", ...tableToMarkdown(block.table, notes), "");
+      const rows = block.table.rows.map((row) => row.map((cell) => (cell.paras || []).join("\n")));
+      structuredBlocks.push({ id: `block-${structuredBlocks.length + 1}`, kind: "table", text: rows.map((row) => row.join(" | ")).join("\n"), rows, source: { startLine: ++sourceLine, endLine: sourceLine } });
       continue;
     }
     if (block.type === "image") {
@@ -140,6 +170,7 @@ async function docxToMarkdown(data: Uint8Array): Promise<[string, string[]]> {
     const text = plainText(block);
     if (text) lines.push(text, "");
     else lines.push("");
+    if (block.type === "paragraph") structuredBlocks.push({ id: `block-${structuredBlocks.length + 1}`, kind: "paragraph", text: exactText, alignment: normalizedAlignment(block.format?.align), indentLeft: block.format?.indentLeft, indentFirstLine: block.format?.indentFirstLine, preserveWhitespace: true, source: { startLine: ++sourceLine, endLine: sourceLine } });
   }
 
   if (imageCount) notes.push(`${imageCount} 张图片没有转成 Markdown，只留了位置说明；图片本身仍在原文件里。`);
@@ -147,8 +178,12 @@ async function docxToMarkdown(data: Uint8Array): Promise<[string, string[]]> {
   if (parsed.comments.length) notes.push(`${parsed.comments.length} 条批注没有带过来。`);
   if (parsed.footnotes.length || parsed.endnotes.length) notes.push(`${parsed.footnotes.length + parsed.endnotes.length} 条脚注或尾注没有带过来。`);
   if (parsed.headerText || parsed.footerText) notes.push("页眉页脚没有带过来。");
-  notes.push("字符与段落样式（字体、字号、颜色、对齐）不在 Markdown 的表达范围内。");
-  return [lines.join("\n"), notes];
+  notes.push("字体、字号和颜色等字符样式可能降级；段落对齐会在可编辑副本中保留。");
+  return [lines.join("\n"), notes, alignments, { schema: "clownfish.document.v1", sourceFormat: "docx", blocks: structuredBlocks }];
+}
+
+function normalizedAlignment(value: string | undefined): ParagraphAlignment {
+  return value === "center" || value === "right" ? value : value === "justify" || value === "distribute" ? "justify" : "left";
 }
 
 function plainText(block: Block): string {
@@ -261,11 +296,11 @@ async function xlsxToMarkdown(fileName: string, data: Uint8Array): Promise<[stri
 // ── PDF ───────────────────────────────────────────────────────────────
 
 async function pdfToMarkdown(fileName: string, data: Uint8Array): Promise<[string, string[]]> {
-  const extracted = await extractOfficeFile(fileName, data);
+  const markdown = await readDocumentAsMarkdown(fileName, data);
   return [
-    extracted.text,
+    markdown,
     [
-      "PDF 只提取了文字，版式、图片、表格线和表单都没有带过来。",
+      "PDF 已转换为 Markdown 编辑副本；固定版式、图片位置、表格线和表单不会等同于原 PDF。",
       "扫描件没有可提取的文字时会是空白，需要先做 OCR。",
     ],
   ];
