@@ -86,16 +86,15 @@ npm run companion
 
 ## 文件工作台
 
-- 读取 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown；
+- 读取常见 Word、PowerPoint、Excel、OpenDocument、RTF、EPUB、CSV、PDF、TXT 和 Markdown 格式；
 - **上传后统一转成 Markdown 再处理**（`office-to-markdown.ts`）：Word 的标题层级、
   列表和表格，PowerPoint 的每页文字、表格和讲者备注，Excel 的每个工作表，
   都会转成对应的 Markdown 结构；
-- 每次转换返回一份"丢了什么"的清单，界面逐条显示，不写在文档里含糊带过；
+- 每次转换返回结构变化与已知限制清单，界面逐条显示；扫描版 PDF 暂不提供 OCR；
 - 原文件完整保留在会话与本机存储中，可下载、可在“原文件”页签查看原版式，
-  也可用桌面 Office 打开；**不会被 Markdown 写回**；
+  也可用 Windows 已关联的桌面应用打开；**不会被 Markdown 写回**；
 - 写回原文件只对 TXT 和 Markdown 开放，写回前检查原文件是否已被其他程序修改；
-- 能力标注见 `office-capabilities.ts`：TXT/Markdown 可编辑，
-  DOCX/PPTX/XLSX/PDF 为需转换；
+- 能力标注见 `office-capabilities.ts`：TXT/Markdown 可直接编辑，其余导入格式均先转换；
 - 编辑和 AI 处理都留在文件页；
 - 任务和能力结果可直接建立本机工作副本继续编辑；
 - 支持版本记录与恢复；

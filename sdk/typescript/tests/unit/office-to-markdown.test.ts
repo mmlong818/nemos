@@ -36,6 +36,22 @@ function paragraph(text: string, styleId?: string): string {
   return `<w:p>${properties}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 }
 
+async function buildOdt(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/vnd.oasis.opendocument.text", { compression: "STORE" });
+  zip.file("content.xml", '<?xml version="1.0"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text><text:h text:outline-level="1">项目说明</text:h><text:p>正文内容</text:p></office:text></office:body></office:document-content>');
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+async function buildEpub(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
+  zip.file("OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">book</dc:identifier><dc:title>示例书</dc:title><dc:language>zh-CN</dc:language></metadata><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter"/></spine></package>');
+  zip.file("OEBPS/chapter.xhtml", '<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>第一章</h1><p>章节正文</p></body></html>');
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
 test("Markdown 与纯文本按原样进入，不做多余推断", async () => {
   const md = await convertOfficeToMarkdown("notes.md", Buffer.from("# 标题\n\n正文", "utf8"));
   assert.equal(md.sourceFormat, "md");
@@ -98,6 +114,34 @@ test("Excel 每个工作表转成一个 Markdown 表格", async () => {
   assert.ok(result.markdown.includes("| --- |"), "要生成 Markdown 表格分隔行");
   assert.ok(result.markdown.includes("苹果"));
   assert.ok(result.notes.some((note) => note.includes("公式")));
+});
+
+test("RTF 与 CSV 进入统一的 Markdown 工作副本", async () => {
+  const richText = await convertOfficeToMarkdown(
+    "说明.rtf",
+    Buffer.from("{\\rtf1\\ansi First \\b important\\b0\\par Second}", "utf8"),
+  );
+  assert.equal(richText.sourceFormat, "rtf");
+  assert.match(richText.markdown, /First \*\*important\*\*/);
+  assert.ok(richText.notes.some((note) => note.includes("原文件")));
+
+  const table = await convertOfficeToMarkdown("数据.csv", Buffer.from("name,count\napple,3", "utf8"));
+  assert.equal(table.sourceFormat, "csv");
+  assert.match(table.markdown, /\| apple \| 3 \|/);
+  assert.ok(table.notes.some((note) => note.includes("公式")));
+});
+
+test("OpenDocument 与 EPUB 真实解析正文结构", async () => {
+  const odt = await convertOfficeToMarkdown("说明.odt", await buildOdt());
+  assert.equal(odt.sourceFormat, "odt");
+  assert.match(odt.markdown, /^# 项目说明/m);
+  assert.match(odt.markdown, /正文内容/);
+
+  const epub = await convertOfficeToMarkdown("示例.epub", await buildEpub());
+  assert.equal(epub.sourceFormat, "epub");
+  assert.match(epub.markdown, /示例书/);
+  assert.match(epub.markdown, /第一章/);
+  assert.match(epub.markdown, /章节正文/);
 });
 
 test("超长内容会截断并说明，不静默丢弃", async () => {
