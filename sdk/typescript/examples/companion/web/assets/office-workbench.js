@@ -213,11 +213,24 @@ function flatLegacyValue(value) {
   return String(value ?? "");
 }
 
+function safeWordHtml(value) {
+  if (!value) return "";
+  const template = document.createElement("template");
+  template.innerHTML = String(value).slice(0, 240000);
+  const allowed = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "BLOCKQUOTE"]);
+  [...template.content.querySelectorAll("*")].forEach((node) => {
+    if (!allowed.has(node.tagName)) node.replaceWith(document.createTextNode(node.textContent || ""));
+    else [...node.attributes].forEach((attribute) => node.removeAttribute(attribute.name));
+  });
+  return template.innerHTML;
+}
+
 function safeBlock(block, index, kind) {
   return {
     id: String(block?.id || uid("block")),
     title: String(block?.title || kindTitle(kind, index)).slice(0, 120),
     text: readableLegacyCapabilityText(String(block?.text || "")).slice(0, 120000),
+    richHtml: safeWordHtml(block?.richHtml),
   };
 }
 
@@ -727,7 +740,8 @@ function renderWordWorkspace(root, current) {
       <div class="word-format-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-word-command="bold"><strong>加粗</strong></button><button type="button" data-word-command="insertUnorderedList">列表</button><button type="button" data-word-command="formatBlock" data-command-value="blockquote">引用</button><span>修改会自动保存到工作副本</span></div>
       <article class="word-paper" aria-label="Word 可编辑副本">${sections.map((block, index) => {
         const level = index === 0 ? 1 : 2;
-        return `<section class="word-section" id="word-section-${escapeHtml(block.id)}" data-word-block="${escapeHtml(block.id)}"><h${level} contenteditable="true" spellcheck="true" data-word-field="title" data-placeholder="输入标题">${escapeHtml(block.title || "")}</h${level}><div class="word-section-body" contenteditable="true" spellcheck="true" data-word-field="text" data-placeholder="在这里输入正文">${wordParagraphs(block.text).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("") || "<p><br></p>"}</div></section>`;
+        const body = block.richHtml || wordParagraphs(block.text).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("") || "<p><br></p>";
+        return `<section class="word-section" id="word-section-${escapeHtml(block.id)}" data-word-block="${escapeHtml(block.id)}"><h${level} contenteditable="true" spellcheck="true" data-word-field="title" data-placeholder="输入标题">${escapeHtml(block.title || "")}</h${level}><div class="word-section-body" contenteditable="true" spellcheck="true" data-word-field="text" data-placeholder="在这里输入正文">${body}</div></section>`;
       }).join("")}</article>
     </section>
   </div>`;
@@ -1776,6 +1790,7 @@ function bindEvents() {
       if (!block) return;
       const value = wordField.innerText.replace(/\n{3,}/g, "\n\n").trim();
       block[wordField.dataset.wordField] = value;
+      if (wordField.dataset.wordField === "text") block.richHtml = safeWordHtml(wordField.innerHTML);
       current.updatedAt = new Date().toISOString();
       scheduleSave();
       return;
