@@ -149,9 +149,12 @@ export function receiveCapabilityHandoff(
   };
 }
 
-export function renderCapabilityHandoffContext(envelope: CapabilityHandoffEnvelope): string {
+export function renderCapabilityHandoffContext(
+  envelope: CapabilityHandoffEnvelope,
+  options: { includeSummary?: boolean } = {},
+): string {
   const sections: string[] = [];
-  if (envelope.summary) sections.push(`【上下文提要】\n${envelope.summary}`);
+  if (envelope.summary && options.includeSummary !== false) sections.push(`【上下文提要】\n${envelope.summary}`);
   if (envelope.conversation.length) {
     sections.push([
       "【完整原文】",
@@ -231,12 +234,12 @@ function failureText(kind: CapabilityHandoffFailureKind): string {
 
 function normalizeMessages(value: unknown): CapabilityHandoffMessage[] {
   if (!Array.isArray(value)) return [];
-  return value.slice(-120).flatMap((raw, index) => {
+  const normalized = value.slice(-120).flatMap((raw, index) => {
     if (!raw || typeof raw !== "object") return [];
     const item = raw as Record<string, unknown>;
     const text = boundedText(item.text, 12_000);
     if (!text) return [];
-    const role = item.role === "assistant" || item.role === "system" ? item.role : "user";
+    const role: CapabilityHandoffMessage["role"] = item.role === "assistant" || item.role === "system" ? item.role : "user";
     const speakerId = boundedText(item.speakerId, 160) || (role === "user" ? "user:current" : role === "assistant" ? "agent:clownfish" : "system");
     const subjectId = boundedText(item.subjectId, 160) || speakerId;
     return [{
@@ -248,11 +251,18 @@ function normalizeMessages(value: unknown): CapabilityHandoffMessage[] {
       text,
     }];
   });
+  const seen = new Set<string>();
+  return normalized.filter((item) => {
+    const key = `${item.sourceMessageId}\n${item.role}\n${item.text}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalizeMaterials(value: unknown): CapabilityHandoffMaterial[] {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, 8).flatMap((raw) => {
+  const normalized = value.slice(0, 8).flatMap((raw) => {
     if (!raw || typeof raw !== "object") return [];
     const item = raw as Record<string, unknown>;
     const text = boundedText(item.text, 160_000);
@@ -265,6 +275,12 @@ function normalizeMaterials(value: unknown): CapabilityHandoffMaterial[] {
       fileRecordId: /^file-[a-f0-9-]{36}$/i.test(boundedText(item.fileRecordId, 80)) ? boundedText(item.fileRecordId, 80) : undefined,
       artifactId: boundedText(item.artifactId, 160) || undefined,
     }];
+  });
+  const seen = new Set<string>();
+  return normalized.filter((item) => {
+    if (seen.has(item.contentHash)) return false;
+    seen.add(item.contentHash);
+    return true;
   });
 }
 

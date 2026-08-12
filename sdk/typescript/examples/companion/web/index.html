@@ -7485,20 +7485,25 @@ function openCapabilityPanel(options = {}) {
   const sourceMessages = activeConversation(conversationKey)?.messages || chatLogs[conversationKey] || [];
   const conversation = sourceMessages.map((entry) => {
     const persona = entry.pid ? state.personas.find((item) => item.id === entry.pid) : null;
-    const attachmentText = entry.attachment?.text ? `\n\n【附件原文：${entry.attachment.name || "文件"}】\n${String(entry.attachment.text).slice(0, 120000)}` : "";
     return {
       speaker: entry.side === "me" ? "用户" : (entry.who || persona?.name || chatName),
       side: entry.side === "me" ? "user" : "assistant",
-      text: String(entry.text || "") + attachmentText,
+      text: String(entry.text || ""),
     };
   }).filter((entry) => entry.text.trim());
+  const seenMaterials = new Set();
   const conversationMaterials = sourceMessages.flatMap((entry) => entry.attachment?.text ? [{
     name: String(entry.attachment.name || "对话附件").slice(0, 160),
     size: Math.max(0, Number(entry.attachment.size || 0)),
     text: String(entry.attachment.text).slice(0, 120000),
     kind: String(entry.attachment.kind || "text").slice(0, 16),
     fileRecordId: String(entry.attachment.fileRecordId || ""),
-  }] : []).slice(-8);
+  }] : []).filter((item) => {
+    const key = item.fileRecordId || `${item.name}\n${item.text}`;
+    if (seenMaterials.has(key)) return false;
+    seenMaterials.add(key);
+    return true;
+  }).slice(-8);
   const draft = options.includeDraft ? $("#txt").value.trim().slice(0, 2000) : "";
   const latestUserMessage = [...conversation].reverse().find((entry) => entry.side === "user");
   const goal = draft || String(latestUserMessage?.text || "").slice(0, 2000);
@@ -7527,7 +7532,7 @@ function openCapabilityPanel(options = {}) {
     chatName: chatName || "小丑鱼",
     goal,
     conversation,
-    materials: state.pendingFile
+    materials: state.pendingFile && !seenMaterials.has(state.pendingFile.fileRecordId || `${state.pendingFile.name}\n${state.pendingFile.text}`)
       ? [...conversationMaterials, { name: state.pendingFile.name, size: state.pendingFile.size, text: state.pendingFile.text, kind: state.pendingFile.kind, fileRecordId: state.pendingFile.fileRecordId || "" }].slice(-8)
       : conversationMaterials,
     createdAt: Date.now(),

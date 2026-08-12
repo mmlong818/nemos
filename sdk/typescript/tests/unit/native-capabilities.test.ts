@@ -164,6 +164,35 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
   }
 });
 
+test("原生能力流式执行不会把内部 JSON 暴露到聊天气泡", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-native-stream-"));
+  const raw = JSON.stringify(payloads["thinking-workbench"]!);
+  const tokens: string[] = [];
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: raw, facts: [] }),
+      notifyStream: async (_personaId, _prompt, cb) => {
+        cb.onToken(raw);
+        return { reply: raw, facts: [] };
+      },
+    });
+    const result = await runtime.runAdHocTaskStream({
+      title: "梳理问题",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "梳理事实和假设",
+      format: "html",
+    }, { onStatus: () => undefined, onToken: (token) => tokens.push(token) });
+    assert.deepEqual(tokens, []);
+    assert.match(result.text, /小丑鱼已经完成/);
+    assert.doesNotMatch(result.text, /\"kind\":\"thinking-workbench\"/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("研究来源锚点生成稳定哈希，缺少定位的已确认结论自动降级", () => {
   const valid = parseNativeCapabilityPayload("research-brief", JSON.stringify(payloads["research-brief"]));
   const source = (valid.data.sources as Array<Record<string, unknown>>)[0]!;

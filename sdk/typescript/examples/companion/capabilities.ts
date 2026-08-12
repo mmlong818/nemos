@@ -1154,10 +1154,13 @@ export class CapabilityRuntime {
     const ability = this.requireAbility(task.capabilityId);
     const persona = this.persona(task.personaId);
     const prompt = await this.buildRunPrompt(task, ability, persona, trigger);
+    const streamCb = isNativeCapabilityId(ability.id)
+      ? { onStatus: cb.onStatus, onToken: (_token: string) => undefined }
+      : cb;
     const result = this.opts.notifyStream
-      ? await this.opts.notifyStream(task.personaId, prompt, cb, signal, limits, runId)
+      ? await this.opts.notifyStream(task.personaId, prompt, streamCb, signal, limits, runId)
       : await this.opts.notify(task.personaId, prompt, signal, limits, runId);
-    if (!this.opts.notifyStream) cb.onToken(result.reply);
+    if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
     this.markSkillUsed(ability);
     const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId });
     return this.finishTaskRun(task, ability, persona, reply);
@@ -1240,10 +1243,13 @@ export class CapabilityRuntime {
     const { task, ability, persona } = this.createAdHocTask(input);
     try {
       const prompt = await this.buildRunPrompt(task, ability, persona, input.trigger || "chat");
+      const streamCb = isNativeCapabilityId(ability.id)
+        ? { onStatus: cb.onStatus, onToken: (_token: string) => undefined }
+        : cb;
       const result = this.opts.notifyStream
-        ? await this.opts.notifyStream(task.personaId, prompt, cb, signal, limits, input.runId, input.memoryMode)
+        ? await this.opts.notifyStream(task.personaId, prompt, streamCb, signal, limits, input.runId, input.memoryMode)
         : await this.opts.notify(task.personaId, prompt, signal, limits, input.runId, input.memoryMode);
-      if (!this.opts.notifyStream) cb.onToken(result.reply);
+      if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
       this.markSkillUsed(ability);
       const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode });
       return this.finishAdHocRun(task, ability, persona, reply);

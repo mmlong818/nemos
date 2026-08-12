@@ -12,6 +12,15 @@ test("routes an attached presentation when the goal is otherwise vague", () => {
   assert.equal(result.confidence, "medium");
 });
 
+test("routes extraction from an attached Markdown file as document work, not interface design", () => {
+  const result = routeCapability({
+    goal: "提取这份材料里有关界面设计的三个结论",
+    materialNames: ["产品复盘.md"],
+  });
+  assert.equal(result.capabilityId, "document-draft");
+  assert.equal(result.confidence, "high");
+});
+
 test("an explicit workspace always uses project development", () => {
   const result = routeCapability({ goal: "看看这个", workspacePath: "C:\\work\\demo" });
   assert.equal(result.catalogId, "developer");

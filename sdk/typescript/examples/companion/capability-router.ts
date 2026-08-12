@@ -50,13 +50,24 @@ export function routeCapability(input: CapabilityRouteInput): CapabilityRouteRes
     return { capabilityId: "project-development", catalogId: "developer", confidence: "high", reason: "已指定项目工作区" };
   }
 
+  const materialNames = (input.materialNames || []).map((name) => String(name || "").toLowerCase());
+  const hasReadableDocument = materialNames.some((name) => /\.(?:docx?|pdf|txt|md|csv|json)$/.test(name));
+  if (hasReadableDocument && /(提取|摘要|总结|整理|归纳|改写|润色|校对|转换|阅读|分析)(?:.{0,12})(?:附件|文件|材料|内容|要点|原文)?/i.test(goal)) {
+    return {
+      capabilityId: "document-draft",
+      catalogId: "document",
+      confidence: "high",
+      reason: "目标是处理已附带的文档内容",
+    };
+  }
+
   for (const rule of ROUTES) {
     if (rule.patterns.some((pattern) => pattern.test(goal))) {
       return { capabilityId: rule.capabilityId, catalogId: rule.catalogId, confidence: "high", reason: rule.reason };
     }
   }
 
-  for (const name of input.materialNames || []) {
+  for (const name of materialNames) {
     const normalized = String(name || "").toLowerCase();
     const extension = Object.keys(EXTENSION_ROUTES).find((item) => normalized.endsWith(item));
     if (extension) return { ...EXTENSION_ROUTES[extension], confidence: "medium" };
