@@ -32,6 +32,12 @@
         <div class="save-state" id="saveState" role="status" aria-live="polite">本机自动保存</div>
       </header>
 
+      <div class="operation-banner" id="operationBanner" role="status" aria-live="polite" data-state="busy" hidden>
+        <span class="operation-dot" aria-hidden="true"></span>
+        <span id="operationText">正在处理文件…</span>
+        <button id="operationRetry" type="button" hidden>重试</button>
+      </div>
+
       <div class="office-layout">
         <aside class="file-panel" id="filePanel" aria-label="最近文件">
           <div class="panel-heading">
@@ -178,6 +184,20 @@
       </div>
     </main>
   </div>
+
+  <dialog class="new-document-dialog" id="newDocumentDialog" aria-labelledby="newDocumentTitle">
+    <form method="dialog">
+      <header>
+        <div><p class="section-label">新建文件</p><h2 id="newDocumentTitle">从哪种文件开始？</h2></div>
+        <button id="closeNewDocumentDialog" type="button" aria-label="关闭">×</button>
+      </header>
+      <div class="new-document-options">
+        <button type="button" data-new-document-kind="docx"><strong>Word 文稿</strong><span>适合正式方案、报告与可交付文件</span></button>
+        <button type="button" data-new-document-kind="md"><strong>Markdown</strong><span>适合长文、知识整理与结构化编辑</span></button>
+        <button type="button" data-new-document-kind="txt"><strong>纯文本</strong><span>适合快速记录与轻量内容</span></button>
+      </div>
+    </form>
+  </dialog>
 
   <div class="toast" id="officeToast" role="status" aria-live="polite"></div>
   <script src="/assets/app-icons.js"></script>

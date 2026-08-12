@@ -49,6 +49,31 @@ button, a, label { touch-action: manipulation; }
 .topbar-icon:hover, .panel-close:hover { color: var(--office-ink); background: rgba(179, 63, 114, .08); }
 .save-state { color: var(--office-success); font-size: 12px; letter-spacing: .015em; }
 .save-state.is-saving { color: var(--office-warning); }
+.operation-banner {
+  position: fixed;
+  top: 66px;
+  left: calc(50% + 36px);
+  z-index: 40;
+  min-height: 38px;
+  max-width: min(620px, calc(100vw - 120px));
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px solid var(--office-line-strong);
+  border-radius: 8px;
+  color: var(--office-ink);
+  background: rgba(255, 253, 249, .97);
+  box-shadow: 0 12px 30px rgba(48, 39, 42, .13);
+  transform: translateX(-50%);
+  font-size: 11.5px;
+}
+.operation-banner[hidden] { display: none; }
+.operation-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--office-warning); }
+.operation-banner[data-state="success"] .operation-dot { background: var(--office-success); }
+.operation-banner[data-state="error"] { border-color: #d9a4b2; color: var(--office-danger); background: #fff8fa; }
+.operation-banner[data-state="error"] .operation-dot { background: var(--office-danger); }
+.operation-banner button { min-height: 26px; margin-left: auto; padding: 0 9px; border: 1px solid currentColor; border-radius: 5px; color: inherit; background: transparent; font: 600 10.5px/1 inherit; cursor: pointer; }
 .toolbar-button {
   min-height: 36px;
   display: inline-flex;
@@ -77,6 +102,29 @@ button, a, label { touch-action: manipulation; }
 .toolbar-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .toolbar-button svg, .topbar-icon svg, .panel-close svg { width: 17px; height: 17px; }
 .export-choice select { min-height:36px; padding:0 28px 0 10px; border:1px solid var(--office-line); border-radius:7px; color:var(--office-ink); background:var(--paper); font:600 12.5px/1 inherit; }
+.toolbar-button:disabled { color: var(--office-subtle); border-color: var(--office-line); background: #eee9e1; cursor: wait; }
+
+.new-document-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--office-line-strong);
+  border-radius: 12px;
+  color: var(--office-ink);
+  background: var(--office-sheet);
+  box-shadow: 0 28px 80px rgba(43, 37, 32, .24);
+}
+.new-document-dialog::backdrop { background: rgba(37, 33, 29, .38); backdrop-filter: blur(3px); }
+.new-document-dialog form { padding: 22px; }
+.new-document-dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.new-document-dialog h2 { margin: 0; font-size: 21px; line-height: 1.25; letter-spacing: -.015em; }
+.new-document-dialog header > button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 6px; color: var(--office-muted); background: transparent; font-size: 20px; cursor: pointer; }
+.new-document-dialog header > button:hover { color: var(--office-ink); background: var(--office-panel); }
+.new-document-options { display: grid; gap: 8px; }
+.new-document-options button { min-height: 68px; display: grid; gap: 4px; padding: 13px 15px; border: 1px solid var(--office-line); border-radius: 8px; color: var(--office-ink); background: #fff; text-align: left; cursor: pointer; }
+.new-document-options button:hover { border-color: #c397aa; background: #fff8fa; }
+.new-document-options button:focus-visible { outline: 2px solid var(--office-accent); outline-offset: 2px; }
+.new-document-options strong { font-size: 13px; }
+.new-document-options span { color: var(--office-muted); font-size: 11px; line-height: 1.4; }
 
 .office-layout {
   height: calc(100vh - 56px);
@@ -853,6 +901,7 @@ button, a, label { touch-action: manipulation; }
   .office-topbar { height: auto; min-height: 56px; grid-template-columns: minmax(0, 1fr) auto; padding: 8px 10px; }
   .topbar-icon { display: grid; }
   .save-state { display: none; }
+  .operation-banner { top: 62px; left: 50%; max-width: calc(100vw - 24px); width: max-content; }
   .office-layout { display: block; min-height: auto; }
   .file-panel {
     position: fixed;
@@ -913,6 +962,8 @@ button, a, label { touch-action: manipulation; }
   .assistant-panel-header { margin-right: -10px; margin-left: -10px; padding-right: 10px; padding-left: 10px; }
   .assistant-panel-backdrop { inset: 0 0 60px; }
   .toast { right: 16px; bottom: 76px; }
+  .new-document-dialog form { padding: 18px; }
+  .new-document-options button { min-height: 74px; }
 }
 
 @media (max-width: 430px) {
