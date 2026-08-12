@@ -34,6 +34,9 @@ export interface DependencyArtifact {
   title: string;
   summary: string;
   text: string;
+  proofLevel?: "produced" | "validated" | "verified" | "approved";
+  verificationSummary?: string;
+  checks?: Array<{ label: string; status: "passed" | "failed" | "not-run"; detail?: string }>;
 }
 
 const CONTRACTS: ExpertExecutionContract[] = [
@@ -438,12 +441,20 @@ export function dependencyArtifactBlock(
     if (!id) continue;
     const artifact = resolveArtifact(id);
     if (!artifact) continue;
+    const proofLabel = ({ produced: "已生成", validated: "已校验", verified: "已核验", approved: "已确认" } as const)[artifact.proofLevel || "produced"];
+    const incompleteChecks = (artifact.checks || []).filter((check) => check.status !== "passed");
     const section = [
       `【专家交付：${artifact.title}】`,
+      `证据状态：${proofLabel}`,
+      artifact.verificationSummary ? `来源核验：${artifact.verificationSummary}` : "",
+      ...incompleteChecks.map((check) => `未通过检查：${check.label}${check.detail ? `（${check.detail}）` : ""}`),
       `提炼摘要：${artifact.summary || "未提供摘要"}`,
       "完整原文：",
       artifact.text,
-    ].join("\n");
+      artifact.proofLevel === "verified" || artifact.proofLevel === "approved"
+        ? ""
+        : "注意：这份交付没有达到“已核验”，其中的判断不能写成已经证实的事实。",
+    ].filter(Boolean).join("\n");
     const remaining = maximumChars - used;
     if (remaining <= 0) break;
     sections.push(section.slice(0, remaining));

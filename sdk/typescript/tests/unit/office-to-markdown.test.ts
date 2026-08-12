@@ -111,3 +111,29 @@ test("超长内容会截断并说明，不静默丢弃", async () => {
 test("不支持的格式明确拒绝", async () => {
   await assert.rejects(() => convertOfficeToMarkdown("setup.exe", Buffer.from("MZ")), /仅支持/);
 });
+
+test("旧版能力 JSON 会转换成可读正文，不再把内部结构显示给用户", async () => {
+  const legacy = JSON.stringify({
+    kind: "thinking-workbench",
+    title: "是否调整文件工作流",
+    summary: "先修复打开与导出反馈，再验证编辑体验。",
+    data: {
+      problem: "用户无法判断文件是否已成功处理",
+      facts: ["打开和下载缺少持续状态"],
+      assumptions: [{ text: "持续反馈能降低误操作", risk: "低" }],
+      contradictions: [],
+      options: [
+        { name: "补充操作状态", upside: "结果清楚", downside: "需要占用少量空间", signal: "误操作下降" },
+        { name: "只用短提示", upside: "改动小", downside: "容易错过", signal: "用户能复述结果" },
+      ],
+      experiments: [{ name: "文件操作走查", method: "完成打开和下载", cost: "低", successSignal: "全程知道当前状态" }],
+      nextActions: ["修复状态反馈"],
+    },
+  });
+
+  const result = await convertOfficeToMarkdown("旧版结果.txt", Buffer.from(legacy, "utf8"));
+  assert.match(result.markdown, /^# 是否调整文件工作流/m);
+  assert.match(result.markdown, /## 问题/);
+  assert.doesNotMatch(result.markdown, /\{"kind":/);
+  assert.ok(result.notes.some((note) => note.includes("内部数据不会作为正文显示")));
+});

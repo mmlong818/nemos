@@ -136,6 +136,12 @@ export interface RecallResult {
   selfState: string;
 }
 
+export function isDeliveryPreferenceMemory(content: string): boolean {
+  const deliveryCue = /文风|文笔|排版|格式|语气|称呼|长度|简洁|详细|标题|列表|表格|配色|风格|style|format|tone|layout/i;
+  const explicitPreferenceCue = /(?:用户|对方|我).{0,16}(?:偏好|喜欢|习惯|希望|要求|不要|倾向)|^(?:文风|文笔|排版|格式|语气|称呼|长度|配色|风格)\s*[:：]/i;
+  return deliveryCue.test(content) && explicitPreferenceCue.test(content);
+}
+
 interface Turn {
   speaker: string;
   text: string;
@@ -598,10 +604,11 @@ export class CompanionEngine {
       scopes: this.visibleScopes(userId, personaId),
       topK: 12,
     });
-    const preferenceCue = /偏好|喜欢|习惯|文风|文笔|排版|格式|语气|称呼|长度|简洁|详细|标题|列表|表格|配色|风格|prefer|style|format|tone|layout/i;
     const selected = candidates
-      .filter((memory) => memory.layer === "procedural" || preferenceCue.test(memory.content))
-      .slice(0, 6);
+      // “提到了格式”不等于“这是用户的格式习惯”。只允许明确归属于用户的交付偏好进入任务，
+      // 避免把测试材料、第三方描述或当前任务正文误当成长期习惯。
+      .filter((memory) => isDeliveryPreferenceMemory(memory.content))
+      .slice(0, 4);
     return [...new Set(selected.map((memory) => memory.content.trim()).filter(Boolean))];
   }
 

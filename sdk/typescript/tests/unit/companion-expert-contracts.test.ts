@@ -75,10 +75,17 @@ test("passes both summaries and full expert artifacts to dependent work", () => 
     title: id === "one" ? "架构检查" : "质量检查",
     summary: id === "one" ? "摘要一" : "摘要二",
     text: id === "one" ? "完整原文一：数据库是唯一状态源。" : "完整原文二：上传失败需要可恢复。",
+    proofLevel: id === "one" ? "verified" : "validated",
+    verificationSummary: id === "one" ? "当前源码已核验" : undefined,
+    checks: id === "one" ? [] : [{ label: "浏览器真实操作", status: "not-run", detail: "未提供浏览器" }],
   }));
 
   assert.match(block, /提炼摘要：摘要一/);
   assert.match(block, /完整原文一：数据库是唯一状态源/);
   assert.match(block, /提炼摘要：摘要二/);
   assert.match(block, /完整原文二：上传失败需要可恢复/);
+  assert.match(block, /证据状态：已核验/);
+  assert.match(block, /来源核验：当前源码已核验/);
+  assert.match(block, /未通过检查：浏览器真实操作/);
+  assert.match(block, /没有达到“已核验”/);
 });

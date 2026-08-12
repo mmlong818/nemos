@@ -83,11 +83,116 @@ function kindTitle(kind, index) {
   return `段落 ${index + 1}`;
 }
 
+const LEGACY_CAPABILITY_KINDS = new Set([
+  "research-brief",
+  "presentation-builder",
+  "thinking-workbench",
+  "product-design",
+  "business-deal",
+  "market-opportunity",
+  "ability-builder",
+]);
+
+const LEGACY_FIELD_LABELS = {
+  question: "研究问题",
+  plan: "研究路径",
+  audience: "受众",
+  purpose: "目标",
+  slides: "页面",
+  problem: "问题",
+  facts: "已知事实",
+  assumptions: "假设",
+  contradictions: "矛盾",
+  options: "可选方案",
+  experiments: "验证方法",
+  nextActions: "下一步",
+  conclusion: "结论",
+  limitations: "限制",
+  findings: "主要发现",
+  sources: "来源",
+  user: "用户",
+  job: "用户任务",
+  flow: "操作流程",
+  screens: "关键界面",
+  acceptanceChecks: "验收检查",
+  stakeholders: "关键人",
+  objections: "异议",
+  boundaries: "边界",
+  scenarios: "情景",
+  thesis: "机会假设",
+  invalidation: "失效条件",
+  qualification: "资格判断",
+  spec: "能力定义",
+  testCases: "触发测试",
+  id: "编号",
+  title: "标题",
+  url: "链接",
+  publisher: "发布者",
+  tier: "来源等级",
+  score: "可信度",
+  checkedAt: "核验时间",
+  claims: "主张",
+  anchors: "证据锚点",
+  claim: "判断",
+  evidenceIds: "来源编号",
+  anchorIds: "锚点编号",
+  confidence: "置信度",
+  status: "状态",
+  page: "页码",
+  span: "位置",
+  quote: "引文",
+  quoteHash: "引文校验",
+  text: "内容",
+  risk: "风险",
+};
+
+function readableLegacyCapabilityText(value) {
+  const candidate = String(value || "").trim();
+  if (!candidate.startsWith("{") || !candidate.endsWith("}")) return localizedLegacyHeadings(String(value || ""));
+  try {
+    const payload = JSON.parse(candidate);
+    if (!payload || !LEGACY_CAPABILITY_KINDS.has(payload.kind) || typeof payload.title !== "string" || typeof payload.summary !== "string" || !payload.data || typeof payload.data !== "object" || Array.isArray(payload.data)) return localizedLegacyHeadings(String(value || ""));
+    const lines = [`# ${payload.title}`, "", payload.summary, ""];
+    Object.entries(payload.data).forEach(([key, item]) => {
+      lines.push(`## ${LEGACY_FIELD_LABELS[key] || key}`, "", readableLegacyValue(item), "");
+    });
+    return lines.join("\n").trim();
+  } catch {
+    return localizedLegacyHeadings(String(value || ""));
+  }
+}
+
+function localizedLegacyHeadings(value) {
+  let text = String(value || "");
+  Object.entries(LEGACY_FIELD_LABELS).forEach(([key, label]) => {
+    text = text.replace(new RegExp(`^## ${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "gmi"), `## ${label}`);
+  });
+  return text;
+}
+
+function readableLegacyValue(value) {
+  if (value === null || value === undefined || value === "") return "（无）";
+  if (["string", "number", "boolean"].includes(typeof value)) return String(value);
+  if (Array.isArray(value)) return value.length
+    ? value.map((item) => item && typeof item === "object"
+      ? `- ${Object.entries(item).map(([key, nested]) => `${LEGACY_FIELD_LABELS[key] || key}：${flatLegacyValue(nested)}`).join("；")}`
+      : `- ${String(item)}`).join("\n")
+    : "（无）";
+  if (typeof value === "object") return Object.entries(value).map(([key, nested]) => `- **${LEGACY_FIELD_LABELS[key] || key}**：${flatLegacyValue(nested)}`).join("\n");
+  return String(value);
+}
+
+function flatLegacyValue(value) {
+  if (Array.isArray(value)) return value.map(flatLegacyValue).join("、");
+  if (value && typeof value === "object") return Object.values(value).map(flatLegacyValue).join("；");
+  return String(value ?? "");
+}
+
 function safeBlock(block, index, kind) {
   return {
     id: String(block?.id || uid("block")),
     title: String(block?.title || kindTitle(kind, index)).slice(0, 120),
-    text: String(block?.text || "").slice(0, 120000),
+    text: readableLegacyCapabilityText(String(block?.text || "")).slice(0, 120000),
   };
 }
 
@@ -176,6 +281,8 @@ function loadState() {
 const state = loadState();
 state.view = currentDocument()?.sourceSize ? "source" : "edit";
 let toastTimer = 0;
+let operationTimer = 0;
+let operationRetry = null;
 let jobPollTimer = 0;
 let selectedCapabilityId = "document-draft";
 let pendingDeletion = null;
@@ -223,6 +330,18 @@ function setSaveState(text, saving = false) {
   const node = document.querySelector("#saveState");
   node.textContent = text;
   node.classList.toggle("is-saving", saving);
+}
+
+function showOperation(message, stateName = "busy", retryAction = null) {
+  window.clearTimeout(operationTimer);
+  const banner = document.querySelector("#operationBanner");
+  const retry = document.querySelector("#operationRetry");
+  document.querySelector("#operationText").textContent = message;
+  banner.dataset.state = stateName;
+  banner.hidden = false;
+  operationRetry = typeof retryAction === "function" ? retryAction : null;
+  retry.hidden = !operationRetry;
+  if (stateName === "success") operationTimer = window.setTimeout(() => { banner.hidden = true; }, 6500);
 }
 
 function persistState(message = "已保存到本机") {
@@ -571,7 +690,9 @@ function renderBlocks(current) {
   const continuous = current.kind === "docx" || current.kind === "txt" || current.kind === "md";
   const importedStructured = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx"].includes(current.kind));
   document.querySelector("#addBlock").hidden = continuous || importedStructured;
-  document.querySelector("#editViewTab").textContent = textViewLabel(current.kind);
+  document.querySelector("#editViewTab").textContent = current.convertedFrom || current.kind === "docx"
+    ? "编辑工作副本"
+    : current.kind === "md" || current.kind === "txt" ? "编辑内容" : textViewLabel(current.kind);
   if (current.kind === "md") {
     root.innerHTML = `
       <div class="markdown-workspace">
@@ -913,7 +1034,12 @@ function render() {
   document.querySelector("#formatBadge").textContent = formatLabel(current.kind);
   document.querySelector("#documentName").value = current.name;
   const size = current.sourceSize ? ` · ${Math.max(1, Math.round(current.sourceSize / 1024))} KB` : "";
-  document.querySelector("#sourceState").textContent = current.sourceStored ? "原文件保留在本机" : current.sourceSize ? "重新打开可恢复原始版式" : "空白文稿";
+  const hasWorkingContent = current.blocks.some((block) => block.text.trim());
+  document.querySelector("#sourceState").textContent = current.sourceStored
+    ? "原文件保留在本机"
+    : current.sourceSize || current.convertedFrom || (["docx", "pptx", "xlsx", "pdf"].includes(current.kind) && hasWorkingContent)
+      ? "原文件未绑定，可重新打开恢复"
+      : "新建文件";
   const desktopEditable = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx", "pdf"].includes(current.kind));
   document.querySelector("#openDesktopEditor").hidden = !desktopEditable;
   document.querySelector("#openDesktopEditor").textContent = desktopEditLabel(current.kind);
@@ -951,12 +1077,14 @@ function render() {
   if (current.processing) void refreshOfficeJob(current.processing.jobId);
 }
 
-function createBlankDocument() {
+function createBlankDocument(kind = "docx") {
+  if (!["docx", "md", "txt"].includes(kind)) kind = "docx";
   const createdAt = now();
+  const defaultNames = { docx: "未命名 Word 文稿", md: "未命名 Markdown", txt: "未命名文本" };
   const createdDocument = safeDocument({
     id: uid("document"),
-    name: "未命名文稿",
-    kind: "docx",
+    name: defaultNames[kind],
+    kind,
     sourceSize: 0,
     createdAt,
     updatedAt: createdAt,
@@ -967,10 +1095,15 @@ function createBlankDocument() {
   state.documents.unshift(createdDocument);
   state.selectedId = createdDocument.id;
   state.view = "edit";
-  persistState("空白文稿已建立");
+  document.querySelector("#newDocumentDialog").close();
+  persistState(`${formatLabel(kind)} 文件已建立`);
   render();
   document.querySelector("#documentName").focus();
-  showToast("空白文稿已建立，内容会自动保存在本机");
+  showOperation(`${formatLabel(kind)} 文件已建立，内容会自动保存在本机`, "success");
+}
+
+function openNewDocumentDialog() {
+  document.querySelector("#newDocumentDialog").showModal();
 }
 
 async function fileToBase64(file) {
@@ -984,9 +1117,16 @@ async function fileToBase64(file) {
 
 async function importFile(file, handle = null) {
   if (!file) return;
-  if (!/\.(docx|pptx|xlsx|pdf|txt|md|markdown)$/i.test(file.name)) return showToast("支持 Word、PowerPoint、Excel、PDF、TXT 和 Markdown 文件", true);
-  if (file.size > 8 * 1024 * 1024) return showToast("文件不能超过 8 MB", true);
+  if (!/\.(docx|pptx|xlsx|pdf|txt|md|markdown)$/i.test(file.name)) {
+    showOperation("无法打开：仅支持 Word、PowerPoint、Excel、PDF、TXT 和 Markdown 文件", "error", () => document.querySelector("#officeFileInput").click());
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    showOperation("无法打开：文件不能超过 8 MB", "error", () => document.querySelector("#officeFileInput").click());
+    return;
+  }
   setSaveState("正在读取文件…", true);
+  showOperation(`正在读取并解析「${file.name}」…`, "busy");
   try {
     const response = await api("/api/files/extract", {
       method: "POST",
@@ -1037,9 +1177,14 @@ async function importFile(file, handle = null) {
     showToast(converted
       ? `已转成 Markdown 处理${importedDocument.conversionNotes.length ? `；${importedDocument.conversionNotes.length} 项内容有变化，见下方说明` : ""}。原文件保留，可随时下载`
       : importedDocument.sourceStored ? "文件已打开，原始版本保留在本机" : "文件已打开，工作副本不会覆盖原文件", converted && importedDocument.conversionNotes.length > 0);
+    showOperation(converted
+      ? `已打开「${file.name}」，并建立可编辑工作副本；原文件未改动`
+      : `已打开「${file.name}」，可以继续编辑`, "success");
   } catch (error) {
     setSaveState("读取失败");
-    showToast(error instanceof Error ? error.message : "文件读取失败", true);
+    const message = error instanceof Error ? error.message : "文件读取失败";
+    showToast(message, true);
+    showOperation(`打开失败：${message}`, "error", () => document.querySelector("#officeFileInput").click());
   }
 }
 
@@ -1298,20 +1443,9 @@ async function exportDraft() {
   if (!current) return;
   const format = document.querySelector("#exportFormat").value;
   const filename = `${current.name || "办公文稿"}.${format}`;
-  let fileHandle = null;
-  if (typeof window.showSaveFilePicker === "function") {
-    try {
-      fileHandle = await window.showSaveFilePicker({ suggestedName: filename });
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        setSaveState("未导出");
-        return;
-      }
-      setSaveState("导出失败");
-      showToast(error instanceof Error ? error.message : "无法打开保存位置", true);
-      return;
-    }
-  }
+  const exportButton = document.querySelector("#exportDraft");
+  exportButton.disabled = true;
+  showOperation(`正在生成「${filename}」…`, "busy");
   setSaveState("正在请求下载…", true);
   try {
     const response = await fetch("/api/files/export?prepare=1", {
@@ -1326,22 +1460,22 @@ async function exportDraft() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.downloadUrl) throw new Error(result.error || "导出失败");
     const warnings = Array.isArray(result.warnings) ? result.warnings.join("\n") : "";
-    if (fileHandle) {
-      const download = await fetch(result.downloadUrl);
-      if (!download.ok) throw new Error("文件保存失败（" + download.status + "）");
-      const writable = await fileHandle.createWritable();
-      await writable.write(await download.blob());
-      await writable.close();
-      setSaveState("文件已保存");
-      showToast(warnings || "文件已保存", Boolean(warnings));
-      return;
-    }
-    window.location.href = result.downloadUrl;
+    const link = document.createElement("a");
+    link.href = result.downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     setSaveState("下载已开始");
     showToast(warnings || "文件下载已开始", Boolean(warnings));
+    showOperation(warnings ? `已开始下载「${filename}」；有转换变化，请查看提示` : `「${filename}」已生成并开始下载`, "success");
   } catch (error) {
     setSaveState("导出失败");
-    showToast(error instanceof Error ? error.message : "导出失败", true);
+    const message = error instanceof Error ? error.message : "导出失败";
+    showToast(message, true);
+    showOperation(`导出失败：${message}`, "error", exportDraft);
+  } finally {
+    exportButton.disabled = false;
   }
 }
 
@@ -1505,8 +1639,11 @@ function closeAssistantPanel() {
 }
 
 function bindEvents() {
-  document.querySelector("#newDocument").addEventListener("click", createBlankDocument);
-  document.querySelector("#newDocumentEmpty").addEventListener("click", createBlankDocument);
+  document.querySelector("#newDocument").addEventListener("click", openNewDocumentDialog);
+  document.querySelector("#newDocumentEmpty").addEventListener("click", openNewDocumentDialog);
+  document.querySelectorAll("[data-new-document-kind]").forEach((button) => button.addEventListener("click", () => createBlankDocument(button.dataset.newDocumentKind)));
+  document.querySelector("#closeNewDocumentDialog").addEventListener("click", () => document.querySelector("#newDocumentDialog").close());
+  document.querySelector("#operationRetry").addEventListener("click", () => operationRetry?.());
   document.querySelector("#officeFileInput").addEventListener("change", async (event) => {
     await importFile(event.target.files?.[0]);
     event.target.value = "";

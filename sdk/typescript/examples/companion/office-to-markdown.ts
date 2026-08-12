@@ -2,6 +2,8 @@ import { extractOfficeFile, type OfficeFileKind } from "./office-file-parser.js"
 import { UserFacingError } from "./office-errors.js";
 import { parseDocx, type Block, type TableModel } from "./vendor/docx-engine/dist/index.js";
 import { getSlideNotes, openPptx, type Slide, type SlideElement, type TableElement as PptxTableElement, type TextElement } from "./vendor/pptx-engine/dist/index.js";
+import { isNativeCapabilityId, parseNativeCapabilityPayload } from "./native-capability-contracts.js";
+import { renderNativeCapabilityMarkdown } from "./native-capability-renderer.js";
 
 /**
  * 把上传的文档统一转成 Markdown 之后再处理。
@@ -40,16 +42,32 @@ function formatOf(fileName: string): OfficeFileKind {
 }
 
 function finish(sourceFormat: OfficeFileKind, markdown: string, notes: string[]): MarkdownConversion {
-  const normalized = markdown.replace(/\r/g, "").replace(/\n{4,}/g, "\n\n\n").trim();
+  const repaired = repairLegacyStructuredResult(markdown);
+  const normalized = repaired.markdown.replace(/\r/g, "").replace(/\n{4,}/g, "\n\n\n").trim();
+  const completeNotes = repaired.repaired ? [...notes, "检测到旧版结构化结果，已转换成可读正文；内部数据不会作为正文显示。"] : notes;
   const truncated = normalized.length > MAX_MARKDOWN_CHARACTERS;
   return {
     sourceFormat,
     markdown: truncated
       ? `${normalized.slice(0, MAX_MARKDOWN_CHARACTERS)}\n\n> 内容较长，已保留前 ${MAX_MARKDOWN_CHARACTERS.toLocaleString("zh-CN")} 个字符。原文件完整保留，可以下载。`
       : normalized,
-    notes: truncated ? [...notes, "内容超出单文档上限，Markdown 只保留了前半部分。"] : notes,
+    notes: truncated ? [...completeNotes, "内容超出单文档上限，Markdown 只保留了前半部分。"] : completeNotes,
     truncated,
   };
+}
+
+function repairLegacyStructuredResult(markdown: string): { markdown: string; repaired: boolean } {
+  const candidate = markdown.trim();
+  if (!candidate.startsWith("{") || !candidate.endsWith("}")) return { markdown, repaired: false };
+  try {
+    const parsed = JSON.parse(candidate) as { kind?: unknown };
+    const kind = typeof parsed.kind === "string" ? parsed.kind : "";
+    if (!isNativeCapabilityId(kind)) return { markdown, repaired: false };
+    const payload = parseNativeCapabilityPayload(kind, candidate);
+    return { markdown: renderNativeCapabilityMarkdown(payload), repaired: true };
+  } catch {
+    return { markdown, repaired: false };
+  }
 }
 
 function decodeText(data: Uint8Array): string {
