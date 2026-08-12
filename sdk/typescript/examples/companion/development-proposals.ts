@@ -177,6 +177,10 @@ export class DevelopmentProposalStore {
     return found ? structuredClone(found) : undefined;
   }
 
+  list(): DevelopmentProposal[] {
+    return structuredClone(this.proposals);
+  }
+
   apply(id: string): DevelopmentProposal {
     const proposal = this.require(id);
     if (proposal.state !== "pending" && proposal.state !== "conflicted") throw new Error("这个开发提案当前不能应用。");

@@ -6,7 +6,7 @@ const viewFromLocation = () => {
   return workViews.has(route) ? route : "tasks";
 };
 let view = viewFromLocation();
-const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null };
+const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [] };
 const loadedViews = new Set();
 let loadSequence = 0;
 let activeStoryTaskId = "";
@@ -89,13 +89,13 @@ async function load() {
       result = { snapshot, jobs: jobs.jobs || [], knowledge: knowledge.items || [] };
     }
     if (requestedView === "resources") {
-      const [snapshot, knowledge, sources] = await Promise.all([api("/api/capabilities"), api("/api/knowledge?archived=1"), api("/api/sources")]);
-      result = { snapshot, knowledge: knowledge.items || [], sources };
+      const [snapshot, knowledge, sources, platform, extensions] = await Promise.all([api("/api/capabilities"), api("/api/knowledge?archived=1"), api("/api/sources"), api("/api/platform/readiness"), api("/api/agent/extensions")]);
+      result = { snapshot, knowledge: knowledge.items || [], sources, platform, extensions: extensions.extensions || [] };
     }
     if (requestedView === "artifacts") result = await api("/api/capabilities");
     if (requestedView === "runs") {
-      const [jobs, runs] = await Promise.all([api("/api/agent/jobs?limit=100"), api("/api/agent/runs?limit=100")]);
-      result = { jobs: jobs.jobs || [], runs: runs.runs || [] };
+      const [jobs, runs, reviewQueue] = await Promise.all([api("/api/agent/jobs?limit=100"), api("/api/agent/runs?limit=100"), api("/api/review-queue")]);
+      result = { jobs: jobs.jobs || [], runs: runs.runs || [], reviewQueue: reviewQueue.items || [] };
     }
     if (requestedView === "memory") result = (await api("/api/memory?who=me")).facts || [];
     if (sequence !== loadSequence || requestedView !== view) return;
@@ -114,11 +114,14 @@ async function load() {
       state.snapshot = result.snapshot;
       state.knowledge = result.knowledge;
       state.sources = result.sources;
+      state.platform = result.platform;
+      state.extensions = result.extensions;
     }
     if (requestedView === "artifacts") state.snapshot = result;
     if (requestedView === "runs") {
       state.jobs = result.jobs;
       state.runs = result.runs;
+      state.reviewQueue = result.reviewQueue;
     }
     if (requestedView === "memory") state.memories = result;
     loadedViews.add(requestedView);
@@ -644,16 +647,48 @@ function connectionCards() {
   ].join("");
 }
 
+function platformCards() {
+  const labels = { ready: "已连接", available: "已安装，未启用", "not-installed": "未安装" };
+  return (state.platform?.connectors || []).map((item) => `<article class="connection-card"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(labels[item.state] || item.state)} · ${escapeHtml(item.purpose)}</small></article>`).join("");
+}
+
+function extensionRows() {
+  if (!state.extensions.length) return '<div class="resource-empty">还没有安装扩展。连接器安装后会在这里统一管理。</div>';
+  return state.extensions.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.manifest?.name || item.manifest?.id || "未命名扩展")}</h3><p>${escapeHtml(item.manifest?.version || "")} · ${item.enabled ? "正在使用" : "已停用"}${item.runtimeError ? ` · ${escapeHtml(item.runtimeError)}` : ""}</p></div><div class="actions"><button data-toggle-extension="${escapeHtml(item.manifest.id)}" data-enabled="${item.enabled ? "1" : "0"}">${item.enabled ? "停用" : "启用"}</button><button data-uninstall-extension="${escapeHtml(item.manifest.id)}">卸载</button></div></article>`).join("");
+}
+
+function capabilityPackRows() {
+  return (state.platform?.capabilityPacks || []).map((pack) => `<article class="compact-row"><div><h3>${escapeHtml(pack.name)}</h3><p>${escapeHtml(pack.quality.join(" · "))}</p></div><span class="pill">${pack.abilities.length} 项能力</span></article>`).join("");
+}
+
+function developmentReadiness() {
+  const tools = state.platform?.development || {};
+  const names = { node: "Node.js", git: "Git", python: "Python" };
+  return Object.entries(tools).map(([id, item]) => `<article class="connection-card"><strong>${names[id] || id}</strong><small>${item.available ? escapeHtml(item.version) : "未安装；相关检查会明确跳过"}</small></article>`).join("");
+}
+
 function renderResources() {
   const active = state.knowledge.filter((item) => !item.archivedAt);
   const archived = state.knowledge.filter((item) => item.archivedAt);
   const rows = active.map((item) => `<article class="compact-row"><div><span class="resource-kind">${resourceKindLabel(item.kind)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.excerpt || item.sourceUrl || "无文字摘要")} · ${item.characterCount || 0} 字</p></div><div class="actions"><button data-preview-resource="${item.id}">查看</button><button data-archive-resource="${item.id}">归档</button></div></article>`).join("");
-  $("#content").innerHTML = `<div class="platform-grid"><section class="platform-panel"><header><div><h2>任务资料</h2><p>需要时明确选入任务，不会默认把所有内容都塞给模型。</p></div><button class="primary" id="newKnowledge">添加资料</button></header><div class="compact-list">${rows || '<div class="resource-empty">还没有资料。可以添加笔记、文本文件或网页链接。</div>'}</div>${archived.length ? `<details><summary>${archived.length} 项已归档资料</summary><div class="compact-list">${archived.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.title)}</h3></div><button data-restore-resource="${item.id}">恢复</button></article>`).join("")}</div></details>` : ""}</section><section class="platform-panel"><header><div><h2>数据连接</h2><p>这里显示能否使用，不把“预留接口”说成已经接通。</p></div><a class="button" href="/#settings">管理连接</a></header><div class="connection-grid">${connectionCards()}</div></section></div>`;
+  $("#content").innerHTML = `<div class="platform-grid"><section class="platform-panel"><header><div><h2>任务资料</h2><p>需要时明确选入任务，不会默认把所有内容都塞给模型。</p></div><button class="primary" id="newKnowledge">添加资料</button></header><div class="compact-list">${rows || '<div class="resource-empty">还没有资料。可以添加笔记、文本文件或网页链接。</div>'}</div>${archived.length ? `<details><summary>${archived.length} 项已归档资料</summary><div class="compact-list">${archived.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.title)}</h3></div><button data-restore-resource="${item.id}">恢复</button></article>`).join("")}</div></details>` : ""}</section><section class="platform-panel"><header><div><h2>数据连接</h2><p>只有扩展真实启用后才显示为已连接。</p></div></header><div class="connection-grid">${connectionCards()}${platformCards()}</div><header class="subsection-head"><div><h2>开发环境</h2><p>开发能力会先检查这些本机工具，不要求新手打开命令行。</p></div></header><div class="connection-grid">${developmentReadiness()}</div></section><section class="platform-panel"><header><div><h2>领域能力包</h2><p>按工作类型组合能力、结果形式和交付检查。</p></div></header><div class="compact-list">${capabilityPackRows()}</div></section><section class="platform-panel"><header><div><h2>能力扩展</h2><p>在一处查看、启用、停用和卸载；权限扩大时仍需单独确认。</p></div></header><div class="compact-list">${extensionRows()}</div></section></div>`;
   $("#newKnowledge").onclick = openKnowledgeDialog;
   $("#content").onclick = async (event) => {
     const preview = event.target.closest("[data-preview-resource]");
     const archive = event.target.closest("[data-archive-resource]");
     const restore = event.target.closest("[data-restore-resource]");
+    const toggleExtension = event.target.closest("[data-toggle-extension]");
+    const uninstallExtension = event.target.closest("[data-uninstall-extension]");
+    if (toggleExtension) {
+      await api("/api/agent/extension/enabled", { method: "POST", body: JSON.stringify({ id: toggleExtension.dataset.toggleExtension, enabled: toggleExtension.dataset.enabled !== "1" }) });
+      await load();
+      return;
+    }
+    if (uninstallExtension && confirm("卸载这个扩展？本地资料不会删除，但它提供的工具会立即停止。")) {
+      await api("/api/agent/extension/uninstall", { method: "POST", body: JSON.stringify({ id: uninstallExtension.dataset.uninstallExtension }) });
+      await load();
+      return;
+    }
     if (preview) {
       const result = await api(`/api/knowledge?id=${encodeURIComponent(preview.dataset.previewResource)}`);
       alert(`${result.item.title}\n\n${result.item.content || result.item.sourceUrl || ""}`);
@@ -752,7 +787,8 @@ function renderRuns() {
     return `<article class="card"><div><h2>${escapeHtml(job.payload?.title || job.type || "后台任务")}</h2><p>${escapeHtml(job.result?.summary || job.error || (job.status === "uncertain" ? "执行结果无法自动确认，请先核对，系统不会自动重试。" : "由小丑鱼在后台执行"))}</p>${orchestrationDetail(job)}<div class="meta"><span class="pill ${statusPill(job.status)}">${escapeHtml(jobStatusLabel(job.status))}</span><span class="pill">${date(job.updatedAt || job.createdAt)}</span><span class="pill">尝试 ${job.attempts || 0}/${job.maxAttempts || 1}</span></div></div><div class="actions">${["queued", "running"].includes(job.status) ? `<button data-cancel-job="${job.id}">取消</button>` : ""}${["failed", "cancelled"].includes(job.status) ? `<button data-retry-job="${job.id}">重试</button>` : ""}${uncertainActions}</div></article>`;
   }).join("");
   const runCards = runs.slice(0, 20).map((run) => `<article class="card"><div><h2>${escapeHtml(runDisplayTitle(run))}</h2><p>${escapeHtml(run.output?.slice(0, 180) || run.error || "已保存执行记录，需要时可以恢复或排查。")}</p><div class="meta"><span class="pill ${statusPill(run.status)}">${escapeHtml(jobStatusLabel(run.status))}</span><span class="pill">${date(run.updatedAt || run.createdAt)}</span></div></div><div class="actions">${["interrupted", "paused", "failed"].includes(run.status) ? `<button data-resume-run="${run.runId}">恢复</button>` : ""}</div></article>`).join("");
-  $("#content").innerHTML = `<div class="toolbar"><span></span><button id="refreshRuns">刷新</button></div><div class="list">${jobCards || runCards ? jobCards + runCards : '<div class="empty">还没有运行记录。</div>'}</div>`;
+  const reviewCards = state.reviewQueue.map((item) => `<article class="compact-row"><div><span class="resource-kind">${item.kind === "approval" ? "等待确认" : item.kind === "development-proposal" ? "修改待审" : "运行异常"}</span><h3>${escapeHtml(item.title)}</h3><p>${date(item.at)}</p></div><a class="button" href="${item.kind === "development-proposal" ? `/api/development/proposal/preview?id=${encodeURIComponent(item.sourceId)}` : item.kind === "approval" ? "/runs" : `/api/agent/job?id=${encodeURIComponent(item.sourceId)}`}">查看</a></article>`).join("");
+  $("#content").innerHTML = `<section class="platform-panel review-queue"><header><div><h2>待你审阅</h2><p>只集中展示需要决定或人工核对的事项；普通后台任务不会打扰你。</p></div><span class="pill ${state.reviewQueue.length ? "warn" : "ok"}">${state.reviewQueue.length} 项</span></header><div class="compact-list">${reviewCards || '<div class="resource-empty">当前没有需要你处理的事项。</div>'}</div></section><div class="toolbar"><span></span><button id="refreshRuns">刷新</button></div><div class="list">${jobCards || runCards ? jobCards + runCards : '<div class="empty">还没有运行记录。</div>'}</div>`;
   $("#refreshRuns").onclick = load;
   $("#content").onclick = async (event) => {
     const cancel = event.target.closest("[data-cancel-job]");
