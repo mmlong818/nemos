@@ -13,6 +13,7 @@ const CONVERTED_FILE_KINDS = [
 ];
 const CONVERTED_FILE_KIND_SET = new Set(CONVERTED_FILE_KINDS);
 const SUPPORTED_FILE_PATTERN = /\.(doc|docx|docm|odt|rtf|epub|ppt|pps|pot|pptx|pptm|ppsx|ppsm|odp|xls|xlsx|xlsm|xlsb|ods|csv|pdf|txt|md|markdown)$/i;
+const dirtyWordDocuments = new Set();
 
 const ICON_PATHS = {
   ...window.ClownfishIcons.paths,
@@ -636,6 +637,8 @@ function renderRecentFiles() {
       <span class="file-row-copy"><strong>${escapeHtml(document.name)}</strong><small>${formatLabel(sourceKind(document))} · ${displayDate(document.updatedAt)}</small></span>
     </button>`).join("");
   root.querySelectorAll("[data-document-id]").forEach((button) => button.addEventListener("click", () => {
+    const current = currentDocument();
+    if (current && dirtyWordDocuments.has(current.id) && button.dataset.documentId !== current.id && !window.confirm("当前 Word 工作副本还有未保存修改。放弃修改并打开其他文件吗？")) return;
     state.selectedId = button.dataset.documentId;
     state.view = currentDocument()?.sourceSize ? "source" : "edit";
     activeStructuredSection.delete(state.selectedId);
@@ -725,6 +728,26 @@ function applyMarkdownAction(editor, action) {
 
 function isWordWorkingCopy(current) {
   return ["doc", "docx", "docm", "odt", "rtf"].includes(String(current.convertedFrom || "").toLowerCase());
+}
+
+function markWordCopyDirty(current) {
+  dirtyWordDocuments.add(current.id);
+  const button = document.querySelector("#saveWorkingCopy");
+  button.disabled = false;
+  button.textContent = "保存副本";
+  setSaveState("有未保存的修改", true);
+}
+
+function saveWorkingCopy() {
+  const current = currentDocument();
+  if (!current || !isWordWorkingCopy(current)) return;
+  maybeCreateAutomaticCheckpoint();
+  persistState("工作副本已保存");
+  dirtyWordDocuments.delete(current.id);
+  const button = document.querySelector("#saveWorkingCopy");
+  button.disabled = true;
+  button.textContent = "已保存";
+  showToast("工作副本已单独保存；原 Word 文件没有改动。");
 }
 
 function wordParagraphs(text) {
@@ -1170,6 +1193,11 @@ function render() {
   document.querySelector("#writeBackSource").hidden = !current.sourceWritable || !capability.sourceWritable;
   document.querySelector("#editViewTab").hidden = current.kind === "pdf";
   document.querySelector("#saveStructuredCopy").hidden = true;
+  const saveWorkingCopyButton = document.querySelector("#saveWorkingCopy");
+  saveWorkingCopyButton.hidden = !isWordWorkingCopy(current);
+  saveWorkingCopyButton.disabled = !dirtyWordDocuments.has(current.id);
+  saveWorkingCopyButton.textContent = dirtyWordDocuments.has(current.id) ? "保存副本" : "已保存";
+  if (isWordWorkingCopy(current)) setSaveState(dirtyWordDocuments.has(current.id) ? "有未保存的修改" : "工作副本已保存", dirtyWordDocuments.has(current.id));
   document.querySelector("#documentSurface").classList.toggle("is-markdown", current.kind === "md" && !isWordWorkingCopy(current));
   document.querySelector("#documentSurface").classList.toggle("is-presentation", current.kind === "pptx");
   document.querySelector("#documentSurface").classList.toggle("is-spreadsheet", current.kind === "xlsx");
@@ -1792,7 +1820,7 @@ function bindEvents() {
       block[wordField.dataset.wordField] = value;
       if (wordField.dataset.wordField === "text") block.richHtml = safeWordHtml(wordField.innerHTML);
       current.updatedAt = new Date().toISOString();
-      scheduleSave();
+      markWordCopyDirty(current);
       return;
     }
     if (current && event.target.matches("[data-cell-address]")) {
@@ -1860,6 +1888,7 @@ function bindEvents() {
   document.querySelector("#addBlock").addEventListener("click", addBlock);
   document.querySelector("#deleteDocument").addEventListener("click", deleteCurrentDocument);
   document.querySelector("#saveVersion").addEventListener("click", saveVersion);
+  document.querySelector("#saveWorkingCopy").addEventListener("click", saveWorkingCopy);
   document.querySelector("#openAssistantPanel").addEventListener("click", () => openAssistantPanel("assistant"));
   document.querySelector("#openVersionPanel").addEventListener("click", () => openAssistantPanel("versions"));
   document.querySelector("#closeAssistantPanel").addEventListener("click", closeAssistantPanel);
@@ -1915,7 +1944,11 @@ function bindEvents() {
     }
   });
   window.addEventListener("resize", () => { if (window.innerWidth > 720) closeFilePanel(); });
-  window.addEventListener("beforeunload", () => {
+  window.addEventListener("beforeunload", (event) => {
+    if (dirtyWordDocuments.size) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
     window.clearTimeout(jobPollTimer);
     finalizePendingDeletion();
     window.ClownfishOfficeSource.release();

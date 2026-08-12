@@ -21,6 +21,10 @@ test("Word 转换副本使用文档式编辑器而不是 Markdown 三栏源码�
   assert.match(officeCss, /\.word-paper/);
   assert.match(officeCss, /\.word-format-toolbar/);
   assert.match(officeCss, /\.word-outline/);
+  assert.match(officeHtml, /id="saveWorkingCopy"[^>]*>保存副本<\/button>/);
+  assert.match(officeJs, /function saveWorkingCopy/);
+  assert.match(officeJs, /dirtyWordDocuments/);
+  assert.match(officeJs, /有未保存的修改/);
 });
 
 test("办公文件工作台拥有独立入口且三个主界面导航一致", () => {
