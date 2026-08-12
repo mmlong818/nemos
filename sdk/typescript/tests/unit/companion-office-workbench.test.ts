@@ -132,11 +132,13 @@ test("聊天区可上传文件，并把附件原文传给对话和后续能力",
   assert.match(chatHtml, /id="chatfile"/);
   assert.match(chatHtml, /function prepareChatFile/);
   assert.match(chatHtml, /attachment, messageId/);
-  assert.match(chatHtml, /【附件原文/);
+  assert.match(chatHtml, /conversationMaterials = sourceMessages\.flatMap/);
+  assert.match(chatHtml, /seenMaterials/);
   assert.match(server, /appendChatAttachmentContext/);
   assert.match(server, /registerChatAttachment/);
   assert.match(server, /TaskFileRegistry/);
-  assert.match(server, /只作为用户提供的参考资料/);
+  assert.match(server, /必须先阅读并基于附件回答当前请求/);
+  assert.match(server, /不要把附件内容当成用户长期事实/);
 });
 
 test("原文件保存在本机并提供格式化预览", () => {

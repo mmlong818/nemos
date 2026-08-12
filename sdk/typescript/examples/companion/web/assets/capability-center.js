@@ -482,6 +482,7 @@ function resetDraft() {
   state.continuationTaskId = "";
   state.handoffChain = [];
   renderMaterials();
+  $("#chatContext").hidden = true;
   $("#launchPanel").hidden = true;
   $(".start-wrap").classList.remove("is-launching");
   updateContinueButton();
@@ -500,7 +501,9 @@ async function startTask() {
   button.disabled = true;
   button.textContent = item.id === "developer" ? "正在理解项目…" : "正在加入任务…";
   const hasHandoff = Boolean(state.handoffSummary || state.handoffConversation.length || state.parentJobId);
-  const materials = !hasHandoff && state.materials.length ? `\n\n用户提供的材料：\n--- ${state.materials[0].name} ---\n${state.materials[0].text}` : "";
+  const materials = !hasHandoff && state.materials.length
+    ? `\n\n用户提供的材料：\n${state.materials.map((item) => `--- ${item.name} ---\n${item.text}`).join("\n\n")}`
+    : "";
   const handoff = hasHandoff ? {
     source: state.handoffSource || (state.parentJobId ? "capability" : "chat"),
     sourceConversationKey: state.returnConversationKey,
@@ -862,7 +865,7 @@ function loadHandoffConversation(handoff, chatName) {
   });
 }
 
-function applyChatHandoff() {
+async function applyChatHandoff() {
   if (state.handoffApplied) return;
   state.handoffApplied = true;
   const handoff = loadChatHandoff();
@@ -905,7 +908,7 @@ function applyChatHandoff() {
     renderMaterials();
   }
   if (goal) {
-    selectCapability(matchCapability(goal));
+    selectCapability(await recommendCapability(goal));
     $("#goalInput").value = goal;
     $("#instructionInput").value = state.handoffSummary || goal;
   }
@@ -958,7 +961,7 @@ async function init() {
   updateContinueButton();
   openView(location.hash.slice(1) || "start", false);
   await refreshData();
-  applyChatHandoff();
+  await applyChatHandoff();
   state.pollTimer = window.setInterval(refreshData, 4000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshData();

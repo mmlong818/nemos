@@ -39,6 +39,27 @@ test("交接包同时保存原文、提要、人物身份、材料指纹和版�
   assert.match(context, /约束/);
 });
 
+test("交接包去掉重复原文和重复材料，并允许执行入口避免重复提要", () => {
+  const envelope = createCapabilityHandoffEnvelope({
+    goal: "整理材料",
+    summary: "只保留一份提要",
+    conversation: [
+      { sourceMessageId: "m1", role: "user", text: "原文" },
+      { sourceMessageId: "m1", role: "user", text: "原文" },
+    ],
+    materials: [
+      { name: "材料.md", text: "同一份内容" },
+      { name: "材料副本.md", text: "同一份内容" },
+    ],
+  }, "document-draft")!;
+  assert.equal(envelope.conversation.length, 1);
+  assert.equal(envelope.materials.length, 1);
+  const context = renderCapabilityHandoffContext(envelope, { includeSummary: false });
+  assert.doesNotMatch(context, /只保留一份提要/);
+  assert.match(context, /原文/);
+  assert.match(context, /同一份内容/);
+});
+
 test("交接回执保留同一个内容指纹并绑定返回产物", () => {
   const envelope = createCapabilityHandoffEnvelope({ goal: "继续整理" }, "research-brief")!;
   const received = receiveCapabilityHandoff(envelope, new Date("2026-08-06T10:01:00.000Z"));
