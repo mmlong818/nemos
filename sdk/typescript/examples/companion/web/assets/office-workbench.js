@@ -503,7 +503,14 @@ async function hydrateWorkbenchState() {
       render();
       return;
     }
-    if (state.documents.length || state.trash.length) queueRemoteSave("已保存到本机");
+    // 服务端工作台是跨窗口的唯一真相。全新或已重置的数据目录不能被浏览器里
+    // 残留的旧缓存重新灌回；离线缓存只在服务端暂时不可达时使用。
+    state.documents = [];
+    state.trash = [];
+    state.selectedId = null;
+    state.view = "edit";
+    writeStoredState();
+    render();
   } catch {
     setSaveState("使用本机备份");
   }
@@ -557,6 +564,7 @@ function deleteCurrentDocument() {
   state.selectedId = state.documents[Math.min(originalIndex, state.documents.length - 1)]?.id || null;
   state.view = currentDocument()?.sourceSize ? "source" : "edit";
   writeStoredState();
+  queueRemoteSave("文件已移到垃圾桶");
   render();
   pendingDeletion = { document: current, index: originalIndex, timer: 0 };
   showDeletionToast(current.name || "未命名文稿");
@@ -572,6 +580,7 @@ function undoDocumentDeletion() {
   state.selectedId = deleted.id;
   state.view = deleted.sourceSize ? "source" : "edit";
   writeStoredState();
+  queueRemoteSave("文件已恢复");
   render();
   showToast("文件已恢复");
 }
@@ -598,6 +607,7 @@ function permanentlyDeleteTrashDocument(id) {
   if (pendingDeletion?.document.id === id) finalizePendingDeletion();
   state.trash = state.trash.filter((item) => item.id !== id);
   writeStoredState();
+  queueRemoteSave("文件已永久删除");
   renderTrashFiles();
   void window.ClownfishOfficeSource.remove(id).catch(() => {});
   showToast("文件已永久删除");
@@ -1076,6 +1086,7 @@ async function loadSourceHistory(current = currentDocument()) {
     current.sourceVersions = history.versions || [];
     current.sourceEvents = events.events || [];
     writeStoredState();
+    queueRemoteSave("文件历史已更新");
     renderVersions(current);
   } catch {
     // Draft history remains available when the source history cannot be read.
@@ -1728,6 +1739,7 @@ async function refreshOfficeJob(jobId) {
       current.processing.artifactFormat = artifact.format || "";
     }
     writeStoredState();
+    queueRemoteSave("处理进度已更新");
     renderProcessingState(current, job);
     if (job.status === "queued" || job.status === "running") {
       scheduleOfficeJobPoll(jobId);
@@ -1795,6 +1807,7 @@ async function startOfficeTask() {
       status: job.status || "queued",
     });
     writeStoredState();
+    queueRemoteSave("处理任务已建立");
     state.view = "result";
     setDocumentView("result");
     renderProcessingState(current, job);

@@ -642,26 +642,24 @@ function connectionCards() {
   const wechat = sources.wechat || {};
   const x = sources.x || {};
   return [
-    '<article class="connection-card"><strong>本地资料</strong><small>可直接使用；内容只保存在本机。</small></article>',
     `<article class="connection-card"><strong>微信资料</strong><small>${wechat.enabled ? `已启用 · 最近 ${wechat.recentFiles || 0} 个文件` : "未启用"}</small></article>`,
     `<article class="connection-card"><strong>X 资料</strong><small>${state.sources?.savedXToken || x.hasBearerToken || x.hasUserAccessToken ? "已连接" : x.enabled ? "已启用，尚未连接账号" : "未启用"}</small></article>`,
-    '<article class="connection-card"><strong>联网搜索</strong><small>仅在已连接的模型或搜索工具可用时执行，不把网页摘要当作最终证据。</small></article>',
   ].join("");
 }
 
 function platformCards() {
   const labels = { ready: "已连接", available: "已安装，未启用", "not-installed": "未安装" };
-  return (state.platform?.connectors || []).map((item) => `<article class="connection-card"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(labels[item.state] || item.state)} · ${escapeHtml(item.purpose)}</small><small>默认权限：${escapeHtml((item.minimumPermissions || []).join("、"))}</small><small>${escapeHtml(item.fallback || "")}</small>${item.state === "ready" ? `<button data-test-connector="${escapeHtml(item.id)}">测试连接</button>` : `<button data-import-connector="${escapeHtml(item.id)}">添加 ${escapeHtml(item.name)} 连接</button>`}</article>`).join("");
+  return (state.platform?.connectors || []).map((item) => `<article class="connection-card"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(labels[item.state] || item.state)} · ${item.provider === "built-in" ? "应用内置" : "扩展连接"}</small><small>${escapeHtml(item.purpose)}</small><small>默认权限：${escapeHtml((item.minimumPermissions || []).join("、"))}</small><small>${escapeHtml(item.fallback || "")}</small>${item.state === "ready" ? `<button data-test-connector="${escapeHtml(item.id)}">测试连接</button>` : `<button data-import-connector="${escapeHtml(item.id)}">添加 ${escapeHtml(item.name)} 连接</button>`}</article>`).join("");
 }
 
 function extensionRows() {
   if (!state.extensions.length) return '<div class="resource-empty">还没有安装扩展。连接器安装后会在这里统一管理。</div>';
-  return state.extensions.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.manifest?.name || item.manifest?.id || "未命名扩展")}</h3><p>${escapeHtml(item.manifest?.version || "")} · ${item.enabled ? "正在使用" : "已停用"}${item.runtimeError ? ` · ${escapeHtml(item.runtimeError)}` : ""}</p></div><div class="actions"><button data-toggle-extension="${escapeHtml(item.manifest.id)}" data-enabled="${item.enabled ? "1" : "0"}">${item.enabled ? "停用" : "启用"}</button><button data-uninstall-extension="${escapeHtml(item.manifest.id)}">卸载</button></div></article>`).join("");
+  return state.extensions.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.manifest?.name || item.manifest?.id || "未命名扩展")}</h3><p>${escapeHtml(item.manifest?.version || "")} · ${item.enabled ? "正在使用" : "已停用"}${item.runtimeError ? ` · ${escapeHtml(item.runtimeError)}` : ""}</p></div><div class="actions"><button data-upgrade-extension="${escapeHtml(item.manifest.id)}">更新版本</button>${item.rollbackVersions?.length ? `<button data-rollback-extension="${escapeHtml(item.manifest.id)}" data-rollback-version="${escapeHtml(item.rollbackVersions[0])}">恢复 ${escapeHtml(item.rollbackVersions[0])}</button>` : ""}<button data-toggle-extension="${escapeHtml(item.manifest.id)}" data-enabled="${item.enabled ? "1" : "0"}">${item.enabled ? "停用" : "启用"}</button><button data-uninstall-extension="${escapeHtml(item.manifest.id)}">卸载</button></div></article>`).join("");
 }
 
 function capabilityPackRows() {
   const labels = { experimental: "实验", available: "可用", verified: "已验证", "production-ready": "生产就绪" };
-  return (state.platform?.capabilityPacks || []).map((pack) => `<article class="compact-row"><div><h3>${escapeHtml(pack.name)}</h3><p>${escapeHtml(pack.quality.join(" · "))}</p><p>${pack.verifiedAbilities?.length || 0}/${pack.abilities.length} 项已有真实核验产物</p></div><span class="pill">${escapeHtml(labels[pack.state] || pack.state)}</span></article>`).join("");
+  return (state.platform?.capabilityPacks || []).map((pack) => `<article class="compact-row"><div><h3>${escapeHtml(pack.name)}</h3><p>${escapeHtml(pack.quality.join(" · "))}</p><p>${pack.verifiedAbilities?.length || 0}/${pack.abilities.length} 项已有真实核验产物 · ${pack.qualitySampleCount || 0} 个固定回归样例</p></div><span class="pill">${escapeHtml(labels[pack.state] || pack.state)}</span></article>`).join("");
 }
 
 function developmentReadiness() {
@@ -688,8 +686,9 @@ function renderResources() {
       const expanded = Array.isArray(review.permissionExpansion) ? review.permissionExpansion : [];
       const risks = [review.requiresExecutableConfirmation ? "会启动本机程序" : "", review.requiresUnsandboxedConfirmation ? "无法使用受限沙箱" : "", expanded.length ? `新增权限：${expanded.join("、")}` : ""].filter(Boolean);
       if (risks.length && !confirm(`连接器“${manifest.name || manifest.id}”${risks.join("，")}。确认安装吗？`)) return;
-      await api("/api/agent/extension/install", { method: "POST", body: JSON.stringify({ manifest, confirmExecutable: !!review.requiresExecutableConfirmation, confirmUnsandboxed: !!review.requiresUnsandboxedConfirmation, confirmPermissionExpansion: expanded.length > 0 }) });
-      toast("连接器已安装，启用后可以测试连接。");
+      const endpoint = review.installed ? "/api/agent/extension/upgrade" : "/api/agent/extension/install";
+      await api(endpoint, { method: "POST", body: JSON.stringify({ manifest, confirmExecutable: !!review.requiresExecutableConfirmation, confirmUnsandboxed: !!review.requiresUnsandboxedConfirmation, confirmPermissionExpansion: expanded.length > 0 }) });
+      toast(review.installed ? "扩展已更新，原有启用状态保持不变。" : "连接器已安装，启用后可以测试连接。");
       await load();
     } catch (error) { toast(error.message || "连接器文件无效", true); }
   };
@@ -698,10 +697,20 @@ function renderResources() {
     const archive = event.target.closest("[data-archive-resource]");
     const restore = event.target.closest("[data-restore-resource]");
     const toggleExtension = event.target.closest("[data-toggle-extension]");
+    const upgradeExtension = event.target.closest("[data-upgrade-extension]");
+    const rollbackExtension = event.target.closest("[data-rollback-extension]");
     const uninstallExtension = event.target.closest("[data-uninstall-extension]");
     const testConnector = event.target.closest("[data-test-connector]");
     const importConnector = event.target.closest("[data-import-connector]");
     if (importConnector) { $("#connectorFile").click(); return; }
+    if (upgradeExtension) { $("#connectorFile").click(); return; }
+    if (rollbackExtension) {
+      if (!confirm(`恢复到 ${rollbackExtension.dataset.rollbackVersion}？当前版本会被替换，但资料不会删除。`)) return;
+      await api("/api/agent/extension/rollback", { method: "POST", body: JSON.stringify({ id: rollbackExtension.dataset.rollbackExtension }) });
+      toast(`已恢复到 ${rollbackExtension.dataset.rollbackVersion}`);
+      await load();
+      return;
+    }
     if (testConnector) {
       try {
         const result = await api("/api/platform/connector/test", { method: "POST", body: JSON.stringify({ id: testConnector.dataset.testConnector }) });

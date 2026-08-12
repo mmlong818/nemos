@@ -29,7 +29,7 @@ Clownfish combines four everyday surfaces:
 |---|---|---|
 | **Chat** | Create, search, switch, or delete independent conversations; upload images or files; and choose the right work mode | Automatic titles, parallel threads, isolated context, and delivery back to the originating conversation |
 | **Capabilities** | Describe an outcome or choose a capability directly | Background jobs, live progress, cancellation, retries, previews, and downloads |
-| **Files** | Open Word, PowerPoint, Excel, PDF, TXT, or Markdown | Converted to Markdown for editing, an itemized list of what the conversion lost, the original kept and downloadable, faithful preview, and version history |
+| **Files** | Open Word, PowerPoint, Excel, PDF, TXT, or Markdown | Converted to an editable structured copy, an itemized list of conversion changes, the original kept and downloadable, faithful preview, and version history |
 | **Work** | Review tasks, workspaces, automations, collaboration, resources, results, runs, and memory | Multi-task organization, scheduled execution, expert review, local resources, artifacts, and preference management |
 
 New users do not need to create a project or understand tool names first.
@@ -72,7 +72,7 @@ The file workspace supports DOCX, PPTX, XLSX, PDF, TXT, and Markdown:
 - Markdown has an outline, formatting tools, and live preview; TXT uses continuous text editing;
 - Working copies are saved by the local service, and revision checks prevent stale windows from overwriting newer edits;
 - PDFs retain their original layout; Office formats receive a structured preview while the original file is retained;
-- Uploaded documents are converted to **Markdown** and processed there. Word, PowerPoint, Excel, and PDF convert on open; TXT and Markdown are edited directly;
+- Uploaded text documents become structured copies containing headings, paragraphs, lists, tables, quotes, code, and source locations. Markdown remains the interchange representation; TXT and Markdown are edited directly;
 - **The original file is kept intact, stays downloadable, and is never rewritten.** The conversion is a derived working document; write-back is offered only for TXT and Markdown;
 - Every conversion lists exactly what **this file** lost: for Word, fonts/sizes/colors/alignment, headers and footers, comments and tracked changes, and images; for PowerPoint, layouts, masters, themes, and animation; for Excel, cell styling, conditional formats, and charts; for PDF, layout and table rules. Heading levels, paragraphs, lists, tables, and speaker notes do carry over;
 - Editing happens in the Markdown editor: outline, formatting tools, and side-by-side source and live preview;
@@ -108,7 +108,7 @@ New users can still begin in a conversation without creating a workspace. Worksp
 
 The resource library is local by default. WeChat sources, X, and web search show their actual connection state instead of presenting planned adapters as live integrations.
 
-Resources also shows the real state of GitHub, browser, email, and calendar connectors. Users can import a connector manifest from this page; executable, unsandboxed, and permission-expanding changes are reviewed before installation. Runs keeps a durable product-review record with the test persona, scenario, route, observations, issues, and evidence.
+Resources also shows the real state of six connector categories: local files, browser, GitHub, email, calendar, and enterprise documents. Users can import a connector manifest from this page; executable, unsandboxed, and permission-expanding changes are reviewed before installation. Installed extensions support enable, update, previous-version restore, disable, and uninstall. Runs keeps a durable product-review record with the test persona, scenario, route, observations, issues, and evidence.
 
 ![Clownfish work center](docs/assets/readme/clownfish-work-2026-08-10.png)
 
@@ -152,7 +152,8 @@ On Windows, secrets are encrypted with DPAPI for the current user and full keys 
 ## Current verification
 
 - The TypeScript build passes;
-- All 351 automated tests pass; memory-core tests are maintained in the separate `nemos-memory` repository and are not counted twice here;
+- All 359 automated tests pass; memory-core tests are maintained in the separate `nemos-memory` repository and are not counted twice here;
+- Twenty sanitized daily DOCX cases pass structural round-trip checks and open in local Microsoft Word; ten small-project profiles pass inspection, patch proposal, selective apply, and rollback regression;
 - Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
 
 ## Run locally

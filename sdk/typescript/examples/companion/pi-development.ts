@@ -620,6 +620,8 @@ interface CheckDefinition {
  * 而不是放开执行任意命令。
  */
 const NATIVE_CHECKS: Record<string, CheckDefinition> = {
+  python_compile: { file: process.platform === "win32" ? "python" : "python3", args: ["-m", "compileall", "-q", "."], markers: ["pyproject.toml", "requirements.txt", "setup.py"] },
+  python_unittest: { file: process.platform === "win32" ? "python" : "python3", args: ["-m", "unittest", "discover", "-s", "tests"], markers: [] },
   pytest: { file: "pytest", args: [], markers: ["pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini"] },
   ruff_check: { file: "ruff", args: ["check", "."], markers: ["pyproject.toml", "ruff.toml", ".ruff.toml"] },
   mypy: { file: "mypy", args: ["."], markers: ["mypy.ini", ".mypy.ini", "pyproject.toml"] },
@@ -639,10 +641,14 @@ const NATIVE_CHECKS: Record<string, CheckDefinition> = {
 
 export type DevelopmentCheck = string;
 
-/** Windows 上 npm/pnpm/yarn/gradle 这类是批处理包装器，必须带 .cmd 才能 execFile 到。 */
-function platformExecutable(file: string): string {
-  if (process.platform !== "win32") return file;
-  return ["npm", "pnpm", "yarn", "bun", "gradle", "mvn"].includes(file) ? `${file}.cmd` : file;
+/**
+ * Windows 的批处理包装器不能由 Node 24+ 的 execFile 直接启动（会报 spawn EINVAL）。
+ * 这些命令和参数全部来自上面的固定白名单，因此可以经 cmd.exe 执行；用户输入不会进入命令行。
+ */
+function platformCommand(file: string, args: string[]): [string, string[]] {
+  if (process.platform !== "win32" || !["npm", "pnpm", "yarn", "bun", "gradle", "mvn"].includes(file)) return [file, args];
+  const command = [`${file}.cmd`, ...args].join(" ");
+  return ["cmd.exe", ["/d", "/s", "/c", command]];
 }
 
 function readPackageScripts(workspace: string): string[] {
@@ -667,6 +673,7 @@ export function detectDevelopmentChecks(workspace: string, mode: DevelopmentAcce
   if (mode === "inspect") return detected;
 
   const has = (name: string) => existsSync(join(workspace, name));
+  const rootFiles = readdirSync(workspace, { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => entry.name);
   if (has("package.json")) {
     const scripts = new Set(readPackageScripts(workspace));
     const manager = NODE_PACKAGE_MANAGERS.find((candidate) => has(candidate.lockfile)) ?? NODE_PACKAGE_MANAGERS[3];
@@ -678,6 +685,15 @@ export function detectDevelopmentChecks(workspace: string, mode: DevelopmentAcce
   for (const [id, definition] of Object.entries(NATIVE_CHECKS)) {
     if (definition.markers.some(has)) detected.push(id);
   }
+  const hasPythonProject = rootFiles.some((name) => name.endsWith(".py")) || has("pyproject.toml");
+  if ((has("tests") || has("test")) && hasPythonProject) {
+    if (!detected.includes("python_unittest")) detected.push("python_unittest");
+  }
+  if (rootFiles.some((name) => name.endsWith(".py")) && !detected.includes("python_compile")) detected.push("python_compile");
+  if (rootFiles.some((name) => name.endsWith(".sln") || name.endsWith(".csproj"))) {
+    if (!detected.includes("dotnet_build")) detected.push("dotnet_build");
+    if (!detected.includes("dotnet_test")) detected.push("dotnet_test");
+  }
   return detected;
 }
 
@@ -685,7 +701,7 @@ function resolveCheckCommand(workspace: string, command: DevelopmentCheck): [str
   if (command === "git_status") return ["git", ["status", "--short"]];
   if (command === "git_diff") return ["git", ["diff", "--"]];
   const native = NATIVE_CHECKS[command];
-  if (native) return [platformExecutable(native.file), native.args];
+  if (native) return platformCommand(native.file, native.args);
   const manager = NODE_PACKAGE_MANAGERS.find((candidate) => command.startsWith(`${candidate.id}_`));
   const script = manager ? command.slice(manager.id.length + 1) : undefined;
   if (!manager || !script || !NODE_SCRIPTS.includes(script as (typeof NODE_SCRIPTS)[number])) {
@@ -695,10 +711,10 @@ function resolveCheckCommand(workspace: string, command: DevelopmentCheck): [str
   if (!detectDevelopmentChecks(workspace, "develop").includes(command)) {
     throw new Error(`这个项目没有可用的 ${command} 检查。`);
   }
-  return [platformExecutable(manager.id), [...manager.runPrefix, script]];
+  return platformCommand(manager.id, [...manager.runPrefix, script]);
 }
 
-async function runDevelopmentCheck(workspace: string, command: DevelopmentCheck): Promise<DevelopmentCheckReceipt> {
+export async function runDevelopmentCheck(workspace: string, command: DevelopmentCheck): Promise<DevelopmentCheckReceipt> {
   const [file, args] = resolveCheckCommand(workspace, command);
   try {
     const result = await execFileAsync(file, args, { cwd: workspace, windowsHide: true, timeout: 120_000, maxBuffer: 1_500_000 });

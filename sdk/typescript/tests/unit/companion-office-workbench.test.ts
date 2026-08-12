@@ -289,3 +289,17 @@ test("工作台只呈现小丑鱼自己的产品语言", () => {
   assert.match(combined, /小丑鱼/);
   assert.doesNotMatch(combined, /参考项目|外部仓库|第三方产品|anydoc|firecrawl/i);
 });
+
+test("全新服务端不会被浏览器残留的旧文件缓存重新写入", () => {
+  assert.match(officeJs, /服务端工作台是跨窗口的唯一真相/);
+  assert.match(officeJs, /state\.documents = \[\];[\s\S]*state\.trash = \[\];[\s\S]*writeStoredState\(\);/);
+  assert.doesNotMatch(officeJs, /if \(state\.documents\.length \|\| state\.trash\.length\) queueRemoteSave/);
+});
+
+test("删除、恢复和文件内任务状态都会同步到服务端", () => {
+  assert.match(officeJs, /queueRemoteSave\("文件已移到垃圾桶"\)/);
+  assert.match(officeJs, /queueRemoteSave\("文件已恢复"\)/);
+  assert.match(officeJs, /queueRemoteSave\("文件已永久删除"\)/);
+  assert.match(officeJs, /queueRemoteSave\("处理任务已建立"\)/);
+  assert.match(officeJs, /queueRemoteSave\("处理进度已更新"\)/);
+});

@@ -8,10 +8,20 @@ test("only reports a connector ready when an enabled extension actually provides
       { enabled: false, manifest: { id: "calendar-mcp", tools: [{ name: "calendar.events" }] } },
     ]);
   assert.equal(statuses.find((item) => item.id === "github")?.state, "ready");
+  assert.equal(statuses.find((item) => item.id === "files")?.state, "ready");
+  assert.equal(statuses.find((item) => item.id === "files")?.provider, "built-in");
   assert.equal(statuses.find((item) => item.id === "calendar")?.state, "available");
   assert.equal(statuses.find((item) => item.id === "email")?.state, "not-installed");
   assert.equal(statuses.every((item) => item.readOnlyDefault), true);
   assert.equal(statuses.every((item) => item.minimumPermissions.length > 0 && item.fallback.length > 0), true);
+  assert.deepEqual(statuses.map((item) => item.id), ["files", "github", "browser", "email", "calendar", "enterprise-docs"]);
+});
+
+test("only marks built-in browser ready when live search is configured", () => {
+  assert.equal(platformConnectorStatuses([], { files: true }).find((item) => item.id === "browser")?.state, "not-installed");
+  const browser = platformConnectorStatuses([], { files: true, browser: true }).find((item) => item.id === "browser");
+  assert.equal(browser?.state, "ready");
+  assert.equal(browser?.provider, "built-in");
 });
 
 test("provides five domain packs with explicit quality gates", () => {

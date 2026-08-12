@@ -91,27 +91,136 @@ function validateLayout(blocks: OfficeExportBlock[], format: OfficeExportFormat)
 
 async function createDocx(blocks: OfficeExportBlock[]): Promise<Buffer> {
   const zip = new JSZip();
-  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`);
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`);
   zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
-  zip.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
-  zip.file("word/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Microsoft YaHei" w:eastAsia="Microsoft YaHei"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="34"/><w:color w:val="8F2F59"/></w:rPr></w:style></w:styles>`);
-  const body = blocks.map((block) => {
-    const paragraphProperties = (alignment: OfficeExportBlock["titleAlignment"], style = "") => {
-      const value = alignment === "justify" ? "both" : alignment;
-      const justify = value && value !== "left" ? `<w:jc w:val="${value}"/>` : "";
-      return style || justify ? `<w:pPr>${style}${justify}</w:pPr>` : "";
-    };
-    const title = blocks.length === 1 && /^(正文|Markdown)$/.test(block.title)
-      ? ""
-      : `<w:p>${paragraphProperties(block.titleAlignment, '<w:pStyle w:val="Heading1"/>')}<w:r><w:t xml:space="preserve">${xml(block.title)}</w:t></w:r></w:p>`;
-    const paragraphs = block.text.split(/\n{2,}/).map((paragraph, index) => {
-      const runs = paragraph.split("\n").map((line, lineIndex) => `${lineIndex ? "<w:br/>" : ""}<w:t xml:space="preserve">${xml(line || " ")}</w:t>`).join("");
-      return `<w:p>${paragraphProperties(block.paragraphAlignments?.[index])}<w:r>${runs}</w:r></w:p>`;
-    }).join("");
-    return title + paragraphs;
-  }).join("");
+  zip.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`);
+  zip.file("word/styles.xml", docxStyles());
+  zip.file("word/numbering.xml", docxNumbering());
+  const body = blocks.map((block) => docxBlock(block, blocks.length)).join("");
   zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`);
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+type DocxElement =
+  | { kind: "paragraph"; text: string; style?: string; list?: "bullet" | "ordered"; level?: number }
+  | { kind: "table"; rows: string[][] };
+
+function docxBlock(block: OfficeExportBlock, blockCount: number): string {
+  const title = blockCount === 1 && /^(正文|Markdown)$/.test(block.title)
+    ? ""
+    : docxParagraph(block.title, { style: "Heading1", alignment: block.titleAlignment });
+  let paragraphIndex = 0;
+  const content = parseDocxElements(block.text).map((element) => {
+    if (element.kind === "table") return docxTable(element.rows);
+    const alignment = block.paragraphAlignments?.[paragraphIndex++];
+    return docxParagraph(element.text, { ...element, alignment });
+  }).join("");
+  return title + content;
+}
+
+function parseDocxElements(value: string): DocxElement[] {
+  const lines = value.replace(/\r/g, "").split("\n");
+  const elements: DocxElement[] = [];
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index] ?? "";
+    if (isMarkdownTableStart(lines, index)) {
+      const rows: string[][] = [parseMarkdownTableRow(line)];
+      index += 2;
+      while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index] ?? "")) rows.push(parseMarkdownTableRow(lines[index++]!));
+      elements.push({ kind: "table", rows });
+      continue;
+    }
+    if (/^```/.test(line.trim())) {
+      const code: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^```/.test((lines[index] ?? "").trim())) code.push(lines[index++]!);
+      if (index < lines.length) index += 1;
+      elements.push({ kind: "paragraph", text: code.join("\n"), style: "Code" });
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    if (heading) {
+      elements.push({ kind: "paragraph", text: heading[2]!, style: `Heading${Math.min(3, heading[1]!.length)}` });
+      index += 1;
+      continue;
+    }
+    const list = /^(\s*)([-+*]|\d+[.)])\s+(.+)$/.exec(line);
+    if (list) {
+      elements.push({
+        kind: "paragraph",
+        text: list[3]!,
+        list: /^\d/.test(list[2]!) ? "ordered" : "bullet",
+        level: Math.min(8, Math.floor(list[1]!.replace(/\t/g, "  ").length / 2)),
+      });
+      index += 1;
+      continue;
+    }
+    const quote = /^>\s?(.*)$/.exec(line);
+    elements.push({ kind: "paragraph", text: quote ? quote[1]! : line, style: quote ? "Quote" : undefined });
+    index += 1;
+  }
+  return elements.length ? elements : [{ kind: "paragraph", text: "" }];
+}
+
+function isMarkdownTableStart(lines: string[], index: number): boolean {
+  return /^\s*\|.*\|\s*$/.test(lines[index] ?? "")
+    && /^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/.test(lines[index + 1] ?? "");
+}
+
+function parseMarkdownTableRow(line: string): string[] {
+  return line.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, "|").trim()).slice(0, 40);
+}
+
+function docxParagraph(
+  text: string,
+  options: { style?: string; list?: "bullet" | "ordered"; level?: number; alignment?: OfficeExportBlock["titleAlignment"] } = {},
+): string {
+  const value = options.alignment === "justify" ? "both" : options.alignment;
+  const style = options.style ? `<w:pStyle w:val="${options.style}"/>` : "";
+  const alignment = value && value !== "left" ? `<w:jc w:val="${value}"/>` : "";
+  const numbering = options.list ? `<w:numPr><w:ilvl w:val="${options.level ?? 0}"/><w:numId w:val="${options.list === "ordered" ? 2 : 1}"/></w:numPr>` : "";
+  const properties = style || alignment || numbering ? `<w:pPr>${style}${alignment}${numbering}</w:pPr>` : "";
+  const runs = text ? docxInlineRuns(text) : "<w:r><w:t xml:space=\"preserve\"> </w:t></w:r>";
+  return `<w:p>${properties}${runs}</w:p>`;
+}
+
+function docxInlineRuns(value: string): string {
+  const tokens = value.split(/(\*\*[^*]+\*\*|`[^`]+`|(?<!\*)\*[^*]+\*(?!\*))/g).filter(Boolean);
+  return tokens.map((token) => {
+    const bold = /^\*\*.*\*\*$/.test(token);
+    const code = /^`.*`$/.test(token);
+    const italic = !bold && /^\*.*\*$/.test(token);
+    const text = bold ? token.slice(2, -2) : code || italic ? token.slice(1, -1) : token;
+    const properties = bold || code || italic
+      ? `<w:rPr>${bold ? "<w:b/>" : ""}${italic ? "<w:i/>" : ""}${code ? '<w:rStyle w:val="CodeChar"/><w:rFonts w:ascii="Consolas" w:eastAsia="Microsoft YaHei"/><w:shd w:fill="F2F2F2"/>' : ""}</w:rPr>`
+      : "";
+    const segments = text.split("\n");
+    return `<w:r>${properties}${segments.map((segment, index) => `${index ? "<w:br/>" : ""}<w:t xml:space="preserve">${xml(segment)}</w:t>`).join("")}</w:r>`;
+  }).join("");
+}
+
+function docxTable(rows: string[][]): string {
+  const columnCount = Math.max(1, ...rows.map((row) => row.length));
+  const width = Math.max(900, Math.floor(9000 / columnCount));
+  const grid = Array.from({ length: columnCount }, () => `<w:gridCol w:w="${width}"/>`).join("");
+  const body = rows.map((row, rowIndex) => `<w:tr>${Array.from({ length: columnCount }, (_, columnIndex) => {
+    const shade = rowIndex === 0 ? '<w:shd w:fill="F3E7ED"/>' : "";
+    return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${shade}</w:tcPr>${docxParagraph(row[columnIndex] ?? "")}</w:tc>`;
+  }).join("")}</w:tr>`).join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="C8C2BA"/><w:left w:val="single" w:sz="4" w:color="C8C2BA"/><w:bottom w:val="single" w:sz="4" w:color="C8C2BA"/><w:right w:val="single" w:sz="4" w:color="C8C2BA"/><w:insideH w:val="single" w:sz="4" w:color="D8D2CA"/><w:insideV w:val="single" w:sz="4" w:color="D8D2CA"/></w:tblBorders></w:tblPr><w:tblGrid>${grid}</w:tblGrid>${body}</w:tbl>`;
+}
+
+function docxStyles(): string {
+  const heading = (level: number, size: number, color: string) => `<w:style w:type="paragraph" w:styleId="Heading${level}"><w:name w:val="heading ${level}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/></w:pPr><w:rPr><w:b/><w:sz w:val="${size}"/><w:color w:val="${color}"/></w:rPr></w:style>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Microsoft YaHei" w:eastAsia="Microsoft YaHei"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:pPr><w:spacing w:after="120" w:line="360" w:lineRule="auto"/></w:pPr></w:style>${heading(1, 34, "8F2F59")}${heading(2, 30, "20221F")}${heading(3, 26, "4E504A")}<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="480"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:rPr><w:i/><w:color w:val="666666"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="240"/><w:spacing w:before="80" w:after="80"/></w:pPr><w:rPr><w:rFonts w:ascii="Consolas" w:eastAsia="Microsoft YaHei"/><w:sz w:val="19"/><w:shd w:fill="F2F2F2"/></w:rPr></w:style><w:style w:type="character" w:styleId="CodeChar"><w:name w:val="Code Character"/><w:rPr><w:rFonts w:ascii="Consolas" w:eastAsia="Microsoft YaHei"/><w:shd w:fill="F2F2F2"/></w:rPr></w:style></w:styles>`;
+}
+
+function docxNumbering(): string {
+  const levels = (format: "bullet" | "decimal") => Array.from({ length: 9 }, (_, level) => {
+    const text = format === "bullet" ? ["•", "◦", "▪"][level % 3] : `%${level + 1}.`;
+    return `<w:lvl w:ilvl="${level}"><w:start w:val="1"/><w:numFmt w:val="${format}"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="${720 + level * 360}"/></w:tabs><w:ind w:left="${720 + level * 360}" w:hanging="360"/></w:pPr></w:lvl>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0">${levels("bullet")}</w:abstractNum><w:abstractNum w:abstractNumId="1">${levels("decimal")}</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>`;
 }
 
 async function createPptx(name: string, blocks: OfficeExportBlock[]): Promise<Buffer> {

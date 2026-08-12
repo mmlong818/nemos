@@ -1,8 +1,8 @@
 # 小丑鱼本机应用
 
 当前应用版本：**0.2.19**
-内置记忆核心：**Nemos 0.7.5-alpha.17**
-文档复核：**2026-08-10**
+记忆核心依赖：**Nemos Memory 0.7.5-alpha.18**
+文档复核：**2026-08-13**
 
 小丑鱼可以作为网页应用运行，也可以构建成 Windows 便携客户端。任务、能力、文件和工作页共享同一套本机数据。
 
@@ -99,6 +99,14 @@ npm run companion
 - 任务和能力结果可直接建立本机工作副本继续编辑；
 - 支持版本记录与恢复；
 - 导出 DOCX、PDF、PPTX、XLSX、HTML 和 Markdown，产出的是新文件。
+- 20 份脱敏日常 DOCX 已通过结构回读并由本机 Microsoft Word 逐份打开；复杂批注、跨节页眉页脚、浮动对象、公式和图表仍由原文件或桌面 Office 保真承接。
+
+## 扩展与连接器
+
+- 六类连接器统一显示真实状态：本地文件、浏览器、GitHub、邮箱、日历和企业文档；
+- 本地文件为内置连接，其余连接只有在模型能力或已安装扩展真实可用时才显示“已连接”；
+- 扩展支持安装前权限预览、启用、更新、停用、恢复上一版本和卸载；
+- 新版本扩大文件、网络、命令、工具或模型权限时必须重新确认。
 
 ## 记忆行为
 
@@ -197,7 +205,7 @@ npm test
 ~~~text
 GET /api/version
 GET /api/runtime
-GET /api/llm-config
+GET /api/llm
 GET /api/capabilities
 GET /api/agent/jobs
 GET /api/memory?who=me
