@@ -79,7 +79,7 @@ export interface AgentExtensionProvider {
 
 export interface AgentExtensionAuditRecord {
   at: string;
-  action: "install" | "upgrade" | "enable" | "disable" | "uninstall" | "tool-call";
+  action: "install" | "upgrade" | "rollback" | "enable" | "disable" | "uninstall" | "tool-call";
   detail?: string;
 }
 
@@ -103,10 +103,12 @@ export interface AgentExtensionRecord {
   providerAttached: boolean;
   executionSecurity: AgentExtensionExecutionSecurity;
   audit: AgentExtensionAuditRecord[];
+  rollbackVersions: string[];
 }
 
-type PersistedExtensionRecord = Omit<AgentExtensionRecord, "providerAttached" | "executionSecurity"> & {
+type PersistedExtensionRecord = Omit<AgentExtensionRecord, "providerAttached" | "executionSecurity" | "rollbackVersions"> & {
   unsafeExecutionApproved?: boolean;
+  history?: Array<{ manifest: AgentExtensionManifest; unsafeExecutionApproved?: boolean }>;
 };
 
 interface InternalExtensionRecord extends PersistedExtensionRecord {
@@ -164,6 +166,7 @@ export class AgentExtensionRegistry {
         action: "install",
         detail: manifest.version + " from " + manifest.source.location + " security=" + security,
       }],
+      history: [],
     };
     this.entries.set(manifest.id, record);
     this.save();
@@ -208,6 +211,10 @@ export class AgentExtensionRegistry {
     const previous = current.manifest.version;
     const previousProvider = current.provider;
     const nextProvider = current.enabled ? provider : undefined;
+    current.history = [
+      ...(current.history || []),
+      { manifest: structuredClone(current.manifest), unsafeExecutionApproved: current.unsafeExecutionApproved },
+    ].slice(-5);
     current.manifest = structuredClone(manifest);
     current.unsafeExecutionApproved = unsafeExecutionApproved;
     current.provider = nextProvider;
@@ -220,6 +227,36 @@ export class AgentExtensionRegistry {
       detail: previous + " -> " + manifest.version + " security=" +
         getAgentExtensionExecutionSecurity(manifest, unsafeExecutionApproved),
     });
+    this.trimAudit(current);
+    this.save();
+    return publicRecord(current);
+  }
+
+  rollback(id: string, createProvider?: (manifest: AgentExtensionManifest) => AgentExtensionProvider | undefined): AgentExtensionRecord {
+    const current = this.require(id);
+    const history = current.history || [];
+    const previous = history.at(-1);
+    if (!previous) throw new Error("Agent extension has no previous version to restore: " + id);
+    try {
+      assertExtensionExecutionApproved(previous.manifest, previous.unsafeExecutionApproved === true);
+    } catch (error) {
+      throw error;
+    }
+    const provider = current.enabled ? createProvider?.(structuredClone(previous.manifest)) : undefined;
+    if (current.enabled && previous.manifest.runtime.entry && !provider) {
+      throw new Error("Executable Agent extension rollback requires a provider before it can be enabled");
+    }
+    const now = new Date().toISOString();
+    const currentProvider = current.provider;
+    const fromVersion = current.manifest.version;
+    current.manifest = structuredClone(previous.manifest);
+    current.unsafeExecutionApproved = previous.unsafeExecutionApproved;
+    current.history = history.slice(0, -1);
+    current.provider = current.enabled ? provider : undefined;
+    if (currentProvider && currentProvider !== current.provider) closeProvider(currentProvider);
+    if (!current.enabled && provider) closeProvider(provider);
+    current.updatedAt = now;
+    current.audit.push({ at: now, action: "rollback", detail: `${fromVersion} -> ${current.manifest.version}` });
     this.trimAudit(current);
     this.save();
     return publicRecord(current);
@@ -779,6 +816,7 @@ function publicRecord(record: InternalExtensionRecord): AgentExtensionRecord {
     providerAttached: !!record.provider,
     executionSecurity: getAgentExtensionExecutionSecurity(record.manifest, record.unsafeExecutionApproved),
     audit: structuredClone(record.audit),
+    rollbackVersions: (record.history || []).map((item) => item.manifest.version).reverse(),
   };
 }
 

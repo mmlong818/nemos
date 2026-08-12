@@ -63,3 +63,41 @@ test("连续文字工作副本导出 Word 时不添加虚假的正文标题", as
   assert.match(xml, />第一段</);
   assert.match(xml, />第二段</);
 });
+
+test("Markdown 标题、列表、表格、引用和代码导出为可编辑 Word 结构", async () => {
+  const result = await exportOfficeDocument({
+    name: "结构化文稿",
+    format: "docx",
+    blocks: [{
+      title: "Markdown",
+      text: [
+        "# 一级标题",
+        "",
+        "1. 第一步",
+        "2. 第二步",
+        "",
+        "| 项目 | 状态 |",
+        "| --- | --- |",
+        "| 导出 | 通过 |",
+        "",
+        "> 这是引用。",
+        "",
+        "```ts",
+        "const ok = true;",
+        "```",
+      ].join("\n"),
+    }],
+  });
+  const zip = await JSZip.loadAsync(result.data);
+  const documentXml = await zip.file("word/document.xml")!.async("string");
+  const stylesXml = await zip.file("word/styles.xml")!.async("string");
+  const numberingXml = await zip.file("word/numbering.xml")!.async("string");
+
+  assert.match(documentXml, /w:pStyle w:val="Heading1"/);
+  assert.match(documentXml, /w:numId w:val="2"/);
+  assert.match(documentXml, /<w:tbl>/);
+  assert.match(documentXml, /w:pStyle w:val="Quote"/);
+  assert.match(documentXml, /w:pStyle w:val="Code"/);
+  assert.match(stylesXml, /w:styleId="Heading3"/);
+  assert.match(numberingXml, /w:numFmt w:val="bullet"/);
+});

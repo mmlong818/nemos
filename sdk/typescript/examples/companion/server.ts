@@ -3847,20 +3847,34 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url === "/api/platform/readiness") {
       const extensions = agentExtensions.list();
       const snapshot = capabilities.snapshot();
+      const supports = modelConnectionStatus().supports as { webSearch?: boolean } | undefined;
       send(res, 200, {
         ok: true,
         development: developmentEnvironment(),
-        connectors: platformConnectorStatuses(extensions),
+        connectors: platformConnectorStatuses(extensions, {
+          files: true,
+          browser: Boolean(supports?.webSearch),
+        }),
         capabilityPacks: capabilityPackStatuses(snapshot.abilities, snapshot.artifacts),
       });
       return;
     }
     if (req.method === "POST" && url === "/api/platform/connector/test") {
-      const body = (await readBody(req)) as { id?: "github" | "browser" | "email" | "calendar" };
-      const status = platformConnectorStatuses(agentExtensions.list()).find((item) => item.id === body.id);
+      const body = (await readBody(req)) as { id?: "files" | "browser" | "github" | "email" | "calendar" | "enterprise-docs" };
+      const supports = modelConnectionStatus().supports as { webSearch?: boolean } | undefined;
+      const status = platformConnectorStatuses(agentExtensions.list(), { files: true, browser: Boolean(supports?.webSearch) }).find((item) => item.id === body.id);
       if (!status) { send(res, 400, { error: "未知的数据连接。" }); return; }
       if (status.state !== "ready") { send(res, 409, { error: `${status.name} 尚未启用。${status.fallback}`, connector: status }); return; }
       try {
+        if (status.id === "files" && status.provider === "built-in") {
+          const items = knowledgeLibrary.list(true);
+          send(res, 200, { ok: true, connector: status, toolCount: 1, itemCount: items.length, checkedAt: new Date().toISOString() });
+          return;
+        }
+        if (status.id === "browser" && status.provider === "built-in") {
+          send(res, 200, { ok: true, connector: status, toolCount: 1, checkedAt: new Date().toISOString() });
+          return;
+        }
         const tools = await agentExtensions.toolsForRequest(status.purpose);
         if (!tools.length) throw new Error("连接已启用，但没有发现可用的读取工具。");
         send(res, 200, { ok: true, connector: status, toolCount: tools.length, checkedAt: new Date().toISOString() });
@@ -4038,6 +4052,19 @@ const server = createServer(async (req, res) => {
           return extension;
         },
         summarizeResult: (extension) => ({ ok: true, extensionId: extension.manifest.id, enabled: extension.enabled }),
+      });
+      send(res, 200, { ok: true, extension: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/agent/extension/rollback") {
+      const body = (await readBody(req)) as { id?: string };
+      if (!body.id) { send(res, 400, { error: "missing extension id" }); return; }
+      const action = await agentUserActions.execute({
+        name: "agent_extension_rollback",
+        description: "恢复用户选中扩展的上一版本",
+        arguments: { extensionId: body.id },
+        execute: () => agentExtensions.rollback(body.id!, (manifest) => createExtensionProvider(manifest)),
+        summarizeResult: (extension) => ({ ok: true, extensionId: extension.manifest.id, version: extension.manifest.version }),
       });
       send(res, 200, { ok: true, extension: action.value, auditRunId: action.runId });
       return;
