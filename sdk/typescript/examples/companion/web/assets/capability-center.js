@@ -601,7 +601,7 @@ function jobMemoryUsage(job) {
 function developmentProposalActions(artifact) {
   const proposal = artifact?.metadata?.development?.proposal;
   if (!proposal) return "";
-  const preview = `<a href="/api/development/proposal/preview?id=${encodeURIComponent(proposal.id)}" target="_blank" rel="noopener">查看修改</a>`;
+  const preview = `<a href="/development?id=${encodeURIComponent(proposal.id)}">审阅修改</a>`;
   if (proposal.state === "pending") return `${preview}<button type="button" data-apply-proposal="${escapeHtml(proposal.id)}">应用修改</button><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
   if (proposal.state === "conflicted") return `${preview}<span class="proposal-state">项目已变化，未覆盖</span><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
   if (proposal.state === "applied") return `<span class="proposal-state">修改已应用</span>${preview}`;
@@ -651,7 +651,7 @@ function renderRuns() {
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
       <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${escapeHtml(checkpoint?.status || item.name)} · ${displayDate(job.updatedAt)}</p>${jobMemoryUsage(job)}${developmentProgress(job, item, progress)}<div class="progress-track" aria-label="进度 ${progress}%"><span style="width:${progress}%"></span></div></div>
-      <div class="task-actions"><a href="${escapeHtml(chatHref(job.id))}">回到对话</a><button type="button" data-cancel-job="${escapeHtml(job.id)}">取消任务</button></div>
+      <div class="task-actions">${item.id === "developer" ? `<a href="/development?job=${encodeURIComponent(job.id)}">查看工作台</a>` : ""}<a href="${escapeHtml(chatHref(job.id))}">回到对话</a><button type="button" data-cancel-job="${escapeHtml(job.id)}">取消任务</button></div>
     </article>`;
   }).join("");
   $$('[data-cancel-job]').forEach((button) => button.addEventListener("click", () => cancelJob(button.dataset.cancelJob)));
@@ -839,7 +839,7 @@ function loadHandoffConversation(handoff, chatName) {
   const key = String(handoff.conversationKey || "");
   let messages = [];
   try {
-    const trees = JSON.parse(localStorage.getItem("clownfish-conversation-trees-v1") || "{}");
+    const trees = JSON.parse(localStorage.getItem("clownfish-conversation-trees-v20260813b") || "{}");
     const tree = trees[key];
     if (tree && tree.nodes && tree.nodes[tree.activeId] && Array.isArray(tree.nodes[tree.activeId].messages)) {
       messages = tree.nodes[tree.activeId].messages;
@@ -847,7 +847,7 @@ function loadHandoffConversation(handoff, chatName) {
   } catch {}
   if (!messages.length) {
     try {
-      const logs = JSON.parse(localStorage.getItem("companion_logs") || "{}");
+      const logs = JSON.parse(localStorage.getItem("clownfish-chat-logs-v20260813b") || "{}");
       if (Array.isArray(logs[key])) messages = logs[key];
     } catch {}
   }
@@ -915,6 +915,21 @@ async function applyChatHandoff() {
   if (goal) openCapability(goal);
 }
 
+async function applyDevelopmentContinuation() {
+  const proposalId = new URLSearchParams(location.search).get("continueProposal");
+  if (!proposalId) return;
+  try {
+    const data = await api(`/api/development/proposal?id=${encodeURIComponent(proposalId)}`);
+    selectCapability("developer");
+    $("#workspaceInput").value = String(data.proposal?.workspacePath || "");
+    $("#instructionInput").value = "";
+    $("#instructionInput").placeholder = "说明还需要调整什么，或粘贴刚才检查中发现的问题";
+    setDevelopmentMode("develop", false);
+    openCapability("", { focusInput: true });
+    history.replaceState(null, "", "/capabilities#start");
+  } catch (error) { showToast(`无法继续这次项目任务：${error.message}`, true); }
+}
+
 function bindEvents() {
   $$('[data-view-target]').forEach((button) => button.addEventListener("click", () => openView(button.dataset.viewTarget)));
   $("#goalForm").addEventListener("submit", async (event) => {
@@ -961,6 +976,7 @@ async function init() {
   updateContinueButton();
   openView(location.hash.slice(1) || "start", false);
   await refreshData();
+  await applyDevelopmentContinuation();
   await applyChatHandoff();
   state.pollTimer = window.setInterval(refreshData, 4000);
   document.addEventListener("visibilitychange", () => {

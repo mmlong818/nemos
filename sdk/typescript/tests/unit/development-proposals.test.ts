@@ -107,3 +107,23 @@ test("开发执行期间的用户修改不会被恢复动作覆盖", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("隔离工作区生成的提案以原项目内容作为写入基线", () => {
+  const { root, workspace, dataDir } = fixture();
+  const isolated = join(root, "isolated");
+  mkdirSync(isolated, { recursive: true });
+  writeFileSync(join(workspace, "index.ts"), "original\n", "utf8");
+  writeFileSync(join(isolated, "index.ts"), "original\n", "utf8");
+  try {
+    const store = new DevelopmentProposalStore(dataDir);
+    const session = store.begin(workspace, "base", isolated);
+    session.write(join(isolated, "index.ts"), "proposal from isolated workspace\n");
+    const proposal = session.finalize();
+    assert.equal(readFileSync(join(workspace, "index.ts"), "utf8"), "original\n");
+    assert.equal(readFileSync(join(isolated, "index.ts"), "utf8"), "original\n");
+    store.apply(proposal.id);
+    assert.equal(readFileSync(join(workspace, "index.ts"), "utf8"), "proposal from isolated workspace\n");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

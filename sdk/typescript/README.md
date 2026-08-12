@@ -1,10 +1,10 @@
-# @nemos/sdk
+# @nemos/clownfish
 
 [English](README.en.md)
 
-当前包版本：`0.7.5-alpha.17`；文档复核：2026-08-06。完整设计边界见 [0.7.x 设计基线](docs/nemos-memory-v0.7-design.md)。
+当前包版本：`0.7.5-alpha.17`；文档复核：2026-08-13。记忆内核依赖为 `@nemos/sdk` `0.7.5-alpha.18`。
 
-嵌入式 TypeScript 长期记忆引擎。默认数据存储为本机 SQLite，适合直接集成到 AI 助理、Agent、知识工具和其他需要跨会话记忆的应用中。
+本目录是小丑鱼应用与可审计 Agent 运行时的 TypeScript 包。`src/index.ts` 会重新导出独立维护的 `@nemos/sdk`，并导出本仓库的 Agent 运行时；记忆内核源码不在这里重复维护。
 
 ## 安装
 
@@ -132,6 +132,6 @@ await nemos.close();
 
 ## 许可证
 
-Nemos Memory SDK（本包发布的 `dist/`，构建自 `src/`）采用 PolyForm Noncommercial 1.0.0。
+本包的本地 Agent 运行时代码采用 PolyForm Noncommercial 1.0.0；重新导出的 `@nemos/sdk` 来自独立 `nemos-memory` 仓库，并保留其自己的许可证声明。
 
 同目录下的 `examples/companion/`（小丑鱼应用）**不在**该许可证范围内，保留全部权利并另行授权；它不随本 npm 包发布（`files` 白名单仅含 `dist`）。完整授权结构见仓库根目录 [LICENSING.md](../../LICENSING.md)。

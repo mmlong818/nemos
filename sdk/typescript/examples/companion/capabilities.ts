@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import type { ServerResponse } from "node:http";
 import type { AgentExtensionManifest } from "../../src/index.js";
 import type { CapabilityToolRegistry, CapabilityToolSummary, PersonaToolBinding } from "./capability-tools.js";
@@ -247,6 +247,7 @@ export interface CapabilityDevelopmentReceipt {
   sessionId?: string;
   sessionFile?: string;
   sessionResumed?: boolean;
+  isolatedWorkspace?: boolean;
 }
 
 export interface CapabilityArtifactProof {
@@ -331,6 +332,11 @@ export interface SkillAuditItem {
   positiveEvidence: number;
   negativeEvidence: number;
   lastFeedbackAt?: string;
+  version?: string;
+  previousVersion?: string;
+  canRollback: boolean;
+  integrityValid: boolean;
+  healthDetail: string;
 }
 
 export interface SkillAudit {
@@ -446,12 +452,15 @@ export class CapabilityRuntime {
       const artifactCount = this.artifacts.filter((artifact) => artifact.capabilityId === ability.id).length;
       const taskCount = this.tasks.filter((task) => task.capabilityId === ability.id).length;
       const duplicateGroup = duplicateGroups.get(ability.id);
+      const health = this.skillHealth(ability);
       const ageDays = daysBetween(ability.updatedAt || ability.createdAt, now);
       const idleDays = lastUsedAt ? daysBetween(lastUsedAt, now) : ageDays;
       const state: SkillAuditState = ability.archivedAt
         ? "archived"
         : ability.disabledAt
           ? "disabled"
+          : !health.valid
+            ? "stale"
           : ability.pinnedAt
             ? "pinned"
             : ability.staleAt
@@ -465,13 +474,27 @@ export class CapabilityRuntime {
                     : "active";
       const feedback = readJson<Array<{ capabilityId: string; outcome: string; createdAt: string }>>(this.artifactFeedbackFile, [])
         .filter((item) => item.capabilityId === ability.id);
+      const manifest = readJson<{ version?: string; rollback?: { previousVersion?: string; historyPath?: string } }>(
+        join(dirname(this.skillFilePath(ability)), "manifest.json"),
+        {},
+      );
+      const rollbackPath = manifest.rollback?.historyPath
+        ? resolve(dirname(this.skillFilePath(ability)), manifest.rollback.historyPath)
+        : "";
+      const historyRoot = resolve(dirname(this.skillFilePath(ability)), "history");
+      const rollbackRelative = rollbackPath ? relative(historyRoot, rollbackPath) : "..";
+      const canRollback = !!rollbackPath
+        && rollbackRelative !== ""
+        && !rollbackRelative.startsWith("..")
+        && existsSync(join(rollbackPath, "SKILL.md"))
+        && existsSync(join(rollbackPath, "manifest.json"));
       return {
         abilityId: ability.id,
         name: ability.name,
         personaId: ability.ownerPersonaId || "shared",
         source: ability.source || "manual",
         state,
-        reason: skillAuditReason(state, idleDays, duplicateGroup),
+        reason: health.valid ? skillAuditReason(state, idleDays, duplicateGroup) : health.detail,
         useCount,
         artifactCount,
         taskCount,
@@ -483,10 +506,15 @@ export class CapabilityRuntime {
         archived: !!ability.archivedAt,
         pinned: !!ability.pinnedAt,
         disabled: !!ability.disabledAt,
-        stale: !!ability.staleAt,
+        stale: !!ability.staleAt || !health.valid,
         positiveEvidence: feedback.filter((entry) => entry.outcome === "useful").length,
         negativeEvidence: feedback.filter((entry) => entry.outcome === "needs-work").length,
         lastFeedbackAt: feedback.at(-1)?.createdAt,
+        version: manifest.version,
+        previousVersion: manifest.rollback?.previousVersion,
+        canRollback,
+        integrityValid: health.valid,
+        healthDetail: health.detail,
       };
     }).sort((a, b) => stateRank(a.state) - stateRank(b.state) || b.updatedAt!.localeCompare(a.updatedAt!));
     return {
@@ -576,6 +604,51 @@ export class CapabilityRuntime {
 
   getAbility(id: string): Capability | undefined {
     return [...BUILTIN_ABILITIES, ...this.generatedAbilities].find((item) => item.id === id);
+  }
+
+  rollbackAbilityVersion(id: string): Capability {
+    const ability = this.generatedAbilities.find((item) => item.id === id);
+    if (!ability) throw new Error(`Only generated or installed abilities can be rolled back: ${id}`);
+    const dir = this.skillDirPath(ability);
+    const manifest = readJson<{ rollback?: { historyPath?: string } }>(join(dir, "manifest.json"), {});
+    const historyPath = manifest.rollback?.historyPath ? resolve(dir, manifest.rollback.historyPath) : "";
+    const historyRoot = resolve(dir, "history");
+    const rel = historyPath ? relative(historyRoot, historyPath) : "..";
+    if (!historyPath || rel === "" || rel.startsWith("..") || !existsSync(join(historyPath, "SKILL.md")) || !existsSync(join(historyPath, "manifest.json"))) {
+      throw new Error("This ability has no recoverable previous version.");
+    }
+    const previousManifest = readJson<Record<string, unknown>>(join(historyPath, "manifest.json"), {});
+    const activeManifest = readJson<Record<string, unknown>>(join(dir, "manifest.json"), {});
+    const current = this.snapshotSkillVersion(dir);
+    try {
+      const now = new Date().toISOString();
+      const restoredContent = readFileSync(join(historyPath, "SKILL.md"));
+      writeFileSync(join(dir, "SKILL.md"), restoredContent);
+      const restoredManifest = {
+        ...previousManifest,
+        version: nextSkillVersion(typeof activeManifest.version === "string" ? activeManifest.version : undefined),
+        updatedAt: now,
+        integrity: {
+          algorithm: "sha256",
+          contentHash: createHash("sha256").update(restoredContent).digest("hex"),
+          byteLength: restoredContent.byteLength,
+        },
+        rollback: current ? {
+          previousVersion: String(activeManifest.version || current.version),
+          historyPath: `history/${basename(current.historyPath)}`,
+        } : undefined,
+      };
+      writeFileSync(join(dir, "manifest.json"), JSON.stringify(restoredManifest, null, 2), "utf8");
+      if (typeof previousManifest.name === "string") ability.name = text(previousManifest.name, ability.name, 40);
+      if (typeof previousManifest.description === "string") ability.description = text(previousManifest.description, ability.description, 320);
+      ability.updatedAt = now;
+      this.updateSkillUsage(ability, { state: "active", touchedAt: now });
+      this.saveAbilities();
+      return ability;
+    } catch (error) {
+      this.restoreSkillVersion(dir, current);
+      throw error;
+    }
   }
 
   updateGeneratedAbility(input: {
@@ -1814,7 +1887,27 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     if (!ability) throw new Error(`未知能力：${id}`);
     if (ability.archivedAt) throw new Error(`能力已归档：${ability.name}`);
     if (ability.disabledAt) throw new Error("能力已停用：" + ability.name);
+    if (ability.kind === "generated") {
+      const health = this.skillHealth(ability);
+      if (!health.valid) throw new Error(`能力文件检查未通过：${health.detail}。请恢复上一版或重新安装。`);
+    }
     return ability;
+  }
+
+  private skillHealth(ability: Capability): { valid: boolean; detail: string } {
+    if (ability.kind !== "generated") return { valid: true, detail: "内置能力" };
+    const skillFile = this.skillFilePath(ability);
+    const manifestFile = join(dirname(skillFile), "manifest.json");
+    if (!existsSync(skillFile) || !existsSync(manifestFile)) return { valid: false, detail: "能力文件不完整" };
+    const manifest = readJson<{ integrity?: { contentHash?: string; byteLength?: number }; admission?: { passed?: boolean } }>(manifestFile, {});
+    if (!manifest.integrity?.contentHash) return { valid: false, detail: "缺少内容完整性记录" };
+    const content = readFileSync(skillFile);
+    const hash = createHash("sha256").update(content).digest("hex");
+    if (hash !== manifest.integrity.contentHash || content.byteLength !== manifest.integrity.byteLength) {
+      return { valid: false, detail: "能力内容与已保存版本不一致" };
+    }
+    if (manifest.admission && manifest.admission.passed !== true) return { valid: false, detail: "能力准入检查未通过" };
+    return { valid: true, detail: "文件与准入检查正常" };
   }
 
   private requireSpace(id: string, requireActive = false): CapabilitySpace {

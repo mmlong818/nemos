@@ -294,6 +294,18 @@ test("生成能力更新时递增版本、记录内容指纹并保留可回滚�
     assert.equal(secondManifest.rollback.previousVersion, "0.1.0");
     assert.ok(existsSync(join(dirname(skillFile!), secondManifest.rollback.historyPath, "SKILL.md")));
     assert.ok(existsSync(join(dirname(skillFile!), secondManifest.rollback.historyPath, "manifest.json")));
+    const beforeRollback = runtime.auditSkills().items.find((item) => item.abilityId === first.id);
+    assert.equal(beforeRollback?.version, "0.1.1");
+    assert.equal(beforeRollback?.previousVersion, "0.1.0");
+    assert.equal(beforeRollback?.canRollback, true);
+
+    runtime.rollbackAbilityVersion(first.id);
+    const rolledBackManifest = JSON.parse(readFileSync(join(dirname(skillFile!), "manifest.json"), "utf8")) as { version: string };
+    assert.equal(rolledBackManifest.version, "0.1.2");
+    const afterRollback = runtime.auditSkills().items.find((item) => item.abilityId === first.id);
+    assert.equal(afterRollback?.previousVersion, "0.1.1");
+    assert.equal(afterRollback?.canRollback, true);
+    assert.match(readFileSync(skillFile!, "utf8"), /整理本周进展/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -439,7 +451,8 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   assert.match(capabilityScript, /handoffContext/);
   assert.match(capabilityScript, /handoffSummary/);
   assert.match(capabilityScript, /function loadHandoffConversation/);
-  assert.match(capabilityScript, /clownfish-conversation-trees-v1/);
+  assert.match(capabilityScript, /clownfish-conversation-trees-v20260813b/);
+  assert.match(capabilityScript, /clownfish-chat-logs-v20260813b/);
   assert.match(capabilityScript, /handoffConversation/);
   assert.match(capabilityScript, /sourceMessageId/);
   assert.match(capabilityScript, /subjectId/);
@@ -536,7 +549,7 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.match(script, /focusInput: true/);
   assert.match(script, /classList\.add\("is-launching"\)/);
   assert.match(script, /button\.disabled = !status\.ready \|\| !hasInstruction \|\| !hasWorkspace/);
-  assert.match(script, /查看修改/);
+  assert.match(script, /审阅修改/);
   assert.match(script, /data-apply-proposal/);
   assert.match(script, /data-reject-proposal/);
   assert.match(script, /修改先作为提案保存/);

@@ -1,6 +1,8 @@
 "use strict";
 
-const STORAGE_KEY = "clownfish-office-workbench-v1";
+// This namespace prevents a retired browser-only cache from repopulating a freshly reset
+// server workspace. Existing server-backed files are hydrated again normally.
+const STORAGE_KEY = "clownfish-office-workbench-v20260813b";
 const MAX_STORED_DOCUMENTS = 80;
 const MAX_VERSIONS = 8;
 const MAX_TRASH_DOCUMENTS = 30;
