@@ -147,6 +147,14 @@ test("Companion extension API closes the install, trust, and provider lifecycle"
   try {
     await waitForCompanion(baseUrl, child, logs);
 
+    const readiness = await request(baseUrl, "/api/platform/readiness");
+    assert.equal(readiness.status, 200);
+    assert.deepEqual(readiness.data.connectors.map((item: any) => item.id), ["files", "github", "browser", "email", "calendar", "enterprise-docs"]);
+    assert.equal(readiness.data.connectors.find((item: any) => item.id === "files")?.state, "ready");
+    const filesConnection = await request(baseUrl, "/api/platform/connector/test", { id: "files" });
+    assert.equal(filesConnection.status, 200);
+    assert.equal(filesConnection.data.connector.provider, "built-in");
+
     const invalid = await request(baseUrl, "/api/agent/extension/validate", { manifest: {} });
     assert.equal(invalid.status, 400);
     assert.equal(invalid.data.error, "请求无法完成，请检查输入后重试。");
@@ -169,6 +177,10 @@ test("Companion extension API closes the install, trust, and provider lifecycle"
     });
     assert.equal(upgraded.status, 200);
     assert.equal(upgraded.data.extension.manifest.version, "1.1.0");
+
+    const rolledBack = await request(baseUrl, "/api/agent/extension/rollback", { id: safe.id });
+    assert.equal(rolledBack.status, 200);
+    assert.equal(rolledBack.data.extension.manifest.version, "1.0.0");
 
     const disabledSkill = await request(baseUrl, "/api/agent/extension/enabled", {
       id: safe.id,

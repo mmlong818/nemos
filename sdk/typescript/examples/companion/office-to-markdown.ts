@@ -134,22 +134,24 @@ async function docxToMarkdown(data: Uint8Array): Promise<[string, string[], Arra
     if (block.hidden) continue;
     const blockText = plainText(block);
     const exactText = (block.runs || []).map((run) => run.text).join("").replace(/\r/g, "");
+    const markdownText = formattedText(block);
     const alignment = block.format?.align === "distribute" ? "justify" : block.format?.align;
     if (blockText && alignment && ["left", "center", "right", "justify"].includes(alignment)) {
       alignments.push({ text: blockText, alignment: alignment as ParagraphAlignment });
     }
     if (block.type === "heading") {
       const level = Math.min(6, Math.max(1, Number(block.level || 1)));
-      if (exactText) lines.push(`${"#".repeat(level)} ${plainText(block)}`, "");
+      if (exactText) lines.push(`${"#".repeat(level)} ${markdownText}`, "");
       else lines.push("");
       structuredBlocks.push({ id: `block-${structuredBlocks.length + 1}`, kind: exactText ? "heading" : "paragraph", level: exactText ? level : undefined, text: exactText, alignment: normalizedAlignment(block.format?.align), indentLeft: block.format?.indentLeft, indentFirstLine: block.format?.indentFirstLine, preserveWhitespace: true, source: { startLine: ++sourceLine, endLine: sourceLine } });
       continue;
     }
     if (block.type === "listItem") {
       const depth = Math.max(0, Number(block.list?.ilvl || 0));
-      const marker = block.list?.kind === "ordered" ? "1." : "-";
-      lines.push(`${"  ".repeat(depth)}${marker} ${plainText(block)}`);
-      structuredBlocks.push({ id: `block-${structuredBlocks.length + 1}`, kind: "list", ordered: block.list?.kind === "ordered", text: exactText, listMarker: listMarkers[listIndex++] || (block.list?.kind === "ordered" ? "1." : "•"), listLevel: depth, alignment: normalizedAlignment(block.format?.align), indentLeft: block.format?.indentLeft, indentFirstLine: block.format?.indentFirstLine, preserveWhitespace: true, source: { startLine: ++sourceLine, endLine: sourceLine } });
+      const computedMarker = listMarkers[listIndex++] || (block.list?.kind === "ordered" ? "1." : "•");
+      const marker = block.list?.kind === "ordered" ? computedMarker : "-";
+      lines.push(`${"  ".repeat(depth)}${marker} ${markdownText}`);
+      structuredBlocks.push({ id: `block-${structuredBlocks.length + 1}`, kind: "list", ordered: block.list?.kind === "ordered", text: exactText, listMarker: computedMarker, listLevel: depth, alignment: normalizedAlignment(block.format?.align), indentLeft: block.format?.indentLeft, indentFirstLine: block.format?.indentFirstLine, preserveWhitespace: true, source: { startLine: ++sourceLine, endLine: sourceLine } });
       continue;
     }
     if (block.type === "table" && block.table) {
@@ -168,7 +170,9 @@ async function docxToMarkdown(data: Uint8Array): Promise<[string, string[], Arra
       continue;
     }
     const text = plainText(block);
-    if (text) lines.push(text, "");
+    if (block.styleId === "Code" && exactText) lines.push("```", exactText, "```", "");
+    else if (block.styleId === "Quote" && text) lines.push(...markdownText.split("\n").map((line) => `> ${line}`), "");
+    else if (text) lines.push(markdownText, "");
     else lines.push("");
     if (block.type === "paragraph") structuredBlocks.push({ id: `block-${structuredBlocks.length + 1}`, kind: "paragraph", text: exactText, alignment: normalizedAlignment(block.format?.align), indentLeft: block.format?.indentLeft, indentFirstLine: block.format?.indentFirstLine, preserveWhitespace: true, source: { startLine: ++sourceLine, endLine: sourceLine } });
   }
@@ -188,6 +192,18 @@ function normalizedAlignment(value: string | undefined): ParagraphAlignment {
 
 function plainText(block: Block): string {
   return (block.runs || []).map((run) => run.text).join("").trim();
+}
+
+function formattedText(block: Block): string {
+  return (block.runs || []).map((run) => {
+    const text = run.text.replace(/\r/g, "");
+    if (!text) return "";
+    if (run.styleId === "CodeChar") return `\`${text}\``;
+    if (run.bold && run.italic) return `***${text}***`;
+    if (run.bold) return `**${text}**`;
+    if (run.italic) return `*${text}*`;
+    return text;
+  }).join("").trim();
 }
 
 function tableToMarkdown(table: TableModel, notes: string[]): string[] {

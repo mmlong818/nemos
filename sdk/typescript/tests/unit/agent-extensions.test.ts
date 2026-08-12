@@ -190,13 +190,19 @@ test("installs, disables, upgrades, persists, and audits extensions without chan
     assert.equal(registry.get("weather.mcp")?.enabled, true);
     registry.setEnabled("weather.mcp", false);
     registry.upgrade(manifest("1.1.0"));
+    assert.deepEqual(registry.get("weather.mcp")?.rollbackVersions, ["1.0.0"]);
     assert.throws(() => registry.upgrade(manifest("1.0.0")), /must increase the version/);
+
+    const restored = registry.rollback("weather.mcp");
+    assert.equal(restored.manifest.version, "1.0.0");
+    assert.deepEqual(restored.rollbackVersions, []);
+    assert.throws(() => registry.rollback("weather.mcp"), /no previous version/);
 
     const reloaded = new AgentExtensionRegistry(file);
     const record = reloaded.get("weather.mcp");
     assert.equal(record?.enabled, false);
-    assert.equal(record?.manifest.version, "1.1.0");
-    assert.deepEqual(record?.audit.map((item) => item.action), ["install", "disable", "upgrade"]);
+    assert.equal(record?.manifest.version, "1.0.0");
+    assert.deepEqual(record?.audit.map((item) => item.action), ["install", "disable", "upgrade", "rollback"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

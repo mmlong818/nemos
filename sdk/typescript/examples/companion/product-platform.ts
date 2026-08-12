@@ -1,12 +1,14 @@
 import { execFileSync } from "node:child_process";
+import { DOMAIN_PACK_QUALITY_CASES } from "./domain-pack-quality.js";
 
-export type PlatformConnectorId = "github" | "browser" | "email" | "calendar";
+export type PlatformConnectorId = "files" | "browser" | "github" | "email" | "calendar" | "enterprise-docs";
 
 export interface PlatformConnectorStatus {
   id: PlatformConnectorId;
   name: string;
   purpose: string;
   state: "ready" | "available" | "not-installed";
+  provider: "built-in" | "extension";
   extensionId?: string;
   missingCapabilities: string[];
   readOnlyDefault: true;
@@ -15,10 +17,12 @@ export interface PlatformConnectorStatus {
 }
 
 const CONNECTORS: Array<{ id: PlatformConnectorId; name: string; purpose: string; tokens: string[]; minimumPermissions: string[]; fallback: string }> = [
+  { id: "files", name: "本地文件", purpose: "读取用户明确选择的文件和资料；不会扫描未授权目录。", tokens: ["local-file", "filesystem", "file.read"], minimumPermissions: ["用户明确选择的文件", "应用资料库"], fallback: "仍可粘贴文字或在任务中单独上传文件。" },
   { id: "github", name: "GitHub", purpose: "读取仓库、问题和合并请求；写入、评论和合并必须再次确认。", tokens: ["github", "repository", "pull_request"], minimumPermissions: ["仓库内容只读", "议题与合并请求只读"], fallback: "仍可在本地项目文件夹中开发和生成补丁。" },
   { id: "browser", name: "浏览器", purpose: "打开已授权域名、采集资料并保留网页证据。", tokens: ["browser", "playwright", "web"], minimumPermissions: ["当前任务授权的域名", "页面读取"], fallback: "用户可粘贴网页内容或导入本地文件。" },
   { id: "email", name: "邮箱", purpose: "检索和整理邮件；发送、移动和删除必须再次确认。", tokens: ["email", "mail", "gmail", "outlook"], minimumPermissions: ["邮件只读", "指定账号"], fallback: "用户可导出或粘贴邮件内容进行整理。" },
   { id: "calendar", name: "日历", purpose: "查询日程并发现冲突；新建和修改日程必须再次确认。", tokens: ["calendar", "schedule", "event"], minimumPermissions: ["日历事件只读", "指定日历"], fallback: "用户可导出日历或手动提供时间安排。" },
+  { id: "enterprise-docs", name: "企业文档", purpose: "读取已授权的团队文档和知识库；编辑、移动或分享必须再次确认。", tokens: ["feishu", "lark", "notion", "confluence", "enterprise-docs", "knowledge-base"], minimumPermissions: ["指定知识库只读", "指定组织空间"], fallback: "可先导出文件，再导入本地资料库。" },
 ];
 
 interface ExtensionLike {
@@ -26,7 +30,10 @@ interface ExtensionLike {
   manifest?: { id?: string; name?: string; capabilities?: string[]; tools?: Array<{ name?: string }> };
 }
 
-export function platformConnectorStatuses(extensions: ExtensionLike[]): PlatformConnectorStatus[] {
+export function platformConnectorStatuses(
+  extensions: ExtensionLike[],
+  builtIns: Partial<Record<PlatformConnectorId, boolean>> = { files: true },
+): PlatformConnectorStatus[] {
   return CONNECTORS.map((connector) => {
     const match = extensions.find((extension) => {
       const manifest = extension.manifest ?? {};
@@ -34,13 +41,15 @@ export function platformConnectorStatuses(extensions: ExtensionLike[]): Platform
         .filter(Boolean).join(" ").toLowerCase();
       return connector.tokens.some((token) => haystack.includes(token));
     });
+    const builtInReady = builtIns[connector.id] === true;
     return {
       id: connector.id,
       name: connector.name,
       purpose: connector.purpose,
-      state: match?.enabled ? "ready" : match ? "available" : "not-installed",
+      state: builtInReady || match?.enabled ? "ready" : match ? "available" : "not-installed",
+      provider: builtInReady ? "built-in" : "extension",
       extensionId: match?.manifest?.id,
-      missingCapabilities: match?.enabled ? [] : connector.tokens.slice(0, 1),
+      missingCapabilities: builtInReady || match?.enabled ? [] : connector.tokens.slice(0, 1),
       readOnlyDefault: true,
       minimumPermissions: [...connector.minimumPermissions],
       fallback: connector.fallback,
@@ -53,6 +62,12 @@ export function developmentEnvironment() {
     node: commandVersion(process.execPath, ["--version"]),
     git: commandVersion("git", ["--version"]),
     python: commandVersion(process.platform === "win32" ? "python" : "python3", ["--version"]),
+    dotnet: commandVersion("dotnet", ["--version"]),
+    go: commandVersion("go", ["version"]),
+    rust: commandVersion("cargo", ["--version"]),
+    java: commandVersion("java", ["-version"]),
+    maven: commandVersion("mvn", ["--version"]),
+    gradle: commandVersion("gradle", ["--version"]),
   };
 }
 
@@ -89,7 +104,14 @@ export function capabilityPackStatuses(
         : verifiedAbilities.length === pack.abilities.length
           ? "verified"
           : "available";
-    return { ...pack, state, missingAbilities, verifiedAbilities, approvedAbilities };
+    return {
+      ...pack,
+      state,
+      missingAbilities,
+      verifiedAbilities,
+      approvedAbilities,
+      qualitySampleCount: DOMAIN_PACK_QUALITY_CASES.filter((item) => item.packId === pack.id).length,
+    };
   });
 }
 
