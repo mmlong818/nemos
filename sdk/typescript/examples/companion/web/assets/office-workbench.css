@@ -565,6 +565,32 @@ button, a, label { touch-action: manipulation; }
   tab-size: 4;
 }
 .continuous-editor:focus { caret-color: var(--office-accent); }
+.document-surface:has(.word-workspace) { width:min(1180px,calc(100% - 32px));padding:0;overflow:hidden;border:0;background:transparent;box-shadow:none; }
+.word-workspace { min-height:calc(100vh - 164px);display:grid;grid-template-columns:180px minmax(0,1fr); }
+.word-outline { padding:22px 14px;border:1px solid var(--office-line);border-right:0;background:#f7f2ea; }
+.word-outline>strong { font-size:11px;letter-spacing:.02em; }
+.word-outline nav { position:sticky;top:18px;display:grid;gap:2px;max-height:calc(100vh - 230px);margin-top:14px;overflow:auto; }
+.word-outline button { min-height:32px;padding:6px 8px;border:0;border-radius:5px;color:var(--office-muted);background:transparent;text-align:left;font-size:11px;line-height:1.4;cursor:pointer; }
+.word-outline button:hover,.word-outline button:focus-visible { color:var(--office-accent-dark);background:#efe2e7;outline:0; }
+.word-editor-stage { min-width:0;border:1px solid var(--office-line);background:#e9e5de; }
+.word-format-toolbar { position:sticky;top:0;z-index:3;min-height:46px;display:flex;align-items:center;gap:3px;padding:6px 12px;border-bottom:1px solid var(--office-line);background:rgba(255,253,249,.97);backdrop-filter:blur(10px); }
+.word-format-toolbar button { min-height:32px;padding:0 10px;border:0;border-radius:5px;color:var(--office-muted);background:transparent;font-size:11px;cursor:pointer; }
+.word-format-toolbar button:hover { color:var(--office-accent-dark);background:#f3e8eb; }
+.word-format-toolbar>span { margin-left:auto;color:var(--office-subtle);font-size:10.5px;letter-spacing:.01em; }
+.word-paper { width:min(794px,calc(100% - 48px));min-height:1120px;margin:28px auto 64px;padding:74px clamp(54px,8vw,92px) 96px;border:1px solid #d7d0c5;background:#fff;box-shadow:0 16px 34px rgba(48,39,42,.12); }
+.word-section { scroll-margin-top:64px; }
+.word-section+.word-section { margin-top:30px; }
+.word-section [contenteditable] { outline:0; }
+.word-section [contenteditable]:focus { background:linear-gradient(90deg,rgba(190,54,105,.055),transparent 70%);box-shadow:-3px 0 0 var(--office-accent); }
+.word-section [contenteditable]:empty::before { content:attr(data-placeholder);color:#aaa39a; }
+.word-section h1,.word-section h2,.word-section h3 { margin:0 0 15px;color:#24221f;font-family:"Noto Serif SC","Songti SC",SimSun,serif;letter-spacing:-.015em; }
+.word-section h1 { font-size:28px;line-height:1.3; }
+.word-section h2 { font-size:22px;line-height:1.35; }
+.word-section h3 { font-size:18px;line-height:1.4; }
+.word-section-body { min-height:28px;color:#34312d;font:15.5px/1.9 "Noto Serif SC","Songti SC",SimSun,serif; }
+.word-section-body p { margin:0 0 1em; }
+.word-section-body blockquote { margin:1em 0;padding:4px 0 4px 16px;border-left:3px solid #d7a4b7;color:var(--office-muted); }
+.word-section-body ul { padding-left:1.5em; }
 .document-surface.is-markdown { width: min(1280px, calc(100% - 32px)); padding: 0; overflow: hidden; }
 .document-surface.is-presentation, .document-surface.is-spreadsheet { width: min(1320px, calc(100% - 32px)); padding: 0; overflow: hidden; }
 .markdown-workspace { min-height: calc(100vh - 164px); display: grid; grid-template-columns: 180px minmax(340px, 1fr) minmax(340px, 1fr); }
@@ -952,6 +978,11 @@ button, a, label { touch-action: manipulation; }
   .processing-result-empty { min-height: 460px; }
   .document-surface { width: calc(100% - 20px); min-height: 520px; margin: 12px auto 24px; padding: 24px 24px 48px 30px; }
   .document-surface.is-markdown, .document-surface.is-presentation, .document-surface.is-spreadsheet { width: calc(100% - 12px); padding: 0; }
+  .document-surface:has(.word-workspace) { width:calc(100% - 12px);padding:0; }
+  .word-workspace { display:block; }
+  .word-outline { display:none; }
+  .word-format-toolbar>span { display:none; }
+  .word-paper { width:calc(100% - 20px);min-height:720px;margin:10px auto 28px;padding:42px 26px 64px; }
   .markdown-workspace { display: block; }
   .markdown-outline-panel { display: none; }
   .markdown-editor-panel { border-right: 0; border-bottom: 1px solid var(--office-line); }
