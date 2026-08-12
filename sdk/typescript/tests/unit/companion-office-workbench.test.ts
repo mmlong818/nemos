@@ -13,6 +13,16 @@ const capabilityHtml = readFileSync(join(webRoot, "capabilities.html"), "utf8");
 const chatHtml = readFileSync(join(webRoot, "index.html"), "utf8");
 const server = readFileSync(join(companionRoot, "server.ts"), "utf8");
 
+test("Word 转换副本使用文档式编辑器而不是 Markdown 三栏源码界面", () => {
+  assert.match(officeJs, /function isWordWorkingCopy/);
+  assert.match(officeJs, /function renderWordWorkspace/);
+  assert.match(officeJs, /data-word-field="text"/);
+  assert.match(officeJs, /编辑文档/);
+  assert.match(officeCss, /\.word-paper/);
+  assert.match(officeCss, /\.word-format-toolbar/);
+  assert.match(officeCss, /\.word-outline/);
+});
+
 test("办公文件工作台拥有独立入口且三个主界面导航一致", () => {
   assert.match(server, /pathname === "\/office"/);
   assert.match(chatHtml, /id="railOffice"[^>]+aria-label="办公文件"/);

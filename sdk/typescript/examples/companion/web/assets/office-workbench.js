@@ -710,6 +710,29 @@ function applyMarkdownAction(editor, action) {
   editor.focus();
 }
 
+function isWordWorkingCopy(current) {
+  return ["doc", "docx", "docm", "odt", "rtf"].includes(String(current.convertedFrom || "").toLowerCase());
+}
+
+function wordParagraphs(text) {
+  return String(text || "").split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter((paragraph) => paragraph && !/^(\s*#\s*)+$/.test(paragraph));
+}
+
+function renderWordWorkspace(root, current) {
+  const meaningful = current.blocks.filter((block) => !(/^#+$/.test(block.title.trim()) && !block.text.trim()));
+  const sections = meaningful.length ? meaningful : [safeBlock({ title: "正文", text: "" }, 0, current.kind)];
+  root.innerHTML = `<div class="word-workspace">
+    <aside class="word-outline" aria-label="文档目录"><strong>目录</strong><nav>${sections.map((block, index) => `<button type="button" data-word-section="${escapeHtml(block.id)}">${escapeHtml(block.title || `第 ${index + 1} 节`)}</button>`).join("")}</nav></aside>
+    <section class="word-editor-stage">
+      <div class="word-format-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-word-command="bold"><strong>加粗</strong></button><button type="button" data-word-command="insertUnorderedList">列表</button><button type="button" data-word-command="formatBlock" data-command-value="blockquote">引用</button><span>修改会自动保存到工作副本</span></div>
+      <article class="word-paper" aria-label="Word 可编辑副本">${sections.map((block, index) => {
+        const level = index === 0 ? 1 : 2;
+        return `<section class="word-section" id="word-section-${escapeHtml(block.id)}" data-word-block="${escapeHtml(block.id)}"><h${level} contenteditable="true" spellcheck="true" data-word-field="title" data-placeholder="输入标题">${escapeHtml(block.title || "")}</h${level}><div class="word-section-body" contenteditable="true" spellcheck="true" data-word-field="text" data-placeholder="在这里输入正文">${wordParagraphs(block.text).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("") || "<p><br></p>"}</div></section>`;
+      }).join("")}</article>
+    </section>
+  </div>`;
+}
+
 function renderBlocks(current) {
   const root = window.document.querySelector("#blockList");
   const continuous = current.kind === "docx" || current.kind === "txt" || current.kind === "md";
@@ -718,6 +741,11 @@ function renderBlocks(current) {
   document.querySelector("#editViewTab").textContent = current.convertedFrom || current.kind === "docx"
     ? "编辑工作副本"
     : current.kind === "md" || current.kind === "txt" ? "编辑内容" : textViewLabel(current.kind);
+  if (isWordWorkingCopy(current)) {
+    document.querySelector("#editViewTab").textContent = "编辑文档";
+    renderWordWorkspace(root, current);
+    return;
+  }
   if (current.kind === "md") {
     root.innerHTML = `
       <div class="markdown-workspace">
@@ -1117,15 +1145,18 @@ function render() {
   badge.dataset.capability = sourceCapability ? "convert" : capability.capability;
   badge.title = sourceCapability ? sourceCapability.summary : capability.summary;
   const note = document.querySelector("#capabilityNote");
+  const conversionNotes = isWordWorkingCopy(current)
+    ? (current.conversionNotes || []).map((item) => String(item).includes("Markdown") ? "复杂字体、字号、颜色和对齐未完全保留。" : item)
+    : (current.conversionNotes || []);
   const noteText = sourceCapability
-    ? ["已转换为可编辑副本，原文件保留、可下载，不会被改写。", ...(current.conversionNotes || [])].join(" ")
+    ? ["已转换为可编辑副本，原文件保留、可下载，不会被改写。", ...conversionNotes].join(" ")
     : [capability.summary, ...capability.limitations].join(" ");
   note.textContent = noteText;
   note.hidden = !noteText;
   document.querySelector("#writeBackSource").hidden = !current.sourceWritable || !capability.sourceWritable;
   document.querySelector("#editViewTab").hidden = current.kind === "pdf";
   document.querySelector("#saveStructuredCopy").hidden = true;
-  document.querySelector("#documentSurface").classList.toggle("is-markdown", current.kind === "md");
+  document.querySelector("#documentSurface").classList.toggle("is-markdown", current.kind === "md" && !isWordWorkingCopy(current));
   document.querySelector("#documentSurface").classList.toggle("is-presentation", current.kind === "pptx");
   document.querySelector("#documentSurface").classList.toggle("is-spreadsheet", current.kind === "xlsx");
   const savesToLabel = capability.savesTo === "original"
@@ -1738,6 +1769,17 @@ function bindEvents() {
   });
   document.querySelector("#blockList").addEventListener("input", (event) => {
     const current = currentDocument();
+    const wordField = event.target.closest?.("[data-word-field]");
+    const wordSection = wordField?.closest?.("[data-word-block]");
+    if (current && wordField && wordSection) {
+      const block = current.blocks.find((item) => item.id === wordSection.dataset.wordBlock);
+      if (!block) return;
+      const value = wordField.innerText.replace(/\n{3,}/g, "\n\n").trim();
+      block[wordField.dataset.wordField] = value;
+      current.updatedAt = new Date().toISOString();
+      scheduleSave();
+      return;
+    }
     if (current && event.target.matches("[data-cell-address]")) {
       const sheetIndex = Number(event.target.dataset.sheetIndex || 0);
       const address = String(event.target.dataset.cellAddress || "").toUpperCase();
@@ -1780,6 +1822,10 @@ function bindEvents() {
     const editor = document.querySelector("#continuousEditor");
     const action = event.target.closest("[data-markdown-action]");
     const heading = event.target.closest("[data-markdown-line]");
+    const wordSectionLink = event.target.closest("[data-word-section]");
+    const wordCommand = event.target.closest("[data-word-command]");
+    if (wordSectionLink) document.querySelector(`#word-section-${CSS.escape(wordSectionLink.dataset.wordSection)}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (wordCommand) document.execCommand(wordCommand.dataset.wordCommand, false, wordCommand.dataset.commandValue || null);
     if (editor && action) applyMarkdownAction(editor, action.dataset.markdownAction);
     if (editor && heading) markdownSelectionAtLine(editor, Number(heading.dataset.markdownLine || 0));
     const section = event.target.closest("[data-structured-section]");
