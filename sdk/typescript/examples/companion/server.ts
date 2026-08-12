@@ -3189,7 +3189,7 @@ const server = createServer(async (req, res) => {
         return;
       }
       try {
-        // 上传的文档统一转成 Markdown 再处理；原文件仍完整保存在会话里，可随时下载。
+        // 上传文件生成结构化可编辑副本；原文件仍完整保存在会话里，可随时下载。
         const conversion = await convertOfficeToMarkdown(name, data);
         const extraction = officeExtractionFromMarkdown(conversion.sourceFormat, conversion.markdown, conversion.truncated);
         const session = officeFileSessions.create(name, data);

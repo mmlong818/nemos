@@ -43,7 +43,7 @@ test("需要转换的格式一律不写回原文件", () => {
     assert.equal(entry.sourceWritable, false, `${entry.format} 转换后不该能写回原文件`);
     assert.equal(entry.copyOnly, false);
     assert.equal(entry.canSaveCopy, false);
-    assert.match(entry.summary, /转成 Markdown/, `${entry.format} 的说明必须点明会先转换`);
+    assert.match(entry.summary, /可编辑|结构化/, `${entry.format} 的说明必须点明会生成工作副本`);
     assert.match(entry.summary, /原文件保留/, `${entry.format} 的说明必须点明原文件不被改写`);
     assert.ok(entry.limitations.length >= 2, `${entry.format} 必须列出转换会丢什么`);
     assert.ok(
@@ -79,7 +79,7 @@ test("浏览器读到的是服务端同一张表", () => {
   assert.match(officeJs, /window\.ClownfishOfficeCapabilities\?\.capabilities/);
 });
 
-test("上传后统一转成 Markdown，转换损失显示给用户", () => {
+test("上传后生成结构化可编辑副本，转换变化显示给用户", () => {
   assert.match(server, /convertOfficeToMarkdown/);
   assert.match(server, /conversion,/, "extract 接口要把转换结果一起返回");
   assert.match(officeJs, /const conversion = response\.conversion/);
