@@ -3112,12 +3112,12 @@ const server = createServer(async (req, res) => {
         payload?: string;
         name?: string;
         format?: OfficeExportFormat;
-        blocks?: Array<{ title?: string; text?: string }>;
+        blocks?: Array<{ title?: string; text?: string; titleAlignment?: "left" | "center" | "right" | "justify"; paragraphAlignments?: Array<"left" | "center" | "right" | "justify"> }>;
       };
       const body = (typeof received.payload === "string" ? JSON.parse(received.payload) : received) as {
         name?: string;
         format?: OfficeExportFormat;
-        blocks?: Array<{ title?: string; text?: string }>;
+        blocks?: Array<{ title?: string; text?: string; titleAlignment?: "left" | "center" | "right" | "justify"; paragraphAlignments?: Array<"left" | "center" | "right" | "justify"> }>;
       };
       const allowed: OfficeExportFormat[] = ["docx", "pptx", "xlsx", "pdf", "html", "md"];
       if (!body.format || !allowed.includes(body.format) || !Array.isArray(body.blocks)) {
@@ -3128,7 +3128,7 @@ const server = createServer(async (req, res) => {
         const exported = await exportOfficeDocument({
           name: String(body.name || "办公文稿"),
           format: body.format,
-          blocks: body.blocks.map((block) => ({ title: String(block.title || ""), text: String(block.text || "") })),
+          blocks: body.blocks.map((block) => ({ title: String(block.title || ""), text: String(block.text || ""), titleAlignment: block.titleAlignment, paragraphAlignments: block.paragraphAlignments })),
         });
         const prepare = new URL(url, "http://127.0.0.1").searchParams.get("prepare") === "1";
         if (prepare) {

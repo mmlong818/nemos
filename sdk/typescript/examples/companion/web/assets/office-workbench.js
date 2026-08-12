@@ -14,6 +14,7 @@ const CONVERTED_FILE_KINDS = [
 const CONVERTED_FILE_KIND_SET = new Set(CONVERTED_FILE_KINDS);
 const SUPPORTED_FILE_PATTERN = /\.(doc|docx|docm|odt|rtf|epub|ppt|pps|pot|pptx|pptm|ppsx|ppsm|odp|xls|xlsx|xlsm|xlsb|ods|csv|pdf|txt|md|markdown)$/i;
 const dirtyWordDocuments = new Set();
+const rebuildingWordDocuments = new Set();
 
 const ICON_PATHS = {
   ...window.ClownfishIcons.paths,
@@ -69,6 +70,10 @@ function formatLabel(kind) {
 
 function sourceKind(document) {
   return document?.convertedFrom || document?.kind || "md";
+}
+
+function isPdfDocument(document) {
+  return sourceKind(document) === "pdf";
 }
 
 function formatGroup(kind) {
@@ -217,21 +222,33 @@ function flatLegacyValue(value) {
 function safeWordHtml(value) {
   if (!value) return "";
   const template = document.createElement("template");
-  template.innerHTML = String(value).slice(0, 240000);
+  template.innerHTML = String(value).slice(0, 2_000_000);
   const allowed = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "BLOCKQUOTE"]);
   [...template.content.querySelectorAll("*")].forEach((node) => {
     if (!allowed.has(node.tagName)) node.replaceWith(document.createTextNode(node.textContent || ""));
-    else [...node.attributes].forEach((attribute) => node.removeAttribute(attribute.name));
+    else {
+      const alignment = safeAlignment(node.dataset.align || node.style.textAlign);
+      const indent = Math.max(0, Math.min(8, Number(node.dataset.indent || 0) || 0));
+      [...node.attributes].forEach((attribute) => node.removeAttribute(attribute.name));
+      if (alignment !== "left") node.dataset.align = alignment;
+      if (indent) node.dataset.indent = String(indent);
+    }
   });
   return template.innerHTML;
+}
+
+function safeAlignment(value) {
+  return ["center", "right", "justify"].includes(String(value)) ? String(value) : "left";
 }
 
 function safeBlock(block, index, kind) {
   return {
     id: String(block?.id || uid("block")),
     title: String(block?.title || kindTitle(kind, index)).slice(0, 120),
-    text: readableLegacyCapabilityText(String(block?.text || "")).slice(0, 120000),
+    text: readableLegacyCapabilityText(String(block?.text || "")).slice(0, 2_000_000),
     richHtml: safeWordHtml(block?.richHtml),
+    titleAlignment: safeAlignment(block?.titleAlignment),
+    paragraphAlignments: Array.isArray(block?.paragraphAlignments) ? block.paragraphAlignments.slice(0, 1000).map(safeAlignment) : [],
   };
 }
 
@@ -279,6 +296,7 @@ function safeDocument(item) {
     sourceWritable: Boolean(item?.sourceWritable),
     desktopSessionId: String(item?.desktopSessionId || "").slice(0, 80),
     desktopContentHash: String(item?.desktopContentHash || "").slice(0, 64),
+    structureVersion: Math.max(0, Number(item?.structureVersion || 0)),
     processing: safeProcessing(item?.processing),
     fileRecordId: String(item?.fileRecordId || "").slice(0, 80),
     caretPosition: Math.max(0, Number(item?.caretPosition || 0)),
@@ -754,17 +772,30 @@ function wordParagraphs(text) {
   return String(text || "").split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter((paragraph) => paragraph && !/^(\s*#\s*)+$/.test(paragraph));
 }
 
+function applyWordAlignment(alignment) {
+  const selection = window.getSelection();
+  const anchor = selection?.anchorNode;
+  const editable = (anchor?.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor)?.closest?.("[data-word-field]");
+  if (!editable) return;
+  const paragraph = editable.dataset.wordField === "title"
+    ? editable
+    : (anchor?.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor)?.closest?.("p,li,blockquote") || editable;
+  paragraph.dataset.align = safeAlignment(alignment);
+  editable.dispatchEvent(new Event("input", { bubbles: true }));
+  editable.focus();
+}
+
 function renderWordWorkspace(root, current) {
   const meaningful = current.blocks.filter((block) => !(/^#+$/.test(block.title.trim()) && !block.text.trim()));
   const sections = meaningful.length ? meaningful : [safeBlock({ title: "正文", text: "" }, 0, current.kind)];
   root.innerHTML = `<div class="word-workspace">
     <aside class="word-outline" aria-label="文档目录"><strong>目录</strong><nav>${sections.map((block, index) => `<button type="button" data-word-section="${escapeHtml(block.id)}">${escapeHtml(block.title || `第 ${index + 1} 节`)}</button>`).join("")}</nav></aside>
     <section class="word-editor-stage">
-      <div class="word-format-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-word-command="bold"><strong>加粗</strong></button><button type="button" data-word-command="insertUnorderedList">列表</button><button type="button" data-word-command="formatBlock" data-command-value="blockquote">引用</button><span>修改会自动保存到工作副本</span></div>
+      <div class="word-format-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-word-command="bold"><strong>加粗</strong></button><button type="button" data-word-command="insertUnorderedList">列表</button><button type="button" data-word-command="formatBlock" data-command-value="blockquote">引用</button><i aria-hidden="true"></i><button type="button" data-word-align="left">左对齐</button><button type="button" data-word-align="center">居中</button><button type="button" data-word-align="right">右对齐</button><button type="button" data-word-align="justify">两端</button><span>修改后请单独保存副本</span></div>
       <article class="word-paper" aria-label="Word 可编辑副本">${sections.map((block, index) => {
         const level = index === 0 ? 1 : 2;
-        const body = block.richHtml || wordParagraphs(block.text).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("") || "<p><br></p>";
-        return `<section class="word-section" id="word-section-${escapeHtml(block.id)}" data-word-block="${escapeHtml(block.id)}"><h${level} contenteditable="true" spellcheck="true" data-word-field="title" data-placeholder="输入标题">${escapeHtml(block.title || "")}</h${level}><div class="word-section-body" contenteditable="true" spellcheck="true" data-word-field="text" data-placeholder="在这里输入正文">${body}</div></section>`;
+        const body = block.richHtml || wordParagraphs(block.text).map((paragraph, paragraphIndex) => `<p data-align="${safeAlignment(block.paragraphAlignments?.[paragraphIndex])}">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("") || "<p><br></p>";
+        return `<section class="word-section" id="word-section-${escapeHtml(block.id)}" data-word-block="${escapeHtml(block.id)}"><h${level} data-align="${safeAlignment(block.titleAlignment)}" contenteditable="true" spellcheck="true" data-word-field="title" data-placeholder="输入标题">${escapeHtml(block.title || "")}</h${level}><div class="word-section-body" contenteditable="true" spellcheck="true" data-word-field="text" data-placeholder="在这里输入正文">${body}</div></section>`;
       }).join("")}</article>
     </section>
   </div>`;
@@ -778,6 +809,7 @@ function renderBlocks(current) {
   document.querySelector("#editViewTab").textContent = current.convertedFrom || current.kind === "docx"
     ? "编辑工作副本"
     : current.kind === "md" || current.kind === "txt" ? "编辑内容" : textViewLabel(current.kind);
+  if (isPdfDocument(current)) document.querySelector("#editViewTab").textContent = "编辑 Markdown";
   if (isWordWorkingCopy(current)) {
     document.querySelector("#editViewTab").textContent = "编辑文档";
     renderWordWorkspace(root, current);
@@ -963,6 +995,10 @@ function structuredDocumentToBlocks(document, fallbackText, kind) {
   let section = null;
   const flush = () => {
     if (!section) return;
+    if (section.textParts) section.text = section.textParts.join("\n\n");
+    if (section.richParagraphs?.length) section.richHtml = section.richParagraphs.join("");
+    delete section.textParts;
+    delete section.richParagraphs;
     blocks.push(safeBlock(section, blocks.length, kind));
     section = null;
   };
@@ -970,14 +1006,14 @@ function structuredDocumentToBlocks(document, fallbackText, kind) {
     const blockKind = String(block?.kind || "paragraph");
     if (blockKind === "heading") {
       flush();
-      section = { id: String(block.id || uid("block")), title: String(block.text || "未命名段落"), text: "" };
+      section = { id: String(block.id || uid("block")), title: String(block.text || "未命名段落"), titleAlignment: safeAlignment(block.alignment), text: "", textParts: [], paragraphAlignments: [], richParagraphs: [] };
       return;
     }
-    if (!section) section = { id: String(block?.id || uid("block")), title: blocks.length ? `段落 ${blocks.length + 1}` : "正文", text: "" };
+    if (!section) section = { id: String(block?.id || uid("block")), title: blocks.length ? `段落 ${blocks.length + 1}` : "正文", text: "", textParts: [], paragraphAlignments: [], richParagraphs: [] };
     let text = String(block?.text || "");
     if (blockKind === "list") {
-      const marker = block.ordered ? (_, index) => `${index + 1}. ` : () => "- ";
-      text = text.split("\n").map((item, index) => `${marker(item, index)}${item}`).join("\n");
+      const marker = String(block.listMarker || (block.ordered ? "1." : "•"));
+      text = `${"  ".repeat(Math.max(0, Number(block.listLevel || 0)))}${marker} ${text}`;
     } else if (blockKind === "quote") {
       text = text.split("\n").map((line) => `> ${line}`).join("\n");
     } else if (blockKind === "code") {
@@ -985,7 +1021,11 @@ function structuredDocumentToBlocks(document, fallbackText, kind) {
     } else if (blockKind === "table" && Array.isArray(block.rows)) {
       text = block.rows.map((row) => `| ${row.join(" | ")} |`).join("\n");
     }
-    section.text = [section.text, text].filter(Boolean).join("\n\n");
+    section.textParts.push(text);
+    section.paragraphAlignments.push(safeAlignment(block.alignment));
+    const indent = Math.max(0, Math.min(8, Math.round(Number(block.indentLeft || 0) / 360) + Number(block.listLevel || 0)));
+    const content = text ? escapeHtml(text).replace(/\n/g, "<br>") : "<br>";
+    section.richParagraphs.push(`<p data-align="${safeAlignment(block.alignment)}"${indent ? ` data-indent="${indent}"` : ""}>${content}</p>`);
   });
   flush();
   return blocks.length ? blocks : textToBlocks(fallbackText, kind);
@@ -1062,7 +1102,6 @@ function setDocumentView(view) {
   const current = currentDocument();
   const hasResult = Boolean(current?.processing);
   if (!["source", "edit", "result"].includes(view)) view = current?.sourceSize ? "source" : "edit";
-  if (view === "edit" && current?.kind === "pdf") view = "source";
   if (view === "result" && !hasResult) view = current?.sourceSize ? "source" : "edit";
   state.view = view;
   document.querySelectorAll("[data-document-view]").forEach((button) => {
@@ -1074,6 +1113,9 @@ function setDocumentView(view) {
   document.querySelector("#documentSurface").hidden = view !== "edit";
   document.querySelector("#processingResult").hidden = view !== "result";
   if (view === "source" && current) window.ClownfishOfficeSource.render(document.querySelector("#sourcePreview"), current);
+  if (view === "edit" && current && isWordWorkingCopy(current) && current.structureVersion < 2 && current.desktopSessionId && !rebuildingWordDocuments.has(current.id)) {
+    void refreshDesktopFile(true);
+  }
 }
 
 function processingArtifact(job, processing) {
@@ -1185,13 +1227,15 @@ function render() {
   const conversionNotes = isWordWorkingCopy(current)
     ? (current.conversionNotes || []).map((item) => String(item).includes("Markdown") ? "复杂字体、字号、颜色和对齐未完全保留。" : item)
     : (current.conversionNotes || []);
-  const noteText = sourceCapability
-    ? ["已转换为可编辑副本，原文件保留、可下载，不会被改写。", ...conversionNotes].join(" ")
-    : [capability.summary, ...capability.limitations].join(" ");
+  const noteText = isPdfDocument(current)
+    ? "PDF 原文件保持不变；编辑页使用本地转换后的 Markdown 副本。文字与标题可直接修改，但固定版式、图片位置和表单不会等同于原 PDF。"
+    : sourceCapability
+      ? ["已转换为可编辑副本，原文件保留、可下载，不会被改写。", ...conversionNotes].join(" ")
+      : [capability.summary, ...capability.limitations].join(" ");
   note.textContent = noteText;
   note.hidden = !noteText;
   document.querySelector("#writeBackSource").hidden = !current.sourceWritable || !capability.sourceWritable;
-  document.querySelector("#editViewTab").hidden = current.kind === "pdf";
+  document.querySelector("#editViewTab").hidden = false;
   document.querySelector("#saveStructuredCopy").hidden = true;
   const saveWorkingCopyButton = document.querySelector("#saveWorkingCopy");
   saveWorkingCopyButton.hidden = !isWordWorkingCopy(current);
@@ -1199,14 +1243,17 @@ function render() {
   saveWorkingCopyButton.textContent = dirtyWordDocuments.has(current.id) ? "保存副本" : "已保存";
   if (isWordWorkingCopy(current)) setSaveState(dirtyWordDocuments.has(current.id) ? "有未保存的修改" : "工作副本已保存", dirtyWordDocuments.has(current.id));
   document.querySelector("#documentSurface").classList.toggle("is-markdown", current.kind === "md" && !isWordWorkingCopy(current));
+  document.querySelector("#documentSurface").classList.toggle("is-pdf-markdown", isPdfDocument(current));
   document.querySelector("#documentSurface").classList.toggle("is-presentation", current.kind === "pptx");
   document.querySelector("#documentSurface").classList.toggle("is-spreadsheet", current.kind === "xlsx");
   const savesToLabel = capability.savesTo === "original"
     ? "修改可写回原文件"
     : capability.savesTo === "copy" ? "文字修改另存为副本，本文件不改动" : "只读";
-  document.querySelector("#documentMeta").textContent = usesDesktopOriginalFormat(current)
-    ? `原格式文件${size} · ${savesToLabel}`
-    : `本机工作副本${size} · 原文件未改动`;
+  document.querySelector("#documentMeta").textContent = isPdfDocument(current)
+    ? `PDF 原文件${size} · Markdown 副本单独保存`
+    : usesDesktopOriginalFormat(current)
+      ? `原格式文件${size} · ${savesToLabel}`
+      : `本机工作副本${size} · 原文件未改动`;
   renderBlocks(current);
   renderVersions(current);
   if (current.processing && ["queued", "running", "succeeded"].includes(current.processing.status)) state.view = "result";
@@ -1294,6 +1341,7 @@ async function importFile(file, handle = null) {
       sourceStored: false,
       desktopSessionId: extraction && response.session?.id,
       desktopContentHash: response.session?.contentHash,
+      structureVersion: converted && conversion.sourceFormat === "docx" ? 2 : 0,
       fileRecordId: response.fileRecord?.id,
       blocks: workingBlocks,
       versions: [{ id: uid("version"), name: "导入原稿", createdAt, blocks: workingBlocks.map((block) => ({ ...block })) }],
@@ -1315,10 +1363,15 @@ async function importFile(file, handle = null) {
     await loadSourceHistory(importedDocument);
     persistState(importedDocument.sourceTruncated ? "已读取可处理的前半部分" : "文件已读取");
     render();
-    showToast(converted
+    const importedPdf = isPdfDocument(importedDocument);
+    showToast(importedPdf
+      ? "PDF 已转换为可编辑 Markdown；原 PDF 保持不变"
+      : converted
       ? `已转换为可编辑副本${importedDocument.conversionNotes.length ? `；${importedDocument.conversionNotes.length} 项内容有变化，见下方说明` : ""}。原文件保留，可随时下载`
       : importedDocument.sourceStored ? "文件已打开，原始版本保留在本机" : "文件已打开，工作副本不会覆盖原文件", converted && importedDocument.conversionNotes.length > 0);
-    showOperation(converted
+    showOperation(importedPdf
+      ? `已打开「${file.name}」，可在“编辑 Markdown”中修改提取内容`
+      : converted
       ? `已打开「${file.name}」，并建立可编辑工作副本；原文件未改动`
       : `已打开「${file.name}」，可以继续编辑`, "success");
   } catch (error) {
@@ -1343,16 +1396,20 @@ async function openDesktopEditor() {
   }
 }
 
-async function refreshDesktopFile() {
+async function refreshDesktopFile(forceRebuild = false) {
   const current = currentDocument();
   if (!current?.desktopSessionId) return;
+  if (forceRebuild) {
+    rebuildingWordDocuments.add(current.id);
+    window.setTimeout(() => rebuildingWordDocuments.delete(current.id), 15_000);
+  }
   setSaveState("正在检查桌面修改…", true);
   try {
     const response = await api("/api/files/session/refresh", {
       method: "POST",
       body: JSON.stringify({ id: current.desktopSessionId, expectedHash: current.desktopContentHash }),
     });
-    if (!response.changed) {
+    if (!response.changed && !forceRebuild) {
       setSaveState("没有发现新修改");
       showToast("桌面文件没有变化");
       return;
@@ -1363,13 +1420,17 @@ async function refreshDesktopFile() {
     current.kind = response.conversion?.sourceFormat === "txt" ? "txt" : "md";
     current.convertedFrom = converted ? response.conversion.sourceFormat : "";
     current.conversionNotes = Array.isArray(response.conversion?.notes) ? response.conversion.notes : [];
+    if (forceRebuild) {
+      current.versions.unshift({ id: uid("version"), name: "重建前副本", createdAt: now(), blocks: current.blocks.map((block) => ({ ...block })) });
+    }
     current.blocks = response.conversion?.document
       ? structuredDocumentToBlocks(response.conversion.document, response.conversion.markdown, current.kind)
       : textToBlocks(response.conversion?.markdown || response.extraction.text, current.kind);
     current.sourceSize = response.session.byteLength;
     current.desktopContentHash = response.session.contentHash;
+    current.structureVersion = converted && response.conversion?.sourceFormat === "docx" ? 2 : current.structureVersion;
     current.sourceStored = await window.ClownfishOfficeSource.save(current.id, file);
-    current.versions.unshift({
+    if (!forceRebuild) current.versions.unshift({
       id: uid("version"),
       name: "桌面修改",
       createdAt: now(),
@@ -1377,10 +1438,11 @@ async function refreshDesktopFile() {
     });
     current.versions = current.versions.slice(0, MAX_VERSIONS);
     await loadSourceHistory(current);
-    state.view = "source";
+    state.view = forceRebuild ? "edit" : "source";
+    if (forceRebuild) rebuildingWordDocuments.delete(current.id);
     persistState("桌面修改已载入");
     render();
-    showToast(response.extraction.truncated ? "已载入修改；超长内容仅展示可处理部分" : "桌面修改已载入");
+    showToast(forceRebuild ? "已按原 Word 重新载入空行、空格和段落结构" : response.extraction.truncated ? "已载入修改；超长内容仅展示可处理部分" : "桌面修改已载入");
   } catch (error) {
     setSaveState("载入失败");
     showToast(error instanceof Error ? error.message : "无法载入桌面修改", true);
@@ -1415,6 +1477,7 @@ async function openCopiedSession(copy) {
     sourceStored: false,
     desktopSessionId: response.session.id,
     desktopContentHash: response.session.contentHash,
+    structureVersion: converted && response.conversion.sourceFormat === "docx" ? 2 : 0,
     blocks,
     versions: [{ id: uid("version"), name: "文字副本", createdAt, blocks: blocks.map((block) => ({ ...block })) }],
     lastCheckpointAt: createdAt,
@@ -1608,7 +1671,7 @@ async function exportDraft() {
       body: JSON.stringify({
         name: current.name || "办公文稿",
         format,
-        blocks: current.blocks.map(({ title, text }) => ({ title, text })),
+        blocks: current.blocks.map(({ title, text, titleAlignment, paragraphAlignments }) => ({ title, text, titleAlignment, paragraphAlignments })),
       }),
     });
     const result = await response.json().catch(() => ({}));
@@ -1816,9 +1879,16 @@ function bindEvents() {
     if (current && wordField && wordSection) {
       const block = current.blocks.find((item) => item.id === wordSection.dataset.wordBlock);
       if (!block) return;
-      const value = wordField.innerText.replace(/\n{3,}/g, "\n\n").trim();
+      const value = wordField.dataset.wordField === "text"
+        ? wordField.innerText.replace(/\r/g, "").replace(/\n{4,}/g, "\n\n\n")
+        : wordField.innerText.trim();
       block[wordField.dataset.wordField] = value;
-      if (wordField.dataset.wordField === "text") block.richHtml = safeWordHtml(wordField.innerHTML);
+      if (wordField.dataset.wordField === "text") {
+        block.richHtml = safeWordHtml(wordField.innerHTML);
+        block.paragraphAlignments = [...wordField.querySelectorAll(":scope > p, :scope > blockquote, :scope > ul > li, :scope > ol > li")].map((paragraph) => safeAlignment(paragraph.dataset.align || paragraph.style.textAlign));
+      } else {
+        block.titleAlignment = safeAlignment(wordField.dataset.align || wordField.style.textAlign);
+      }
       current.updatedAt = new Date().toISOString();
       markWordCopyDirty(current);
       return;
@@ -1861,11 +1931,16 @@ function bindEvents() {
     const current = currentDocument();
     if (current) current.editorScrollTop = event.target.scrollTop || 0;
   }, true);
+  document.querySelector("#blockList").addEventListener("mousedown", (event) => {
+    if (event.target.closest("[data-word-align], [data-word-command]")) event.preventDefault();
+  });
   document.querySelector("#blockList").addEventListener("click", (event) => {
     const editor = document.querySelector("#continuousEditor");
     const action = event.target.closest("[data-markdown-action]");
     const heading = event.target.closest("[data-markdown-line]");
     const wordSectionLink = event.target.closest("[data-word-section]");
+    const wordAlignment = event.target.closest("[data-word-align]");
+    if (wordAlignment) applyWordAlignment(wordAlignment.dataset.wordAlign);
     const wordCommand = event.target.closest("[data-word-command]");
     if (wordSectionLink) document.querySelector(`#word-section-${CSS.escape(wordSectionLink.dataset.wordSection)}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (wordCommand) document.execCommand(wordCommand.dataset.wordCommand, false, wordCommand.dataset.commandValue || null);
@@ -1896,7 +1971,7 @@ function bindEvents() {
   document.querySelector("#exportDraft").addEventListener("click", exportDraft);
   document.querySelector("#writeBackSource").addEventListener("click", writeBackSource);
   document.querySelector("#openDesktopEditor").addEventListener("click", openDesktopEditor);
-  document.querySelector("#refreshDesktopFile").addEventListener("click", refreshDesktopFile);
+  document.querySelector("#refreshDesktopFile").addEventListener("click", () => refreshDesktopFile(true));
   document.querySelector("#startOfficeTask").addEventListener("click", startOfficeTask);
   document.querySelector("#cancelOfficeTask").addEventListener("click", cancelOfficeTask);
   document.querySelectorAll("[data-document-view]").forEach((button) => button.addEventListener("click", () => setDocumentView(button.dataset.documentView)));

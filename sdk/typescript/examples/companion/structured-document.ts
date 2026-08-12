@@ -1,6 +1,7 @@
 import type { OfficeFileKind } from "./office-file-parser.js";
 
 export type StructuredBlockKind = "heading" | "paragraph" | "list" | "table" | "quote" | "code" | "placeholder";
+export type ParagraphAlignment = "left" | "center" | "right" | "justify";
 
 export interface StructuredDocumentBlock {
   id: string;
@@ -9,6 +10,12 @@ export interface StructuredDocumentBlock {
   level?: number;
   ordered?: boolean;
   rows?: string[][];
+  alignment?: ParagraphAlignment;
+  listMarker?: string;
+  listLevel?: number;
+  indentLeft?: number;
+  indentFirstLine?: number;
+  preserveWhitespace?: boolean;
   source: { startLine: number; endLine: number };
 }
 
