@@ -90,7 +90,7 @@ import { RelationshipMemory, type CounterpartPatch } from "./relationship-memory
 import { PersonaToolBindings, type PersonaToolBinding } from "./persona-tool-bindings.js";
 import { resolveGroupReplyRoute } from "./group-routing.js";
 import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
-import { extractOfficeFile, MAX_OFFICE_FILE_BYTES } from "./office-file-parser.js";
+import { MAX_OFFICE_FILE_BYTES, officeExtractionFromMarkdown } from "./office-file-parser.js";
 import { officeCapabilityBrowserScript } from "./office-capabilities.js";
 import { convertOfficeToMarkdown } from "./office-to-markdown.js";
 import { userFacingMessage } from "./office-errors.js";
@@ -2123,9 +2123,26 @@ function contentType(path: string): string {
 
 function officeSessionContentType(extension: string): string {
   return ({
+    doc: "application/msword",
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    docm: "application/vnd.ms-word.document.macroEnabled.12",
+    odt: "application/vnd.oasis.opendocument.text",
+    rtf: "application/rtf",
+    epub: "application/epub+zip",
+    ppt: "application/vnd.ms-powerpoint",
+    pps: "application/vnd.ms-powerpoint",
+    pot: "application/vnd.ms-powerpoint",
     pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    pptm: "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+    ppsx: "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+    ppsm: "application/vnd.ms-powerpoint.slideshow.macroEnabled.12",
+    odp: "application/vnd.oasis.opendocument.presentation",
+    xls: "application/vnd.ms-excel",
     xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xlsm: "application/vnd.ms-excel.sheet.macroEnabled.12",
+    xlsb: "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    csv: "text/csv; charset=utf-8",
     pdf: "application/pdf",
     txt: "text/plain; charset=utf-8",
     md: "text/markdown; charset=utf-8",
@@ -3174,7 +3191,7 @@ const server = createServer(async (req, res) => {
       try {
         // 上传的文档统一转成 Markdown 再处理；原文件仍完整保存在会话里，可随时下载。
         const conversion = await convertOfficeToMarkdown(name, data);
-        const extraction = await extractOfficeFile(name, data);
+        const extraction = officeExtractionFromMarkdown(conversion.sourceFormat, conversion.markdown, conversion.truncated);
         const session = officeFileSessions.create(name, data);
         const fileRecord = taskFiles.register({
           sourceKey: `office:${session.id}`,
@@ -3280,8 +3297,9 @@ const server = createServer(async (req, res) => {
       try {
         const { session, data } = officeFileSessions.read(String(body.id || ""));
         const changed = !body.expectedHash || body.expectedHash !== session.contentHash;
-        const extraction = await extractOfficeFile(session.name, data);
-        send(res, 200, { ok: true, changed, session, extraction, dataBase64: data.toString("base64") });
+        const conversion = await convertOfficeToMarkdown(session.name, data);
+        const extraction = officeExtractionFromMarkdown(conversion.sourceFormat, conversion.markdown, conversion.truncated);
+        send(res, 200, { ok: true, changed, session, extraction, conversion, dataBase64: data.toString("base64") });
       } catch (error) {
         send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
       }

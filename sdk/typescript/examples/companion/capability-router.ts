@@ -36,9 +36,26 @@ const ROUTES: RouteRule[] = [
 
 const EXTENSION_ROUTES: Record<string, Omit<CapabilityRouteResult, "confidence">> = {
   ".ppt": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
+  ".pps": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
+  ".pot": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
   ".pptx": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
+  ".pptm": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
+  ".ppsx": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
+  ".ppsm": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
+  ".odp": { capabilityId: "presentation-builder", catalogId: "presentation", reason: "已附带演示文稿材料" },
   ".doc": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文档材料" },
   ".docx": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文档材料" },
+  ".docm": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文档材料" },
+  ".odt": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文档材料" },
+  ".rtf": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文档材料" },
+  ".epub": { capabilityId: "document-draft", catalogId: "document", reason: "已附带电子书材料" },
+  ".xls": { capabilityId: "document-draft", catalogId: "document", reason: "已附带表格材料" },
+  ".xlsx": { capabilityId: "document-draft", catalogId: "document", reason: "已附带表格材料" },
+  ".xlsm": { capabilityId: "document-draft", catalogId: "document", reason: "已附带表格材料" },
+  ".xlsb": { capabilityId: "document-draft", catalogId: "document", reason: "已附带表格材料" },
+  ".ods": { capabilityId: "document-draft", catalogId: "document", reason: "已附带表格材料" },
+  ".csv": { capabilityId: "document-draft", catalogId: "document", reason: "已附带表格材料" },
+  ".pdf": { capabilityId: "document-draft", catalogId: "document", reason: "已附带 PDF 材料" },
   ".txt": { capabilityId: "document-draft", catalogId: "document", reason: "已附带文本材料" },
   ".md": { capabilityId: "document-draft", catalogId: "document", reason: "已附带 Markdown 材料" },
 };
@@ -51,7 +68,7 @@ export function routeCapability(input: CapabilityRouteInput): CapabilityRouteRes
   }
 
   const materialNames = (input.materialNames || []).map((name) => String(name || "").toLowerCase());
-  const hasReadableDocument = materialNames.some((name) => /\.(?:docx?|pdf|txt|md|csv|json)$/.test(name));
+  const hasReadableDocument = materialNames.some((name) => /\.(?:docx?|docm|odt|rtf|epub|ppt|pps|pot|pptx|pptm|ppsx|ppsm|odp|xls|xlsx|xlsm|xlsb|ods|pdf|txt|md|csv|json)$/.test(name));
   if (hasReadableDocument && /(提取|摘要|总结|整理|归纳|改写|润色|校对|转换|阅读|分析)(?:.{0,12})(?:附件|文件|材料|内容|要点|原文)?/i.test(goal)) {
     return {
       capabilityId: "document-draft",

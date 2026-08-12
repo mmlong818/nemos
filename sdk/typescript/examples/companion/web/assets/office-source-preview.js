@@ -117,11 +117,16 @@
     return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
   }
 
+  function sourceKind(current) {
+    return current?.convertedFrom || current?.kind || "md";
+  }
+
   function sourceHeading(current, record, sourceUrl, faithfulPreview = false) {
+    const kind = sourceKind(current);
     const notice = record
-      ? current.kind === "pdf"
+      ? kind === "pdf"
         ? "正在显示原始 PDF，页面、图片和排版均保留。"
-        : current.kind === "txt" || current.kind === "md"
+        : kind === "txt" || kind === "md"
           ? "正在显示原始文本内容；可切换到编辑视图继续修改。"
         : faithfulPreview
           ? "正在按 Word 原始结构显示正文、表格、图片、页眉页脚和分页；复杂域或特殊字体可能与桌面 Word 略有差异。"
@@ -130,7 +135,7 @@
     const action = sourceUrl
       ? `<a class="source-original-link" href="${sourceUrl}" download="${escapeHtml(record.name || current.name)}">打开原文件</a>`
       : "";
-    return `<header class="source-preview-heading"><div><strong>${current.kind === "pdf" && record ? "原始版式" : "文件预览"}</strong><span>${escapeHtml(notice)}</span></div>${action}</header>`;
+    return `<header class="source-preview-heading"><div><strong>${kind === "pdf" && record ? "原始版式" : "文件预览"}</strong><span>${escapeHtml(notice)}</span></div>${action}</header>`;
   }
 
   function renderPdf(current, record, sourceUrl) {
@@ -251,7 +256,7 @@
   }
 
   function renderTextDocument(current, record, sourceUrl) {
-    const isMarkdown = current.kind === "md";
+    const isMarkdown = sourceKind(current) === "md";
     const content = current.blocks.map((block) => isMarkdown
       ? `<section>${block.title && !/^(段落\s+\d+|Markdown)$/.test(block.title) ? `<h2>${escapeHtml(block.title)}</h2>` : ""}${markdownBody(block.text)}</section>`
       : `<p>${escapeHtml(block.text)}</p>`).join("");
@@ -309,11 +314,13 @@
     if (root.dataset.renderToken !== renderToken) return;
     const sourceUrl = record?.blob instanceof Blob ? URL.createObjectURL(record.blob) : "";
     activeObjectUrl = sourceUrl;
-    if (current.kind === "pdf") root.innerHTML = renderPdf(current, record, sourceUrl);
-    else if (current.kind === "pptx") root.innerHTML = renderSlides(current, record, sourceUrl);
-    else if (current.kind === "xlsx") root.innerHTML = renderWorkbook(current, record, sourceUrl);
-    else if (current.kind === "txt" || current.kind === "md") root.innerHTML = renderTextDocument(current, record, sourceUrl);
-    else await renderDocument(root, current, record, sourceUrl, renderToken);
+    const kind = sourceKind(current);
+    if (kind === "pdf") root.innerHTML = renderPdf(current, record, sourceUrl);
+    else if (["ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "odp"].includes(kind)) root.innerHTML = renderSlides(current, record, sourceUrl);
+    else if (["xls", "xlsx", "xlsm", "xlsb", "ods", "csv"].includes(kind)) root.innerHTML = renderWorkbook(current, record, sourceUrl);
+    else if (kind === "txt" || kind === "md") root.innerHTML = renderTextDocument(current, record, sourceUrl);
+    else if (kind === "docx" || kind === "docm") await renderDocument(root, current, record, sourceUrl, renderToken);
+    else root.innerHTML = renderDocumentFallback(current, record, sourceUrl, "当前浏览器不直接还原这种原文件版式；下面显示可处理的正文，原文件仍可打开核对。");
   }
 
   window.ClownfishOfficeSource = Object.freeze({ save, get, remove, canWrite, writeText, writeBytes, render, renderMarkdown, release });

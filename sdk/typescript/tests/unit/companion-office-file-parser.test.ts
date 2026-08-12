@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import JSZip from "jszip";
-import { extractOfficeFile } from "../../examples/companion/office-file-parser.js";
+import { extractOfficeFile, OFFICE_FILE_KINDS, officeFileKindOf } from "../../examples/companion/office-file-parser.js";
 
 async function zipOf(entries: Record<string, string>): Promise<Buffer> {
   const zip = new JSZip();
@@ -86,6 +86,27 @@ test("读取带 BOM 的 UTF-16 文本", async () => {
   assert.equal(result.text, "中文内容");
 });
 
-test("拒绝伪装成办公文件的未知格式", async () => {
-  await assert.rejects(() => extractOfficeFile("notes.rtf", Buffer.from("hello")), /仅支持 DOCX、PPTX、XLSX、PDF、TXT 和 Markdown/);
+test("读取 RTF 与 CSV，并按文件内容识别改过后缀名的文档", async () => {
+  const rtf = Buffer.from("{\\rtf1\\ansi First \\b important\\b0\\par Second}", "utf8");
+  const richText = await extractOfficeFile("notes.rtf", rtf);
+  assert.equal(richText.kind, "rtf");
+  assert.match(richText.text, /First \*\*important\*\*/);
+
+  const renamed = await extractOfficeFile("notes.doc", rtf);
+  assert.equal(renamed.kind, "doc");
+  assert.match(renamed.text, /Second/);
+
+  const csv = await extractOfficeFile("budget.csv", Buffer.from("name,count\napple,3", "utf8"));
+  assert.equal(csv.kind, "csv");
+  assert.match(csv.text, /\| apple \| 3 \|/);
+});
+
+test("公开的格式清单与文件名识别保持一致", () => {
+  for (const kind of OFFICE_FILE_KINDS) assert.equal(officeFileKindOf(`sample.${kind}`), kind);
+  assert.equal(officeFileKindOf("README.markdown"), "md");
+  assert.equal(officeFileKindOf("script.exe"), null);
+});
+
+test("拒绝未知文件格式", async () => {
+  await assert.rejects(() => extractOfficeFile("script.exe", Buffer.from("MZ")), /仅支持常见文档/);
 });

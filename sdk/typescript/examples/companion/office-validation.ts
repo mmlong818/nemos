@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 
-import { extractOfficeFile, type OfficeFileKind } from "./office-file-parser.js";
+import { extractOfficeFile } from "./office-file-parser.js";
+
+export type OfficeValidationFormat = "docx" | "pptx" | "xlsx" | "pdf" | "txt" | "md";
 
 /**
  * 写盘前的结构校验。任何生成或改写出来的文件都要先通过这里，
@@ -14,7 +16,7 @@ export interface ValidationCheck {
 }
 
 export interface ValidationReceipt {
-  format: OfficeFileKind;
+  format: OfficeValidationFormat;
   byteLength: number;
   sha256: string;
   passed: boolean;
@@ -27,7 +29,7 @@ const REQUIRED_PARTS: Record<string, { exact: string[]; pattern?: RegExp; patter
   xlsx: { exact: ["[Content_Types].xml", "xl/workbook.xml"], pattern: /^xl\/worksheets\/sheet\d+\.xml$/i, patternLabel: "至少一个工作表" },
 };
 
-export async function validateOfficeFile(format: OfficeFileKind, data: Uint8Array): Promise<ValidationReceipt> {
+export async function validateOfficeFile(format: OfficeValidationFormat, data: Uint8Array): Promise<ValidationReceipt> {
   const checks: ValidationCheck[] = [];
   const buffer = Buffer.from(data);
   checks.push({ name: "文件非空", passed: buffer.byteLength > 0 });
@@ -96,7 +98,7 @@ function checkPlainText(data: Buffer, checks: ValidationCheck[]): void {
   checks.push({ name: "不含空字节", passed: !data.includes(0) });
 }
 
-async function checkReparse(format: OfficeFileKind, data: Buffer, checks: ValidationCheck[]): Promise<void> {
+async function checkReparse(format: OfficeValidationFormat, data: Buffer, checks: ValidationCheck[]): Promise<void> {
   try {
     await extractOfficeFile(`validation.${format}`, data);
     checks.push({ name: "可以重新读取", passed: true });
