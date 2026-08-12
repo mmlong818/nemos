@@ -101,7 +101,8 @@ import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
-import { buildReviewQueue, developmentEnvironment, DOMAIN_CAPABILITY_PACKS, platformConnectorStatuses } from "./product-platform.js";
+import { listDevelopmentWorkspace, readDevelopmentWorkspaceFile } from "./development-workspace.js";
+import { buildReviewQueue, capabilityPackStatuses, developmentEnvironment, platformConnectorStatuses } from "./product-platform.js";
 import { routeCapability } from "./capability-router.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
 import {
@@ -113,6 +114,7 @@ import {
 } from "./private-source-connectors.js";
 import { KnowledgeLibrary, type KnowledgeItemKind } from "./knowledge-library.js";
 import { appendCurrentUiEvidence } from "./ui-evidence.js";
+import { ProductReviewRunStore, type ProductReviewIssue } from "./product-review-runs.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const USER = process.env.COMPANION_USER || "me";
@@ -347,6 +349,7 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
   },
 });
 const developmentProposals = new DevelopmentProposalStore(join(DATA_DIR, "development-proposals"));
+const productReviewRuns = new ProductReviewRunStore(DATA_DIR);
 const knowledgeLibrary = new KnowledgeLibrary(DATA_DIR);
 const relationships = new RelationshipMemory(DATA_DIR);
 const personaToolBindings = new PersonaToolBindings(DATA_DIR);
@@ -3085,6 +3088,10 @@ const server = createServer(async (req, res) => {
       send(res, 200, readFileSync(join(WEB_DIR, "office.html"), "utf-8"), "text/html");
       return;
     }
+    if (req.method === "GET" && (pathname === "/development" || pathname === "/development.html")) {
+      send(res, 200, readFileSync(join(WEB_DIR, "development.html"), "utf-8"), "text/html");
+      return;
+    }
     if (req.method === "GET" && ["/tasks", "/spaces", "/automations", "/collaboration", "/resources", "/artifacts", "/runs", "/memory"].includes(pathname)) {
       send(res, 200, readFileSync(join(WEB_DIR, "work.html"), "utf-8"), "text/html");
       return;
@@ -3839,12 +3846,27 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url === "/api/platform/readiness") {
       const extensions = agentExtensions.list();
+      const snapshot = capabilities.snapshot();
       send(res, 200, {
         ok: true,
         development: developmentEnvironment(),
         connectors: platformConnectorStatuses(extensions),
-        capabilityPacks: DOMAIN_CAPABILITY_PACKS,
+        capabilityPacks: capabilityPackStatuses(snapshot.abilities, snapshot.artifacts),
       });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/platform/connector/test") {
+      const body = (await readBody(req)) as { id?: "github" | "browser" | "email" | "calendar" };
+      const status = platformConnectorStatuses(agentExtensions.list()).find((item) => item.id === body.id);
+      if (!status) { send(res, 400, { error: "未知的数据连接。" }); return; }
+      if (status.state !== "ready") { send(res, 409, { error: `${status.name} 尚未启用。${status.fallback}`, connector: status }); return; }
+      try {
+        const tools = await agentExtensions.toolsForRequest(status.purpose);
+        if (!tools.length) throw new Error("连接已启用，但没有发现可用的读取工具。");
+        send(res, 200, { ok: true, connector: status, toolCount: tools.length, checkedAt: new Date().toISOString() });
+      } catch (error) {
+        send(res, 502, { error: error instanceof Error ? error.message : String(error), connector: status });
+      }
       return;
     }
     if (req.method === "GET" && url === "/api/review-queue") {
@@ -3856,6 +3878,42 @@ const server = createServer(async (req, res) => {
           proposals: developmentProposals.list(),
         }),
       });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/product-reviews") {
+      send(res, 200, { ok: true, summary: productReviewRuns.summary(), runs: productReviewRuns.list() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/product-reviews") {
+      const body = (await readBody(req)) as {
+        round?: number;
+        persona?: string;
+        scenario?: string;
+        route?: string;
+        status?: "passed" | "issues" | "blocked";
+        observations?: string[];
+        issues?: ProductReviewIssue[];
+        evidence?: string[];
+      };
+      if (!body.round || !body.persona || !body.scenario || !body.route || !body.status || !["passed", "issues", "blocked"].includes(body.status)) {
+        send(res, 400, { error: "真实检查记录不完整。" });
+        return;
+      }
+      try {
+        const run = productReviewRuns.append({
+          round: body.round,
+          persona: body.persona,
+          scenario: body.scenario,
+          route: body.route,
+          status: body.status,
+          observations: Array.isArray(body.observations) ? body.observations : [],
+          issues: Array.isArray(body.issues) ? body.issues : [],
+          evidence: Array.isArray(body.evidence) ? body.evidence : [],
+        });
+        send(res, 201, { ok: true, run, summary: productReviewRuns.summary() });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
     if (req.method === "POST" && url === "/api/agent/extension/validate") {
@@ -4510,10 +4568,64 @@ const server = createServer(async (req, res) => {
       else send(res, 200, renderDevelopmentProposalHtml(proposal), "text/html");
       return;
     }
+    if (req.method === "POST" && url === "/api/capabilities/skill/rollback") {
+      const b = (await readBody(req)) as { id?: string };
+      if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
+      const action = await agentUserActions.execute({
+        name: "skill_rollback",
+        description: "将用户选中的可复用能力恢复到上一个可用版本",
+        arguments: { abilityId: b.id },
+        execute: () => capabilities.rollbackAbilityVersion(b.id!),
+        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, rolledBack: true }),
+      });
+      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/development/proposal") {
+      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
+      const proposal = id ? developmentProposals.get(id) : undefined;
+      if (!proposal) {
+        send(res, 404, { error: "找不到这份开发修改。" });
+      } else {
+        const artifact = capabilities.snapshot().artifacts.find((item) => item.metadata?.development?.proposal?.id === proposal.id);
+        send(res, 200, {
+          ok: true,
+          proposal: {
+            ...proposal,
+            files: proposal.files.map((file) => ({
+              path: file.path,
+              operation: file.operation,
+              byteLength: file.byteLength,
+              before: file.baseContentBase64 ? Buffer.from(file.baseContentBase64, "base64").toString("utf8") : "",
+              after: Buffer.from(file.proposedContentBase64, "base64").toString("utf8"),
+            })),
+          },
+          receipt: artifact?.metadata?.development ?? null,
+        });
+      }
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/development/workspace") {
+      const params = new URLSearchParams(url.split("?")[1] || "");
+      const proposal = developmentProposals.get(params.get("id") || "");
+      const job = params.get("job") ? agentJobQueue.get(params.get("job") || "") : null;
+      const jobWorkspace = job?.payload?.capabilityId === "project-development" ? String(job.payload.workspacePath || "") : "";
+      const workspacePath = proposal?.workspacePath || jobWorkspace;
+      if (!workspacePath) { send(res, 404, { error: "找不到这次项目任务。" }); return; }
+      const file = params.get("path");
+      try {
+        send(res, 200, file
+          ? { ok: true, file: readDevelopmentWorkspaceFile(workspacePath, file) }
+          : { ok: true, ...listDevelopmentWorkspace(workspacePath) });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
     if (req.method === "POST" && url === "/api/development/proposal/apply") {
-      const body = (await readBody(req)) as { id?: string };
+      const body = (await readBody(req)) as { id?: string; selectedPaths?: string[] };
       if (!body.id) { send(res, 400, { error: "missing proposal id" }); return; }
-      const proposal = developmentProposals.apply(body.id);
+      const proposal = developmentProposals.apply(body.id, Array.isArray(body.selectedPaths) ? body.selectedPaths : undefined);
       const artifact = capabilities.updateDevelopmentProposalState(proposal.id, proposal.state, proposal.conflicts);
       if (proposal.state === "conflicted") {
         send(res, 409, { error: "项目文件在提案生成后发生了变化，未自动覆盖。", proposal, artifact });

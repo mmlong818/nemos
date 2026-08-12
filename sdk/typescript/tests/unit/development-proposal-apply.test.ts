@@ -153,3 +153,39 @@ test("提案状态跨进程可见：重新打开 store 仍能读到已写入状�
     for (const dir of [workspace, dataDir]) rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("可以只应用选中的文件，并且回滚只恢复实际写入的部分", () => {
+  const { workspace, store, cleanup } = setup();
+  try {
+    writeFileSync(join(workspace, "a.txt"), "原始 A\n", "utf8");
+    writeFileSync(join(workspace, "b.txt"), "原始 B\n", "utf8");
+    const session = store.begin(workspace);
+    session.write(join(workspace, "a.txt"), "改过的 A\n");
+    session.write(join(workspace, "b.txt"), "改过的 B\n");
+    const staged = session.finalize();
+
+    const applied = store.apply(staged.id, ["b.txt"]);
+    assert.deepEqual(applied.appliedPaths, ["b.txt"]);
+    assert.equal(readFileSync(join(workspace, "a.txt"), "utf8"), "原始 A\n");
+    assert.equal(readFileSync(join(workspace, "b.txt"), "utf8"), "改过的 B\n");
+
+    store.rollback(staged.id);
+    assert.equal(readFileSync(join(workspace, "a.txt"), "utf8"), "原始 A\n");
+    assert.equal(readFileSync(join(workspace, "b.txt"), "utf8"), "原始 B\n");
+  } finally {
+    cleanup();
+  }
+});
+
+test("逐文件应用拒绝空选择和提案之外的路径", () => {
+  const { workspace, store, cleanup } = setup();
+  try {
+    const session = store.begin(workspace);
+    session.write(join(workspace, "a.txt"), "A\n");
+    const staged = session.finalize();
+    assert.throws(() => store.apply(staged.id, []), /至少选择一个/);
+    assert.throws(() => store.apply(staged.id, ["../outside.txt"]), /不属于本提案/);
+  } finally {
+    cleanup();
+  }
+});

@@ -1,10 +1,10 @@
-# @nemos/sdk
+# @nemos/clownfish
 
 [中文](README.md)
 
-Current package version: `0.7.5-alpha.17`. Documentation reviewed on 2026-08-06. See the [0.7.x design baseline](docs/nemos-memory-v0.7-design.md) for implementation boundaries.
+Current package version: `0.7.5-alpha.17`. Documentation reviewed on 2026-08-13. The pinned memory dependency is `@nemos/sdk` `0.7.5-alpha.18`.
 
-An embedded TypeScript long-term memory engine backed by local SQLite. It is designed for AI assistants, agents, knowledge tools, and other applications that need durable cross-session memory.
+This directory is the TypeScript package for the Clownfish application and its auditable Agent runtime. `src/index.ts` re-exports the separately maintained `@nemos/sdk` package together with the local Agent runtime; memory-core source is no longer duplicated here.
 
 ## Install
 

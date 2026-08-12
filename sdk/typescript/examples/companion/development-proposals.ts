@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 export type DevelopmentProposalState =
@@ -29,6 +29,7 @@ export interface DevelopmentProposal {
   updatedAt: string;
   baseRevision?: string;
   files: DevelopmentProposalFile[];
+  appliedPaths?: string[];
   conflicts?: string[];
   error?: string;
 }
@@ -50,11 +51,12 @@ export class DevelopmentProposalSession {
   constructor(
     private readonly store: DevelopmentProposalStore,
     readonly proposal: DevelopmentProposal,
+    private readonly stagingWorkspacePath = proposal.workspacePath,
   ) {}
 
   write(absolutePath: string, content: string): void {
     this.assertOpen();
-    const path = workspaceRelativePath(this.proposal.workspacePath, absolutePath);
+    const path = workspaceRelativePath(this.stagingWorkspacePath, absolutePath);
     const previous = this.staged.get(path);
     if (!previous && this.staged.size >= MAX_PROPOSAL_FILES) {
       throw new Error(`单次开发提案最多修改 ${MAX_PROPOSAL_FILES} 个文件。`);
@@ -66,7 +68,7 @@ export class DevelopmentProposalSession {
     const item: StagedFile = {
       path,
       absolutePath,
-      baseContent: previous?.baseContent ?? (existsSync(absolutePath) ? readFileSync(absolutePath) : undefined),
+      baseContent: previous?.baseContent ?? readBaseContent(this.proposal.workspacePath, path),
       proposedContent: Buffer.from(content, "utf8"),
     };
     this.staged.set(path, item);
@@ -157,7 +159,7 @@ export class DevelopmentProposalStore {
     this.recoverInterrupted();
   }
 
-  begin(workspacePath: string, baseRevision?: string): DevelopmentProposalSession {
+  begin(workspacePath: string, baseRevision?: string, stagingWorkspacePath = workspacePath): DevelopmentProposalSession {
     const now = new Date().toISOString();
     const proposal: DevelopmentProposal = {
       id: `devprop_${randomUUID()}`,
@@ -169,7 +171,7 @@ export class DevelopmentProposalStore {
       files: [],
     };
     this.persist(proposal);
-    return new DevelopmentProposalSession(this, proposal);
+    return new DevelopmentProposalSession(this, proposal, stagingWorkspacePath);
   }
 
   get(id: string): DevelopmentProposal | undefined {
@@ -181,10 +183,12 @@ export class DevelopmentProposalStore {
     return structuredClone(this.proposals);
   }
 
-  apply(id: string): DevelopmentProposal {
+  apply(id: string, selectedPaths?: string[]): DevelopmentProposal {
     const proposal = this.require(id);
     if (proposal.state !== "pending" && proposal.state !== "conflicted") throw new Error("这个开发提案当前不能应用。");
-    const conflicts = proposal.files.flatMap((file) => currentFileMatches(proposal.workspacePath, file) ? [] : [file.path]);
+    const files = selectProposalFiles(proposal.files, selectedPaths);
+    if (!files.length) throw new Error("请至少选择一个要应用的文件。");
+    const conflicts = files.flatMap((file) => currentFileMatches(proposal.workspacePath, file) ? [] : [file.path]);
     if (conflicts.length) {
       proposal.state = "conflicted";
       proposal.conflicts = conflicts;
@@ -196,7 +200,7 @@ export class DevelopmentProposalStore {
     // 半套修改留在项目里比完全没写更难收拾。
     const written: Array<{ target: string; base?: Buffer }> = [];
     try {
-      for (const file of proposal.files) {
+      for (const file of files) {
         const target = proposalTarget(proposal.workspacePath, file.path);
         written.push({
           target,
@@ -206,7 +210,7 @@ export class DevelopmentProposalStore {
         writeAtomic(target, Buffer.from(file.proposedContentBase64, "base64"));
       }
       // 写完再逐个核对落盘结果：写调用没报错不等于盘上内容就是提案内容。
-      const mismatched = proposal.files
+      const mismatched = files
         .filter((file) => !fileHasHash(proposalTarget(proposal.workspacePath, file.path), file.proposedHash))
         .map((file) => file.path);
       if (mismatched.length) throw new Error(`写入结果与提案不一致：${mismatched.join("、")}`);
@@ -220,6 +224,7 @@ export class DevelopmentProposalStore {
       throw new Error(`开发提案写入失败，项目已还原到写入前：${proposal.error}`);
     }
     proposal.state = "applied";
+    proposal.appliedPaths = files.map((file) => file.path);
     delete proposal.conflicts;
     delete proposal.error;
     proposal.updatedAt = new Date().toISOString();
@@ -236,7 +241,8 @@ export class DevelopmentProposalStore {
   rollback(id: string): DevelopmentProposal {
     const proposal = this.require(id);
     if (proposal.state !== "applied") throw new Error("只有已写入项目的提案可以回滚。");
-    const drifted = proposal.files
+    const files = selectProposalFiles(proposal.files, proposal.appliedPaths);
+    const drifted = files
       .filter((file) => !fileHasHash(proposalTarget(proposal.workspacePath, file.path), file.proposedHash))
       .map((file) => file.path);
     if (drifted.length) {
@@ -248,12 +254,12 @@ export class DevelopmentProposalStore {
     }
     const restored: Array<{ target: string; proposed: Buffer }> = [];
     try {
-      for (const file of proposal.files) {
+      for (const file of files) {
         const target = proposalTarget(proposal.workspacePath, file.path);
         restored.push({ target, proposed: Buffer.from(file.proposedContentBase64, "base64") });
         restoreFile(target, file.baseContentBase64 ? Buffer.from(file.baseContentBase64, "base64") : undefined);
       }
-      const failed = proposal.files
+      const failed = files
         .filter((file) => {
           const target = proposalTarget(proposal.workspacePath, file.path);
           // 新建的文件应当消失；被修改的文件应当回到 baseHash。
@@ -354,6 +360,23 @@ function currentFileMatches(workspacePath: string, file: DevelopmentProposalFile
   const target = proposalTarget(workspacePath, file.path);
   if (!existsSync(target)) return file.operation === "create";
   return !!file.baseHash && fileHasHash(target, file.baseHash);
+}
+
+function readBaseContent(workspacePath: string, path: string): Buffer | undefined {
+  const target = proposalTarget(workspacePath, path);
+  return existsSync(target) && statIsFile(target) ? readFileSync(target) : undefined;
+}
+
+function statIsFile(path: string): boolean {
+  try { return statSync(path).isFile(); } catch { return false; }
+}
+
+function selectProposalFiles(files: DevelopmentProposalFile[], selectedPaths?: string[]): DevelopmentProposalFile[] {
+  if (selectedPaths === undefined) return files;
+  const selected = new Set(selectedPaths.map((path) => String(path).replace(/\\/g, "/")));
+  const unknown = [...selected].filter((path) => !files.some((file) => file.path === path));
+  if (unknown.length) throw new Error(`选择中包含不属于本提案的文件：${unknown.join("、")}`);
+  return files.filter((file) => selected.has(file.path));
 }
 
 function fileHasHash(path: string, hash: string): boolean {

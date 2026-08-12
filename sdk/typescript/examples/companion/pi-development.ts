@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -84,6 +84,7 @@ export interface PiDevelopmentResult {
   loadedPromptTemplates: number;
   /** 按事件类型统计的会话遥测。 */
   telemetry: Record<string, number>;
+  isolatedWorkspace?: boolean;
 }
 
 export interface DevelopmentProposalSummary {
@@ -125,7 +126,6 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
   const contextReceipts: DevelopmentContextReceipt[] = [];
   mkdirSync(input.agentDir, { recursive: true });
   const proposalStore = input.proposalStore ?? new DevelopmentProposalStore(join(input.agentDir, "proposals"));
-  const proposalSession = input.accessMode === "develop" ? proposalStore.begin(workspace, baseRevision) : undefined;
   input.onProgress?.("正在读取项目规则和目录", 12);
 
   const pi = await nativeImport<PiModule>("@earendil-works/pi-coding-agent");
@@ -148,6 +148,12 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
   await modelRuntime.setRuntimeApiKey(providerId, input.connection.apiKey || "local-model");
   const model = modelRuntime.getModel(providerId, input.connection.model);
   if (!model) throw new Error("开发能力无法使用当前模型连接。");
+  const isolation = input.accessMode === "develop"
+    ? await prepareIsolatedDevelopmentWorkspace(workspace, input.agentDir)
+    : { workspace, isolated: false, cleanup: async () => undefined };
+  const executionWorkspace = isolation.workspace;
+  const proposalSession = input.accessMode === "develop" ? proposalStore.begin(workspace, baseRevision, executionWorkspace) : undefined;
+  if (isolation.isolated) input.onProgress?.("已创建隔离项目副本", 8);
 
   // 关掉的是「从工作区自动发现」，不是子系统本身。被检查的项目可能是任何人的仓库，
   // 让它往运行时注入扩展等于执行它的代码，注入技能/模板等于改写我们的操作指令。
@@ -159,7 +165,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     "提示模板目录",
   );
   const resourceLoader = new pi.DefaultResourceLoader({
-    cwd: workspace,
+    cwd: executionWorkspace,
     agentDir: input.agentDir,
     noExtensions: true,
     noSkills: true,
@@ -168,22 +174,32 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     additionalSkillPaths: skillPaths,
     additionalPromptTemplatePaths: promptTemplatePaths,
     extensionFactories: (input.extensions ?? []) as never,
-    systemPrompt: developmentSystemPrompt(workspace, input.accessMode),
+    systemPrompt: developmentSystemPrompt(executionWorkspace, input.accessMode),
   });
-  await resourceLoader.reload();
-  const sessionManager = openDevelopmentSession(pi, workspace, input);
+  const setup = await (async () => {
+    try {
+      await resourceLoader.reload();
+      const sessionManager = openDevelopmentSession(pi, workspace, input);
+      const created = await pi.createAgentSession({
+        cwd: executionWorkspace,
+        agentDir: input.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "medium",
+        noTools: "builtin",
+        customTools: createDevelopmentTools(executionWorkspace, input.accessMode, checks, contextReceipts, proposalSession) as never,
+        resourceLoader,
+        sessionManager: sessionManager.manager,
+      });
+      return { sessionManager, session: created.session };
+    } catch (error) {
+      proposalSession?.fail(error);
+      await isolation.cleanup();
+      throw error;
+    }
+  })();
+  const { sessionManager, session } = setup;
   const sessionResumed = sessionManager.entryCount > 0;
-  const { session } = await pi.createAgentSession({
-    cwd: workspace,
-    agentDir: input.agentDir,
-    modelRuntime,
-    model,
-    thinkingLevel: "medium",
-    noTools: "builtin",
-    customTools: createDevelopmentTools(workspace, input.accessMode, checks, contextReceipts, proposalSession) as never,
-    resourceLoader,
-    sessionManager: sessionManager.manager,
-  });
 
   let toolCalls = 0;
   const telemetry: Record<string, number> = {};
@@ -208,13 +224,13 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
   input.signal?.addEventListener("abort", abort, { once: true });
   try {
     input.onProgress?.(input.accessMode === "inspect" ? "正在检查项目" : "正在开发并验证", 20);
-    await session.prompt(buildDevelopmentPrompt(input.instruction, workspace, input.accessMode), { source: "rpc" });
+    await session.prompt(buildDevelopmentPrompt(input.instruction, executionWorkspace, input.accessMode), { source: "rpc" });
     if (toolCalls === 0) throw new Error("开发能力未实际读取项目，已拒绝把模型文字当作执行结果。");
     const reply = lastAssistantText(session.messages);
     if (!reply) throw new Error("开发能力没有生成可交付结果。");
     input.onProgress?.("正在整理修改和验证结果", 88);
     const staged = proposalSession?.finalize();
-    const changed = staged ? staged.files.map((file) => file.path) : await changedFiles(workspace);
+    const changed = staged ? staged.files.map((file) => file.path) : await changedFiles(executionWorkspace);
     return {
       reply,
       workspacePath: workspace,
@@ -223,7 +239,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
       baseRevision,
       fileReceipts: staged
         ? staged.files.map((file) => ({ path: file.path, state: "present" as const, sha256: file.proposedHash, byteLength: file.byteLength }))
-        : changed.map((path) => developmentFileReceipt(workspace, path)),
+        : changed.map((path) => developmentFileReceipt(executionWorkspace, path)),
       checks,
       contextReceipts,
       unverifiedRisks: developmentRisks(input.accessMode, checks),
@@ -235,6 +251,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
       loadedSkills: resourceLoader.getSkills().skills.length,
       loadedPromptTemplates: resourceLoader.getPrompts().prompts.length,
       telemetry,
+      isolatedWorkspace: isolation.isolated,
     };
   } catch (error) {
     proposalSession?.fail(error);
@@ -243,6 +260,40 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     input.signal?.removeEventListener("abort", abort);
     unsubscribe();
     session.dispose();
+    await isolation.cleanup();
+  }
+}
+
+export async function prepareIsolatedDevelopmentWorkspace(
+  workspace: string,
+  agentDir: string,
+): Promise<{ workspace: string; isolated: boolean; cleanup: () => Promise<void> }> {
+  try {
+    const rootResult = await execFileAsync("git", ["-C", workspace, "rev-parse", "--show-toplevel"], { windowsHide: true, timeout: 10_000, maxBuffer: 100_000 });
+    const repositoryRoot = realpathSync(rootResult.stdout.trim());
+    const subdirectory = relative(repositoryRoot, workspace);
+    if (subdirectory === ".." || subdirectory.startsWith(`..${sep}`)) return { workspace, isolated: false, cleanup: async () => undefined };
+    const status = await execFileAsync("git", ["-C", repositoryRoot, "status", "--porcelain"], { windowsHide: true, timeout: 10_000, maxBuffer: 300_000 });
+    if (status.stdout.trim()) return { workspace, isolated: false, cleanup: async () => undefined };
+    const worktreesRoot = resolve(agentDir, "worktrees");
+    mkdirSync(worktreesRoot, { recursive: true });
+    const worktreeRoot = resolve(worktreesRoot, `run-${randomUUID()}`);
+    if (!worktreeRoot.startsWith(worktreesRoot + sep)) throw new Error("隔离工作区路径无效。");
+    await execFileAsync("git", ["-C", repositoryRoot, "worktree", "add", "--detach", worktreeRoot, "HEAD"], { windowsHide: true, timeout: 30_000, maxBuffer: 500_000 });
+    const isolatedWorkspace = subdirectory ? resolve(worktreeRoot, subdirectory) : worktreeRoot;
+    return {
+      workspace: isolatedWorkspace,
+      isolated: true,
+      cleanup: async () => {
+        try {
+          await execFileAsync("git", ["-C", repositoryRoot, "worktree", "remove", "--force", worktreeRoot], { windowsHide: true, timeout: 30_000, maxBuffer: 500_000 });
+        } catch {
+          if (worktreeRoot.startsWith(worktreesRoot + sep)) rmSync(worktreeRoot, { recursive: true, force: true });
+        }
+      },
+    };
+  } catch {
+    return { workspace, isolated: false, cleanup: async () => undefined };
   }
 }
 
