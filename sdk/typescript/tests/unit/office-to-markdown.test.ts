@@ -5,6 +5,18 @@ import JSZip from "jszip";
 import { exportOfficeDocument } from "../../examples/companion/office-export.js";
 import { convertOfficeToMarkdown } from "../../examples/companion/office-to-markdown.js";
 
+test("PDF converts through AnyDoc into an editable Markdown copy", async () => {
+  const exported = await exportOfficeDocument({
+    name: "pdf-source",
+    format: "pdf",
+    blocks: [{ title: "Quarterly report", text: "Revenue increased" }],
+  });
+  const result = await convertOfficeToMarkdown("report.pdf", exported.data);
+  assert.equal(result.sourceFormat, "pdf");
+  assert.match(result.markdown, /Quarterly report|Revenue increased/);
+  assert.ok(result.notes.some((note) => note.includes("Markdown 编辑副本")));
+});
+
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 async function buildDocx(body: string, extra: Record<string, string> = {}): Promise<Buffer> {
@@ -31,10 +43,33 @@ async function buildDocx(body: string, extra: Record<string, string> = {}): Prom
   return zip.generateAsync({ type: "nodebuffer" });
 }
 
-function paragraph(text: string, styleId?: string): string {
-  const properties = styleId ? `<w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>` : "";
+function paragraph(text: string, styleId?: string, alignment?: "left" | "center" | "right" | "both"): string {
+  const formatting = `${styleId ? `<w:pStyle w:val="${styleId}"/>` : ""}${alignment ? `<w:jc w:val="${alignment}"/>` : ""}`;
+  const properties = formatting ? `<w:pPr>${formatting}</w:pPr>` : "";
   return `<w:p>${properties}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 }
+
+test("Word 段落对齐会进入可编辑副本", async () => {
+  const result = await convertOfficeToMarkdown("alignment.docx", await buildDocx(
+    paragraph("居中标题", "Heading1", "center") + paragraph("右对齐正文", undefined, "right") + paragraph("两端对齐正文", undefined, "both"),
+  ));
+  assert.equal(result.document.blocks.find((block) => block.text === "居中标题")?.alignment, "center");
+  assert.equal(result.document.blocks.find((block) => block.text === "右对齐正文")?.alignment, "right");
+  assert.equal(result.document.blocks.find((block) => block.text === "两端对齐正文")?.alignment, "justify");
+});
+
+test("Word 空行、连续空格、缩进和段落编号进入可编辑副本", async () => {
+  const listParagraph = '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:ind w:left="720"/></w:pPr><w:r><w:t xml:space="preserve">编号内容</w:t></w:r></w:p>';
+  const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
+  const result = await convertOfficeToMarkdown("structure.docx", await buildDocx(
+    paragraph("  保留前导和  连续空格") + paragraph("") + listParagraph,
+    { "word/numbering.xml": numbering },
+  ));
+  assert.equal(result.document.blocks[0]?.text, "  保留前导和  连续空格");
+  assert.equal(result.document.blocks[1]?.text, "");
+  assert.equal(result.document.blocks[2]?.listMarker, "1.");
+  assert.equal(result.document.blocks[2]?.indentLeft, 720);
+});
 
 async function buildOdt(): Promise<Buffer> {
   const zip = new JSZip();
