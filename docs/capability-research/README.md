@@ -18,6 +18,7 @@
 - `competitor-matrix.md`：同类产品的能力比较与可学习内容。
 - `capability-backlog.md`：能力缺口、优先级和进入开发的条件。
 - `evidence-register.md`：证据来源、可信等级和待验证事项。
+- `feishu-document-model.md`：飞书“原文件保留、转换后编辑”模式及小丑鱼方案。
 
 ## 当前判断
 
