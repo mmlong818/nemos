@@ -87,7 +87,7 @@ npm run companion
 ## 文件工作台
 
 - 读取常见 Word、PowerPoint、Excel、OpenDocument、RTF、EPUB、CSV、PDF、TXT 和 Markdown 格式；
-- **上传后统一转成 Markdown 再处理**（`office-to-markdown.ts`）：Word 的标题层级、
+- **上传后生成结构化可编辑副本**（`structured-document.ts`、`office-to-markdown.ts`）：Word 的标题层级、
   列表和表格，PowerPoint 的每页文字、表格和讲者备注，Excel 的每个工作表，
   都会转成对应的 Markdown 结构；
 - 每次转换返回结构变化与已知限制清单，界面逐条显示；扫描版 PDF 暂不提供 OCR；

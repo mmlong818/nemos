@@ -8,13 +8,8 @@ import { renderNativeCapabilityMarkdown } from "./native-capability-renderer.js"
 import { markdownToStructuredDocument, type StructuredDocument } from "./structured-document.js";
 
 /**
- * 把上传的文档统一转成 Markdown 之后再处理。
- *
- * 这是明确的产品取舍：Markdown 是唯一我们能真正完整编辑的格式，
- * 所以所有格式都先落到它上面，而不是为每种格式各做一套原格式编辑。
- * 代价是转换会丢掉原格式的呈现（表格样式与合并单元格、页眉页脚、
- * 批注修订、幻灯片版式等）——因此每次转换都必须把丢了什么如实列出来，
- * 并且原文件继续保留、可随时下载，转换结果只是派生的工作文档。
+ * 把上传文件转换成结构化可编辑副本；Markdown 保留为兼容交换表示。
+ * 原文件继续保留、可随时下载，转换结果不会覆盖原件。
  */
 export interface MarkdownConversion {
   sourceFormat: OfficeFileKind;
