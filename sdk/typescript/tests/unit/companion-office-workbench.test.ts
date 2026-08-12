@@ -27,10 +27,10 @@ test("带结果参数的办公文件地址可以打开，并通过浏览器下�
   assert.match(server, /preparedOfficeExports/);
   assert.match(server, /downloadUrl: `\/api\/files\/export\?id=\$\{id\}`/);
   assert.match(officeJs, /\/api\/files\/export\?prepare=1/);
-  assert.match(officeJs, /showSaveFilePicker/);
-  assert.match(officeJs, /createWritable/);
-  assert.match(officeJs, /await writable\.close\(\)/);
-  assert.match(officeJs, /window\.location\.href = result\.downloadUrl/);
+  assert.doesNotMatch(officeJs, /showSaveFilePicker/);
+  assert.match(officeJs, /link\.href = result\.downloadUrl/);
+  assert.match(officeJs, /link\.download = filename/);
+  assert.match(officeJs, /link\.click\(\)/);
   assert.match(officeJs, /文件下载已开始/);
   assert.doesNotMatch(officeJs, /URL\.createObjectURL\(blob\)/);
 });
@@ -199,7 +199,30 @@ test("新建文件和打开文件位于最近文件列表上方", () => {
   assert.match(officeHtml.slice(actionsAt, recentFilesAt), /id="newDocument"[\s\S]+id="officeFileInput"/);
   assert.doesNotMatch(officeHtml, /class="topbar-actions"/);
   assert.match(officeJs, /const createdDocument = safeDocument/);
+  assert.match(officeHtml, /data-new-document-kind="docx"/);
+  assert.match(officeHtml, /data-new-document-kind="md"/);
+  assert.match(officeHtml, /data-new-document-kind="txt"/);
+  assert.match(officeJs, /function createBlankDocument\(kind = "docx"\)/);
   assert.doesNotMatch(officeJs, /\bconst document = safeDocument/);
+});
+
+test("文件打开和导出显示持续状态、成功结果与可重试错误", () => {
+  assert.match(officeHtml, /id="operationBanner"[^>]+aria-live="polite"/);
+  assert.match(officeHtml, /id="operationRetry"/);
+  assert.match(officeJs, /function showOperation/);
+  assert.match(officeJs, /正在读取并解析/);
+  assert.match(officeJs, /建立可编辑工作副本/);
+  assert.match(officeJs, /已生成并开始下载/);
+  assert.match(officeJs, /打开失败：[\s\S]+officeFileInput/);
+  assert.match(officeJs, /导出失败：[\s\S]+exportDraft/);
+  assert.match(officeCss, /\.operation-banner\[data-state="error"\]/);
+});
+
+test("旧版结构化结果在本地工作副本中也会恢复成可读正文", () => {
+  assert.match(officeJs, /function readableLegacyCapabilityText/);
+  assert.match(officeJs, /LEGACY_CAPABILITY_KINDS/);
+  assert.match(officeJs, /text: readableLegacyCapabilityText/);
+  assert.match(officeJs, /编辑工作副本/);
 });
 
 test("点选最近文件只切换当前文件，不改变更新时间或列表顺序", () => {

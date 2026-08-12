@@ -80,7 +80,7 @@ export async function writeNativeCapabilityArtifact(input: {
   const format = input.requestedFormat === "txt" ? "txt" : "md";
   const extension = format === "txt" ? "txt" : "md";
   const file = `${input.fileBase}.${extension}`;
-  writeFileSync(file, renderMarkdown(payload), "utf8");
+  writeFileSync(file, renderNativeCapabilityMarkdown(payload), "utf8");
   return await finalizeNativeArtifact({ format, file, summary: payload.summary }, payload);
 }
 
@@ -450,7 +450,7 @@ function workbenchScript(kind: NativeCapabilityId): string {
   return common + (kind === "product-design" ? product : "") + (kind === "market-opportunity" ? market : "");
 }
 
-function renderMarkdown(payload: NativeCapabilityPayload): string {
+export function renderNativeCapabilityMarkdown(payload: NativeCapabilityPayload): string {
   const lines = [`# ${payload.title}`, "", payload.summary, "", `> 能力：${payload.kind}`, ""];
   for (const [key, value] of Object.entries(payload.data)) {
     lines.push(`## ${labelFor(key)}`, "", markdownValue(value), "");

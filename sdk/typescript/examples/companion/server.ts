@@ -111,6 +111,7 @@ import {
   type PrivateSourcesConfig,
 } from "./private-source-connectors.js";
 import { KnowledgeLibrary, type KnowledgeItemKind } from "./knowledge-library.js";
+import { appendCurrentUiEvidence } from "./ui-evidence.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const USER = process.env.COMPANION_USER || "me";
@@ -408,7 +409,14 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
   const dependencyBlock = dependencyArtifactBlock(input.sharedArtifactRefs, (id) => {
     const handoff = capabilities.artifactHandoff(id);
     return handoff
-      ? { title: handoff.artifact.title, summary: handoff.artifact.summary, text: handoff.text }
+      ? {
+          title: handoff.artifact.title,
+          summary: handoff.artifact.summary,
+          text: handoff.text,
+          proofLevel: handoff.artifact.proof?.level,
+          verificationSummary: handoff.artifact.verification?.summary,
+          checks: handoff.artifact.proof?.checks,
+        }
       : null;
   });
   const memoryMode = input.task.metadata?.memoryMode === "preferences" ? "preferences" : "off";
@@ -4772,6 +4780,7 @@ const server = createServer(async (req, res) => {
       const task = capabilities.snapshot().tasks.find((item) => item.id === b.id);
       if (!task) { send(res, 404, { error: "未找到这个任务" }); return; }
       const teamPlan = planExpertTeam({ capabilityId: task.capabilityId, instruction: task.instruction });
+      const collaborationObjective = appendCurrentUiEvidence(task.instruction, WEB_DIR);
       const assignments = teamPlan.assignments
         .filter((assignment) => LONG_FORM_EXPERT_IDS.has(assignment.personaId));
       capabilities.updateTaskStoryline({
@@ -4783,7 +4792,7 @@ const server = createServer(async (req, res) => {
       const expertTasks = assignments.map((assignment, index) => ({
         id: `expert-${index + 1}`,
         title: assignment.responsibility,
-        instruction: expertAssignmentPrompt(assignment, task.instruction),
+        instruction: expertAssignmentPrompt(assignment, collaborationObjective),
         dependsOn: [] as string[],
         metadata: {
           personaId: assignment.personaId,
@@ -4799,7 +4808,7 @@ const server = createServer(async (req, res) => {
       const finalTask = {
         id: "clownfish-final",
         title: `复核并完成：${task.title}`,
-        instruction: finalDeliveryPrompt({ objective: task.instruction, reviewChecks: teamPlan.finalReviewChecks }),
+        instruction: finalDeliveryPrompt({ objective: collaborationObjective, reviewChecks: teamPlan.finalReviewChecks }),
         dependsOn: expertTasks.map((item) => item.id),
         metadata: {
           personaId: APP_PERSONA_ID,
@@ -4815,7 +4824,7 @@ const server = createServer(async (req, res) => {
         arguments: { taskId: task.id, capabilityId: task.capabilityId, expertCount: assignments.length },
         execute: () => agentJobQueue.enqueue({
           type: "orchestration",
-          payload: { objective: task.instruction, tasks: [...expertTasks, finalTask], taskId: task.id },
+          payload: { objective: collaborationObjective, tasks: [...expertTasks, finalTask], taskId: task.id },
           metadata: {
             userId: USER,
             workTaskId: task.id,

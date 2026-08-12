@@ -4,9 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { CompanionEngine, type ChatAgentContext, type ChatFn } from "../../examples/companion/engine.js";
+import { CompanionEngine, isDeliveryPreferenceMemory, type ChatAgentContext, type ChatFn } from "../../examples/companion/engine.js";
 import { Nemos } from "../../src/index.js";
 import { makeMockLLMConfig } from "../helpers.js";
+
+test("任务偏好白名单只接受明确属于用户的交付习惯", () => {
+  assert.equal(isDeliveryPreferenceMemory("用户偏好简洁标题和三列表格"), true);
+  assert.equal(isDeliveryPreferenceMemory("排版：正文 15px，标题使用黑体"), true);
+  assert.equal(isDeliveryPreferenceMemory("测试故事里要求使用表格，且不代表用户本人"), false);
+  assert.equal(isDeliveryPreferenceMemory("第三方报告的格式包含五个章节"), false);
+  assert.equal(isDeliveryPreferenceMemory("用户今天在加班"), false);
+});
 
 test("English capability prompts use task mode and its long-output budget", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-work-mode-"));
