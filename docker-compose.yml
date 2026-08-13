@@ -1,0 +1,19 @@
+services:
+  clownfish-sync:
+    build: ./sync-service
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8799:8799"
+    environment:
+      CLOWNFISH_SYNC_TOKEN: "${CLOWNFISH_SYNC_TOKEN:?set CLOWNFISH_SYNC_TOKEN in .env}"
+      CLOWNFISH_SYNC_MAX_BYTES: "134217728"
+    volumes:
+      - clownfish-sync-data:/home/node/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8799/health').then(r=>{if(!r.ok)process.exit(1)})"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  clownfish-sync-data:

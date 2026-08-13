@@ -8,6 +8,8 @@ obj/
 .cache/
 tmp/
 .tmp/
+.tmp-*/
+.service/
 output/
 sdk/typescript/.tmp-runtime/
 
@@ -24,6 +26,7 @@ sdk/typescript/examples/companion/client/**/*.user
 # Local secrets and private runtime settings
 .env
 .env.*
+!.env.example
 *.dpapi.json
 *.key
 *.pem

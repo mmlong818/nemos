@@ -187,6 +187,7 @@ interface AdHocTaskInput {
   memoryMode?: "default" | "preferences" | "off";
   workspacePath?: string;
   accessMode?: "inspect" | "develop";
+  installDependencies?: boolean;
   origin?: CapabilityTaskOrigin;
   continuationTaskId?: string;
   onProgress?: (message: string, percent: number) => void;
@@ -234,6 +235,7 @@ export interface CapabilityDevelopmentReceipt {
   baseRevision?: string;
   fileReceipts: Array<{ path: string; state: "present" | "deleted"; sha256?: string; byteLength?: number }>;
   checks: Array<{ command: string; passed: boolean; output: string; checkedAt: string }>;
+  dependencyReceipts?: Array<{ id: string; label: string; passed: boolean; output: string; installedAt: string }>;
   contextReceipts?: Array<{ kind: "directory" | "file-lines" | "text-search"; path: string; anchor: string; confidence: "exact"; truncated: boolean }>;
   unverifiedRisks: string[];
   proposal?: {
@@ -363,6 +365,7 @@ export interface CapabilityRuntimeOptions {
     workspacePath: string;
     instruction: string;
     accessMode: "inspect" | "develop";
+    installDependencies?: boolean;
     signal?: AbortSignal;
     onProgress?: (message: string, percent: number) => void;
     sessionMode?: "continue" | "new" | "resume";
@@ -1519,6 +1522,7 @@ export class CapabilityRuntime {
     input: {
       workspacePath?: string;
       accessMode?: "inspect" | "develop";
+      installDependencies?: boolean;
       onProgress?: (message: string, percent: number) => void;
       sessionMode?: "continue" | "new" | "resume";
       sessionFile?: string;
@@ -1531,6 +1535,7 @@ export class CapabilityRuntime {
       workspacePath: String(input.workspacePath || ""),
       instruction: task.instruction,
       accessMode: input.accessMode === "inspect" ? "inspect" : "develop",
+      installDependencies: input.installDependencies === true,
       signal,
       onProgress: input.onProgress,
       sessionMode: input.sessionMode,

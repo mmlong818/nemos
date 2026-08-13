@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="/assets/brand/clownfish-mark.svg">
+  <title>开发 · 小丑鱼</title>
+  <link rel="stylesheet" href="/assets/system-center.css">
+  <link rel="stylesheet" href="/assets/development-coding.css">
+  <link rel="stylesheet" href="/assets/app-navigation-labels.css">
+</head>
+<body class="coding-page">
+  <div class="app-shell">
+    <aside class="rail" aria-label="主导航">
+      <a class="brand" href="/" aria-label="返回任务"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
+      <nav>
+        <a href="/" data-app-icon="message"><span></span><small>任务</small></a>
+        <a href="/capabilities" data-app-icon="boxes"><span></span><small>能力</small></a>
+        <a href="/office" data-app-icon="file"><span></span><small>文件</small></a>
+        <a class="is-current" href="/develop" aria-current="page" data-app-icon="code"><span></span><small>开发</small></a>
+        <a href="/tasks" data-app-icon="work"><span></span><small>工作</small></a>
+      </nav>
+      <a class="rail-secondary" href="/settings" data-app-icon="settings"><span></span><small>设置</small></a>
+    </aside>
+
+    <main class="coding-shell">
+      <aside class="coding-sidebar">
+        <header class="coding-sidebar-head">
+          <strong>开发</strong>
+          <button id="newDevelopment" type="button">新任务</button>
+        </header>
+        <section class="project-block">
+          <span class="side-label">当前项目</span>
+          <button class="project-picker" id="projectPicker" type="button">
+            <span data-app-icon="code"><span></span></span>
+            <span><b id="projectName">选择项目目录</b><small id="projectPath">尚未选择</small></span>
+          </button>
+        </section>
+        <section class="development-history">
+          <span class="side-label">最近任务</span>
+          <div id="developmentList" class="development-list"><p>正在读取…</p></div>
+        </section>
+        <a class="development-settings-link" href="/settings#development">开发设置</a>
+      </aside>
+
+      <section class="coding-main">
+        <header class="coding-topbar">
+          <div><b id="taskTitle">新开发任务</b><small id="taskMeta">小丑鱼会修改代码并运行检查</small></div>
+          <a id="openReview" href="/tasks" hidden>查看完整记录</a>
+        </header>
+
+        <div class="coding-transcript" id="transcript">
+          <div class="coding-empty" id="codingEmpty">
+            <span class="coding-mark" data-app-icon="code"><span></span></span>
+            <h1>今天想开发什么？</h1>
+            <p>描述结果即可。小丑鱼会先阅读项目，再修改、运行检查并说明变化。</p>
+            <div class="prompt-examples">
+              <button type="button" data-example="检查这个项目目前最影响使用的问题，修复后运行完整验证">检查并修复项目问题</button>
+              <button type="button" data-example="实现一个完整的新功能，保持现有风格，并补充必要测试">实现一个新功能</button>
+              <button type="button" data-example="审查最近的代码改动，定位风险并直接修复可以确认的问题">审查最近改动</button>
+            </div>
+          </div>
+        </div>
+
+        <form class="coding-composer" id="developForm">
+          <div class="composer-context">
+            <button type="button" id="workspaceButton"><span data-app-icon="code"><span></span></span><span id="workspaceLabel">选择项目</span></button>
+            <label><span class="sr-only">工作方式</span><select id="accessMode"><option value="develop">直接修改</option><option value="inspect">只检查</option></select></label>
+            <label><span class="sr-only">项目依赖</span><select id="dependencyMode"><option value="install">需要时安装依赖</option><option value="skip">不安装依赖</option></select></label>
+          </div>
+          <textarea id="instruction" required rows="3" maxlength="16000" placeholder="告诉小丑鱼要实现、修复或检查什么…"></textarea>
+          <div class="composer-footer"><span>Enter 发送 · Shift+Enter 换行</span><button class="send-development" id="startDevelop" type="submit" aria-label="开始开发">发送</button></div>
+          <p class="status" id="developStatus" role="status"></p>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="workspaceDialog">
+    <form class="workspace-dialog" method="dialog">
+      <button class="dialog-close" value="cancel" aria-label="关闭">×</button>
+      <p class="eyebrow">项目目录</p>
+      <h2>选择要开发的项目</h2>
+      <label class="field"><span>本机目录</span><input id="workspacePath" placeholder="例如：C:\Users\你\Documents\my-project" autocomplete="off"><small>小丑鱼只会在这个目录内工作。</small></label>
+      <div class="recent-workspaces" id="recentPanel" hidden><span>最近使用</span><div id="recentList"></div></div>
+      <div class="form-actions"><button class="primary" id="confirmWorkspace" value="default">使用这个项目</button></div>
+    </form>
+  </dialog>
+  <script src="/assets/app-icons.js"></script>
+  <script src="/assets/develop-center.js"></script>
+</body>
+</html>

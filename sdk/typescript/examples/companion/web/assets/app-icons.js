@@ -9,6 +9,7 @@
     file: '<path d="M7.5 3.25h7.2l4.05 4.05v12.2c0 .7-.55 1.25-1.25 1.25h-10c-.7 0-1.25-.55-1.25-1.25v-15c0-.7.55-1.25 1.25-1.25Z"/><path d="M14.5 3.5v4h4"/><path d="M4 7.2v11.3A2.5 2.5 0 0 0 6.5 21" opacity=".38"/><path d="M9.5 12h5.5M9.5 15.5h4" stroke-width="1.6"/>',
     document: '<path d="M7.5 3.25h7.2l4.05 4.05v12.2c0 .7-.55 1.25-1.25 1.25h-10c-.7 0-1.25-.55-1.25-1.25v-15c0-.7.55-1.25 1.25-1.25Z"/><path d="M14.5 3.5v4h4"/><path d="M4 7.2v11.3A2.5 2.5 0 0 0 6.5 21" opacity=".38"/><path d="M9.5 12h5.5M9.5 15.5h4" stroke-width="1.6"/>',
     work: '<path d="M4 17.5c2.4-6.1 5.2-8.8 9-8.2 3.15.5 4.25-1 6.8-5"/><circle cx="4" cy="17.5" r="2.25" fill="currentColor" stroke="none"/><path fill="currentColor" stroke="none" d="m18.1 2.5 3.4.2-.7 3.3-2.7-3.5Z"/><rect x="10" y="6.8" width="6" height="5" rx="1.8" fill="currentColor" stroke="none" opacity=".28"/>',
+    code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5M13.5 4l-3 16"/><path fill="currentColor" stroke="none" d="m4.1 9.7 2.3 2.3-2.3 2.3L1.8 12l2.3-2.3Zm15.8 0 2.3 2.3-2.3 2.3-2.3-2.3 2.3-2.3Z"/>',
     settings: '<path d="M4 6.2h16M4 12h16M4 17.8h16" opacity=".34"/><path fill="currentColor" stroke="none" d="m8 2.7 3.5 3.5L8 9.7 4.5 6.2 8 2.7Zm8 5.8 3.5 3.5-3.5 3.5-3.5-3.5L16 8.5Zm-6 5.8 3.5 3.5-3.5 3.5-3.5-3.5 3.5-3.5Z"/>',
     panel: '<rect x="3" y="3.5" width="18" height="17" rx="3"/><path d="M9 4v16" opacity=".45"/><path d="M5.7 8h.1M5.7 12h.1M12 8h6M12 12h4"/>',
     plus: '<path fill="currentColor" stroke="none" d="M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7V3Z"/>',

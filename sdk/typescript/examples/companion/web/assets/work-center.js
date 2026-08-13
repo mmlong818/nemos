@@ -672,62 +672,12 @@ function renderResources() {
   const active = state.knowledge.filter((item) => !item.archivedAt);
   const archived = state.knowledge.filter((item) => item.archivedAt);
   const rows = active.map((item) => `<article class="compact-row"><div><span class="resource-kind">${resourceKindLabel(item.kind)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.excerpt || item.sourceUrl || "无文字摘要")} · ${item.characterCount || 0} 字</p></div><div class="actions"><button data-preview-resource="${item.id}">查看</button><button data-archive-resource="${item.id}">归档</button></div></article>`).join("");
-  $("#content").innerHTML = `<input id="connectorFile" type="file" accept="application/json,.json" hidden><div class="platform-grid"><section class="platform-panel"><header><div><h2>任务资料</h2><p>需要时明确选入任务，不会默认把所有内容都塞给模型。</p></div><button class="primary" id="newKnowledge">添加资料</button></header><div class="compact-list">${rows || '<div class="resource-empty">还没有资料。可以添加笔记、文本文件或网页链接。</div>'}</div>${archived.length ? `<details><summary>${archived.length} 项已归档资料</summary><div class="compact-list">${archived.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.title)}</h3></div><button data-restore-resource="${item.id}">恢复</button></article>`).join("")}</div></details>` : ""}</section><section class="platform-panel"><header><div><h2>数据连接</h2><p>只有扩展真实启用并通过连接测试后才可使用。</p></div><button id="importConnector">导入连接器</button></header><div class="connection-grid">${connectionCards()}${platformCards()}</div><header class="subsection-head"><div><h2>开发环境</h2><p>开发能力会先检查这些本机工具，不要求新手打开命令行。</p></div></header><div class="connection-grid">${developmentReadiness()}</div></section><section class="platform-panel"><header><div><h2>领域能力包</h2><p>按工作类型组合能力、结果形式和交付检查。</p></div></header><div class="compact-list">${capabilityPackRows()}</div></section><section class="platform-panel"><header><div><h2>能力扩展</h2><p>在一处查看、启用、停用和卸载；权限扩大时仍需单独确认。</p></div></header><div class="compact-list">${extensionRows()}</div></section></div>`;
+  $("#content").innerHTML = `<div class="platform-grid"><section class="platform-panel"><header><div><h2>任务资料</h2><p>需要时明确选入任务，不会默认把所有内容都塞给模型。</p></div><button class="primary" id="newKnowledge">添加资料</button></header><div class="compact-list">${rows || '<div class="resource-empty">还没有资料。可以添加笔记、文本文件或网页链接。</div>'}</div>${archived.length ? `<details><summary>${archived.length} 项已归档资料</summary><div class="compact-list">${archived.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.title)}</h3></div><button data-restore-resource="${item.id}">恢复</button></article>`).join("")}</div></details>` : ""}</section><section class="platform-panel"><header><div><h2>数据连接与开发环境</h2><p>模型、连接器和本机开发工具已统一移到设置，不再在资料页重复配置。</p></div><a class="button" href="/settings#connections">打开设置</a></header></section><section class="platform-panel"><header><div><h2>领域能力包</h2><p>按工作类型组合能力、结果形式和交付检查。</p></div></header><div class="compact-list">${capabilityPackRows()}</div></section></div>`;
   $("#newKnowledge").onclick = openKnowledgeDialog;
-  $("#importConnector").onclick = () => $("#connectorFile").click();
-  $("#connectorFile").onchange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      const manifest = JSON.parse(await file.text());
-      const validation = await api("/api/agent/extension/validate", { method: "POST", body: JSON.stringify({ manifest }) });
-      const review = validation.validation || {};
-      const expanded = Array.isArray(review.permissionExpansion) ? review.permissionExpansion : [];
-      const risks = [review.requiresExecutableConfirmation ? "会启动本机程序" : "", review.requiresUnsandboxedConfirmation ? "无法使用受限沙箱" : "", expanded.length ? `新增权限：${expanded.join("、")}` : ""].filter(Boolean);
-      if (risks.length && !confirm(`连接器“${manifest.name || manifest.id}”${risks.join("，")}。确认安装吗？`)) return;
-      const endpoint = review.installed ? "/api/agent/extension/upgrade" : "/api/agent/extension/install";
-      await api(endpoint, { method: "POST", body: JSON.stringify({ manifest, confirmExecutable: !!review.requiresExecutableConfirmation, confirmUnsandboxed: !!review.requiresUnsandboxedConfirmation, confirmPermissionExpansion: expanded.length > 0 }) });
-      toast(review.installed ? "扩展已更新，原有启用状态保持不变。" : "连接器已安装，启用后可以测试连接。");
-      await load();
-    } catch (error) { toast(error.message || "连接器文件无效", true); }
-  };
   $("#content").onclick = async (event) => {
     const preview = event.target.closest("[data-preview-resource]");
     const archive = event.target.closest("[data-archive-resource]");
     const restore = event.target.closest("[data-restore-resource]");
-    const toggleExtension = event.target.closest("[data-toggle-extension]");
-    const upgradeExtension = event.target.closest("[data-upgrade-extension]");
-    const rollbackExtension = event.target.closest("[data-rollback-extension]");
-    const uninstallExtension = event.target.closest("[data-uninstall-extension]");
-    const testConnector = event.target.closest("[data-test-connector]");
-    const importConnector = event.target.closest("[data-import-connector]");
-    if (importConnector) { $("#connectorFile").click(); return; }
-    if (upgradeExtension) { $("#connectorFile").click(); return; }
-    if (rollbackExtension) {
-      if (!confirm(`恢复到 ${rollbackExtension.dataset.rollbackVersion}？当前版本会被替换，但资料不会删除。`)) return;
-      await api("/api/agent/extension/rollback", { method: "POST", body: JSON.stringify({ id: rollbackExtension.dataset.rollbackExtension }) });
-      toast(`已恢复到 ${rollbackExtension.dataset.rollbackVersion}`);
-      await load();
-      return;
-    }
-    if (testConnector) {
-      try {
-        const result = await api("/api/platform/connector/test", { method: "POST", body: JSON.stringify({ id: testConnector.dataset.testConnector }) });
-        toast(`连接正常，发现 ${result.toolCount} 个可用工具`);
-      } catch (error) { toast(error.message, true); }
-      return;
-    }
-    if (toggleExtension) {
-      await api("/api/agent/extension/enabled", { method: "POST", body: JSON.stringify({ id: toggleExtension.dataset.toggleExtension, enabled: toggleExtension.dataset.enabled !== "1" }) });
-      await load();
-      return;
-    }
-    if (uninstallExtension && confirm("卸载这个扩展？本地资料不会删除，但它提供的工具会立即停止。")) {
-      await api("/api/agent/extension/uninstall", { method: "POST", body: JSON.stringify({ id: uninstallExtension.dataset.uninstallExtension }) });
-      await load();
-      return;
-    }
     if (preview) {
       const result = await api(`/api/knowledge?id=${encodeURIComponent(preview.dataset.previewResource)}`);
       alert(`${result.item.title}\n\n${result.item.content || result.item.sourceUrl || ""}`);
