@@ -418,7 +418,7 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   assert.match(script, /项目修改、可运行结果与验证记录/);
   assert.match(script, /format: "pptx"/);
   assert.match(script, /name: "写正式文档"/);
-  assert.match(html, /class="rail-secondary" href="\/#settings"/);
+  assert.match(html, /class="rail-secondary" href="\/settings"/);
   assert.doesNotMatch(html, /class="rail-memory"/);
   assert.doesNotMatch(`${html}\n${script}`, /github\.com|plugin:\/\//i);
 });
@@ -579,7 +579,8 @@ test("Companion 主界面的弹窗和可点击列表具备基础无障碍语义"
   assert.match(html, /id="composerTool"/);
   assert.doesNotMatch(html, /id="railDesktop"/);
   assert.match(html, /id="settingsbtn"[^>]*data-icon="settings"/);
-  assert.match(html, /id="settingsbtn"[^>]*hidden/);
+  assert.doesNotMatch(html, /id="settingsbtn"[^>]*hidden/);
+  assert.match(html, /window\.location\.href = "\/settings"/);
   assert.match(html, /id="vbtn"[^>]*hidden/);
   assert.match(html, /#sidebar \{ width:100%; height:auto; min-height:204px/);
 });

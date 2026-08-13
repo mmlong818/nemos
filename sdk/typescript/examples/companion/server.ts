@@ -12,7 +12,8 @@ import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, r
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import Database from "better-sqlite3";
 import {
   AgentExtensionRegistry,
   AgentUserActionGateway,
@@ -115,6 +116,7 @@ import {
 import { KnowledgeLibrary, type KnowledgeItemKind } from "./knowledge-library.js";
 import { appendCurrentUiEvidence } from "./ui-evidence.js";
 import { ProductReviewRunStore, type ProductReviewIssue } from "./product-review-runs.js";
+import { applyPendingDataRestore, normalizeSyncEndpoint, pullDataSync, pushDataSync, syncSettingsSummary, testDataSync, type DataSyncStoredSettings } from "./data-sync.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const USER = process.env.COMPANION_USER || "me";
@@ -122,6 +124,7 @@ const defaultDataDir = join(homedir(), ".clownfish");
 const legacyDataDir = join(homedir(), String.fromCharCode(46, 110, 101, 109, 111, 115, 45, 99, 111, 109, 112, 97, 110, 105, 111, 110));
 const DATA_DIR = process.env.CLOWNFISH_HOME || process.env[String.fromCharCode(78, 69, 77, 79, 83, 95, 67, 79, 77, 80, 65, 78, 73, 79, 78, 95, 72, 79, 77, 69)] || (existsSync(defaultDataDir) || !existsSync(legacyDataDir) ? defaultDataDir : legacyDataDir);
 mkdirSync(DATA_DIR, { recursive: true });
+const pendingSyncRestore = applyPendingDataRestore(DATA_DIR);
 migrateStoredPersonaIdentities(DATA_DIR);
 const MANIFEST_FILE = resolveManifestPath();
 const APP_MANIFEST = readManifest();
@@ -172,6 +175,7 @@ const DB = runtimePath("COMPANION_DB", "companion.db");
 const LLM_KEY_FILE = runtimePath("COMPANION_LLM_KEY", "llm-key.dpapi.json");
 const X_TOKEN_FILE = runtimePath("COMPANION_X_TOKEN", "x-token.dpapi.json");
 const TOOL_SETTINGS_FILE = runtimePath("COMPANION_TOOL_SETTINGS", "tool-settings.dpapi.json");
+const DATA_SYNC_SETTINGS_FILE = runtimePath("COMPANION_DATA_SYNC_SETTINGS", "data-sync.dpapi.json");
 const USER_PROFILE_FILE = runtimePath("COMPANION_USER_PROFILE", "user-profile.json");
 const AGENT_RUNS_FILE = runtimePath("COMPANION_AGENT_RUNS", "agent-runs.json");
 const AGENT_APPROVALS_FILE = runtimePath("COMPANION_AGENT_APPROVALS", "agent-approvals.json");
@@ -515,6 +519,7 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       memoryMode: pinnedPreferenceContext ? "off" : requestedMemoryMode,
       workspacePath: String(job.payload.workspacePath || ""),
       accessMode: job.payload.accessMode === "inspect" ? "inspect" : "develop",
+      installDependencies: job.payload.installDependencies === true,
       continuationTaskId: String(job.payload.continuationTaskId || ""),
       origin: {
         kind: handoff?.source === "capability" ? "capability" : job.payload.conversationKey ? "chat" : "direct",
@@ -2330,6 +2335,99 @@ function conversationSendOptions(body: ChatBody): {
   };
 }
 
+function defaultDataSyncSettings(): DataSyncStoredSettings {
+  return {
+    mode: "local",
+    endpoint: "",
+    userId: USER,
+    deviceId: randomUUID(),
+    lastRevision: "",
+    lastSyncedAt: null,
+    lastError: null,
+  };
+}
+
+function readDataSyncSettings(): DataSyncStoredSettings {
+  try {
+    if (!existsSync(DATA_SYNC_SETTINGS_FILE)) return defaultDataSyncSettings();
+    const saved = JSON.parse(readFileSync(DATA_SYNC_SETTINGS_FILE, "utf8")) as Partial<DataSyncStoredSettings>;
+    return {
+      ...defaultDataSyncSettings(),
+      ...saved,
+      mode: saved.mode === "server" ? "server" : "local",
+      deviceId: saved.deviceId || randomUUID(),
+    };
+  } catch {
+    return defaultDataSyncSettings();
+  }
+}
+
+function persistDataSyncSettings(settings: DataSyncStoredSettings): void {
+  writeFileSync(DATA_SYNC_SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf8");
+}
+
+function dataSyncSecrets(settings = readDataSyncSettings()): { token: string; passphrase: string } {
+  try {
+    return {
+      token: settings.tokenCipher ? unprotectSecret(settings.tokenCipher) : "",
+      passphrase: settings.passphraseCipher ? unprotectSecret(settings.passphraseCipher) : "",
+    };
+  } catch {
+    return { token: "", passphrase: "" };
+  }
+}
+
+function saveDataSyncSettings(input: { mode?: string; endpoint?: string; userId?: string; token?: string; passphrase?: string }): DataSyncStoredSettings {
+  const current = readDataSyncSettings();
+  const mode = input.mode === "server" ? "server" : "local";
+  const rawEndpoint = String(input.endpoint || current.endpoint || "").trim();
+  if (mode === "server" && !rawEndpoint) throw new Error("服务器模式需要填写同步服务器地址。");
+  const endpoint = mode === "server" ? normalizeSyncEndpoint(rawEndpoint) : rawEndpoint;
+  if (mode === "server") {
+    if (!String(input.userId || current.userId || "").trim()) throw new Error("服务器模式需要同步用户编号。");
+    if (!input.token?.trim() && !current.tokenCipher) throw new Error("服务器模式需要访问令牌。");
+    if (!input.passphrase && !current.passphraseCipher) throw new Error("服务器模式需要同步加密口令。");
+    if (input.passphrase && input.passphrase.length < 12) throw new Error("同步加密口令至少需要 12 个字符。");
+  }
+  const next: DataSyncStoredSettings = {
+    ...current,
+    mode,
+    endpoint,
+    userId: String(input.userId || current.userId || USER).trim().slice(0, 80),
+    lastError: null,
+    ...(input.token?.trim() ? { tokenCipher: protectSecret(input.token.trim()) } : {}),
+    ...(input.passphrase ? { passphraseCipher: protectSecret(input.passphrase) } : {}),
+  };
+  persistDataSyncSettings(next);
+  return next;
+}
+
+async function runDataSyncOperation(operation: "test" | "push" | "pull"): Promise<Record<string, unknown>> {
+  const settings = readDataSyncSettings();
+  if (settings.mode !== "server") throw new Error("当前使用纯本地保存，请先启用服务器模式。");
+  const secrets = dataSyncSecrets(settings);
+  if (!secrets.token || !secrets.passphrase) throw new Error("同步凭证不完整，请重新保存服务器设置。");
+  try {
+    if (operation === "push" && existsSync(DB)) {
+      const database = new Database(DB);
+      try { database.pragma("wal_checkpoint(FULL)"); }
+      finally { database.close(); }
+    }
+    const result = operation === "test"
+      ? await testDataSync(settings, secrets)
+      : operation === "push"
+        ? await pushDataSync(DATA_DIR, settings, secrets)
+        : await pullDataSync(DATA_DIR, settings, secrets);
+    const next = { ...settings, lastRevision: String(result.revision || settings.lastRevision), lastSyncedAt: new Date().toISOString(), lastError: null };
+    persistDataSyncSettings(next);
+    return { ok: true, operation, ...result, settings: syncSettingsSummary(next), ...(operation === "pull" ? { restartRequired: true } : {}) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    persistDataSyncSettings({ ...settings, lastError: message });
+    throw error;
+  }
+}
+
 const NON_PERSONAL_MEMORY_RE = /(真实检查|真检|测试(?:场景|故事|数据|用例|账号)?|演示数据|假设|假如|例如|举例|模拟|虚构|角色扮演|不代表(?:用户|本人)|不是(?:用户|本人)事实|第三人称|案例材料)/i;
 const KNOWN_CHARACTER_REFERENCE_RE = /(?:菲菲|飞飞|feifei|团子|小丑鱼|专家组|老师)(?:是|喜欢|不喜欢|爱|讨厌|正在|住在|做过|记得|说过)/i;
 
@@ -3092,6 +3190,14 @@ const server = createServer(async (req, res) => {
       send(res, 200, readFileSync(join(WEB_DIR, "development.html"), "utf-8"), "text/html");
       return;
     }
+    if (req.method === "GET" && (pathname === "/develop" || pathname === "/develop.html")) {
+      send(res, 200, readFileSync(join(WEB_DIR, "develop.html"), "utf-8"), "text/html");
+      return;
+    }
+    if (req.method === "GET" && (pathname === "/settings" || pathname === "/settings.html")) {
+      send(res, 200, readFileSync(join(WEB_DIR, "settings.html"), "utf-8"), "text/html");
+      return;
+    }
     if (req.method === "GET" && ["/tasks", "/spaces", "/automations", "/collaboration", "/resources", "/artifacts", "/runs", "/memory"].includes(pathname)) {
       send(res, 200, readFileSync(join(WEB_DIR, "work.html"), "utf-8"), "text/html");
       return;
@@ -3572,6 +3678,7 @@ const server = createServer(async (req, res) => {
         continuationTaskId?: string;
         workspacePath?: string;
         accessMode?: DevelopmentAccessMode;
+        installDependencies?: boolean;
         parentJobId?: string;
         handoffChain?: string[];
         handoff?: CapabilityHandoffInput;
@@ -3659,6 +3766,7 @@ const server = createServer(async (req, res) => {
                 continuationTaskId,
                 workspacePath: body.capabilityId === "project-development" ? validateDevelopmentWorkspace(String(body.workspacePath || "")) : "",
                 accessMode: body.accessMode === "inspect" ? "inspect" : "develop",
+                installDependencies: body.installDependencies === true,
                 parentJobId,
                 handoff,
                 handoffChain: Array.isArray(body.handoffChain)
@@ -3842,6 +3950,34 @@ const server = createServer(async (req, res) => {
           unapprovedExecutables: "blocked",
         },
       });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/data-sync") {
+      send(res, 200, { ok: true, settings: syncSettingsSummary(readDataSyncSettings()), pendingRestoreApplied: pendingSyncRestore });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/data-sync/settings") {
+      const body = (await readBody(req)) as { mode?: string; endpoint?: string; userId?: string; token?: string; passphrase?: string };
+      const action = await agentUserActions.execute({
+        name: "data_sync_settings_update",
+        description: "保存用户选择的本地或自托管服务器数据模式",
+        arguments: { mode: body.mode, endpointProvided: Boolean(body.endpoint), tokenUpdated: Boolean(body.token), passphraseUpdated: Boolean(body.passphrase) },
+        execute: () => saveDataSyncSettings(body),
+        summarizeResult: (settings) => ({ ok: true, mode: settings.mode, endpoint: settings.endpoint }),
+      });
+      send(res, 200, { ok: true, settings: syncSettingsSummary(action.value), auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && ["/api/data-sync/test", "/api/data-sync/push", "/api/data-sync/pull"].includes(url)) {
+      const operation = url.endsWith("/test") ? "test" : url.endsWith("/push") ? "push" : "pull";
+      const action = await agentUserActions.execute({
+        name: `data_sync_${operation}`,
+        description: operation === "pull" ? "下载并校验服务器快照，等待重启后恢复" : operation === "push" ? "加密并上传本机数据快照" : "测试自托管同步服务器连接",
+        arguments: { operation },
+        execute: () => runDataSyncOperation(operation),
+        summarizeResult: (result) => ({ ok: true, operation, revision: result.revision }),
+      });
+      send(res, 200, { ...action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "GET" && url === "/api/platform/readiness") {
@@ -5812,11 +5948,25 @@ function artifactDoneText(item: CapabilityNotification): string {
   return `\n\n已保存为 ${format}：${item.artifact.file}`;
 }
 
+function startPeriodicDataSync(): void {
+  const run = async () => {
+    const settings = readDataSyncSettings();
+    if (settings.mode !== "server" || !settings.endpoint || !settings.tokenCipher || !settings.passphraseCipher) return;
+    try { await runDataSyncOperation("push"); }
+    catch { /* 状态已经写入 lastError，后台同步失败不影响本机使用。 */ }
+  };
+  const first = setTimeout(run, 30_000);
+  first.unref?.();
+  const timer = setInterval(run, 5 * 60_000);
+  timer.unref?.();
+}
+
 boot().then(() => {
   agentJobWorker.start();
   server.listen(PORT, "127.0.0.1", () => {
     resumeInterruptedAgentRuns();
     seedPersonaBiosInBackground(engine);
+    startPeriodicDataSync();
     const startedAt = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
     console.log("");
     console.log("  陪伴 App 已启动 → http://localhost:" + PORT);

@@ -15,6 +15,16 @@ html {
 
   .rail {
     width: 76px;
+    padding: 20px 8px 14px;
+    align-items: center;
+    gap: 0;
+  }
+
+  .rail > .brand {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    margin: 0 auto 28px;
   }
 
   .rail nav > a,
