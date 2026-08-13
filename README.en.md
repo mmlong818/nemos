@@ -1,189 +1,155 @@
-# Nemos
+# Clownfish
 
 [中文](README.md) · **English**
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
-[![SDK license: PolyForm Noncommercial](https://img.shields.io/badge/SDK-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/integration-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#run-locally)
 
-This repository holds two things under different licenses:
-
-| Part | What it is | License |
-|---|---|---|
-| **Nemos TypeScript integration**<br>`sdk/typescript/` | Uses the separately maintained `@nemos/sdk` memory core and adds the Agent runtime and Clownfish application in this repository | [PolyForm Noncommercial 1.0.0](LICENSE); commercial use requires a separate grant |
-| **Clownfish**<br>`sdk/typescript/examples/companion/` | A local-first AI work application built on that core, and the SDK's full reference implementation | All rights reserved, [licensed separately](sdk/typescript/examples/companion/LICENSE) |
-
-See [LICENSING.md](LICENSING.md) for the full terms. The application is described first; for SDK usage jump to [Use the memory SDK independently](#use-the-memory-sdk-independently).
-
-## Clownfish
-
-> A local-first AI work application with long-term memory. Start with a new conversation, switch to task completion or guided study when needed, and continue complex work in Capabilities, Files, and Work.
+Clownfish is a **local-first AI work application with long-term memory**. Start with one sentence, then complete tasks, work with files, and organize ongoing work without creating a project, choosing an expert, or learning tool names first.
 
 ![Clownfish chat](docs/assets/readme/clownfish-chat-2026-08-10.png)
 
-## What it does today
+## Product structure
 
-Clownfish combines four everyday surfaces:
+| Surface | Best for | Main outcome |
+| --- | --- | --- |
+| **Conversations** | Questions, discussion, task completion, and guided study | Independent threads, automatic titles, attachments, and returned results |
+| **Capabilities** | Research, documents, presentations, analysis, design, and development | Background execution, progress, retry, and downloadable artifacts |
+| **Files** | Opening, converting, editing, and exporting office files | Editable working copies, originals, versions, and exported files |
+| **Work** | Managing tasks, resources, automations, runs, and memory | Ongoing work, workspaces, review records, and deliverables |
 
-| Surface | User action | Current implementation |
-|---|---|---|
-| **Chat** | Create, search, switch, or delete independent conversations; upload images or files; and choose the right work mode | Automatic titles, parallel threads, isolated context, and delivery back to the originating conversation |
-| **Capabilities** | Describe an outcome or choose a capability directly | Background jobs, live progress, cancellation, retries, previews, and downloads |
-| **Files** | Open Word, PowerPoint, Excel, PDF, TXT, or Markdown | Converted to an editable structured copy, an itemized list of conversion changes, the original kept and downloadable, faithful preview, and version history |
-| **Work** | Review tasks, workspaces, automations, collaboration, resources, results, runs, and memory | Multi-task organization, scheduled execution, expert review, local resources, artifacts, and preference management |
+All four surfaces share task context and artifact identity instead of creating disconnected copies.
 
-New users do not need to create a project or understand tool names first.
+## Conversations and tasks
 
-## Conversations: one entry, three ways of working
+Each new conversation can use one of three modes:
 
-Every new conversation begins as a blank thread with three modes:
+- **Chat** for everyday questions, discussion, and ideas;
+- **Task** for sustained work toward a concrete outcome;
+- **Study** for explanation, guided questions, practice, and feedback.
 
-- **Chat** for questions, discussion, ideas, and everyday conversation;
-- **Task** for sustained work toward a concrete outcome, with capabilities and expert judgment invoked behind the scenes;
-- **Study** for explanation, guided questions, practice, and feedback without requiring the user to choose a teacher persona.
+Every conversation keeps its own context and draft. A short title is generated after the first message. Multiple tasks can run in parallel. Experts and teaching personas remain internal execution details rather than settings the user must manage.
 
-The left side follows a familiar work-app pattern: the product name sits below its icon, New Conversation remains at the top, and search expands only when requested. Search covers every conversation and returns to the exact matching message, while each conversation keeps its own unsent draft. After the first message, a lightweight daily model generates a short title in the background. If the model is unavailable, a local fallback names the thread without blocking the reply or writing the title request into long-term memory.
+When a conversation is handed to a capability, Clownfish transfers the **complete transcript, a concise context summary, attachments, and recorded decisions**, not only the last message.
 
-Experts and teaching personas are internal execution choices rather than contacts that users must configure. When a conversation hands work to a capability, both the original text and a distilled task context are transferred instead of only the final sentence.
+## Capabilities
 
-## Capabilities: describe the goal or choose directly
+Users can describe an outcome and let Clownfish select a capability, or choose one directly. Selection opens the task form immediately without an extra preparation step.
 
-The capability page supports two equal paths:
+Built-in capabilities cover:
 
-1. Describe the outcome and let Clownfish choose from the goal, attachment formats, and project workspace;
-2. Select a capability directly when you already know what you need.
+- research and source verification;
+- formal documents, meeting notes, web reports, and presentations;
+- complex-problem framing, comparison, and market analysis;
+- product-interface design, business development, and software projects;
+- creation of reusable capabilities.
 
-Selection opens the task form immediately, without an extra preparation step. Jobs continue in the background and remain available locally.
+Background tasks preserve checkpoints, cancellation, failure reasons, retry paths, and final artifacts. One capability can continue another capability's result while keeping the same task history.
+
+Project development uses a dedicated workbench with file browsing, per-file review, checks, selective application, and rollback. Changes remain inside an authorized workspace and stop if the project changes concurrently.
 
 ![Clownfish capabilities](docs/assets/readme/clownfish-capabilities-2026-08-10.png)
 
-Built-in capabilities cover presentation creation, formal documents, deep research, Hong Kong market briefs, complex-problem framing, product interface design, project development, meeting minutes, web reports, option comparison, business development, market opportunity simulation, and new-capability generation.
+## File workbench
 
-Project development opens a dedicated workbench with a project tree, per-file before/after review, environment and check receipts, selective apply, conflict protection, and rollback. Clean Git projects run in an isolated worktree before any selected changes are written back.
+The file workbench handles common Word, PowerPoint, Excel, PDF, OpenDocument, RTF, EPUB, CSV, TXT, and Markdown formats.
 
-Outputs include PPTX, DOCX, PDF, XLSX, HTML, Markdown, and structured data.
+Its core rule is: **keep the original, edit a working copy, and export a new file.**
 
-## Files: original, working copy, and result stay together
+- TXT and Markdown can be written back only after explicit authorization; other imported formats do not overwrite the original;
+- Word, PDF, and other text-oriented documents become structured copies with headings, paragraphs, lists, tables, quotes, and code;
+- presentations and spreadsheets use their own structure models instead of being flattened into chat text;
+- each conversion reports what was preserved and what changed, while the original remains viewable and downloadable;
+- revision checks prevent a stale window from overwriting a newer save;
+- deleted working files first move to recoverable trash;
+- results export to DOCX, PDF, PPTX, XLSX, HTML, or Markdown.
 
-The file workspace supports DOCX, PPTX, XLSX, PDF, TXT, and Markdown:
+Complex floating objects, comments, cross-section headers and footers, formulas, charts, slide masters, and spreadsheet formulas still rely on the original file or desktop Office/WPS for fidelity. Clownfish does not present a structured copy as lossless in-place editing.
 
-- New and open actions sit above recent files;
-- The original stays local and is never overwritten by editing;
-- Markdown has an outline, formatting tools, and live preview; TXT uses continuous text editing;
-- Working copies are saved by the local service, and revision checks prevent stale windows from overwriting newer edits;
-- PDFs retain their original layout; Office formats receive a structured preview while the original file is retained;
-- Uploaded text documents become structured copies containing headings, paragraphs, lists, tables, quotes, code, and source locations. Markdown remains the interchange representation; TXT and Markdown are edited directly;
-- **The original file is kept intact, stays downloadable, and is never rewritten.** The conversion is a derived working document; write-back is offered only for TXT and Markdown;
-- Every conversion lists exactly what **this file** lost: for Word, fonts/sizes/colors/alignment, headers and footers, comments and tracked changes, and images; for PowerPoint, layouts, masters, themes, and animation; for Excel, cell styling, conditional formats, and charts; for PDF, layout and table rules. Heading levels, paragraphs, lists, tables, and speaker notes do carry over;
-- Editing happens in the Markdown editor: outline, formatting tools, and side-by-side source and live preview;
-- The original layout stays one click away in the "original file" tab, or open it in desktop Office;
-- Results export to DOCX, PDF, PPTX, XLSX, HTML, or Markdown — always as a new file, never overwriting the original;
-- TXT and Markdown can be written back only after explicit authorization and an external-change conflict check;
-- Editing, versions, AI progress, and results stay on the same page;
-- The file library supports name search and format filters; external edits, renames, moves, and deletions are recorded as file events;
-- Chat attachments, capability artifacts, and the file workspace share a stable file identity instead of cloning the same file at each handoff;
-- A selected excerpt is handed off with its location, original text, complete file, and stable file identity;
-- Results created in chat or by a capability can open as a local working copy for continued editing;
-- Deleted working files move to a recoverable trash area before permanent deletion;
-- Results can be exported to DOCX, PDF, PPTX, XLSX, HTML, or Markdown.
+![Clownfish file workbench](docs/assets/readme/clownfish-office-2026-08-11.png)
 
-![Clownfish office workspace](docs/assets/readme/clownfish-office-2026-08-11.png)
+## Work center
 
-## Work: ongoing tasks and deliverables in one place
+The Work center keeps ongoing tasks and deliverables together:
 
-Capability runs and ongoing work are kept in the Work center:
+- **Tasks** store the goal, progress, next action, and key decisions;
+- **Spaces** organize related tasks and results and support archive and restore;
+- **Automations** run daily or by usage frequency and can be paused, edited, or run now;
+- **Collaboration** lets Clownfish select experts dynamically and merge their reviews into one delivery;
+- **Resources** store local notes, text, and links and enter a task only when explicitly selected;
+- **Results** collect generated files and reports;
+- **Runs** show status, checkpoints, errors, review queues, and product-review records;
+- **Memory** manages facts, experiences, and a small set of high-value habits.
 
-- **Tasks** retain the goal, plan, current progress, and next action;
-- **Workspaces** keep related tasks and results together, with archive and restore controls;
-- **Automations** manage daily and usage-frequency tasks, including pause, edit, and run-now actions;
-- **Collaboration** lets Clownfish choose experts dynamically and merge their reviews into one final delivery;
-- **Resources** stores local notes, text files, and links; only explicitly selected items enter a task context;
-- **Results** collect files and reports created by capabilities;
-- **Runs** preserve execution state, logs, and errors;
-- **Memory** lets the user review facts, experiences, and habits organized by Clownfish.
+Resources reports the real state of six connector categories: **local files, browser, GitHub, email, calendar, and enterprise documents**. Local files and supported browser functions can be built in; other connectors become available only after installation and a successful connection test.
 
-A one-off run started from a conversation or the Capabilities page keeps its source, execution state, and artifact. Continuing that result stays in the same task and creates a linked next version. Failed runs keep their error and retry path, and a one-off task can be converted into a daily or usage-frequency task.
-
-New users can still begin in a conversation without creating a workspace. Workspaces only appear when one piece of work grows into multiple related tasks.
-
-The resource library is local by default. WeChat sources, X, and web search show their actual connection state instead of presenting planned adapters as live integrations.
-
-Resources also shows the real state of six connector categories: local files, browser, GitHub, email, calendar, and enterprise documents. Users can import a connector manifest from this page; executable, unsandboxed, and permission-expanding changes are reviewed before installation. Installed extensions support enable, update, previous-version restore, disable, and uninstall. Runs keeps a durable product-review record with the test persona, scenario, route, observations, issues, and evidence.
+Extensions support permission review, install, enable, update, previous-version restore, disable, and uninstall. Local execution, network access, file writes, and permission expansion require renewed confirmation.
 
 ![Clownfish work center](docs/assets/readme/clownfish-work-2026-08-10.png)
 
-## Memory: focused, visible, and user-controlled
+## Memory and privacy
 
-Clownfish uses the Nemos Memory SDK in this repository. The application currently:
+The memory core comes from the independent [`@nemos/sdk`](https://github.com/mmlong818/nemos-memory) dependency. This repository does not keep a duplicate copy.
 
-- Separates user memory from each role's own memory namespace;
-- Stores source conversation records in a protected archival layer and uses categorized memories for recall;
-- Recalls task-relevant context for normal chat;
-- In preference-only capability mode, searches procedural and personal-semantic memory and applies at most six matching items;
-- Task records show which habits were applied, while a single task can disable preference memory entirely;
-- Lets users add an explicit habit and forget an individual categorized memory;
-- Preserves archival records when categorized memories are forgotten or cleared.
+- User facts and persona self-memory use separate namespaces;
+- normal conversation recalls only context relevant to the current request;
+- capability tasks can apply only delivery preferences such as writing, layout, and format, or disable preference memory for one run;
+- task results show which preferences were actually used;
+- users can inspect, add, or forget categorized memories, while the interface does not expose the internal raw archive.
 
-Writing, layout, and format preferences supplement the current request; they do not replace it.
+The current request always overrides historical preferences.
 
-![Clownfish memory](docs/assets/readme/clownfish-memory-2026-08-10.png)
+New installations use `~/.clownfish` as the default data directory. Requests and required context are sent to the configured model provider when that model is used. Local logs redact common credential fields, but task text should never contain secrets.
 
-See the [TypeScript SDK](sdk/typescript/README.en.md) and the [v0.7 implementation design](sdk/typescript/docs/nemos-memory-v0.7-design.md) for the memory lifecycle and APIs.
+On Windows, model credentials are encrypted with DPAPI for the current user and full keys are never returned by the API.
 
-## Provider-neutral model connection
+## Model connection
 
-Open **Model connection**, then choose a provider and model name and enter an API key. Clownfish tests the connection before saving it.
+Open **Model connection**, choose a provider and model, and enter an API key. The configuration is saved only after a successful connection test.
 
-Clownfish follows provider presets when routing models. Providers with a separate daily-chat model use it automatically, while experts, capabilities, file generation, and complex work use the configured task model. When no separate route is defined, both use the same model.
+Presets cover Zhipu GLM, OpenAI, Anthropic Claude, DeepSeek, Alibaba Qwen, MiniMax, and custom services. OpenAI-compatible and Anthropic-compatible protocols are supported. Vision, web search, and embedding support depend on the selected service and model.
 
-![Clownfish model connection](docs/assets/readme/clownfish-model-connection-2026-08-10.png)
+Everyday conversation prefers a lighter provider model when available. Experts, capabilities, file generation, and complex work use the task model. When a provider has no separate route, both use the same configuration.
 
-Presets are available for Zhipu GLM, OpenAI, Anthropic Claude, DeepSeek, Alibaba Qwen, MiniMax, and custom services. OpenAI-compatible and Anthropic-compatible protocols are supported. Vision, web, and embedding support depends on the selected service and model.
+## Verified status
 
-On Windows, secrets are encrypted with DPAPI for the current user and full keys are never returned by the API. Offline mode keeps the interface and local-only functions available.
+As of 2026-08-13:
 
-## Data and privacy boundaries
+- build, type checking, and **359 automated tests** pass;
+- **20/20** sanitized DOCX cases pass structural round-trip checks and open in local Microsoft Word;
+- **10/10** small-project profiles pass inspection, patch proposal, selective application, and rollback;
+- **20 real product-review rounds** pass on a fresh data directory with no unresolved issues;
+- the offline dependency audit reports no known vulnerability, and the sensitive-data scan finds no credential.
 
-- New installations store memory, tasks, runs, working copies, and artifacts under **~/.clownfish**. If legacy **~/.nemos-companion** data is detected, Clownfish keeps using it to avoid losing content during migration.
-- When a configured model is called, the request and required context are sent to that provider. After the first message in a new conversation, the same provider's lightweight daily model also receives that message to generate a short title; this title request uses no tools and is not written to long-term memory. Network source features contact their corresponding public services when used.
-- Logs and run records redact common credential fields, but secrets should never be placed in task text.
-- Before exporting or sharing a backup or portable package, check that it does not contain a user data directory.
-
-## Current verification
-
-- The TypeScript build passes;
-- All 359 automated tests pass; memory-core tests are maintained in the separate `nemos-memory` repository and are not counted twice here;
-- Twenty sanitized daily DOCX cases pass structural round-trip checks and open in local Microsoft Word; ten small-project profiles pass inspection, patch proposal, selective apply, and rollback regression;
-- Chat, Capabilities, Files, Work, Memory, and Model connection were rechecked and recaptured with a fresh local data directory;
+See the [product capability acceptance record](docs/product-capability-acceptance-2026-08-13.md) for evidence. Memory-core tests remain in the separate `nemos-memory` repository and are not counted in the 359 tests above.
 
 ## Run locally
 
 Node.js 22.19 or newer is required.
 
-~~~powershell
+```powershell
 cd sdk\typescript
 npm install
 npm run companion
-~~~
+```
 
-The default URL is <http://localhost:8787>. Use **PORT** to change the port and **CLOWNFISH_HOME** to change the data directory.
+Open <http://localhost:8787>. Use `PORT` to change the port and `CLOWNFISH_HOME` to change the data directory.
 
 ### Windows portable client
 
-~~~powershell
+```powershell
 cd sdk\typescript
 powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-Clownfish.ps1
-~~~
+```
 
-The build downloads and verifies WebView2 plus the sandboxed Node and Python runtimes. Output:
+Output: `examples\companion\client\dist\portable\小丑鱼`.
 
-~~~text
-examples\companion\client\dist\portable\小丑鱼
-~~~
+## Use the memory core
 
-## Use the memory SDK independently
+The memory API comes from the independently maintained `@nemos/sdk`. This repository adds the Agent runtime and Clownfish application on top.
 
-~~~typescript
+```typescript
 import { Nemos } from "@nemos/sdk";
 
 const nemos = new Nemos({
@@ -194,26 +160,26 @@ const nemos = new Nemos({
 const memory = nemos.forUser(authenticatedUserId);
 await memory.ingest("The user says: formal documents should lead with the conclusion.");
 const context = await memory.getRelevantContext("Draft a proposal");
-~~~
+```
 
-**userId** must come from a trusted server-side identity, not an untrusted client parameter.
+`userId` must come from a trusted server-side identity, not an untrusted client parameter.
 
 ## Documentation
 
 | Document | Purpose |
-|---|---|
+| --- | --- |
 | [Clownfish guide](sdk/typescript/examples/companion/README.md) | Startup, data directory, desktop build, and endpoints |
-| [TypeScript SDK](sdk/typescript/README.en.md) | Current memory APIs |
+| [TypeScript integration](sdk/typescript/README.en.md) | Agent runtime exports and memory APIs |
 | [Memory architecture](docs/architecture-overview.md) | Implemented structure and boundaries |
-| [Runtime architecture](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Tasks, tools, permissions, and recovery |
-| [Roadmap](ROADMAP.md) | Current versions and next priorities |
-| [Documentation guide](docs/README.en.md) | Product, integration, architecture, and research documents |
-| [Contributing](CONTRIBUTING.md) | Submission process and inbound license terms |
-| [Security policy](SECURITY.md) | How to report a vulnerability |
+| [Agent runtime](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Tasks, tools, permissions, and recovery |
+| [Roadmap](ROADMAP.md) | Current version and next priorities |
+| [Documentation guide](docs/README.en.md) | All public documentation |
+| [Security policy](SECURITY.md) | Vulnerability reporting |
 
-## License
+## Licensing
 
-This repository uses a dual licensing structure. See [LICENSING.md](LICENSING.md) for the authoritative scope:
+This repository uses a dual licensing structure. [LICENSING.md](LICENSING.md) is authoritative:
 
-- **Nemos TypeScript integration and research material** (`sdk/typescript/src/`, `spec/`, `rfcs/`, `bench/`, `docs/`) uses the [PolyForm Noncommercial License 1.0.0](LICENSE). The memory-core source is maintained in `mmlong818/nemos-memory` and enters this repository as the `@nemos/sdk` dependency under its own license notice.
-- **The Clownfish application** (`sdk/typescript/examples/companion/`) is **not** covered by that license. All rights reserved; licensed separately. See its [LICENSE](sdk/typescript/examples/companion/LICENSE).
+- the TypeScript integration, Agent runtime, and public research material use [PolyForm Noncommercial 1.0.0](LICENSE); commercial use requires a separate grant;
+- the independent `@nemos/sdk` memory core follows the license shipped with its repository;
+- the Clownfish application under `sdk/typescript/examples/companion/` is all rights reserved; see its [separate notice](sdk/typescript/examples/companion/LICENSE).
