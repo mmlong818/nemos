@@ -12,6 +12,7 @@ import {
   type DevelopmentProposalState,
 } from "./development-proposals.js";
 import type { CompanionModelConnection } from "./model-connection.js";
+import { detectDevelopmentDependencies, installDevelopmentDependencies, type DevelopmentDependencyReceipt } from "./development-dependencies.js";
 
 const execFileAsync = promisify(execFile);
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", ".next", "dist", "build", "coverage"]);
@@ -30,6 +31,7 @@ export interface PiDevelopmentInput {
   workspacePath: string;
   instruction: string;
   accessMode: DevelopmentAccessMode;
+  installDependencies?: boolean;
   connection: CompanionModelConnection;
   agentDir: string;
   signal?: AbortSignal;
@@ -84,6 +86,7 @@ export interface PiDevelopmentResult {
   loadedPromptTemplates: number;
   /** 按事件类型统计的会话遥测。 */
   telemetry: Record<string, number>;
+  dependencyReceipts: DevelopmentDependencyReceipt[];
   isolatedWorkspace?: boolean;
 }
 
@@ -121,6 +124,17 @@ type DevelopmentSessionManager = ReturnType<PiModule["SessionManager"]["create"]
 export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDevelopmentResult> {
   if (Number(process.versions.node.split(".")[0]) < 22) throw new Error("开发能力需要 Node.js 22.19 或更高版本。");
   const workspace = validateDevelopmentWorkspace(input.workspacePath);
+  const dependencyReceipts = input.accessMode === "develop" && input.installDependencies
+    ? await (async () => {
+        const plans = detectDevelopmentDependencies(workspace).filter((plan) => plan.needed);
+        if (!plans.length) return [];
+        input.onProgress?.(`正在补齐 ${plans.map((plan) => plan.ecosystem).join("、")} 项目依赖`, 4);
+        const receipts = await installDevelopmentDependencies(workspace, plans);
+        const failed = receipts.find((receipt) => !receipt.passed);
+        if (failed) throw new Error(`${failed.label}失败：${failed.output.slice(0, 800)}`);
+        return receipts;
+      })()
+    : [];
   const baseRevision = await currentRevision(workspace);
   const checks: DevelopmentCheckReceipt[] = [];
   const contextReceipts: DevelopmentContextReceipt[] = [];
@@ -174,7 +188,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     additionalSkillPaths: skillPaths,
     additionalPromptTemplatePaths: promptTemplatePaths,
     extensionFactories: (input.extensions ?? []) as never,
-    systemPrompt: developmentSystemPrompt(executionWorkspace, input.accessMode),
+    systemPrompt: developmentSystemPrompt(executionWorkspace, input.accessMode, dependencyReceipts),
   });
   const setup = await (async () => {
     try {
@@ -251,6 +265,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
       loadedSkills: resourceLoader.getSkills().skills.length,
       loadedPromptTemplates: resourceLoader.getPrompts().prompts.length,
       telemetry,
+      dependencyReceipts,
       isolatedWorkspace: isolation.isolated,
     };
   } catch (error) {
@@ -438,11 +453,12 @@ function createDevelopmentTools(
   ];
 }
 
-function developmentSystemPrompt(workspace: string, mode: DevelopmentAccessMode): string {
+function developmentSystemPrompt(workspace: string, mode: DevelopmentAccessMode, dependencyReceipts: DevelopmentDependencyReceipt[] = []): string {
   return [
     "你是小丑鱼的独立开发能力，负责在用户明确选择的项目范围内完成真实的软件工作。",
     `项目范围：${workspace}`,
     `权限：${mode === "develop" ? "允许读取、精确修改、创建文本文件并运行受控检查" : "只读检查，不得修改文件，也不得运行项目自带脚本"}。`,
+    dependencyReceipts.length ? `项目依赖已按项目声明补齐：${dependencyReceipts.map((item) => item.label).join("、")}。` : "本轮没有自动安装项目依赖。",
     "先阅读项目规则与相关文件，再定位根因或实现位置；保持修改精准，不重写无关代码。",
     "必须使用工具取得证据，不能假装读取、修改、构建或测试过。",
     "引用代码时使用文件路径和行号；工具截断的内容要明确说明。推断只能标为推断，不能写成已读取事实。",

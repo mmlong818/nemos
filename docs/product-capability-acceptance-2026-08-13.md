@@ -18,12 +18,13 @@
 
 ## 实际运行证据
 
-- `npm.cmd run check`：构建、类型检查和 359 项自动化测试全部通过。
+- `npm.cmd run check`：构建、类型检查和 369 项自动化测试全部通过。
 - `npm.cmd run quality:office-corpus`：20/20 份 DOCX 结构化往返通过。
 - `npm.cmd run quality:office-word`：Microsoft Word 打开 20/20。
 - `npm.cmd run quality:development-corpus`：10/10 类小项目闭环通过。
 - `npm audit --offline --audit-level=high`：未发现已知高危依赖问题；本轮未向外部审计服务发送依赖清单。
-- 新数据环境完成 20 轮真实使用检查，记录保存在应用“工作 → 运行”页面。
+- 本轮新增 10 轮真实使用检查；应用“工作 → 运行”页面累计保存 30 轮记录，当前无未修问题。
+- Docker 同步服务完成健康检查、错误令牌拒绝、端到端加密上传、下载和重启恢复；受控依赖安装完成真实 npm 锁定安装。
 
 ## 产品级原则
 

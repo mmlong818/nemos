@@ -17,7 +17,9 @@ Clownfish is a **local-first AI work application with long-term memory**. Start 
 | **Conversations** | Questions, discussion, task completion, and guided study | Independent threads, automatic titles, attachments, and returned results |
 | **Capabilities** | Research, documents, presentations, analysis, design, and development | Background execution, progress, retry, and downloadable artifacts |
 | **Files** | Opening, converting, editing, and exporting office files | Editable working copies, originals, versions, and exported files |
+| **Development** | Implementing, fixing, or reviewing code in an authorized local project | File changes, dependency receipts, checks, and recoverable run history |
 | **Work** | Managing tasks, resources, automations, runs, and memory | Ongoing work, workspaces, review records, and deliverables |
+| **Settings** | Configuring models, development, data connections, and storage | Connection status, encrypted credentials, and local or self-hosted storage |
 
 All four surfaces share task context and artifact identity instead of creating disconnected copies.
 
@@ -47,7 +49,7 @@ Built-in capabilities cover:
 
 Background tasks preserve checkpoints, cancellation, failure reasons, retry paths, and final artifacts. One capability can continue another capability's result while keeping the same task history.
 
-Project development uses a dedicated workbench with file browsing, per-file review, checks, selective application, and rollback. Changes remain inside an authorized workspace and stop if the project changes concurrently.
+Project development uses a dedicated workbench: select a folder, describe the desired outcome, and Clownfish reads the project, edits code, and runs checks. Missing dependencies can be installed from the project's declared lockfiles into the project or a Python virtual environment. It never performs global installs or executes model-invented install commands. Changes remain inside an authorized workspace and stop if the project changes concurrently.
 
 ![Clownfish capabilities](docs/assets/readme/clownfish-capabilities-2026-08-10.png)
 
@@ -104,9 +106,22 @@ New installations use `~/.clownfish` as the default data directory. Requests and
 
 On Windows, model credentials are encrypted with DPAPI for the current user and full keys are never returned by the API.
 
+### Data storage
+
+The default is fully local. For multi-device use or server backups, **Settings → Data storage** can connect to the included self-hosted Docker service. The client encrypts every snapshot end to end before upload; the server stores ciphertext only. Sync tokens and passphrases are protected with Windows DPAPI and excluded from snapshots.
+
+Local Docker may use `http://127.0.0.1:8799`; remote deployments must sit behind HTTPS:
+
+```powershell
+$env:CLOWNFISH_SYNC_TOKEN="replace-with-a-random-token-of-at-least-24-characters"
+docker compose up -d --build
+```
+
+Server mode still uses local data as the working copy, so an outage does not block normal work. Restore downloads and verifies a snapshot first, then applies it on the next Clownfish restart.
+
 ## Model connection
 
-Open **Model connection**, choose a provider and model, and enter an API key. The configuration is saved only after a successful connection test.
+Open **Settings → Models and services**, choose a provider and model, and enter an API key. The configuration is saved only after a successful connection test.
 
 Presets cover Zhipu GLM, OpenAI, Anthropic Claude, DeepSeek, Alibaba Qwen, MiniMax, and custom services. OpenAI-compatible and Anthropic-compatible protocols are supported. Vision, web search, and embedding support depend on the selected service and model.
 
@@ -116,13 +131,14 @@ Everyday conversation prefers a lighter provider model when available. Experts, 
 
 As of 2026-08-13:
 
-- build, type checking, and **359 automated tests** pass;
+- build, type checking, and **369 automated tests** pass;
 - **20/20** sanitized DOCX cases pass structural round-trip checks and open in local Microsoft Word;
 - **10/10** small-project profiles pass inspection, patch proposal, selective application, and rollback;
-- **20 real product-review rounds** pass on a fresh data directory with no unresolved issues;
+- this release adds **10 retained real product-review rounds**; 30 runs are now recorded with no unresolved issue;
+- Docker sync passed health, authentication, encrypted upload, download, and restart-restore checks; controlled dependency installation passed a real locked npm install;
 - the offline dependency audit reports no known vulnerability, and the sensitive-data scan finds no credential.
 
-See the [product capability acceptance record](docs/product-capability-acceptance-2026-08-13.md) for evidence. Memory-core tests remain in the separate `nemos-memory` repository and are not counted in the 359 tests above.
+See the [product capability acceptance record](docs/product-capability-acceptance-2026-08-13.md) for evidence. Memory-core tests remain in the separate `nemos-memory` repository and are not counted in the 369 tests above.
 
 ## Run locally
 

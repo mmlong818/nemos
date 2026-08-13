@@ -3011,6 +3011,15 @@
   .mode-switch button:focus-visible { outline:2px solid #8f2f59; outline-offset:2px; }
   @media(max-width:720px){.conversation-layout{grid-template-columns:1fr}.conversation-card{padding:18px}.timeline-message{grid-template-columns:54px minmax(0,1fr)}.timeline-message button{grid-column:2}}
   @media(max-width:520px){.mode-switch{gap:3px}.mode-switch button{padding:0 8px}#contacts .contact-delete{opacity:1}}
+  @media(max-width:720px){
+    body{display:block;padding-left:52px}
+    #sidebar{position:fixed;inset:0 auto 0 0;width:52px;height:100vh;min-height:0;max-height:none;display:block;overflow:visible;z-index:30}
+    #wechatRail{width:52px;height:100%;padding:12px 0 8px}
+    #sessionPane{display:none}
+    #main{width:100%;height:100vh;min-height:0}
+    #header .hname{max-width:55vw}
+    #composer{position:relative}
+  }
 </style>
   <link rel="stylesheet" href="/assets/app-navigation-labels.css" />
 </head>
@@ -3023,10 +3032,11 @@
         <button class="rail-icon active" type="button" title="任务" aria-label="任务" aria-current="page" data-icon="message-circle" data-rail-label="任务"></button>
         <button class="rail-icon" id="railCap" type="button" title="能力" aria-label="能力" data-icon="boxes" data-rail-label="能力"></button>
         <button class="rail-icon" id="railOffice" type="button" title="办公文件" aria-label="办公文件" data-icon="file" data-rail-label="文件"></button>
+        <button class="rail-icon" id="railDev" type="button" title="开发" aria-label="开发" data-icon="code" data-rail-label="开发"></button>
         <button class="rail-icon" id="railWork" type="button" title="工作" aria-label="工作" data-icon="work" data-rail-label="工作"></button>
       </nav>
       <div class="rail-spacer"></div>
-      <button class="rail-icon" id="settingsbtn" type="button" title="设置" aria-label="设置" data-icon="settings" data-rail-label="设置" hidden></button>
+      <button class="rail-icon" id="settingsbtn" type="button" title="设置" aria-label="设置" data-icon="settings" data-rail-label="设置"></button>
     </div>
     <div id="sessionPane">
       <div id="brand"><div class="sidebar-header-actions"><button class="sidebar-header-action" id="sidebarSearchToggle" type="button" title="搜索对话" aria-label="搜索对话" aria-expanded="false"><span data-icon="search" aria-hidden="true"></span></button></div><small id="llm">…</small></div>
@@ -7835,7 +7845,7 @@ function openSettingsMenu() {
   $("#settingsmenu").classList.add("show");
   refreshLLMStatus();
 }
-$("#settingsbtn").onclick = openSettingsMenu;
+$("#settingsbtn").onclick = () => { window.location.href = "/settings"; };
 $("#smclose").onclick = () => $("#settingsmenu").classList.remove("show");
 $("#settingsmenu").onclick = (e) => { if (e.target.id === "settingsmenu") $("#settingsmenu").classList.remove("show"); };
 $("#sm-devtoggle").onclick = toggleDeveloperMode;
@@ -8006,6 +8016,7 @@ document.addEventListener("keydown", (event) => {
 });
 $("#railCap").onclick = () => { window.location.href = "/capabilities"; };
 $("#railOffice").onclick = () => { window.location.href = "/office"; };
+$("#railDev").onclick = () => { window.location.href = "/develop"; };
 $("#railWork").onclick = () => { window.location.href = "/tasks"; };
 $("#composerTool").onclick = openToolModal;
 $("#composerCapability").onclick = () => openCapabilityPanel({ includeDraft: true });
