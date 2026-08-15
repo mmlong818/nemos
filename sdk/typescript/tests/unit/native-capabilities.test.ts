@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { Script } from "node:vm";
 
 import { CapabilityRuntime, type ArtifactFormat } from "../../examples/companion/capabilities.js";
 import { parseNativeCapabilityPayload } from "../../examples/companion/native-capability-contracts.js";
@@ -152,6 +153,20 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
         const html = readFileSync(result.artifact.file, "utf8");
         assert.match(html, /小丑鱼能力结果/);
         assert.doesNotMatch(html, /github\.com|source_url|upstream_repository/i);
+        if (capabilityId === "product-design") {
+          assert.match(html, /可编辑设计画布/);
+          assert.match(html, /data-viewport="desktop"/);
+          assert.match(html, /data-viewport="mobile"/);
+          assert.match(html, /data-workbench-value data-design-field="sections"/);
+          assert.match(html, /data-workbench-value data-design-token="--design-accent"/);
+          assert.match(html, /--design-accent:#b85c38/);
+          assert.match(html, /artifact-workspace\.js/);
+          const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
+            .filter((match) => !/type="application\/json"/.test(match[0]))
+            .map((match) => match[1]);
+          assert.ok(scripts.length > 0);
+          scripts.forEach((source) => new Script(source));
+        }
       }
     }
     const builtId = runtime.snapshot().artifacts.find((item) => item.capabilityId === "ability-builder")?.metadata?.generatedAbilityId;
@@ -231,7 +246,7 @@ test("演示文稿文字过密、版式单一或缺少备注时只标记为已�
     assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-layout-variety")?.status, "failed");
     assert.equal(result.artifact.proof?.checks.find((check) => check.id === "speaker-notes")?.status, "failed");
     assert.equal(result.artifact.metadata?.presentationVersion?.state, "needs-review");
-    assert.equal(result.artifact.metadata?.presentationVersion?.lastGoodArtifactId, lastGood.artifact.proof?.level === "verified" ? lastGood.artifact.id : undefined);
+    assert.equal(result.artifact.metadata?.presentationVersion?.lastGoodArtifactId, lastGood.artifact.proof?.level !== "produced" ? lastGood.artifact.id : undefined);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>项目工作台 · 小丑鱼</title>
   <link rel="stylesheet" href="/assets/development-workbench.css">
+  <link rel="stylesheet" href="/assets/scramble-theme.css">
+  <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
+  <script src="/assets/scramble-wallpaper.js"></script>
 </head>
-<body>
+<body data-page="develop">
   <div class="app-shell">
     <header class="topbar">
       <a class="back-link" href="/capabilities#history" aria-label="返回能力记录">←</a>
@@ -73,5 +76,6 @@
     <section class="empty-screen" id="emptyScreen" hidden><h1>无法打开这份修改</h1><p id="emptyMessage">记录可能已经不存在。</p><a href="/capabilities#history">返回能力记录</a></section>
   </div>
   <script src="/assets/development-workbench.js" defer></script>
+  <script src="/assets/scramble-confetti.js" defer></script>
 </body>
 </html>

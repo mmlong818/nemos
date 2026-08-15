@@ -25,3 +25,10 @@ test("运行中的开发任务从持久作业检查点投影，不在页面猜�
   assert.match(script, /location\.reload\(\)/);
   assert.match(server, /job\?\.payload\?\.capabilityId === "project-development"/);
 });
+
+test("开发结果页按执行权限解释是否已经修改项目", () => {
+  assert.match(script, /approvalPolicy === "full"/);
+  assert.match(script, /完全控制可能已经留下部分修改/);
+  assert.match(script, /完全控制会直接修改当前项目，不经过修改提案/);
+  assert.match(script, /只读检查不会修改项目文件/);
+});

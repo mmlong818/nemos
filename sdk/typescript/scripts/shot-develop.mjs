@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true });
+const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+const errors = [];
+page.on('pageerror', e => errors.push(e.message));
+page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+await page.goto('http://localhost:8787/develop', { waitUntil: 'networkidle' });
+await page.waitForTimeout(800);
+await page.screenshot({ path: '.tmp-screenshots/clownfish-develop.png' });
+console.log('errors:', errors.length ? errors : 'none');
+await browser.close();

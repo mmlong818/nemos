@@ -152,11 +152,11 @@ export class DevelopmentProposalStore {
   private readonly file: string;
   private proposals: DevelopmentProposal[];
 
-  constructor(dataDir: string) {
+  constructor(dataDir: string, options: { recoverInterrupted?: boolean } = {}) {
     mkdirSync(dataDir, { recursive: true });
     this.file = resolve(dataDir, "development-proposals.json");
     this.proposals = readProposalFile(this.file);
-    this.recoverInterrupted();
+    if (options.recoverInterrupted !== false) this.recoverInterrupted();
   }
 
   begin(workspacePath: string, baseRevision?: string, stagingWorkspacePath = workspacePath): DevelopmentProposalSession {
@@ -181,6 +181,15 @@ export class DevelopmentProposalStore {
 
   list(): DevelopmentProposal[] {
     return structuredClone(this.proposals);
+  }
+
+  removeForWorkspace(workspacePath: string): number {
+    const expected = resolve(workspacePath);
+    const removed = this.proposals.filter((proposal) => resolve(proposal.workspacePath) === expected).length;
+    if (!removed) return 0;
+    this.proposals = this.proposals.filter((proposal) => resolve(proposal.workspacePath) !== expected);
+    writeAtomic(this.file, Buffer.from(JSON.stringify(this.proposals.slice(-200), null, 2), "utf8"));
+    return removed;
   }
 
   apply(id: string, selectedPaths?: string[]): DevelopmentProposal {

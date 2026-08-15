@@ -370,3 +370,81 @@ test("stops before side effects when a run exhausts its hard token budget", asyn
   assert.equal(executions, 0);
   assert.equal(events.includes("token_budget_exhausted"), true);
 });
+
+test("destructive tool failure stops later destructive operations in the same run", async () => {
+  let executions = 0;
+  const destructive: AgentTool = {
+    definition: {
+      name: "delete_workspace_item",
+      description: "delete an item",
+      inputSchema: { type: "object" },
+      effect: "write",
+      risk: "destructive",
+    },
+    execute: async () => {
+      executions++;
+      return { content: "delete failed", isError: true };
+    },
+  };
+  const runtime = new AgentRuntime(
+    modelFrom([
+      { text: "", toolCalls: [{ id: "delete-1", name: destructive.definition.name, arguments: {} }] },
+      { text: "", toolCalls: [{ id: "delete-2", name: destructive.definition.name, arguments: {} }] },
+      { text: "stopped safely" },
+    ]),
+    [destructive],
+    { authorizeTool: async () => ({ allowed: true }) },
+  );
+
+  const result = await runtime.run({ sessionId: "destructive-stop", systemPrompt: "system", prompt: "delete" });
+  const toolMessages = result.messages.filter((message) => message.role === "tool");
+  assert.equal(executions, 1);
+  assert.match(toolMessages[0]?.content ?? "", /delete failed/);
+  assert.match(toolMessages[1]?.content ?? "", /destructive operation blocked after failure/);
+});
+
+test("destructive failure stop survives a persisted resume checkpoint", async () => {
+  let executions = 0;
+  let authorizations = 0;
+  const destructive: AgentTool = {
+    definition: {
+      name: "remove_remote_data",
+      description: "remove data",
+      inputSchema: { type: "object" },
+      effect: "write",
+      risk: "destructive",
+    },
+    execute: async () => {
+      executions++;
+      return { content: "unexpected" };
+    },
+  };
+  const runtime = new AgentRuntime(modelFrom([{ text: "review required" }]), [destructive], {
+    authorizeTool: async () => { authorizations++; return { allowed: true }; },
+  });
+
+  const result = await runtime.run({
+    sessionId: "destructive-resume",
+    systemPrompt: "system",
+    prompt: "continue",
+    resume: {
+      phase: "after_model",
+      round: 1,
+      nextRound: 1,
+      messages: [
+        { role: "system", content: "system" },
+        { role: "user", content: "continue" },
+        { role: "assistant", content: "", toolCalls: [{ id: "remove-1", name: destructive.definition.name, arguments: {} }] },
+      ],
+      handoffs: 0,
+      previousToolCallSignature: "remove_remote_data:{}",
+      repeatedToolCallCount: 1,
+      pendingToolCalls: [{ id: "remove-1", name: destructive.definition.name, arguments: {} }],
+      destructiveFailureStopped: true,
+    },
+  });
+
+  assert.equal(executions, 0);
+  assert.equal(authorizations, 0);
+  assert.match(result.messages.find((message) => message.role === "tool")?.content ?? "", /destructive operation blocked after failure/);
+});

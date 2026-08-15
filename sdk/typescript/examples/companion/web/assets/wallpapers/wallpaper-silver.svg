@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2560" height="1440" viewBox="0 0 2560 1440">
+  <defs>
+    <radialGradient id="a" cx="22%" cy="8%" r="85%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="b" cx="85%" cy="22%" r="75%">
+      <stop offset="0%" stop-color="#d7e3f4"/>
+      <stop offset="55%" stop-color="#d7e3f4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="c" cx="55%" cy="100%" r="95%">
+      <stop offset="0%" stop-color="#c4c9d8"/>
+      <stop offset="55%" stop-color="#c4c9d8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="d" cx="6%" cy="80%" r="65%">
+      <stop offset="0%" stop-color="#dfe9e6"/>
+      <stop offset="50%" stop-color="#dfe9e6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="60"/>
+    </filter>
+  </defs>
+  <rect width="2560" height="1440" fill="#e9ebf0"/>
+  <rect width="2560" height="1440" fill="url(#a)" filter="url(#soft)"/>
+  <rect width="2560" height="1440" fill="url(#b)" filter="url(#soft)"/>
+  <rect width="2560" height="1440" fill="url(#c)" filter="url(#soft)"/>
+  <rect width="2560" height="1440" fill="url(#d)" filter="url(#soft)"/>
+</svg>

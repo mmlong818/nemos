@@ -42,8 +42,8 @@ function toast(message, error = false) {
 }
 
 const pageCopy = {
-  tasks: ["持续工作", "任务", "把需要重复执行的事情留在这里；新用户仍可直接从聊天开始。"],
-  spaces: ["多个任务，一件事情", "工作空间", "把相关任务、结果和决定放在一起；工作变复杂时再创建。"],
+  tasks: ["持续工作", "任务", "把需要重复执行的事情留在这里，并随时查看进展。"],
+  spaces: ["多个任务，一件事情", "项目", "把相关任务、结果和决定放在一起；工作变复杂时再创建。"],
   automations: ["按计划完成", "自动化", "把固定频率的工作交给小丑鱼；随时暂停，也可以立即运行。"],
   collaboration: ["需要时再组织", "协作", "小丑鱼会按任务动态调用合适的专家，最后统一完成交付。"],
   resources: ["任务所需的上下文", "资料", "保存本地笔记、文本和链接，并在执行任务时明确选择。"],
@@ -64,6 +64,37 @@ function setPage() {
     else link.removeAttribute("aria-current");
   });
   document.title = `${copy[1]} · 小丑鱼`;
+  $("#workSearchEyebrow").textContent = copy[1];
+  $("#workSearchTitle").textContent = `搜索${copy[1]}`;
+  $("#workSearch").placeholder = `输入${copy[1]}名称或内容`;
+  updatePrimaryWorkNavigation();
+}
+
+function updatePrimaryWorkNavigation() {
+  const projectLink = $("#projectsViewLink");
+  if (!projectLink) return;
+  const spaces = state.snapshot?.spaces || [];
+  const longRunningTasks = (state.snapshot?.tasks || []).filter((task) => !task.oneOff);
+  projectLink.hidden = view !== "spaces" && spaces.length === 0 && longRunningTasks.length < 2;
+}
+
+function workSearchEntries() {
+  if (view === "tasks" || view === "automations" || view === "collaboration") {
+    return (state.snapshot?.tasks || []).map((item) => ({ id: item.id, kind: "task", title: item.title || "未命名任务", summary: item.instruction || storylineOf(item).nextAction || "查看任务", meta: view === "automations" ? "自动化" : view === "collaboration" ? "协作任务" : "任务" }));
+  }
+  if (view === "spaces") return (state.snapshot?.spaces || []).map((item) => ({ id: item.id, kind: "space", title: item.title || "未命名项目", summary: item.description || "查看项目中的任务", meta: "项目" }));
+  if (view === "resources") return state.knowledge.map((item) => ({ id: item.id, kind: "resource", title: item.title || "未命名资料", summary: item.excerpt || item.sourceUrl || "查看资料", meta: item.archivedAt ? "已归档" : "资料" }));
+  if (view === "artifacts") return (state.snapshot?.artifacts || []).map((item) => ({ id: item.id, kind: "artifact", title: artifactDisplayTitle(item), summary: item.summary || "预览结果", meta: String(item.format || "结果").toUpperCase() }));
+  if (view === "runs") {
+    return [...state.jobs.map((item) => ({ id: item.id, kind: "run", title: item.payload?.title || item.type || "后台任务", summary: item.result?.summary || item.error || "查看运行记录", meta: jobStatusLabel(item.status) })), ...state.runs.map((item) => ({ id: item.runId, kind: "run", title: runDisplayTitle(item), summary: item.output || item.error || "查看运行记录", meta: jobStatusLabel(item.status) }))];
+  }
+  return state.memories.map((item) => ({ id: item.id, kind: "memory", title: item.content || "记忆", summary: layerNames[item.layer] || "整理后的记忆", meta: "记忆" }));
+}
+
+function renderWorkSearchResults(queryText) {
+  const query = String(queryText || "").trim().toLowerCase();
+  const entries = workSearchEntries().filter((item) => !query || `${item.title} ${item.summary} ${item.meta}`.toLowerCase().includes(query));
+  $("#workSearchResults").innerHTML = entries.length ? entries.slice(0, 80).map((item) => `<button class="app-search-result" type="button" role="option" data-work-search-kind="${escapeHtml(item.kind)}" data-work-search-id="${escapeHtml(item.id)}"><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(String(item.summary).slice(0, 120))}</small></span><small>${escapeHtml(item.meta)}</small></button>`).join("") : '<div class="app-search-empty">没有找到匹配的内容</div>';
 }
 
 function showLoading() {
@@ -181,7 +212,7 @@ function abilityName(id) {
 
 const PUBLIC_CAPABILITY_IDS = [
   "presentation-builder", "document-draft", "research-brief", "market-briefing", "thinking-workbench",
-  "product-design", "project-development", "meeting-minutes", "html-report", "decision-brief",
+  "product-design", "meeting-minutes", "html-report", "decision-brief",
   "business-deal", "market-opportunity", "ability-builder",
 ];
 
@@ -273,7 +304,7 @@ function renderTaskCard(task) {
         <span class="pill ${statusTone}">${escapeHtml(status)}</span>
         <span class="pill">${escapeHtml(abilityName(task.capabilityId))}</span>
         <span class="pill">${escapeHtml(taskOriginLabel(task))}</span>
-        ${task.spaceId ? `<a class="pill space-pill" href="/tasks?space=${encodeURIComponent(task.spaceId)}">${escapeHtml(spaceById(task.spaceId)?.title || "已归档空间")}</a>` : ""}
+        ${task.spaceId ? `<a class="pill space-pill" href="/tasks?space=${encodeURIComponent(task.spaceId)}">${escapeHtml(spaceById(task.spaceId)?.title || "已归档项目")}</a>` : ""}
         ${task.oneOff ? "" : `<span class="pill">${escapeHtml(scheduleLabel(task))}</span>`}
         <span class="pill">${escapeHtml(String(task.format).toUpperCase())}</span>
         ${versionCount > 1 ? `<span class="pill">${versionCount} 个版本</span>` : ""}
@@ -304,17 +335,11 @@ function renderTasks() {
   const activeCount = scopedTasks.filter((task) => storylineOf(task).status !== "completed").length;
   const runningCount = scopedTasks.filter((task) => taskJobs(task.id).some((job) => job.status === "queued" || job.status === "running")).length;
   const priority = scopedTasks.find((task) => storylineOf(task).status === "active") || scopedTasks[0];
-  $("#content").innerHTML = `${selectedSpace ? `<div class="context-bar"><div><span>工作空间</span><strong>${escapeHtml(selectedSpace.title)}</strong></div><a href="/tasks">查看全部任务</a></div>` : ""}<div class="toolbar"><input id="filterInput" type="search" placeholder="搜索任务…"><div class="toolbar-actions"><a class="button" href="/spaces">工作空间</a><button class="primary" id="newTask">新建任务</button></div></div>
+  const projectEntry = (state.snapshot?.spaces || []).length || tasks.filter((task) => !task.oneOff).length >= 2 ? '<a class="button" href="/spaces">项目</a>' : "";
+  $("#content").innerHTML = `${selectedSpace ? `<div class="context-bar"><div><span>项目</span><strong>${escapeHtml(selectedSpace.title)}</strong></div><a href="/tasks">查看全部任务</a></div>` : ""}<div class="toolbar"><span></span><div class="toolbar-actions">${projectEntry}</div></div>
     <div class="task-overview"><span><strong>${activeCount} 项</strong>正在推进${runningCount ? ` · ${runningCount} 项正在协作` : ""}</span><span>${priority ? `优先下一步：${escapeHtml(storylineOf(priority).nextAction)}` : "从聊天或能力页开始，长期工作再留到这里。"}</span></div>
     <div class="list" id="taskList"></div>`;
-  const draw = () => {
-    const query = $("#filterInput").value.trim().toLowerCase();
-    const visible = scopedTasks.filter((task) => `${task.title} ${task.instruction}`.toLowerCase().includes(query));
-    $("#taskList").innerHTML = visible.length ? visible.map(renderTaskCard).join("") : `<div class="empty">${selectedSpace ? "这个空间还没有任务。新建或编辑任务时可以归入这里。" : "还没有符合条件的任务。"}</div>`;
-  };
-  draw();
-  $("#filterInput").addEventListener("input", draw);
-  $("#newTask").onclick = () => openTaskDialog();
+  $("#taskList").innerHTML = scopedTasks.length ? scopedTasks.map(renderTaskCard).join("") : `<div class="empty">${selectedSpace ? "这个项目还没有任务。新建或编辑任务时可以归入这里。" : "还没有任务。"}</div>`;
   $("#taskList").onclick = async (event) => {
     const run = event.target.closest("[data-run-task]");
     const continueTask = event.target.closest("[data-continue-task]");
@@ -359,9 +384,9 @@ function renderSpaces() {
   const spaces = state.snapshot?.spaces || [];
   const active = spaces.filter((space) => space.status !== "archived");
   const archived = spaces.filter((space) => space.status === "archived");
-  $("#content").innerHTML = `<div class="toolbar space-toolbar"><p>单个任务无需建空间；同一件事出现多个任务时再归档。</p>${active.length ? '<button class="primary" id="newSpace">新建工作空间</button>' : ""}</div>
-    <div class="space-list" id="spaceList">${active.length ? active.map(renderSpaceRow).join("") : `<div class="space-empty"><span>01</span><h2>先从任务开始</h2><p>当一件工作包含多个任务、结果或决定时，再建立工作空间把它们放在一起。</p><button class="primary" data-create-first-space>新建第一个工作空间</button></div>`}</div>
-    ${archived.length ? `<details class="archived-spaces"><summary>${archived.length} 个已归档空间</summary><div>${archived.map((space) => `<div class="archived-space"><span><strong>${escapeHtml(space.title)}</strong><small>${escapeHtml(space.description || "无说明")}</small></span><button data-restore-space="${space.id}">恢复</button></div>`).join("")}</div></details>` : ""}`;
+  $("#content").innerHTML = `<div class="toolbar space-toolbar"><p>单个任务无需建项目；同一件事出现多个任务时再归档。</p>${active.length ? '<button class="primary" id="newSpace">新建项目</button>' : ""}</div>
+    <div class="space-list" id="spaceList">${active.length ? active.map(renderSpaceRow).join("") : `<div class="space-empty"><span>01</span><h2>先从任务开始</h2><p>当一件工作包含多个任务、结果或决定时，再建立项目把它们放在一起。</p><button class="primary" data-create-first-space>新建第一个项目</button></div>`}</div>
+    ${archived.length ? `<details class="archived-spaces"><summary>${archived.length} 个已归档项目</summary><div>${archived.map((space) => `<div class="archived-space"><span><strong>${escapeHtml(space.title)}</strong><small>${escapeHtml(space.description || "无说明")}</small></span><button data-restore-space="${space.id}">恢复</button></div>`).join("")}</div></details>` : ""}`;
   $("#newSpace")?.addEventListener("click", () => openSpaceDialog());
   $("[data-create-first-space]")?.addEventListener("click", () => openSpaceDialog());
   $("#content").onclick = async (event) => {
@@ -369,7 +394,7 @@ function renderSpaces() {
     const archive = event.target.closest("[data-archive-space]");
     const restore = event.target.closest("[data-restore-space]");
     if (edit) return openSpaceDialog(spaceById(edit.dataset.editSpace));
-    if (archive && confirm("归档这个工作空间？其中的任务和结果会保留。")) return setSpaceStatus(archive.dataset.archiveSpace, "archived");
+    if (archive && confirm("归档这个项目？其中的任务和结果会保留。")) return setSpaceStatus(archive.dataset.archiveSpace, "archived");
     if (restore) return setSpaceStatus(restore.dataset.restoreSpace, "active");
   };
 }
@@ -541,7 +566,7 @@ function openSpaceDialog(space) {
   $("#spaceId").value = space?.id || "";
   $("#spaceTitle").value = space?.title || "";
   $("#spaceDescription").value = space?.description || "";
-  $("#spaceDialogTitle").textContent = space ? "编辑工作空间" : "新建工作空间";
+  $("#spaceDialogTitle").textContent = space ? "编辑项目" : "新建项目";
   $("#spaceDialog").showModal();
 }
 
@@ -556,14 +581,14 @@ async function saveSpace() {
   });
   state.snapshot = result.snapshot;
   $("#spaceDialog").close();
-  toast("工作空间已保存");
+  toast("项目已保存");
   renderSpaces();
 }
 
 async function setSpaceStatus(id, status) {
   const result = await api("/api/capabilities/space", { method: "POST", body: JSON.stringify({ id, status }) });
   state.snapshot = result.snapshot;
-  toast(status === "archived" ? "工作空间已归档" : "工作空间已恢复");
+  toast(status === "archived" ? "项目已归档" : "项目已恢复");
   renderSpaces();
 }
 
@@ -715,14 +740,8 @@ function renderArtifactCard(item) {
 
 function renderArtifacts() {
   const artifacts = state.snapshot?.artifacts || [];
-  $("#content").innerHTML = `<div class="toolbar"><input id="filterInput" placeholder="搜索结果"><a class="button" href="/office">打开办公文件</a></div><div class="list" id="artifactList"></div>`;
-  const draw = () => {
-    const query = $("#filterInput").value.trim().toLowerCase();
-    const visible = artifacts.filter((item) => `${item.title} ${item.summary}`.toLowerCase().includes(query));
-    $("#artifactList").innerHTML = visible.length ? visible.map(renderArtifactCard).join("") : '<div class="empty">完成能力任务后，结果会自动出现在这里。</div>';
-  };
-  draw();
-  $("#filterInput").addEventListener("input", draw);
+  $("#content").innerHTML = `<div class="toolbar"><span></span><a class="button" href="/office">打开办公文件</a></div><div class="list" id="artifactList"></div>`;
+  $("#artifactList").innerHTML = artifacts.length ? artifacts.map(renderArtifactCard).join("") : '<div class="empty">完成能力任务后，结果会自动出现在这里。</div>';
   $("#artifactList").onclick = async (event) => {
     const useful = event.target.closest("[data-feedback-useful]");
     const improve = event.target.closest("[data-feedback-improve]");
@@ -983,6 +1002,27 @@ if (window.EventSource) {
 window.addEventListener("beforeunload", () => agentEventSource?.close());
 
 hydrateIcons();
+const workSearchOverlay = window.AppSearchOverlay.bind({
+  dialog: "#workSearchDialog",
+  trigger: "#workSearchToggle",
+  input: "#workSearch",
+  close: "#closeWorkSearch",
+  render: renderWorkSearchResults,
+});
+$("#workSearchResults").onclick = async (event) => {
+  const result = event.target.closest("[data-work-search-kind]");
+  if (!result) return;
+  workSearchOverlay.close();
+  const kind = result.dataset.workSearchKind;
+  const id = result.dataset.workSearchId;
+  if (kind === "task") {
+    const task = (state.snapshot?.tasks || []).find((item) => item.id === id);
+    if (task) openStoryline(task);
+  } else if (kind === "space") location.href = `/tasks?space=${encodeURIComponent(id)}`;
+  else if (kind === "artifact") window.open(`/api/capabilities/artifact/preview?id=${encodeURIComponent(id)}`, "_blank", "noopener");
+  else if (kind === "resource") document.querySelector(`[data-preview-resource="${CSS.escape(id)}"]`)?.click();
+  else if (kind === "memory") document.querySelector(`[data-memory-detail="${CSS.escape(id)}"]`)?.click();
+};
 setPage();
 showLoading();
 void load();

@@ -153,6 +153,10 @@ async function loadRunningJob() {
   const job = jobData.job;
   const proposal = job.result?.data?.artifact?.metadata?.development?.proposal;
   if (proposal?.id) { location.replace(`/development?id=${encodeURIComponent(proposal.id)}`); return; }
+  const approvalPolicy = job.payload?.approvalPolicy || "request";
+  const accessMode = job.payload?.accessMode === "inspect" ? "inspect" : "develop";
+  const running = job.status === "queued" || job.status === "running";
+  const failed = job.status === "failed" || job.status === "cancelled";
   state.fileView = "workspace";
   state.workspaceFiles = workspace.files || [];
   state.activePath = state.workspaceFiles.find((file) => file.readable)?.path || "";
@@ -167,13 +171,35 @@ async function loadRunningJob() {
   document.querySelector('[data-file-view="workspace"]').setAttribute("aria-selected", "true");
   $(".selection-tools").hidden = true;
   $("#applyButton").hidden = true; $("#rollbackButton").hidden = true; $("#rejectButton").hidden = true; $("#continueButton").hidden = true;
-  $(".decision-panel h2").textContent = job.status === "failed" ? "这次执行没有完成" : "小丑鱼正在处理项目";
-  $(".decision-copy").textContent = job.status === "failed" ? "项目原文件仍受修改提案保护，可以返回能力页调整要求后重试。" : "你可以离开此页面；任务会在后台继续，进度来自真实运行记录。";
+  $(".decision-panel h2").textContent = failed
+    ? "这次执行没有完成"
+    : running
+      ? "小丑鱼正在处理项目"
+      : accessMode === "inspect"
+        ? "项目检查已完成"
+        : approvalPolicy === "full"
+          ? "项目修改已完成"
+          : "任务已完成";
+  $(".decision-copy").textContent = failed
+    ? approvalPolicy === "full"
+      ? "完全控制可能已经留下部分修改，请先核对文件和运行记录，再决定是否重试。"
+      : "项目原文件仍受修改提案保护，可以返回开发页调整要求后重试。"
+    : running
+      ? "你可以离开此页面；任务会在后台继续，进度来自真实运行记录。"
+      : accessMode === "inspect"
+        ? "本次只读取并检查了项目，没有修改文件。"
+        : approvalPolicy === "full"
+          ? "Codex 已直接完成修改；请在左侧查看项目文件，并在下方核对运行记录。"
+          : "本次任务已经结束，请核对项目文件和运行记录。";
   renderEvidence(readiness.development);
   const checkpoints = Array.isArray(job.checkpoints) ? job.checkpoints : [];
   $("#checkSummary").textContent = checkpoints.length ? `${checkpoints.length} 条记录` : "等待第一条记录";
   $("#checkList").innerHTML = checkpoints.length ? checkpoints.slice().reverse().map((item) => `<div class="check-item"><span class="check-mark is-pass">·</span><span><strong>${escapeHtml(item.status || "正在执行")}</strong><small>${escapeHtml(item.createdAt ? new Date(item.createdAt).toLocaleString("zh-CN") : "")}${Number.isFinite(item.progress) ? ` · ${item.progress}%` : ""}</small></span></div>`).join("") : '<p class="decision-copy">任务进入执行后，读取、修改和检查步骤会显示在这里。</p>';
-  $("#isolationState").textContent = "任务执行期间只展示可核对的运行事件；正式修改仍需完成后确认";
+  $("#isolationState").textContent = accessMode === "inspect"
+    ? "只读检查不会修改项目文件"
+    : approvalPolicy === "full"
+      ? "完全控制会直接修改当前项目，不经过修改提案"
+      : "修改在独立副本中执行，完成后按批准方式写入项目";
   renderFiles();
   if (state.activePath) await openWorkspaceFile(state.activePath);
   $("#workbench").removeAttribute("aria-busy");

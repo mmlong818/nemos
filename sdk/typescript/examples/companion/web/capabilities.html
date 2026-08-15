@@ -7,9 +7,13 @@
   <link rel="icon" href="/assets/brand/clownfish-mark.svg">
   <title>能力 · 小丑鱼</title>
   <link rel="stylesheet" href="/assets/capability-center.css">
+  <link rel="stylesheet" href="/assets/clownfish-theme.css">
   <link rel="stylesheet" href="/assets/app-navigation-labels.css">
+  <link rel="stylesheet" href="/assets/scramble-theme.css">
+  <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
+  <script src="/assets/scramble-wallpaper.js"></script>
 </head>
-<body>
+<body data-page="capabilities">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
       <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
@@ -25,16 +29,22 @@
 
     <main>
       <header class="topbar">
-        <a class="wordmark" href="/">能力</a>
-        <nav class="view-tabs" aria-label="能力页面">
-          <button class="is-current" type="button" data-view-target="start">开始</button>
-          <button type="button" data-view-target="runs">进行中 <span class="count" id="runningCount" hidden>0</span></button>
-          <button type="button" data-view-target="history">已完成</button>
-          <button type="button" data-view-target="files">文件</button>
-        </nav>
+        <span class="wordmark" id="capabilityViewTitle">开始</span>
         <a class="back-chat" href="/">返回任务</a>
       </header>
 
+      <div class="capability-layout">
+        <aside class="capability-panel" aria-label="能力页面导航">
+          <strong class="capability-panel-title">能力</strong>
+          <nav class="capability-view-nav">
+            <button class="is-current" type="button" data-capability-nav data-view-target="start" data-app-icon="spark"><span aria-hidden="true"></span><span>开始</span></button>
+            <button type="button" data-capability-nav data-view-target="runs" data-app-icon="square"><span aria-hidden="true"></span><span>进行中</span><span class="count" id="runningCount" hidden>0</span></button>
+            <button type="button" data-capability-nav data-view-target="history" data-app-icon="bookmark"><span aria-hidden="true"></span><span>已完成</span></button>
+            <button type="button" data-capability-nav data-view-target="files" data-app-icon="file"><span aria-hidden="true"></span><span>文件</span></button>
+          </nav>
+        </aside>
+
+        <div class="capability-content">
       <section class="view is-active" data-view="start">
         <div class="start-wrap">
           <aside class="chat-context" id="chatContext" hidden>
@@ -83,8 +93,30 @@
             </div>
             <div class="launch-layout">
               <div class="launch-form">
-                <label id="instructionLabel" for="instructionInput">任务要求</label>
-                <textarea id="instructionInput" rows="7" maxlength="16000" placeholder="说清楚要完成什么，也可以补充受众、重点、语气或页数"></textarea>
+                <div id="standardTaskFields">
+                  <label id="instructionLabel" for="instructionInput">任务要求</label>
+                  <textarea id="instructionInput" rows="7" maxlength="16000" placeholder="说清楚要完成什么，也可以补充受众、重点、语气或页数"></textarea>
+                </div>
+                <section class="quick-ability" id="quickAbilityFields" hidden>
+                  <div class="quick-ability-input" id="quickTextInput">
+                    <label id="quickInputLabel" for="quickInput">原文</label>
+                    <textarea id="quickInput" rows="7" maxlength="30000" placeholder="把要处理的文字放到这里"></textarea>
+                    <button class="quiet-button quick-paste" id="quickPaste" type="button">读取剪贴板</button>
+                  </div>
+                  <div class="quick-speech-input" id="quickSpeechInput" hidden>
+                    <label class="quick-file-picker" for="quickSpeechFile">
+                      <span class="quick-file-icon" data-app-icon="mic" aria-hidden="true"><span></span></span>
+                      <span><strong>选择音频或视频</strong><small id="quickSpeechFileName">支持常见音频和 MP4、WebM 视频</small></span>
+                      <input id="quickSpeechFile" type="file" accept="audio/*,video/mp4,video/webm">
+                    </label>
+                    <button class="quiet-button" id="quickRecord" type="button">开始录音</button>
+                  </div>
+                  <div class="quick-ability-status" id="quickStatus" role="status" aria-live="polite"></div>
+                  <div class="quick-ability-result" id="quickResultWrap" hidden>
+                    <div class="quick-result-heading"><label for="quickResult">处理结果</label><div><button class="quiet-button" id="quickCopy" type="button">复制</button><button class="quiet-button" id="quickDownload" type="button">保存文本</button></div></div>
+                    <textarea id="quickResult" rows="9" readonly></textarea>
+                  </div>
+                </section>
                 <section class="developer-fields" id="developerFields" hidden>
                   <div class="developer-intro">
                     <span class="developer-intro-icon" data-app-icon="code" aria-hidden="true"><span></span></span>
@@ -99,7 +131,7 @@
                     <button id="useRecentWorkspace" type="button" hidden>最近使用</button>
                   </div>
                   <datalist id="recentWorkspacePaths"></datalist>
-                  <small class="workspace-path-help">第一次使用时，可在资源管理器地址栏复制文件夹路径；以后会保留最近使用的项目。</small>
+                  <small class="workspace-path-help">可在资源管理器地址栏复制文件夹路径；系统会保留最近使用的项目。</small>
                   <fieldset class="developer-mode-field">
                     <legend>希望小丑鱼怎么处理</legend>
                     <div class="developer-mode-options">
@@ -176,6 +208,8 @@
           <div class="file-grid" id="filesList"></div>
         </div>
       </section>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -192,5 +226,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/assets/app-icons.js" defer></script>
   <script src="/assets/capability-center.js" defer></script>
+  <script src="/assets/scramble-confetti.js" defer></script>
 </body>
 </html>

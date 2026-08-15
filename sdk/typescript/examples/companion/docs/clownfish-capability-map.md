@@ -1,9 +1,9 @@
 # 小丑鱼能力地图
 
 状态：当前实现说明
-更新：2026-08-10
+更新：2026-08-15
 
-## 1. 面向用户的 13 项能力
+## 1. 面向用户的 16 项能力
 
 | 用户名称 | 内部能力 | 默认结果 | 主要用途 |
 |---|---|---|---|
@@ -13,8 +13,11 @@
 | 查港股资料 | market-briefing | Markdown | 公告、关注列表与行情快照 |
 | 梳理复杂问题 | thinking-workbench | HTML | 事实、假设、矛盾和验证 |
 | 设计产品界面 | product-design | HTML | 用户流程、页面和验收 |
-| 开发项目 | project-development | Markdown | 读取指定项目、形成修改提案并验证 |
+| 开发项目 | project-development | 项目修改 + 验证记录 | 读取指定项目、形成修改提案并验证 |
 | 整理会议纪要 | meeting-minutes | DOCX | 决定、行动项、责任与风险 |
+| 翻译文字 | quick-translate | TXT | 中英文自动识别与快速互译 |
+| 语音转写 | quick-speech | TXT | 音频、视频和现场录音转文字 |
+| 文字润色 | quick-polish | TXT | 修正错别字、标点和断句，不改变原意 |
 | 做网页报告 | html-report | HTML | 可直接打开的独立报告 |
 | 比较方案 | decision-brief | Markdown | 证据、收益、代价与失效条件 |
 | 推进商务合作 | business-deal | HTML | 关键人、异议、边界和跟进 |

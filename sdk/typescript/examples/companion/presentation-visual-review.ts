@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -17,6 +18,8 @@ export interface PresentationVisualReviewPage {
 
 export interface PresentationVisualReview {
   engine: "chromium-headless";
+  profileIsolation: "ephemeral";
+  profileCleanup: "completed" | "deferred";
   checkedAt: string;
   viewport: { width: number; height: number };
   pages: PresentationVisualReviewPage[];
@@ -30,38 +33,37 @@ export async function reviewPresentationPreview(previewFile: string, slideCount:
   const browser = findChromiumExecutable();
   const checkedAt = new Date().toISOString();
   if (!browser) {
-    return { engine: "chromium-headless", checkedAt, viewport: VIEWPORT, pages: [], passed: false, unavailableReason: "未找到 Chromium 浏览器，无法执行真实关键页渲染" };
+    return { engine: "chromium-headless", profileIsolation: "ephemeral", profileCleanup: "completed", checkedAt, viewport: VIEWPORT, pages: [], passed: false, unavailableReason: "未找到 Chromium 浏览器，无法执行真实关键页渲染" };
   }
   const outputDir = previewFile.replace(/-preview\.html$/i, "-visual-review");
   mkdirSync(outputDir, { recursive: true });
   const pages: PresentationVisualReviewPage[] = [];
-  for (const slide of keySlides(slideCount)) {
-    const screenshot = join(outputDir, `slide-${slide + 1}.png`);
-    const url = pathToFileURL(previewFile);
-    url.searchParams.set("slide", String(slide));
-    const result = spawnSync(browser, [
-      "--headless=new",
-      ...(process.platform === "linux" ? ["--no-sandbox"] : []),
-      "--disable-gpu",
-      "--disable-extensions",
-      "--disable-background-networking",
-      "--hide-scrollbars",
-      "--no-first-run",
-      "--run-all-compositor-stages-before-draw",
-      "--virtual-time-budget=1000",
-      `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
-      `--screenshot=${screenshot}`,
-      url.href,
-    ], { encoding: "utf8", timeout: 15_000, windowsHide: true });
-    if (result.status !== 0 || !existsSync(screenshot) || statSync(screenshot).size < 1_000) {
-      pages.push({ slide, screenshot, byteLength: 0, nonUniformRatio: 0, tonalRange: 0, passed: false, detail: "关键页未能渲染为有效截图" });
-      continue;
+  const profileDir = mkdtempSync(join(tmpdir(), "clownfish-presentation-render-"));
+  let profileCleanup: PresentationVisualReview["profileCleanup"] = "deferred";
+  try {
+    for (const slide of keySlides(slideCount)) {
+      const screenshot = join(outputDir, `slide-${slide + 1}.png`);
+      const url = pathToFileURL(previewFile);
+      url.searchParams.set("slide", String(slide));
+      const result = spawnSync(browser, presentationBrowserArguments(profileDir, screenshot, url.href), {
+        encoding: "utf8",
+        timeout: 15_000,
+        windowsHide: true,
+      });
+      if (result.status !== 0 || !existsSync(screenshot) || statSync(screenshot).size < 1_000) {
+        pages.push({ slide, screenshot, byteLength: 0, nonUniformRatio: 0, tonalRange: 0, passed: false, detail: "关键页未能渲染为有效截图" });
+        continue;
+      }
+      pages.push(await inspectScreenshot(slide, screenshot));
     }
-    pages.push(await inspectScreenshot(slide, screenshot));
+  } finally {
+    profileCleanup = await removeTemporaryProfile(profileDir);
   }
   if (pages.length > 0 && pages.every((page) => page.byteLength === 0)) {
     return {
       engine: "chromium-headless",
+      profileIsolation: "ephemeral",
+      profileCleanup,
       checkedAt,
       viewport: VIEWPORT,
       pages,
@@ -69,7 +71,44 @@ export async function reviewPresentationPreview(previewFile: string, slideCount:
       unavailableReason: "浏览器未能完成关键页截图，真实渲染复核未执行",
     };
   }
-  return { engine: "chromium-headless", checkedAt, viewport: VIEWPORT, pages, passed: pages.length > 0 && pages.every((page) => page.passed) };
+  return { engine: "chromium-headless", profileIsolation: "ephemeral", profileCleanup, checkedAt, viewport: VIEWPORT, pages, passed: pages.length > 0 && pages.every((page) => page.passed) };
+}
+
+async function removeTemporaryProfile(profileDir: string): Promise<PresentationVisualReview["profileCleanup"]> {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    try {
+      rmSync(profileDir, { recursive: true, force: true });
+      return "completed";
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "EBUSY" && code !== "ENOTEMPTY") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  return "deferred";
+}
+
+export function presentationBrowserArguments(profileDir: string, screenshot: string, url: string): string[] {
+  return [
+    "--headless=new",
+    ...(process.platform === "linux" ? ["--no-sandbox"] : []),
+    `--user-data-dir=${profileDir}`,
+    "--incognito",
+    "--disable-sync",
+    "--disable-default-apps",
+    "--disable-crash-reporter",
+    "--noerrdialogs",
+    "--disable-gpu",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--hide-scrollbars",
+    "--no-first-run",
+    "--run-all-compositor-stages-before-draw",
+    "--virtual-time-budget=1000",
+    `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
+    `--screenshot=${screenshot}`,
+    url,
+  ];
 }
 
 export function findChromiumExecutable(): string | null {

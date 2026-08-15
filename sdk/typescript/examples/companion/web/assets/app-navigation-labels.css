@@ -1,87 +1,199 @@
-/* Shared navigation geometry prevents the product rail from shifting between pages. */
-html {
-  scrollbar-gutter: stable;
+/* OS 式纵向 Dock。这里是导航几何与材质的唯一来源。 */
+:root {
+  --app-rail-reserved: 100px;
+  --app-rail-left: 14px;
+  --app-rail-shell: 72px;
+  --app-rail-inner: 6px;
+  --app-brand-size: 46px;
+  --app-brand-nav-gap: 12px;
+  --app-nav-width: 60px;
+  --app-nav-height: 54px;
+  --app-nav-gap: 4px;
+  --app-icon-tile: 32px;
+  --app-icon-size: 20px;
+  --dock-surface: rgba(244, 250, 247, .72);
+  --dock-line: rgba(255, 255, 255, .84);
+  --dock-ink: #24443f;
 }
 
-.rail-main-nav {
-  display: grid;
-  width: 100%;
-}
+html { scrollbar-gutter: stable; }
 
 @media (min-width: 721px) {
-  .app-shell {
-    grid-template-columns: 76px minmax(0, 1fr);
-  }
+  .app-shell { grid-template-columns: var(--app-rail-reserved) minmax(0, 1fr); }
+  .app-shell > main { grid-column: 2; }
 
   .rail {
-    width: 76px;
-    padding: 20px 8px 14px;
-    align-items: center;
+    box-sizing: border-box;
+    position: fixed;
+    inset: 14px auto 14px var(--app-rail-left);
+    width: var(--app-rail-shell);
+    height: auto;
+    padding: var(--app-rail-inner);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0;
+    overflow: visible;
+    color: var(--dock-ink);
+    border: 1px solid var(--dock-line);
+    border-radius: 24px;
+    background:
+      linear-gradient(155deg, rgba(255, 255, 255, .82), rgba(224, 239, 232, .62));
+    box-shadow:
+      0 24px 70px rgba(27, 65, 59, .18),
+      0 2px 10px rgba(27, 65, 59, .09),
+      inset 0 1px 0 rgba(255, 255, 255, .92);
+    backdrop-filter: blur(26px) saturate(145%);
   }
 
-  .rail > .brand {
-    width: 36px;
-    height: 36px;
-    flex: 0 0 36px;
-    margin: 0 auto 28px;
+  #wechatRail {
+    box-sizing: border-box;
+    position: relative;
+    z-index: 2;
+    width: 92px;
+    flex: 0 0 92px;
+    padding: 21px 6px 20px 21px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    overflow: visible;
+    color: var(--dock-ink) !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+  }
+
+  #wechatRail::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 14px 6px 14px 14px;
+    border: 1px solid var(--dock-line);
+    border-radius: 24px;
+    background:
+      linear-gradient(155deg, rgba(255, 255, 255, .82), rgba(224, 239, 232, .62));
+    box-shadow:
+      0 24px 70px rgba(27, 65, 59, .18),
+      0 2px 10px rgba(27, 65, 59, .09),
+      inset 0 1px 0 rgba(255, 255, 255, .92);
+    backdrop-filter: blur(26px) saturate(145%);
+  }
+
+  .rail > .brand,
+  #wechatRail > .rail-avatar {
+    box-sizing: border-box;
+    width: var(--app-brand-size);
+    height: var(--app-brand-size);
+    min-width: var(--app-brand-size);
+    min-height: var(--app-brand-size);
+    flex: 0 0 var(--app-brand-size);
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .92);
+    border-radius: 15px;
+    background: rgba(255, 251, 246, .94);
+    box-shadow: 0 8px 20px rgba(51, 60, 53, .14), inset 0 1px 0 #fff;
+  }
+
+  .rail > .brand { margin: 0 auto var(--app-brand-nav-gap); }
+  #wechatRail > .rail-avatar { margin: 0 0 var(--app-brand-nav-gap) 6px; }
+  .rail > .brand img, #wechatRail > .rail-avatar img { width: 36px; height: 36px; }
+  #wechatRail > .rail-brand-label { display: none; }
+
+  .rail nav,
+  .rail .rail-nav,
+  #wechatRail .rail-main-nav {
+    box-sizing: border-box;
+    width: var(--app-nav-width);
+    margin: 0;
+    padding: 0;
+    display: grid;
+    align-content: start;
+    gap: var(--app-nav-gap);
   }
 
   .rail nav > a,
   .rail nav > button,
   #wechatRail .rail-main-nav > button,
   .rail-settings,
-  .rail-secondary {
-    width: 60px;
-    height: 52px;
-    margin-right: auto;
-    margin-left: auto;
-    grid-template-rows: 24px 12px;
-    align-content: center;
-    gap: 3px;
-  }
-
-  .rail nav small,
-  #wechatRail .rail-main-nav small,
-  .rail-settings small,
-  .rail-secondary small {
-    display: block;
-    color: currentColor;
-    font-size: 9.5px;
-    font-weight: 600;
-    line-height: 1;
-    letter-spacing: .035em;
-  }
-
-  #sidebar {
-    width: 271px;
-  }
-
-  #wechatRail {
-    width: 76px;
-    flex-basis: 76px;
-  }
-
-  .rail nav,
-  #wechatRail .rail-main-nav {
-    display: grid;
-    gap: 2px;
-    width: 100%;
-  }
-
-  #sessionPane {
-    width: 195px;
-  }
-
-  .rail-icon,
+  .rail-secondary,
   #settingsbtn {
-    width: 60px;
-    height: 52px;
+    --dock-tile-bg: rgba(59, 108, 98, .11);
+    --dock-tile-ink: #396d63;
+    box-sizing: border-box;
+    position: relative;
+    width: var(--app-nav-width);
+    min-width: var(--app-nav-width);
+    max-width: var(--app-nav-width);
+    height: var(--app-nav-height);
+    min-height: var(--app-nav-height);
+    max-height: var(--app-nav-height);
+    margin: 0;
+    padding: 3px 0 2px;
     display: grid;
-    grid-template-rows: 24px 12px;
+    grid-template-rows: var(--app-icon-tile) 11px;
     align-content: center;
-    place-items: center;
+    justify-items: center;
     gap: 3px;
+    color: #40534e !important;
+    border: 1px solid transparent !important;
+    border-radius: 16px;
+    background: transparent !important;
+    box-shadow: none !important;
+    transform: translateX(0);
+  }
+
+  [data-app-icon="message"], [data-icon="message-circle"] { --dock-tile-bg: #f6dfe7 !important; --dock-tile-ink: #a92f5e !important; }
+  [data-app-icon="boxes"], [data-icon="boxes"] { --dock-tile-bg: #dceee8 !important; --dock-tile-ink: #2f776c !important; }
+  [data-app-icon="file"], [data-icon="file"] { --dock-tile-bg: #f4e9d4 !important; --dock-tile-ink: #9a6b27 !important; }
+  [data-app-icon="code"], [data-icon="code"] { --dock-tile-bg: #dfe7ef !important; --dock-tile-ink: #456a86 !important; }
+  [data-app-icon="work"], [data-icon="work"] { --dock-tile-bg: #f2e2d7 !important; --dock-tile-ink: #9b5a36 !important; }
+  [data-app-icon="settings"], [data-icon="settings"] { --dock-tile-bg: #e4e5e2 !important; --dock-tile-ink: #5e6761 !important; }
+
+  .rail nav > a:hover,
+  .rail nav > button:hover,
+  #wechatRail .rail-main-nav > button:hover,
+  .rail-settings:hover,
+  .rail-secondary:hover,
+  #settingsbtn:hover {
+    color: #253d38 !important;
+    border-color: rgba(255, 255, 255, .9) !important;
+    background: rgba(255, 255, 255, .5) !important;
+    box-shadow: 0 10px 22px rgba(31, 75, 68, .11) !important;
+    transform: translateX(3px);
+  }
+
+  .rail nav > a.is-current,
+  .rail nav > button.is-current,
+  #wechatRail .rail-main-nav > button.active,
+  .rail-settings.is-current,
+  .rail-secondary.is-current,
+  #settingsbtn.is-current {
+    color: #253d38 !important;
+    border-color: rgba(255, 255, 255, .96) !important;
+    background: rgba(255, 255, 255, .76) !important;
+    box-shadow:
+      0 12px 26px rgba(31, 75, 68, .14),
+      inset 0 1px 0 #fff !important;
+    transform: translateX(0);
+  }
+
+  .rail nav > a.is-current::after,
+  .rail nav > button.is-current::after,
+  #wechatRail .rail-main-nav > button.active::after,
+  .rail-settings.is-current::after,
+  .rail-secondary.is-current::after,
+  #settingsbtn.is-current::after {
+    content: "";
+    position: absolute;
+    right: 3px;
+    top: 22px;
+    width: 4px;
+    height: 10px;
+    border-radius: 99px;
+    background: #aa315f;
+    box-shadow: 0 0 0 3px rgba(170, 49, 95, .1);
   }
 
   .rail nav > a > span,
@@ -90,38 +202,117 @@ html {
   .rail-secondary > span,
   .rail-icon > .ui-icon-slot,
   #settingsbtn > .ui-icon-slot {
-    width: 22px;
-    height: 22px;
+    box-sizing: border-box;
+    width: var(--app-icon-tile);
+    height: var(--app-icon-tile);
+    min-width: var(--app-icon-tile);
+    min-height: var(--app-icon-tile);
     display: grid;
+    place-items: center;
     align-self: center;
     justify-self: center;
-    place-items: center;
-    flex-basis: 22px;
+    color: var(--dock-tile-ink);
+    border: 1px solid rgba(255, 255, 255, .56);
+    border-radius: 11px;
+    background: var(--dock-tile-bg);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .64), 0 3px 8px rgba(45, 64, 58, .07);
     line-height: 0;
+    transition: color 140ms ease, background-color 140ms ease, box-shadow 180ms ease, transform 180ms cubic-bezier(.22,1,.36,1);
+  }
+
+  .rail nav > a:hover > span,
+  .rail nav > button:hover > span,
+  #wechatRail .rail-main-nav > button:hover > .ui-icon-slot,
+  .rail-settings:hover > span,
+  .rail-secondary:hover > span,
+  #settingsbtn:hover > .ui-icon-slot { transform: translateY(-2px) scale(1.04); }
+
+  .rail nav > a.is-current > span,
+  .rail nav > button.is-current > span,
+  #wechatRail .rail-main-nav > button.active > .ui-icon-slot,
+  .rail-settings.is-current > span,
+  .rail-secondary.is-current > span,
+  #settingsbtn.is-current > .ui-icon-slot {
+    color: #fff;
+    border-color: rgba(255, 255, 255, .3);
+    background: var(--dock-tile-ink);
+    box-shadow: 0 7px 14px color-mix(in srgb, var(--dock-tile-ink) 28%, transparent), inset 0 1px 0 rgba(255,255,255,.24);
   }
 
   .rail nav svg,
   .rail-settings svg,
   .rail-secondary svg,
   .rail-icon svg,
-  #settingsbtn svg {
-    width: 22px;
-    height: 22px;
+  #settingsbtn svg,
+  #wechatRail .app-icon {
+    box-sizing: border-box;
+    width: var(--app-icon-size);
+    height: var(--app-icon-size);
+    min-width: var(--app-icon-size);
+    min-height: var(--app-icon-size);
     display: block;
+    overflow: visible;
+    stroke-width: 1.85;
   }
 
+  #wechatRail .rail-main-nav .ui-icon,
+  #settingsbtn .ui-icon {
+    width: var(--app-icon-size) !important;
+    height: var(--app-icon-size) !important;
+    min-width: var(--app-icon-size) !important;
+    min-height: var(--app-icon-size) !important;
+  }
+
+  .rail nav small,
+  .rail-settings small,
+  .rail-secondary small,
   .rail-label {
     display: block;
+    height: 9.5px;
+    align-self: center;
     color: currentColor;
+    font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important;
     font-size: 9.5px;
-    font-weight: 600;
-    line-height: 1;
-    letter-spacing: .035em;
+    font-weight: 650;
+    line-height: 9.5px;
+    letter-spacing: .02em;
+    white-space: nowrap;
+  }
+
+  .rail-secondary, .rail-settings, #settingsbtn { margin-top: auto; }
+  #sidebar { width: 352px; background: transparent !important; box-shadow: none !important; }
+  #sessionPane {
+    width: 252px;
+    border-right: 1px solid var(--cf-line, #d9d9de) !important;
+    background: rgba(245, 245, 247, .78) !important;
+    backdrop-filter: blur(16px) saturate(112%);
   }
 }
 
 @media (max-width: 720px) {
-  #wechatRail .rail-label {
-    display: none;
+  #wechatRail .rail-label { display: none; }
+  /* 底部横栏保留中文标签：与首页一致，覆盖 system-center 的隐藏规则 */
+  .rail nav small,
+  .rail-settings small,
+  .rail-secondary small {
+    display: block;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
   }
+  /* 窄屏底栏条目收窄，保证品牌、五个入口和设置都完整可见 */
+  .rail { gap: 2px; overflow-x: auto; scrollbar-width: none; }
+  .rail > .brand { width: 40px; height: 40px; flex: 0 0 auto; }
+  .rail nav > a,
+  .rail nav > button,
+  .rail-secondary {
+    width: 48px;
+    min-width: 0;
+    flex: 0 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail nav > a, .rail nav > button, #wechatRail .rail-main-nav > button,
+  .rail-settings, .rail-secondary, #settingsbtn { transform: none !important; }
 }
