@@ -45,11 +45,14 @@ Built-in capabilities cover:
 - formal documents, meeting notes, web reports, and presentations;
 - complex-problem framing, comparison, and market analysis;
 - product-interface design, business development, and software projects;
+- translation, speech transcription, and light copy editing;
 - creation of reusable capabilities.
 
-Background tasks preserve checkpoints, cancellation, failure reasons, retry paths, and final artifacts. One capability can continue another capability's result while keeping the same task history.
+Background tasks preserve checkpoints, cancellation, failure reasons, retry paths, and final artifacts. Run completion and result delivery are recorded separately; an unacknowledged result is delivered again after a refresh or restart, and a delivery failure is not shown as task completion. One capability can continue another capability's result while keeping the same task history.
 
-Project development uses a dedicated workbench: select a folder, describe the desired outcome, and Clownfish reads the project, edits code, and runs checks. Missing dependencies can be installed from the project's declared lockfiles into the project or a Python virtual environment. It never performs global installs or executes model-invented install commands. Changes remain inside an authorized workspace and stop if the project changes concurrently.
+Project development uses a dedicated workbench: select a folder, describe the desired outcome, and Clownfish reads the project, edits code, and runs checks. Pi Agent is the default engine; DeepSeek Harness, Kilo Code, OpenCode, and Codex are available through the same isolated proposal and verification flow. Missing dependencies can be installed from the project's declared lockfiles into the project or a Python virtual environment. It never performs global installs or executes model-invented install commands. Changes remain inside an authorized workspace and stop if the project changes concurrently.
+
+Product-interface design produces an editable canvas rather than a static brief. Users can adjust screen copy, content areas, states, color tokens, and desktop/tablet/mobile previews, then keep those changes in local versions.
 
 ![Clownfish capabilities](docs/assets/readme/clownfish-capabilities-2026-08-10.png)
 
@@ -87,6 +90,7 @@ The Work center keeps ongoing tasks and deliverables together:
 Resources reports the real state of six connector categories: **local files, browser, GitHub, email, calendar, and enterprise documents**. Local files and supported browser functions can be built in; other connectors become available only after installation and a successful connection test.
 
 Extensions support permission review, install, enable, update, previous-version restore, disable, and uninstall. Local execution, network access, file writes, and permission expansion require renewed confirmation.
+Extensions can mark destructive tools explicitly. After one such operation fails, later destructive calls in the same run and resumed checkpoint are stopped until the failure is reviewed.
 
 ![Clownfish work center](docs/assets/readme/clownfish-work-2026-08-10.png)
 
@@ -129,16 +133,16 @@ Everyday conversation prefers a lighter provider model when available. Experts, 
 
 ## Verified status
 
-As of 2026-08-13:
+As of 2026-08-15:
 
-- build, type checking, and **369 automated tests** pass;
+- build, type checking, and **417 automated tests** pass;
 - **20/20** sanitized DOCX cases pass structural round-trip checks and open in local Microsoft Word;
 - **10/10** small-project profiles pass inspection, patch proposal, selective application, and rollback;
 - this release adds **10 retained real product-review rounds**; 30 runs are now recorded with no unresolved issue;
 - Docker sync passed health, authentication, encrypted upload, download, and restart-restore checks; controlled dependency installation passed a real locked npm install;
 - the offline dependency audit reports no known vulnerability, and the sensitive-data scan finds no credential.
 
-See the [product capability acceptance record](docs/product-capability-acceptance-2026-08-13.md) for evidence. Memory-core tests remain in the separate `nemos-memory` repository and are not counted in the 369 tests above.
+See the [product capability acceptance record](docs/product-capability-acceptance-2026-08-13.md) and [integration evidence matrix](docs/integration-capability-evidence-2026-08-15.md) for evidence. Memory-core tests remain in the separate `nemos-memory` repository and are not counted in the 417 tests above.
 
 ## Run locally
 

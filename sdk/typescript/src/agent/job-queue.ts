@@ -66,7 +66,7 @@ export interface FileAgentJobQueueOptions {
 }
 
 export interface AgentJobQueueEvent {
-  action: "enqueued" | "claimed" | "checkpoint" | "completed" | "failed" | "cancelled" | "retried" | "recovered" | "uncertain" | "reconciled" | "delivered";
+  action: "enqueued" | "claimed" | "checkpoint" | "completed" | "failed" | "cancelled" | "retried" | "recovered" | "uncertain" | "reconciled" | "delivered" | "deleted";
   job: Pick<AgentJobRecord, "id" | "status" | "updatedAt">;
 }
 
@@ -339,6 +339,21 @@ export class FileAgentJobQueue {
     this.save();
     this.emitChange("delivered", job);
     return structuredClone(job);
+  }
+
+  deleteMany(ids: string[]): number {
+    const unique = [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))];
+    const found = unique.flatMap((id) => {
+      const job = this.jobs.get(id);
+      return job ? [job] : [];
+    });
+    const active = found.find((job) => job.status === "queued" || job.status === "running");
+    if (active) throw new Error(`Active Agent job cannot be deleted: ${active.id}`);
+    if (!found.length) return 0;
+    for (const job of found) this.jobs.delete(job.id);
+    this.save();
+    for (const job of found) this.emitChange("deleted", job);
+    return found.length;
   }
 
   private require(id: string): AgentJobRecord {

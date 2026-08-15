@@ -1,6 +1,7 @@
 export type AgentRole = "system" | "user" | "assistant" | "tool";
 
 export type AgentToolEffect = "read" | "write";
+export type AgentToolRisk = "normal" | "destructive";
 
 export interface AgentToolCall {
   id: string;
@@ -21,6 +22,8 @@ export interface AgentToolDefinition {
   description: string;
   inputSchema: Record<string, unknown>;
   effect?: AgentToolEffect;
+  /** destructive 工具一旦执行失败，本次运行后续同类操作会立即熔断。 */
+  risk?: AgentToolRisk;
   timeoutMs?: number;
 }
 
@@ -174,6 +177,8 @@ export interface AgentRunCheckpoint {
   pendingToolCalls?: AgentToolCall[];
   /** 累计到此检查点的模型调用与 Token；旧检查点缺失时按 0 继续。 */
   usage?: AgentTokenUsage;
+  /** 高风险操作失败后保持到恢复运行，避免进程重启绕过熔断。 */
+  destructiveFailureStopped?: boolean;
 }
 
 export interface AgentRunResult {

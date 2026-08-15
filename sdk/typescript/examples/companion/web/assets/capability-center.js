@@ -11,6 +11,9 @@ const CATALOG = [
   { id: "product", backendId: "product-design", name: "设计产品界面", icon: "layout", summary: "从用户任务形成页面和交互方案", description: "先理清真实用户路径，再产出信息结构、关键界面、交互说明和验收要点。", use: "新功能、界面改版、产品方案", deliverable: "产品设计说明", format: "html", featured: true, detail: "形成用户流程、页面结构与设计说明" },
   { id: "developer", backendId: "project-development", name: "开发项目", icon: "code", summary: "读取本地项目，生成可核对的修改提案", description: "在你指定的项目文件夹内真实读取、开发和验证；修改先作为提案保存，由你确认后再写入项目。", use: "开发功能、修复问题、项目检查", deliverable: "修改提案、可运行结果与验证记录", format: "md", featured: true, detail: "读取项目规则、实施修改、运行检查，再由你确认写入" },
   { id: "meeting", backendId: "meeting-minutes", name: "整理会议纪要", icon: "checklist", summary: "从记录中提炼结论和行动项", description: "把会议文字整理成摘要、决定、责任人、截止时间、风险和未决问题。", use: "会议记录、访谈、讨论复盘", deliverable: "纪要与行动表", format: "doc", featured: true, detail: "提炼决定、行动项与未决问题" },
+  { id: "translate", backendId: "quick-translate", name: "翻译文字", icon: "translate", summary: "中英文自动识别并直接翻译", description: "用于快速处理中英文互译，结果可以复制或保存为文本。", use: "短文、邮件、即时内容", deliverable: "可复制译文", format: "txt", quickTool: true, detail: "自动识别语言并输出译文" },
+  { id: "speech", backendId: "quick-speech", name: "语音转写", icon: "mic", summary: "把音频、视频或现场录音转成文字", description: "支持选择文件或直接录音，长音频会自动分段识别并合并。", use: "录音、访谈、视频、口述", deliverable: "可保存转写文本", format: "txt", quickTool: true, detail: "上传或录音后生成完整文字" },
+  { id: "polish", backendId: "quick-polish", name: "文字润色", icon: "polish", summary: "清理错别字、标点和断句", description: "轻量改善文字表达，不扩写新信息，也不改变原意。", use: "消息、邮件、短文、初稿", deliverable: "可复制润色文本", format: "txt", quickTool: true, detail: "保持原意并改善文字表达" },
   { id: "web", backendId: "html-report", name: "做网页报告", icon: "globe", summary: "把内容制作成独立网页", description: "生成不依赖外部服务、可直接在浏览器打开的单页内容。", use: "报告、说明页、互动展示", deliverable: "独立 HTML 网页", format: "html", detail: "制作可直接打开的独立网页" },
   { id: "decision", backendId: "decision-brief", name: "比较方案", icon: "scale", summary: "比较证据、风险与行动条件", description: "把零散信息整理成可判断的选择，说明收益、代价、风险和什么时候应该改变决定。", use: "选型、取舍、优先级判断", deliverable: "决策简报", format: "md", detail: "比较方案、风险和行动条件" },
   { id: "business", backendId: "business-deal", name: "推进商务合作", icon: "handshake", summary: "建立关键人、异议和跟进工作台", description: "梳理双方价值、关键人、异议、谈判边界和跟进动作，话术可以直接复制使用。", use: "合作、销售、谈判、跟进", deliverable: "可执行商务推进台", format: "html", detail: "准备合作策略、异议处理与跟进动作" },
@@ -33,6 +36,9 @@ const ICON_PATHS = {
   trend: '<path d="M4 18V6M4 18h16"/><path d="m7 14 4-4 3 2 5-6"/><path d="M15.5 6H19v3.5"/>',
   branch: '<circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="18" cy="17" r="2"/><path d="M6 7v5a5 5 0 0 0 5 5h5M8 7h8M11 7v5a5 5 0 0 0 5 5"/>',
   code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5M14 4l-4 16"/>',
+  translate: '<path d="M4 5h10M9 3v2c0 5-2 8-6 10M5.5 9c1.8 2.7 4.1 4.6 7 5.5M14 19l3.5-9 3.5 9M15.3 16h4.4"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6"/>',
+  polish: '<path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"/><path d="m13.5 8 3 3M5.5 15.5l3 3M19 3v3M17.5 4.5h3M20 14v4M18 16h4"/>',
   ...window.ClownfishIcons.paths,
 };
 
@@ -53,6 +59,9 @@ function renderStaticIcons() {
 const MATCH_RULES = [
   ["ability", /(生成|创建|新增|沉淀|锻造).{0,8}(能力|技能)|做成.{0,6}(能力|技能)/i],
   ["presentation", /PPT|演示|汇报|路演|幻灯|提案|课件/i],
+  ["speech", /语音转写|音频转写|录音转写|视频转写|识别音频|听写/i],
+  ["translate", /翻译|中译英|英译中|译成|译文/i],
+  ["polish", /轻量润色|文字润色|校对错别字|清理标点/i],
   ["meeting", /会议|纪要|访谈|录音|讨论记录/i],
   ["document", /(?:周报|月报|日报|材料|素材|内容).{0,18}(?:整理|摘要|总结|归纳|提炼)|(?:整理|摘要|总结|归纳|提炼).{0,18}(?:周报|月报|日报|材料|素材|内容)|管理层摘要|正式文档/i],
   ["product", /产品|界面|交互|原型|用户体验|功能设计/i],
@@ -77,6 +86,9 @@ const EXAMPLE_PROMPTS = {
   product: "例如：重新设计新用户首页，减少认知负担并给出关键交互说明",
   developer: "例如：修复页面切换抖动，检查根因，完成修改并运行相关测试",
   meeting: "例如：把会议记录整理成结论、行动项、负责人和截止时间",
+  translate: "把要翻译的文字放到这里",
+  speech: "选择音频、视频，或直接开始录音",
+  polish: "把要润色的文字放到这里",
   web: "例如：把这份报告做成可直接打开的单页网页",
   decision: "例如：比较三个方案的收益、代价、风险和改变决定的条件",
   business: "例如：为这次客户合作准备关键人、异议处理和下一步跟进话术",
@@ -93,6 +105,9 @@ const ICON_TONES = {
   product: "#9a476b",
   developer: "#546b8b",
   meeting: "#4c765e",
+  translate: "#4d7584",
+  speech: "#9a5d4a",
+  polish: "#8a5e75",
   web: "#3c7873",
   decision: "#765f92",
   business: "#9a6138",
@@ -124,6 +139,8 @@ const state = {
   selectedId: "presentation",
   snapshot: { abilities: [], artifacts: [] },
   llm: { live: false },
+  toolSettings: {},
+  toolStatus: { hasZhipuKey: false },
   jobs: [],
   personas: [],
   materials: [],
@@ -202,7 +219,17 @@ function isAvailable(item) {
   return availability(item).ready;
 }
 
+function isQuickTool(item = selectedCapability()) {
+  return item?.quickTool === true;
+}
+
 function availability(item) {
+  if (isQuickTool(item)) {
+    if (item.id === "speech" && !state.toolStatus.hasZhipuKey && !state.llm.live) {
+      return { ready: false, label: "需设置语音服务", action: "设置语音服务后使用" };
+    }
+    return { ready: true, label: "可直接使用", action: "开始使用" };
+  }
   const wired = state.snapshot.abilities.some((ability) => ability.id === item.backendId && !ability.archived);
   if (!wired) return { ready: false, label: "尚未接入", action: "此能力尚未接入" };
   if (!state.llm.live) return { ready: false, label: "需设置模型", action: "设置模型后即可使用" };
@@ -263,19 +290,31 @@ function renderExecutionState() {
   const item = selectedCapability();
   const status = availability(item);
   const button = $("#startTask");
-  const hasInstruction = Boolean($("#goalInput").value.trim() || $("#instructionInput").value.trim());
+  const quick = isQuickTool(item);
+  const hasInstruction = quick
+    ? item.id === "speech" ? Boolean($("#quickSpeechFile").files?.[0]) : Boolean($("#quickInput").value.trim())
+    : Boolean($("#goalInput").value.trim() || $("#instructionInput").value.trim());
   const hasWorkspace = item.id !== "developer" || Boolean($("#workspaceInput").value.trim());
   button.disabled = !status.ready || !hasInstruction || !hasWorkspace;
-  button.textContent = !status.ready ? status.action : !hasInstruction ? "先说清楚想完成什么" : !hasWorkspace ? "先填写项目文件夹" : item.id === "developer" ? ($("#accessModeSelect").value === "inspect" ? "让小丑鱼开始检查" : "让小丑鱼开始开发") : "开始执行";
+  const quickAction = { translate: "开始翻译", speech: "开始转写", polish: "开始润色" }[item.id] || "开始处理";
+  button.textContent = !status.ready ? status.action : !hasInstruction ? (item.id === "speech" ? "先选择文件或开始录音" : "先输入要处理的文字") : !hasWorkspace ? "先填写项目文件夹" : quick ? quickAction : item.id === "developer" ? ($("#accessModeSelect").value === "inspect" ? "让小丑鱼开始检查" : "让小丑鱼开始开发") : "开始执行";
   $(".run-note").textContent = !status.ready
-    ? "请先在设置中配置模型；任务不会用离线回声生成假结果。"
+    ? (quick ? "请先在设置中完成对应服务配置。" : "请先在设置中配置模型；任务不会用离线回声生成假结果。")
     : hasInstruction && hasWorkspace
-      ? "任务会在后台继续；离开此页后，可在“进行中”查看。"
-      : item.id === "developer" && !hasWorkspace ? "填写要处理的本地项目文件夹。" : "填写任务要求后即可开始。";
+      ? (quick ? "处理完成后可直接复制或保存结果。" : "任务会在后台继续；离开此页后，可在“进行中”查看。")
+      : quick
+        ? (item.id === "speech" ? "选择音频、视频，或直接开始录音。" : "输入文字后即可开始处理。")
+        : item.id === "developer" && !hasWorkspace ? "填写要处理的本地项目文件夹。" : "填写任务要求后即可开始。";
 }
 
 function selectCapability(id) {
+  const previousId = state.selectedId;
   state.selectedId = CATALOG.some((item) => item.id === id) ? id : "document";
+  if (previousId !== state.selectedId) {
+    $("#quickResult").value = "";
+    $("#quickResultWrap").hidden = true;
+    $("#quickStatus").textContent = "";
+  }
   renderCatalog();
   renderExecutionState();
   updateLaunchState();
@@ -312,20 +351,31 @@ async function recommendCapability(goal) {
 
 function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
   const item = selectedCapability();
+  const quick = isQuickTool(item);
   if (goal) {
     $("#goalInput").value = goal;
-    if (!$("#instructionInput").value.trim()) $("#instructionInput").value = goal;
+    if (quick && item.id !== "speech" && !$("#quickInput").value.trim()) $("#quickInput").value = goal;
+    if (!quick && !$("#instructionInput").value.trim()) $("#instructionInput").value = goal;
   }
   $("#launchTitle").textContent = item.name;
   $("#launchSummary").textContent = item.summary;
   $("#instructionLabel").textContent = item.id === "developer" ? "想让小丑鱼完成什么" : "任务要求";
   $("#instructionInput").placeholder = EXAMPLE_PROMPTS[item.id] || "说清楚要完成什么，也可以补充受众、重点、语气或格式";
+  $("#standardTaskFields").hidden = quick;
+  $("#quickAbilityFields").hidden = !quick;
+  $("#quickTextInput").hidden = !quick || item.id === "speech";
+  $("#quickSpeechInput").hidden = item.id !== "speech";
+  if (quick && item.id !== "speech") {
+    $("#quickInputLabel").textContent = item.id === "translate" ? "需要翻译的文字" : "需要润色的文字";
+    $("#quickInput").placeholder = EXAMPLE_PROMPTS[item.id];
+  }
   $("#developerFields").hidden = item.id !== "developer";
-  $("#formatField").hidden = item.id === "developer";
-  $("#materialDrop").hidden = item.id === "developer";
-  $("#materialList").hidden = item.id === "developer";
-  $("#advancedSettings").hidden = item.id === "developer";
+  $("#formatField").hidden = item.id === "developer" || quick;
+  $("#materialDrop").hidden = item.id === "developer" || quick;
+  $("#materialList").hidden = item.id === "developer" || quick;
+  $("#advancedSettings").hidden = item.id === "developer" || quick;
   $("#launchPanel").classList.toggle("is-developer", item.id === "developer");
+  $("#launchPanel").classList.toggle("is-quick", quick);
   renderFormatOptions(item);
   $("#formatSelect").value = item.format;
   $("#launchPanel").hidden = false;
@@ -335,8 +385,9 @@ function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
   saveDraft();
   window.requestAnimationFrame(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
-    if (options.focusInput && !goal && window.matchMedia("(min-width: 721px)").matches) {
-      $("#instructionInput").focus({ preventScroll: true });
+    if (options.focusInput && window.matchMedia("(min-width: 721px)").matches) {
+      if (quick && item.id !== "speech") $("#quickInput").focus({ preventScroll: true });
+      else if (!quick && !goal) $("#instructionInput").focus({ preventScroll: true });
     }
   });
 }
@@ -408,6 +459,7 @@ function saveDraft() {
   const draft = {
     goal: $("#goalInput").value,
     instruction: $("#instructionInput").value,
+    quickInput: $("#quickInput").value,
     selectedId: state.selectedId,
     format: $("#formatSelect").value,
     memoryMode: $("#memoryToggle").checked ? "preferences" : "off",
@@ -446,6 +498,7 @@ function restoreLast() {
   state.materials = Array.isArray(draft.materials) ? draft.materials.slice(-8) : [];
   $("#goalInput").value = draft.goal || "";
   $("#instructionInput").value = draft.instruction || "";
+  $("#quickInput").value = draft.quickInput || "";
   $("#memoryToggle").checked = draft.memoryMode !== "off";
   $("#workspaceInput").value = draft.workspacePath || "";
   setDevelopmentMode(draft.accessMode, false);
@@ -468,6 +521,10 @@ function resetDraft() {
   localStorage.removeItem(DRAFT_KEY);
   $("#goalInput").value = "";
   $("#instructionInput").value = "";
+  $("#quickInput").value = "";
+  $("#quickResult").value = "";
+  $("#quickResultWrap").hidden = true;
+  $("#quickStatus").textContent = "";
   $("#workspaceInput").value = "";
   setDevelopmentMode("develop", false);
   state.materials = [];
@@ -488,8 +545,191 @@ function resetDraft() {
   updateContinueButton();
 }
 
+function showQuickResult(text, status) {
+  const value = String(text || "").trim();
+  $("#quickResult").value = value;
+  $("#quickResultWrap").hidden = !value;
+  $("#quickStatus").textContent = status || (value ? "处理完成" : "没有得到可用结果");
+}
+
+async function readQuickClipboard() {
+  if (!navigator.clipboard?.readText) throw new Error("当前环境无法读取剪贴板");
+  $("#quickInput").value = await navigator.clipboard.readText();
+  updateLaunchState();
+  saveDraft();
+}
+
+async function copyQuickResult() {
+  const text = $("#quickResult").value.trim();
+  if (!text) return showToast("还没有可复制的结果", true);
+  if (!navigator.clipboard?.writeText) throw new Error("当前环境无法写入剪贴板");
+  await navigator.clipboard.writeText(text);
+  showToast("结果已复制");
+}
+
+function downloadQuickResult() {
+  const text = $("#quickResult").value.trim();
+  if (!text) return showToast("还没有可保存的结果", true);
+  const item = selectedCapability();
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  link.download = `${item.name}-${new Date().toISOString().slice(0, 10)}.txt`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+async function audioBlobToWav(blob) {
+  const sourceBuffer = await blob.arrayBuffer();
+  const context = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await context.decodeAudioData(sourceBuffer);
+  await context.close();
+  const sourceRate = decoded.sampleRate;
+  const targetRate = 16000;
+  const source = decoded.getChannelData(0);
+  const ratio = sourceRate / targetRate;
+  const sampleCount = Math.floor(source.length / ratio);
+  const samples = new Float32Array(sampleCount);
+  for (let index = 0; index < sampleCount; index += 1) {
+    const position = index * ratio;
+    const start = Math.floor(position);
+    const fraction = position - start;
+    samples[index] = (source[start] || 0) * (1 - fraction) + (source[start + 1] || 0) * fraction;
+  }
+  const buffer = new ArrayBuffer(44 + sampleCount * 2);
+  const view = new DataView(buffer);
+  const write = (offset, value) => { for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index)); };
+  write(0, "RIFF"); view.setUint32(4, 36 + sampleCount * 2, true); write(8, "WAVE");
+  write(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, targetRate, true); view.setUint32(28, targetRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  write(36, "data"); view.setUint32(40, sampleCount * 2, true);
+  for (let index = 0, offset = 44; index < sampleCount; index += 1, offset += 2) {
+    const sample = Math.max(-1, Math.min(1, samples[index]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+async function splitQuickWav(wav, maxSeconds = 25) {
+  const source = await wav.arrayBuffer();
+  const view = new DataView(source);
+  if (source.byteLength < 44 || String.fromCharCode(...new Uint8Array(source, 0, 4)) !== "RIFF") return [wav];
+  const channels = view.getUint16(22, true);
+  const sampleRate = view.getUint32(24, true);
+  const bits = view.getUint16(34, true);
+  let cursor = 12;
+  let dataOffset = -1;
+  let dataSize = 0;
+  while (cursor + 8 <= source.byteLength) {
+    const id = String.fromCharCode(...new Uint8Array(source, cursor, 4));
+    const size = view.getUint32(cursor + 4, true);
+    if (id === "data") { dataOffset = cursor + 8; dataSize = size; break; }
+    cursor += 8 + size + (size & 1);
+  }
+  if (dataOffset < 0 || !channels || !sampleRate || !bits) return [wav];
+  const bytesPerFrame = channels * (bits / 8);
+  const maxBytes = Math.floor(sampleRate * maxSeconds) * bytesPerFrame;
+  if (dataSize <= maxBytes) return [wav];
+  const pcm = new Uint8Array(source, dataOffset, dataSize);
+  const chunks = [];
+  for (let start = 0; start < dataSize; start += maxBytes) {
+    const size = Math.min(maxBytes, dataSize - start);
+    const chunk = new ArrayBuffer(44 + size);
+    const chunkView = new DataView(chunk);
+    const write = (offset, value) => { for (let index = 0; index < value.length; index += 1) chunkView.setUint8(offset + index, value.charCodeAt(index)); };
+    write(0, "RIFF"); chunkView.setUint32(4, 36 + size, true); write(8, "WAVE");
+    write(12, "fmt "); chunkView.setUint32(16, 16, true); chunkView.setUint16(20, 1, true); chunkView.setUint16(22, channels, true);
+    chunkView.setUint32(24, sampleRate, true); chunkView.setUint32(28, sampleRate * bytesPerFrame, true); chunkView.setUint16(32, bytesPerFrame, true); chunkView.setUint16(34, bits, true);
+    write(36, "data"); chunkView.setUint32(40, size, true);
+    new Uint8Array(chunk, 44).set(pcm.subarray(start, start + size));
+    chunks.push(new Blob([chunk], { type: "audio/wav" }));
+  }
+  return chunks;
+}
+
+async function transcribeQuickAudio(blob) {
+  if (!blob || blob.size < 1200) throw new Error("音频太短或为空");
+  if (blob.size > 100 * 1024 * 1024) throw new Error("音频或视频不能超过 100 MB");
+  $("#quickStatus").textContent = "正在转换音频…";
+  const wav = await audioBlobToWav(blob);
+  const maxSeconds = Math.min(29, Math.max(10, Number(state.toolSettings.asrSegmentSeconds || 25)));
+  const chunks = await splitQuickWav(wav, maxSeconds);
+  const parts = [];
+  for (let index = 0; index < chunks.length; index += 1) {
+    $("#quickStatus").textContent = chunks.length > 1 ? `正在转写 ${index + 1}/${chunks.length}…` : "正在转写…";
+    const response = await fetch("/api/asr", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: chunks[index] });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.error) throw new Error(result.error || `转写失败（${response.status}）`);
+    if (result.text) parts.push(String(result.text).trim());
+  }
+  let text = parts.filter(Boolean).join("\n").trim();
+  if (text && state.toolSettings.asrLiveCorrection !== false) {
+    $("#quickStatus").textContent = "正在整理标点和断句…";
+    try {
+      const corrected = await api("/api/tools/asr-correct", { method: "POST", body: JSON.stringify({ text }) });
+      text = corrected.text || text;
+    } catch { /* 转写正文仍可交付 */ }
+  }
+  return text;
+}
+
+async function runQuickAbility(inputBlob) {
+  const item = selectedCapability();
+  const button = $("#startTask");
+  button.disabled = true;
+  button.textContent = "正在处理…";
+  $("#quickStatus").textContent = "正在处理…";
+  try {
+    let result;
+    let provider = "";
+    if (item.id === "speech") {
+      const blob = inputBlob || $("#quickSpeechFile").files?.[0];
+      if (!blob) throw new Error("先选择音频、视频，或直接开始录音");
+      result = await transcribeQuickAudio(blob);
+    } else {
+      const text = $("#quickInput").value.trim();
+      if (!text) throw new Error("先输入要处理的文字");
+      const response = await api(item.id === "translate" ? "/api/tools/translate" : "/api/tools/polish", { method: "POST", body: JSON.stringify({ text }) });
+      result = response.text;
+      provider = response.provider || "";
+    }
+    showQuickResult(result, result ? `处理完成${provider ? ` · ${provider}` : ""}` : "没有得到可用结果");
+  } catch (error) {
+    $("#quickStatus").textContent = error.message || "处理失败";
+    showToast(error.message || "处理失败", true);
+  } finally {
+    renderExecutionState();
+  }
+}
+
+let quickRecorder = null;
+let quickRecordingParts = [];
+async function toggleQuickRecording() {
+  const button = $("#quickRecord");
+  if (quickRecorder?.state === "recording") {
+    quickRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    quickRecorder = new MediaRecorder(stream);
+    quickRecordingParts = [];
+    quickRecorder.ondataavailable = (event) => { if (event.data?.size) quickRecordingParts.push(event.data); };
+    quickRecorder.onstop = async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      button.textContent = "开始录音";
+      await runQuickAbility(new Blob(quickRecordingParts, { type: quickRecorder?.mimeType || "audio/webm" }));
+    };
+    quickRecorder.start();
+    button.textContent = "停止并转写";
+    $("#quickStatus").textContent = "录音中…";
+  } catch (error) {
+    $("#quickStatus").textContent = `麦克风打不开：${error.message || error}`;
+  }
+}
+
 async function startTask() {
   const item = selectedCapability();
+  if (isQuickTool(item)) return runQuickAbility();
   const goal = $("#goalInput").value.trim();
   const details = $("#instructionInput").value.trim();
   const instruction = details || goal;
@@ -778,12 +1018,14 @@ function openView(view, updateUrl = true) {
   if (!["start", "runs", "history", "files"].includes(view)) view = "start";
   state.view = view;
   $$("[data-view]").forEach((node) => node.classList.toggle("is-active", node.dataset.view === view));
-  $$('[data-view-target]').forEach((node) => {
+  $$('[data-capability-nav]').forEach((node) => {
     const current = node.dataset.viewTarget === view;
     node.classList.toggle("is-current", current);
     if (current) node.setAttribute("aria-current", "page");
     else node.removeAttribute("aria-current");
   });
+  const viewTitle = $("#capabilityViewTitle");
+  if (viewTitle) viewTitle.textContent = { start: "开始", runs: "进行中", history: "已完成", files: "文件" }[view];
   if (updateUrl) history.replaceState(null, "", view === "start" ? location.pathname : `#${view}`);
   document.title = `${{ start: "能力", runs: "进行中", history: "已完成", files: "文件" }[view]} · 小丑鱼`;
   window.scrollTo({ top: 0, behavior: "auto" });
@@ -791,18 +1033,21 @@ function openView(view, updateUrl = true) {
 
 async function refreshData() {
   try {
-    const [snapshot, jobsResponse, appState, memory, llm] = await Promise.all([
+    const [snapshot, jobsResponse, appState, memory, llm, toolStatus] = await Promise.all([
       api("/api/capabilities"),
       api("/api/agent/jobs?limit=200"),
       api("/api/state"),
       api("/api/memory?who=me"),
       api("/api/llm"),
+      api("/api/tool-settings"),
     ]);
     state.snapshot = snapshot || { abilities: [], artifacts: [] };
     state.jobs = Array.isArray(jobsResponse.jobs) ? jobsResponse.jobs : [];
     state.personas = Array.isArray(appState.personas) ? appState.personas : [];
     state.memoryCount = Array.isArray(memory.facts) ? memory.facts.filter((fact) => fact.layer === "procedural" || fact.layer === "personal_semantic").length : 0;
     state.llm = llm || { live: false };
+    state.toolSettings = toolStatus.settings || {};
+    state.toolStatus = toolStatus || { hasZhipuKey: false };
     $("#memorySummary").textContent = state.memoryCount > 0 ? `可轻量参考 ${state.memoryCount} 条写作、排版或格式习惯` : "会轻量参考文笔、排版和格式偏好";
     renderCatalog();
     renderExecutionState();
@@ -943,6 +1188,16 @@ function bindEvents() {
   $("#closeLaunch").addEventListener("click", closeCapability);
   $("#goalInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
   $("#instructionInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
+  $("#quickInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
+  $("#quickPaste").addEventListener("click", () => readQuickClipboard().catch((error) => showToast(error.message || "读取剪贴板失败", true)));
+  $("#quickSpeechFile").addEventListener("change", () => {
+    const file = $("#quickSpeechFile").files?.[0];
+    $("#quickSpeechFileName").textContent = file ? `${file.name} · ${Math.max(1, Math.round(file.size / 1024 / 1024))} MB` : "支持常见音频和 MP4、WebM 视频";
+    updateLaunchState();
+  });
+  $("#quickRecord").addEventListener("click", toggleQuickRecording);
+  $("#quickCopy").addEventListener("click", () => copyQuickResult().catch((error) => showToast(error.message || "复制失败", true)));
+  $("#quickDownload").addEventListener("click", downloadQuickResult);
   $("#workspaceInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
   $("#useRecentWorkspace").addEventListener("click", () => {
     const path = recentWorkspaces()[0];

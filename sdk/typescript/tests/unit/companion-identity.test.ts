@@ -31,6 +31,15 @@ test("migrates nested persona ids, object keys, and memory scopes without changi
   });
 });
 
+test("does not mistake the agent queue jobs key for a legacy expert identity", () => {
+  const input = { version: 1, jobs: [{ id: "job-1", personaId: legacyAppId }] };
+  const migrated = migratePersonaIdentityValue(input);
+  assert.deepEqual(migrated.value, {
+    version: 1,
+    jobs: [{ id: "job-1", personaId: APP_PERSONA_ID }],
+  });
+});
+
 test("林老师使用原创的引导式教学策略并保护学习者身份", () => {
   const teacher = PERSONAS.find((persona) => persona.id === "teacher_lin");
   assert.equal(teacher?.name, "林老师");

@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 
 import type { AgentCredentialBinding } from "./credential-proxy.js";
 import { validateAgentCredentialBinding } from "./credential-proxy.js";
-import type { AgentTool, AgentToolContext, AgentToolEffect } from "./types.js";
+import type { AgentTool, AgentToolContext, AgentToolEffect, AgentToolRisk } from "./types.js";
 
 export type AgentExtensionKind = "skill" | "mcp" | "agent-app" | "connector";
 export type AgentExtensionPermission =
@@ -19,6 +19,7 @@ export interface AgentExtensionToolHint {
   name: string;
   description: string;
   effect: AgentToolEffect;
+  risk?: AgentToolRisk;
   tags?: string[];
 }
 
@@ -606,6 +607,8 @@ export function validateAgentExtensionManifest(manifest: AgentExtensionManifest)
     names.add(tool.name);
     if (!tool.description?.trim()) errors.push(`tool description is required: ${tool.name}`);
     if (tool.effect !== "read" && tool.effect !== "write") errors.push(`tool effect is invalid: ${tool.name}`);
+    if (tool.risk !== undefined && tool.risk !== "normal" && tool.risk !== "destructive") errors.push(`tool risk is invalid: ${tool.name}`);
+    if (tool.risk === "destructive" && tool.effect !== "write") errors.push(`destructive tool must use write effect: ${tool.name}`);
     if ((tool.tags?.length ?? 0) > 32 || tool.tags?.some((tag) => typeof tag !== "string" || !tag.trim() || tag.length > 80)) {
       errors.push(`tool tags are invalid: ${tool.name}`);
     }
@@ -697,6 +700,7 @@ export interface McpRemoteTool {
   description?: string;
   inputSchema?: Record<string, unknown>;
   effect?: AgentToolEffect;
+  risk?: AgentToolRisk;
   tags?: string[];
 }
 
@@ -727,6 +731,7 @@ export function createMcpExtensionProvider(
         name: tool.name,
         description: tool.description || tool.name,
         effect: tool.effect ?? "write",
+        risk: tool.risk,
         tags: tool.tags,
       }))
       .filter((tool) => toolScore(tool, query) > 0),
@@ -739,6 +744,7 @@ export function createMcpExtensionProvider(
           description: remote.description || remote.name,
           inputSchema: remote.inputSchema ?? { type: "object", additionalProperties: true },
           effect: remote.effect ?? "write",
+          risk: remote.risk,
         },
         execute: (input, context) => client.callTool(remote.name, input, context),
       };
@@ -755,8 +761,10 @@ function validateLoadedTool(
   const declared = manifest.tools.find((item) => item.name === descriptor.name);
   if (!declared) throw new Error(`Tool is not declared by the extension manifest: ${descriptor.name}`);
   if (declared.effect !== descriptor.effect) throw new Error(`Discovered tool effect does not match manifest: ${descriptor.name}`);
+  if ((declared.risk ?? "normal") !== (descriptor.risk ?? "normal")) throw new Error(`Discovered tool risk does not match manifest: ${descriptor.name}`);
   if (tool.definition.name !== descriptor.name) throw new Error(`Loaded tool name does not match descriptor: ${descriptor.name}`);
   if ((tool.definition.effect ?? "write") !== descriptor.effect) throw new Error(`Loaded tool effect does not match descriptor: ${descriptor.name}`);
+  if ((tool.definition.risk ?? "normal") !== (descriptor.risk ?? "normal")) throw new Error(`Loaded tool risk does not match descriptor: ${descriptor.name}`);
   if (descriptor.effect === "write" && !hasWritePermission(manifest.permissions)) {
     throw new Error(`Extension is not allowed to load write tool: ${descriptor.name}`);
   }
@@ -775,11 +783,14 @@ function permissionExpansion(
   for (const model of next.models ?? []) {
     if (!currentModels.has(model)) expanded.push("model:" + model);
   }
-  const currentTools = new Map(current.tools.map((tool) => [tool.name, tool.effect]));
+  const currentTools = new Map(current.tools.map((tool) => [tool.name, { effect: tool.effect, risk: tool.risk ?? "normal" }]));
   for (const tool of next.tools) {
     const previous = currentTools.get(tool.name);
     if (!previous) expanded.push("tool:" + tool.name);
-    else if (previous === "read" && tool.effect === "write") expanded.push("tool-write:" + tool.name);
+    else {
+      if (previous.effect === "read" && tool.effect === "write") expanded.push("tool-write:" + tool.name);
+      if (previous.risk !== "destructive" && tool.risk === "destructive") expanded.push("tool-destructive:" + tool.name);
+    }
   }
   return expanded;
 }

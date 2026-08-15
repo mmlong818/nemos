@@ -1,0 +1,128 @@
+/* Scramble OS 2026 壁纸层 —— 全屏背景 + 柔和遮罩
+ * 通过 --wallpaper-url（由 scramble-wallpaper.js 注入到 <html>）驱动
+ */
+
+:root {
+  --wallpaper-url: none;
+  --wallpaper-tint: rgba(245, 245, 247, 0.12);
+}
+
+/* 壁纸铺在根元素背景上：画布最先绘制，永不被页面背景遮住 */
+html {
+  background: var(--wallpaper-url) center / cover no-repeat fixed !important;
+}
+
+/* 遮罩：轻度提亮，壁纸保持可见；可读性由玻璃面板承担 */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--page-accent) 8%, transparent), transparent 42%),
+    linear-gradient(180deg, var(--wallpaper-tint), rgba(245, 245, 247, 0.40));
+}
+
+/* 壁纸开启时，去掉 scramble-theme 自带的整页渐变背景，避免叠加发灰 */
+body {
+  background: transparent !important;
+}
+
+/* ---------- 玻璃面板：让壁纸透过工作区 ---------- */
+.app-shell > main,
+body > #main {
+  background: rgba(255, 255, 255, 0.52) !important;
+  backdrop-filter: blur(28px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(150%) !important;
+}
+
+.task-workbench-main {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.task-workbench-stage {
+  background: transparent !important;
+}
+
+.task-workbench-sidebar {
+  background: rgba(245, 245, 247, 0.72) !important;
+  backdrop-filter: blur(22px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%) !important;
+}
+
+.task-workbench-topbar,
+#topbar.task-workbench-topbar,
+.coding-topbar.task-workbench-topbar {
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-bottom-color: rgba(0, 0, 0, .06) !important;
+}
+
+/* 非工作台页面（设置/办公/能力）的内容卡片保持足够不透明度 */
+
+/* ---------- 设置页壁纸选择器 ---------- */
+.wallpaper-current {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.wallpaper-preview {
+  width: 168px;
+  height: 96px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 8px 22px rgba(31, 75, 68, 0.14);
+}
+
+.wallpaper-current small {
+  color: var(--task-muted, #66625b);
+  font-size: 12.5px;
+}
+
+.wallpaper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.wallpaper-grid button {
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--task-text, #24251f);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wallpaper-grid button:hover {
+  border-color: color-mix(in srgb, var(--page-accent) 45%, transparent);
+}
+
+.wallpaper-grid button.is-current {
+  border-color: var(--page-accent);
+  box-shadow: 0 0 0 3px var(--page-accent-soft);
+}
+
+.wallpaper-thumb {
+  display: block;
+  width: 100%;
+  height: 64px;
+  border-radius: 8px;
+  background-size: cover;
+  background-position: center;
+}
+
+.wallpaper-name {
+  text-align: center;
+}

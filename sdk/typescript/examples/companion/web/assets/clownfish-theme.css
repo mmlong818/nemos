@@ -1,0 +1,489 @@
+/* 小丑鱼统一视觉层：macOS 风格中性灰工作台，页面级系统强调色。 */
+:root {
+  --cf-canvas: #f2f2f5;
+  --cf-canvas-deep: #e8e8ed;
+  --cf-surface: #ffffff;
+  --cf-surface-soft: #f5f5f7;
+  --cf-surface-glass: rgba(255, 255, 255, .82);
+  --cf-ink: #1d1d1f;
+  --cf-ink-soft: #6e6e73;
+  --cf-ink-faint: #8e8e93;
+  --cf-line: #d9d9de;
+  --cf-line-strong: #c7c7cc;
+  --cf-coral: #ad315f;
+  --cf-coral-hover: #8d244b;
+  --cf-coral-soft: #f5e5eb;
+  --cf-sea: #30b0c7;
+  --cf-sea-soft: #e2f3f6;
+  --cf-warning: #94631b;
+  --cf-danger: #a92d48;
+  --cf-radius-sm: 8px;
+  --cf-radius-md: 12px;
+  --cf-radius-lg: 18px;
+  --cf-shadow-sm: 0 1px 2px rgba(45, 39, 31, .04), 0 8px 24px rgba(45, 39, 31, .05);
+  --cf-shadow-lg: 0 24px 70px rgba(45, 39, 31, .14);
+  --cf-fast: 120ms;
+  --cf-default: 200ms;
+  --cf-ease: cubic-bezier(.22, 1, .36, 1);
+  --cf-workspace-gap: 14px;
+  --cf-workspace-radius: 24px;
+  --cf-workspace-shadow: 0 24px 70px rgba(30, 58, 50, .12), 0 2px 10px rgba(30, 58, 50, .06);
+  --cf-sidebar-width: 252px;
+  --cf-control-height: 38px;
+  --cf-panel-radius: 16px;
+  --cf-content-max: 1120px;
+
+  --page: var(--cf-canvas);
+  --bg: var(--cf-canvas);
+  --paper: var(--cf-surface);
+  --paper-soft: var(--cf-surface-soft);
+  --ink: var(--cf-ink);
+  --muted: var(--cf-ink-soft);
+  --line: var(--cf-line);
+  --accent: var(--cf-coral);
+  --accent-dark: var(--cf-coral-hover);
+  --accent-soft: var(--cf-coral-soft);
+  --good: var(--cf-sea);
+  --shadow: var(--cf-shadow-sm);
+  --rail-grad: var(--cf-canvas-deep);
+
+  --office-panel: var(--cf-surface-soft);
+  --office-canvas: var(--cf-canvas);
+  --office-sheet: var(--cf-surface);
+  --office-ink: var(--cf-ink);
+  --office-muted: var(--cf-ink-soft);
+  --office-subtle: var(--cf-ink-faint);
+  --office-line: var(--cf-line);
+  --office-line-strong: var(--cf-line-strong);
+  --office-accent: var(--cf-coral);
+  --office-accent-dark: var(--cf-coral-hover);
+  --office-accent-soft: var(--cf-coral-soft);
+  --office-success: var(--cf-sea);
+}
+
+/* 右侧工作区：所有入口共用同一块 OS 式浮动窗口。 */
+@media (min-width: 801px) {
+  .app-shell > main,
+  body > #main {
+    height: calc(100vh - (var(--cf-workspace-gap) * 2));
+    min-height: 0;
+    margin: var(--cf-workspace-gap) var(--cf-workspace-gap) var(--cf-workspace-gap) 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .86);
+    border-radius: var(--cf-workspace-radius);
+    background: rgba(255, 255, 255, .9);
+    box-shadow: var(--cf-workspace-shadow), inset 0 1px 0 rgba(255, 255, 255, .9);
+  }
+
+  /* 窗口整体不滚动：顶栏与窗框保持不动，仅内容区/列表区滚动 */
+  .app-shell > main:not(.office-main):not(.coding-shell):not(.work-shell) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-shell > main > .topbar,
+  .app-shell > main > #topbar {
+    flex: 0 0 auto;
+  }
+
+  .app-shell > main > .page,
+  .app-shell > main > .view.is-active {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
+html {
+  background: var(--cf-canvas);
+  scrollbar-color: #bdb4a8 transparent;
+}
+
+body {
+  color: var(--cf-ink);
+  background: var(--cf-canvas);
+  font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  opacity: 0 !important;
+}
+
+::selection { color: var(--cf-ink); background: rgba(173, 49, 95, .16); }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #bdb4a8; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #9f9588; background-clip: padding-box; }
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+button, a, input, textarea, select, summary {
+  transition: color var(--cf-fast) ease, background-color var(--cf-fast) ease,
+    border-color var(--cf-fast) ease, box-shadow var(--cf-default) var(--cf-ease),
+    transform var(--cf-fast) var(--cf-ease);
+}
+
+button:active, .button:active { transform: scale(.98); }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 2px solid rgba(173, 49, 95, .62) !important;
+  outline-offset: 2px !important;
+}
+
+/* 公共应用栏：固定尺寸，避免切换页面时跳动。 */
+.app-shell { grid-template-columns: 76px minmax(0, 1fr); }
+.rail {
+  width: 76px;
+  padding: 14px 8px 12px;
+  align-items: center;
+  gap: 12px;
+  border-right: 1px solid var(--cf-line);
+  color: #e8f2ee;
+  border-right-color: rgba(255, 255, 255, .09);
+  background: #173f3c;
+  box-shadow: 12px 0 30px rgba(24, 62, 59, .12);
+  backdrop-filter: blur(18px) saturate(115%);
+}
+.rail .brand, .rail > .brand {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  margin: 0 auto 8px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 15px;
+  background: #fffaf5;
+  box-shadow: 0 8px 20px rgba(5, 31, 29, .24);
+}
+.rail .brand img, .rail > .brand img { width: 36px; height: 36px; }
+.rail nav, .rail .rail-nav { width: 100%; display: grid; gap: 4px; }
+.rail nav a, .rail nav button, .rail-secondary, .rail-settings {
+  width: 60px;
+  height: 52px;
+  min-height: 52px;
+  margin: 0 auto;
+  padding: 0;
+  display: grid;
+  grid-template-rows: 24px 12px;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: rgba(232, 242, 238, .72);
+  background: transparent;
+  box-shadow: none;
+}
+.rail nav a:hover, .rail nav button:hover, .rail-secondary:hover, .rail-settings:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, .09);
+}
+.rail nav a.is-current, .rail nav button.is-current, .rail-secondary.is-current, .rail-settings.is-current {
+  color: #fff;
+  border-color: rgba(255, 255, 255, .18);
+  background: var(--cf-coral);
+  box-shadow: 0 8px 20px rgba(9, 35, 33, .22), inset 0 1px 0 rgba(255, 255, 255, .2);
+}
+.rail nav span, .rail-secondary span, .rail-settings span { width: 22px; height: 22px; }
+.rail nav svg, .rail-secondary svg, .rail-settings svg { width: 21px; height: 21px; stroke-width: 1.8; }
+.rail nav small, .rail-secondary small, .rail-settings small {
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: .02em;
+}
+.rail-secondary, .rail-settings { margin-top: auto; }
+.app-shell > main { grid-column: 2; }
+
+/* 公共顶栏与内容面。 */
+.topbar, #topbar, .office-topbar, .coding-topbar {
+  min-height: 64px;
+  padding-inline: 28px;
+  border-bottom-color: var(--cf-line);
+  background: var(--cf-surface-glass);
+  backdrop-filter: blur(18px) saturate(115%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .8), 0 8px 24px rgba(31, 75, 68, .04);
+}
+.topbar { height: 64px; }
+.wordmark { color: var(--cf-ink); font-size: 14px; font-weight: 720; letter-spacing: .01em; }
+.page {
+  width: min(1120px, calc(100% - 64px));
+  padding-top: 48px;
+}
+.page-head { margin-bottom: 34px; }
+.page-head h1 { font-size: clamp(32px, 4vw, 46px); line-height: 1.08; }
+.surface, .workspace-dialog, .new-document-dialog > form {
+  border-color: var(--cf-line);
+  border-radius: var(--cf-radius-lg);
+  background: var(--cf-surface);
+  box-shadow: 0 14px 38px rgba(31, 75, 68, .08), inset 0 1px 0 #fff;
+}
+
+/* 内部组件合同：页面可以有不同工作方式，但不再有不同的设计语言。 */
+.topbar .wordmark,
+.office-title,
+.coding-sidebar-head strong {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+.tabs a,
+.view-tabs button,
+.topbar a,
+.back-chat,
+.coding-topbar a {
+  font-size: 12px;
+  letter-spacing: .01em;
+}
+
+.tabs a,
+.view-tabs button {
+  min-width: 64px;
+  padding-inline: 12px;
+}
+
+.tabs a.is-current::after,
+.view-tabs button.is-current::after {
+  height: 2px;
+  border-radius: 999px 999px 0 0;
+  background: var(--cf-coral);
+}
+
+button,
+.button,
+.quiet-button,
+.primary-button,
+.toolbar-button {
+  border-radius: 10px;
+}
+
+input,
+textarea,
+select {
+  border-radius: 10px;
+}
+
+.coding-sidebar,
+.file-panel,
+#sessionPane,
+.settings-nav {
+  border-color: var(--cf-line);
+  background: rgba(229, 238, 232, .92);
+  backdrop-filter: blur(16px) saturate(112%);
+}
+
+.coding-sidebar,
+.file-panel {
+  width: var(--cf-sidebar-width);
+}
+
+.coding-sidebar-head,
+.office-topbar,
+.coding-topbar,
+.document-header,
+.document-view-bar {
+  border-color: var(--cf-line);
+}
+
+.card,
+.task-card,
+.capability-card,
+.start-card,
+.run-card,
+.history-card,
+.settings-section,
+.settings-nav,
+.project-picker,
+.file-item,
+.empty-state {
+  border-radius: var(--cf-panel-radius) !important;
+  border-color: var(--cf-line) !important;
+  background: var(--cf-surface) !important;
+  box-shadow: var(--cf-shadow-sm);
+}
+
+.page-head,
+.content {
+  width: min(var(--cf-content-max), calc(100% - 64px));
+}
+
+.toolbar input,
+.field input,
+.field select,
+.field textarea,
+.goal-box textarea,
+.launch-form textarea {
+  border-color: var(--cf-line-strong);
+  background: rgba(255, 255, 255, .9);
+}
+
+.toolbar input:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.goal-box textarea:focus,
+.launch-form textarea:focus {
+  border-color: var(--cf-coral);
+  box-shadow: 0 0 0 3px rgba(173, 49, 95, .1);
+}
+
+@media (max-width: 800px) {
+  .topbar, #topbar, .office-topbar, .coding-topbar { min-height: 58px; padding-inline: 16px; }
+  .page { width: min(100% - 28px, 1120px); padding-top: 30px; }
+}
+.page h1, .coding-empty h1 {
+  color: var(--cf-ink);
+  font-family: Georgia, "Songti SC", "STSong", serif;
+  letter-spacing: -.025em;
+}
+.page h1 { max-width: 16ch; }
+.eyebrow, .section-label { color: var(--cf-coral); letter-spacing: .08em; }
+.lede { max-width: 64ch; }
+.primary, .send-development, .send-to-capability {
+  border-color: var(--cf-coral) !important;
+  color: #fff !important;
+  background: var(--cf-coral) !important;
+  box-shadow: 0 6px 16px rgba(173, 49, 95, .14);
+}
+.primary:hover, .send-development:hover, .send-to-capability:hover {
+  border-color: var(--cf-coral-hover) !important;
+  background: var(--cf-coral-hover) !important;
+}
+
+/* 开发任务的页面骨架统一由 task-workbench.css 提供。 */
+.coding-message.user > div { background: #e8e3da; }
+.coding-progress { border-color: var(--cf-line); background: rgba(255, 253, 249, .48); }
+
+/* 文件：纸张是唯一高亮主体，工具层保持克制。 */
+.office-main { background: #eaf1ec; }
+.file-panel { background: rgba(224, 235, 227, .92); backdrop-filter: blur(16px); }
+.editor-pane { background-color: var(--cf-canvas); }
+.editor-empty { max-width: 720px; }
+.empty-mark {
+  border: 1px solid rgba(173, 49, 95, .18);
+  background: var(--cf-surface);
+  box-shadow: var(--cf-shadow-sm);
+}
+.document-header, .document-view-bar { background: var(--cf-surface-glass); backdrop-filter: blur(14px); }
+.source-preview, .document-surface { background: #dfe9e3; }
+.source-preview > *, .block-list {
+  box-shadow: 0 18px 54px rgba(45, 39, 31, .12);
+}
+.assistant-panel { border-left-color: var(--cf-line); background: var(--cf-surface); box-shadow: -22px 0 60px rgba(45, 39, 31, .12); }
+.capability-badge[data-capability="edit"] { color: var(--cf-sea); background: var(--cf-sea-soft); }
+
+/* 能力与设置：减少表单堆叠感，强调分组关系。 */
+.settings-layout { gap: 24px; }
+.settings-nav { padding: 8px; background: rgba(255, 253, 249, .72); backdrop-filter: blur(14px); }
+.settings-nav button { min-height: 44px; border-radius: 10px; }
+.settings-nav button.is-current { color: var(--cf-coral); background: var(--cf-coral-soft); }
+.settings-section { padding: 32px; }
+.field input, .field select, .field textarea {
+  min-height: 42px;
+  border-color: var(--cf-line);
+  border-radius: 10px;
+  background: #fff;
+}
+.field input:hover, .field select:hover, .field textarea:hover { border-color: var(--cf-line-strong); }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--cf-coral); box-shadow: 0 0 0 3px rgba(173, 49, 95, .1); }
+.capability-card, .start-card, .run-card, .history-card {
+  border-color: var(--cf-line) !important;
+  background: var(--cf-surface) !important;
+  box-shadow: var(--cf-shadow-sm);
+}
+
+/* 首页保留任务结构，去掉旧紫色主题痕迹。 */
+#appNav, #wechatRail {
+  color: var(--cf-ink-soft) !important;
+  border-right-color: rgba(255, 255, 255, .09) !important;
+  background: #173f3c !important;
+  box-shadow: 12px 0 30px rgba(24, 62, 59, .12) !important;
+  backdrop-filter: blur(18px) saturate(115%);
+}
+#wechatRail .rail-brand-label { color: rgba(255, 255, 255, .88) !important; }
+#wechatRail .rail-icon { color: rgba(232, 242, 238, .72) !important; border-color: transparent !important; }
+#wechatRail .rail-icon:hover { color: #fff !important; background: rgba(255, 255, 255, .09) !important; }
+#wechatRail .rail-icon.active {
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, .18) !important;
+  background: var(--cf-coral) !important;
+  box-shadow: 0 8px 20px rgba(9, 35, 33, .22) !important;
+}
+#wechatRail .rail-avatar { border-color: rgba(255, 255, 255, .18) !important; background: #fffaf5 !important; box-shadow: 0 8px 20px rgba(5, 31, 29, .24) !important; }
+#sidebar {
+  color: var(--cf-ink) !important;
+  border-right-color: var(--cf-line) !important;
+  background: rgba(230, 238, 232, .92) !important;
+  box-shadow: 16px 0 34px rgba(28, 66, 61, .08) !important;
+  backdrop-filter: blur(16px);
+}
+#sidebar::after { display: none !important; }
+#sessionPane {
+  border-right-color: var(--cf-line) !important;
+  background: rgba(230, 238, 232, .94) !important;
+}
+#quickGroup { background: rgba(255, 253, 249, .58) !important; }
+#quickGroup:hover { background: var(--cf-surface) !important; }
+#main, #msgs { background-color: #f5f8f5 !important; }
+#main {
+  background-image:
+    radial-gradient(circle at 86% 8%, rgba(47, 123, 112, .12), transparent 28%),
+    radial-gradient(circle at 28% 94%, rgba(173, 49, 95, .075), transparent 30%) !important;
+}
+#topbar, #composer { border-color: var(--cf-line) !important; background: var(--cf-surface-glass) !important; backdrop-filter: blur(18px); }
+#topbar { box-shadow: 0 1px 0 rgba(255, 255, 255, .74); }
+#composer { box-shadow: 0 -12px 36px rgba(45, 39, 31, .04); }
+.contact { border-color: transparent !important; border-radius: 10px !important; background: transparent !important; }
+.contact:hover { transform: none !important; background: rgba(255, 253, 249, .66) !important; }
+.contact.active { color: var(--cf-ink) !important; border-color: rgba(173, 49, 95, .1) !important; background: var(--cf-surface) !important; box-shadow: 0 6px 18px rgba(45, 39, 31, .06) !important; }
+.contact.active::before { background: var(--cf-coral) !important; }
+.mode-switch button[aria-pressed="true"] { color: var(--cf-coral) !important; border-color: rgba(173, 49, 95, .2) !important; background: var(--cf-coral-soft) !important; }
+.empty-state {
+  border-color: rgba(255, 255, 255, .72) !important;
+  border-radius: var(--cf-radius-lg) !important;
+  background: rgba(255, 253, 249, .88) !important;
+  box-shadow: 0 22px 64px rgba(31, 75, 68, .1), inset 0 1px 0 #fff !important;
+}
+.empty-copy h2 { color: var(--cf-ink) !important; font-family: Georgia, "Songti SC", "STSong", serif !important; letter-spacing: -.02em !important; }
+.empty-prompts button { border-color: var(--cf-line) !important; border-radius: 9px !important; background: var(--cf-surface) !important; }
+.empty-prompts button:hover { color: var(--cf-coral) !important; border-color: rgba(173, 49, 95, .28) !important; }
+#send { background: var(--cf-coral) !important; box-shadow: 0 5px 14px rgba(173, 49, 95, .18) !important; }
+#send:hover { background: var(--cf-coral-hover) !important; }
+
+@media (max-width: 800px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .app-shell > main { grid-column: 1; }
+  .rail {
+    inset: auto 0 0;
+    width: auto;
+    height: 64px;
+    padding: 5px 10px;
+    flex-direction: row;
+    border-right: 0;
+    border-top: 1px solid var(--cf-line);
+  }
+  .rail .brand, .rail > .brand { display: none; }
+  .rail nav, .rail .rail-nav { display: flex; flex: 1; justify-content: space-around; }
+  .rail nav a, .rail nav button, .rail-secondary, .rail-settings { width: 52px; height: 52px; min-height: 52px; }
+  .rail-secondary, .rail-settings { margin: 0; }
+  .coding-shell { grid-template-columns: 1fr; }
+  .coding-main { padding-bottom: 0; }
+  .composer-context { flex-wrap: wrap; }
+  .composer-context button { max-width: 100%; }
+  .coding-empty h1 { font-size: 30px; }
+  .settings-section { padding: 23px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

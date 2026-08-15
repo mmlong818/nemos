@@ -27,6 +27,12 @@ test("an explicit workspace always uses project development", () => {
   assert.equal(result.confidence, "high");
 });
 
+test("routes former task-page utilities to capability-page abilities", () => {
+  assert.equal(routeCapability({ goal: "把这段中文翻译成英文" }).catalogId, "translate");
+  assert.equal(routeCapability({ goal: "把这段录音转写成文字" }).catalogId, "speech");
+  assert.equal(routeCapability({ goal: "轻量润色这段文字，只改错别字" }).catalogId, "polish");
+});
+
 test("falls back to the thinking workbench without pretending certainty", () => {
   const result = routeCapability({ goal: "我还没想清楚" });
   assert.equal(result.capabilityId, "thinking-workbench");

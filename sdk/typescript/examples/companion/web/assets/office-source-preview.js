@@ -123,13 +123,12 @@
 
   function sourceHeading(current, record, sourceUrl, faithfulPreview = false) {
     const kind = sourceKind(current);
+    if (faithfulPreview) return "";
     const notice = record
       ? kind === "pdf"
         ? "正在显示原始 PDF，页面、图片和排版均保留。"
         : kind === "txt" || kind === "md"
           ? "正在显示原始文本内容；可切换到编辑视图继续修改。"
-        : faithfulPreview
-          ? "正在按 Word 原始结构显示正文、表格、图片、页眉页脚和分页；复杂域或特殊字体可能与桌面 Word 略有差异。"
           : "原文件已保留在本机；页面按可读取结构展示，可随时打开原文件核对完整格式。"
       : "这份旧工作副本没有保留原文件。重新打开文件后，可查看原始版式。";
     const action = sourceUrl

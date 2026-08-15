@@ -7,10 +7,15 @@
   <link rel="icon" href="/assets/brand/clownfish-mark.svg">
   <title>办公文件 · 小丑鱼</title>
   <link rel="stylesheet" href="/assets/capability-center.css">
-  <link rel="stylesheet" href="/assets/office-workbench.css">
+  <link rel="stylesheet" href="/assets/clownfish-theme.css">
   <link rel="stylesheet" href="/assets/app-navigation-labels.css">
+  <link rel="stylesheet" href="/assets/scramble-theme.css">
+  <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
+  <link rel="stylesheet" href="/assets/app-search-overlay.css">
+  <link rel="stylesheet" href="/assets/office-workbench.css">
+  <script src="/assets/scramble-wallpaper.js"></script>
 </head>
-<body>
+<body data-page="office">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
       <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
@@ -30,7 +35,10 @@
           <button class="topbar-icon" id="toggleFiles" type="button" aria-label="显示文件列表" data-office-icon="panel"></button>
           <span>办公文件</span>
         </div>
-        <div class="save-state" id="saveState" role="status" aria-live="polite">本机自动保存</div>
+        <div class="topbar-actions">
+          <div class="save-state" id="saveState" role="status" aria-live="polite">本机自动保存</div>
+          <input id="officeFileInput" type="file" hidden accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown">
+        </div>
       </header>
 
       <div class="operation-banner" id="operationBanner" role="status" aria-live="polite" data-state="busy" hidden>
@@ -41,22 +49,13 @@
 
       <div class="office-layout">
         <aside class="file-panel" id="filePanel" aria-label="最近文件">
-          <div class="panel-heading">
-            <div>
-              <p class="section-label">工作区</p>
-              <h1>最近文件</h1>
-            </div>
+          <div class="panel-heading file-panel-heading">
             <button class="panel-close" id="closeFiles" type="button" aria-label="关闭文件列表">×</button>
           </div>
-          <p class="panel-note">不用新建项目。打开文件就能继续上次的处理。</p>
-          <div class="file-panel-actions" aria-label="文件操作">
+          <div class="file-panel-actions app-create-search">
             <button class="toolbar-button" id="newDocument" type="button" data-office-icon="plus">新建文件</button>
             <button class="toolbar-button primary" type="button" data-open-office-file data-office-icon="upload">打开文件</button>
-            <input id="officeFileInput" type="file" hidden accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown">
-          </div>
-          <div class="file-library-tools" aria-label="筛选文件">
-            <label><span class="sr-only">搜索文件</span><input id="fileLibrarySearch" type="search" maxlength="80" placeholder="搜索文件"></label>
-            <label><span class="sr-only">按格式筛选</span><select id="fileLibraryFormat"><option value="all">全部格式</option><option value="word">文字文档</option><option value="presentation">演示文稿</option><option value="spreadsheet">表格</option><option value="pdf">PDF</option><option value="ebook">电子书</option><option value="text">TXT / Markdown</option></select></label>
+            <button class="app-search-trigger" id="fileSearchToggle" type="button" title="搜索文件" aria-label="搜索文件" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span></button>
           </div>
           <div class="recent-files" id="recentFiles"></div>
           <details class="trash-panel" id="trashPanel">
@@ -111,10 +110,9 @@
               <button class="is-current" type="button" role="tab" aria-selected="true" data-document-view="source">原文件</button>
               <button id="editViewTab" type="button" role="tab" aria-selected="false" data-document-view="edit">提取文字</button>
               <button type="button" role="tab" aria-selected="false" data-document-view="result" id="resultViewTab" hidden>处理结果</button>
+              <p class="capability-note" id="capabilityNote" hidden></p>
               <span id="sourceState">原文件保留在本机</span>
             </div>
-
-            <p class="capability-note" id="capabilityNote" hidden></p>
 
             <div class="source-preview" id="sourcePreview" role="tabpanel" aria-label="原文件预览"></div>
 
@@ -201,12 +199,22 @@
     </form>
   </dialog>
 
+  <dialog class="app-search-dialog" id="fileSearchDialog" aria-labelledby="fileSearchTitle">
+    <form class="app-search-surface" method="dialog">
+      <header class="app-search-head"><div><p>文件记录</p><h2 id="fileSearchTitle">搜索文件</h2></div><button class="app-search-close" id="closeFileSearch" type="button" aria-label="关闭搜索">×</button></header>
+      <label class="app-search-field"><span data-app-icon="search" aria-hidden="true"><span></span></span><input id="fileLibrarySearch" type="search" maxlength="80" placeholder="输入文件名" autocomplete="off" aria-label="搜索文件"><select id="fileLibraryFormat" aria-label="按格式筛选"><option value="all">全部格式</option><option value="word">文字文档</option><option value="presentation">演示文稿</option><option value="spreadsheet">表格</option><option value="pdf">PDF</option><option value="ebook">电子书</option><option value="text">TXT / Markdown</option></select></label>
+      <div class="app-search-results" id="fileSearchResults" role="listbox" aria-live="polite"></div>
+    </form>
+  </dialog>
+
   <div class="toast" id="officeToast" role="status" aria-live="polite"></div>
   <script src="/assets/app-icons.js"></script>
+  <script src="/assets/app-search-overlay.js"></script>
   <script src="/assets/vendor/jszip.min.js"></script>
   <script src="/assets/vendor/docx-preview.min.js"></script>
   <script src="/assets/office-capabilities.js"></script>
   <script src="/assets/office-source-preview.js"></script>
   <script src="/assets/office-workbench.js"></script>
+  <script src="/assets/scramble-confetti.js" defer></script>
 </body>
 </html>

@@ -35,18 +35,18 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
     assert.match(page, /\/assets\/app-navigation-labels\.css/);
   }
   for (const label of ["任务", "能力", "文件", "工作", "设置"]) {
-    assert.match(pages[0], new RegExp(`data-rail-label="${label}"`));
-    assert.ok(pages.slice(1).every((page) => page.includes(`<small>${label}</small>`)));
+    assert.ok(pages.every((page) => page.includes(`<small>${label}</small>`)));
   }
   assert.match(pages[0], /class="rail-label"/);
-  assert.match(pages[0], /<nav class="rail-main-nav" aria-label="主导航">/);
+  assert.match(pages[0], /<aside class="rail" aria-label="主导航">/);
   assert.match(navigation, /@media \(min-width: 721px\)/);
   assert.match(navigation, /\.rail nav small,[\s\S]+display: block/);
-  assert.match(navigation, /#wechatRail \{\s*width: 76px;\s*flex-basis: 76px;/);
-  assert.match(navigation, /#sidebar \{\s*width: 271px;/);
-  assert.match(navigation, /\.rail-icon,[\s\S]+width: 60px;/);
-  assert.match(navigation, /#wechatRail \.rail-main-nav \{[\s\S]+gap: 2px;/);
-  assert.match(navigation, /\.rail nav svg,[\s\S]+width: 22px;[\s\S]+height: 22px;/);
+  assert.match(navigation, /--app-rail-reserved: 100px/);
+  assert.match(navigation, /#sidebar \{ width: 352px;/);
+  assert.match(navigation, /#sessionPane \{[\s\S]+width: 252px/);
+  assert.match(navigation, /--app-nav-width: 60px/);
+  assert.match(navigation, /--app-nav-gap: 4px/);
+  assert.match(navigation, /--app-icon-size: 20px/);
   assert.match(brandMark, /<rect width="64" height="64" rx="15"/);
   assert.doesNotMatch(brandMark, /\sstroke=/);
 });
@@ -73,7 +73,7 @@ test("后台角色能力保留，专家配置不再占用主界面", () => {
     assert.match(page, new RegExp(`${roleId}: \\{`));
   }
   assert.match(page, /专业判断与能力会在后台按需加入/);
-  assert.match(page, /不用先选专家/);
+  assert.doesNotMatch(page, /starter-prompts|starter-help-close|clownfishStarterHelpClosed/);
   assert.doesNotMatch(page, /id="sm-persona"/);
   assert.doesNotMatch(page, />专家与角色</);
   assert.match(page, /let onboardingBusy = false/);
@@ -84,10 +84,11 @@ test("新对话直接创建并在空白页选择工作方式", () => {
   const page = readFileSync(join(webRoot, "index.html"), "utf8");
 
   assert.match(page, /id="quickGroup"[^>]*>[\s\S]*新对话/);
-  assert.match(page, /class="rail-brand-label">小丑鱼</);
+  assert.match(page, /<a class="brand" href="\/" id="railUserAvatar"/);
   assert.match(page, /id="sidebarSearchToggle"[^>]*aria-expanded="false"/);
-  assert.match(page, /function setConversationSearchOpen\(open\)/);
-  assert.match(page, /#wechatSearch\.search-open \.thread-search/);
+  assert.match(page, /id="quickGroup"[\s\S]*id="sidebarSearchToggle"/);
+  assert.match(page, /id="conversationSearchDialog"[^>]*aria-labelledby="conversationSearchTitle"/);
+  assert.match(page, /AppSearchOverlay\.bind\(\{[\s\S]*dialog: "#conversationSearchDialog"/);
   assert.match(page, /data-work-mode=/);
   assert.match(page, /Object\.entries\(WORK_MODES\)[\s\S]*aria-pressed/);
   assert.match(page, /chat: \{ label: "直接聊聊"/);

@@ -32,6 +32,9 @@ test("validates extension permissions and machine-readable manifests", () => {
   const invalid = manifest();
   invalid.tools = [{ name: "publish", description: "publish", effect: "write" }];
   assert.match(validateAgentExtensionManifest(invalid).join(" "), /write permission/);
+  const invalidRisk = manifest();
+  invalidRisk.tools = [{ name: "erase", description: "erase", effect: "read", risk: "destructive" }];
+  assert.match(validateAgentExtensionManifest(invalidRisk).join(" "), /destructive tool must use write effect/);
 
   const executable = manifest();
   executable.runtime = { type: "mcp", entry: process.execPath };
@@ -220,8 +223,10 @@ test("requires renewed approval when an upgrade expands permissions, tools, or m
   expanded.models = ["daily-model", "flagship-model"];
   expanded.permissions.push("external-write");
   expanded.tools.push({ name: "weather_publish", description: "Publish weather", effect: "write" });
+  expanded.tools[0]!.effect = "write";
+  expanded.tools[0]!.risk = "destructive";
 
-  assert.throws(() => registry.upgrade(expanded), /requires explicit approval/);
+  assert.throws(() => registry.upgrade(expanded), /tool-destructive:weather_lookup.*requires explicit approval|requires explicit approval.*tool-destructive:weather_lookup/);
   const upgraded = registry.upgrade(expanded, undefined, { approvePermissionExpansion: true });
   assert.deepEqual(upgraded.manifest.models, ["daily-model", "flagship-model"]);
   registry.assertModelAccess(initial.id, "flagship-model");

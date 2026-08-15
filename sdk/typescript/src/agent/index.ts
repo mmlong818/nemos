@@ -107,6 +107,7 @@ export type {
   AgentToolContext,
   AgentToolDefinition,
   AgentToolEffect,
+  AgentToolRisk,
   AgentToolResult,
   AgentTokenUsage,
 } from "./types.js";

@@ -149,6 +149,30 @@ test("only clownfish receives the approved write tool for saving recurring work"
     days: [1, 2, 3, 4, 5, 6, 7],
   });
 });
+
+test("通用重复任务不会暴露缺少工作区授权的开发能力", async () => {
+  const capabilities = {
+    snapshot: () => ({
+      abilities: [
+        { id: "research-brief", name: "资料收集简报" },
+        { id: "project-development", name: "开发项目" },
+      ],
+      tasks: [],
+      artifacts: [],
+    }),
+  };
+  const provider = createCompanionAgentToolProvider({
+    memory: () => ({} as Nemos),
+    capabilities: () => capabilities as unknown as CapabilityRuntime,
+  });
+  const tools = await provider("把每天的 AI 新闻收集保存为常规任务", { ...context, personaId: "clownfish" });
+  const taskTool = tools.find((tool) => tool.definition.name === "capability_task_create");
+
+  assert.ok(taskTool);
+  const schema = taskTool.definition.inputSchema as { properties: { capabilityId: { description: string } } };
+  assert.match(schema.properties.capabilityId.description, /research-brief/);
+  assert.doesNotMatch(schema.properties.capabilityId.description, /project-development/);
+});
 test("only Clownfish can install a Skill and the write happens after tool execution", async () => {
   const installed: Array<Record<string, unknown>> = [];
   const fetched: string[] = [];

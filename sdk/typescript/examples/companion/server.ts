@@ -36,6 +36,7 @@ import {
   type AgentRunObserver,
   type AgentTokenUsage,
 } from "../../src/index.js";
+import { FileDeliveryOutbox, type DeliveryRecord } from "./delivery-outbox.js";
 import { CompanionEngine, personaNamespace } from "./engine.js";
 import { PERSONAS, RELATIONSHIPS, DEFAULT_RELATIONSHIP } from "./personas.js";
 import { LONG_FORM_EXPERT_IDS } from "./experts.js";
@@ -64,11 +65,15 @@ import {
 } from "./model-pricing.js";
 import {
   CapabilityRuntime,
+  normalizeDevelopmentEngine,
+  normalizeDevelopmentReasoning,
   type ArtifactFormat,
   type CapabilityNotification,
   type CapabilityStreamCb,
   type CapabilityTaskExpertAssignment,
   type CapabilityTaskStorylineStatus,
+  type DevelopmentEngine,
+  type DevelopmentReasoning,
 } from "./capabilities.js";
 import {
   createCapabilityHandoffEnvelope,
@@ -100,9 +105,22 @@ import { OfficeFileSessionStore } from "./office-file-sessions.js";
 import { OfficeWorkbenchRevisionConflict, OfficeWorkbenchStateStore } from "./office-workbench-state.js";
 import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
-import { runPiDevelopment, validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
+import { validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
+import { createDevelopmentEnginePluginRegistry } from "./development-engine-plugins.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
 import { listDevelopmentWorkspace, readDevelopmentWorkspaceFile } from "./development-workspace.js";
+import { createManagedDevelopmentProject, ensureDevelopmentProjectsRoot, extractDevelopmentWorkspaceReference } from "./development-projects.js";
+import {
+  DevelopmentProjectArchiveStore,
+  deleteManagedDevelopmentWorkspace,
+  developmentProjectThreads,
+  managedDevelopmentWorkspace,
+} from "./development-project-lifecycle.js";
+import {
+  developmentApprovalPolicies,
+  normalizeDevelopmentApprovalPolicy,
+  type DevelopmentApprovalPolicy,
+} from "./development-approval.js";
 import { buildReviewQueue, capabilityPackStatuses, developmentEnvironment, platformConnectorStatuses } from "./product-platform.js";
 import { routeCapability } from "./capability-router.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
@@ -117,6 +135,7 @@ import { KnowledgeLibrary, type KnowledgeItemKind } from "./knowledge-library.js
 import { appendCurrentUiEvidence } from "./ui-evidence.js";
 import { ProductReviewRunStore, type ProductReviewIssue } from "./product-review-runs.js";
 import { applyPendingDataRestore, normalizeSyncEndpoint, pullDataSync, pushDataSync, syncSettingsSummary, testDataSync, type DataSyncStoredSettings } from "./data-sync.js";
+import { recoverAgentJobStorage } from "./agent-job-storage-migration.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const USER = process.env.COMPANION_USER || "me";
@@ -124,7 +143,9 @@ const defaultDataDir = join(homedir(), ".clownfish");
 const legacyDataDir = join(homedir(), String.fromCharCode(46, 110, 101, 109, 111, 115, 45, 99, 111, 109, 112, 97, 110, 105, 111, 110));
 const DATA_DIR = process.env.CLOWNFISH_HOME || process.env[String.fromCharCode(78, 69, 77, 79, 83, 95, 67, 79, 77, 80, 65, 78, 73, 79, 78, 95, 72, 79, 77, 69)] || (existsSync(defaultDataDir) || !existsSync(legacyDataDir) ? defaultDataDir : legacyDataDir);
 mkdirSync(DATA_DIR, { recursive: true });
+const DEVELOPMENT_PROJECTS_ROOT = ensureDevelopmentProjectsRoot(process.env.CLOWNFISH_PROJECTS_DIR || join(homedir(), "Documents", "小丑鱼项目"));
 const pendingSyncRestore = applyPendingDataRestore(DATA_DIR);
+recoverAgentJobStorage(DATA_DIR, DATA_DIR === defaultDataDir ? legacyDataDir : undefined);
 migrateStoredPersonaIdentities(DATA_DIR);
 const MANIFEST_FILE = resolveManifestPath();
 const APP_MANIFEST = readManifest();
@@ -180,6 +201,7 @@ const USER_PROFILE_FILE = runtimePath("COMPANION_USER_PROFILE", "user-profile.js
 const AGENT_RUNS_FILE = runtimePath("COMPANION_AGENT_RUNS", "agent-runs.json");
 const AGENT_APPROVALS_FILE = runtimePath("COMPANION_AGENT_APPROVALS", "agent-approvals.json");
 const AGENT_JOBS_FILE = runtimePath("COMPANION_AGENT_JOBS", "agent-jobs.json");
+const DELIVERY_OUTBOX_FILE = runtimePath("COMPANION_DELIVERY_OUTBOX", "delivery-outbox.json");
 const AGENT_EXTENSIONS_FILE = runtimePath("COMPANION_AGENT_EXTENSIONS", "agent-extensions.json");
 const X_OAUTH_REDIRECT = `http://127.0.0.1:${PORT}/api/sources/x/oauth/callback`;
 const TOOL_ZHIPU_CHAT_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
@@ -199,6 +221,7 @@ function broadcastAgentEvent(event: AgentJobQueueEvent): void {
   queueMicrotask(() => {
     try {
       const job = agentJobQueue.get(event.job.id);
+      const delivery = job ? ensureJobDelivery(job) : null;
       const resultData = job?.result?.data as { artifact?: { taskId?: string } } | undefined;
       const taskId = String(job?.metadata?.workTaskId || resultData?.artifact?.taskId || "");
       if (!job || !taskId) return;
@@ -207,9 +230,11 @@ function broadcastAgentEvent(event: AgentJobQueueEvent): void {
       capabilities.projectTaskExecution({
         taskId,
         jobId: job.id,
-        status: job.status,
+        status: delivery && delivery.status !== "delivered" && job.status === "succeeded" ? "running" : job.status,
         progress: checkpoint?.progress,
-        label: checkpoint?.status,
+        label: delivery && delivery.status !== "delivered" && job.status === "succeeded"
+          ? delivery.status === "failed" ? "结果送达失败" : "结果等待送达"
+          : checkpoint?.status,
         artifactId,
         error: job.error,
         updatedAt: job.updatedAt,
@@ -352,7 +377,13 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
     return searchWeb(key, query, signal);
   },
 });
-const developmentProposals = new DevelopmentProposalStore(join(DATA_DIR, "development-proposals"));
+// 服务启动只恢复持久状态，不自动改动用户项目文件；中断提案留在待审状态，由用户明确处理。
+const developmentProposals = new DevelopmentProposalStore(join(DATA_DIR, "development-proposals"), { recoverInterrupted: false });
+const developmentEnginePlugins = createDevelopmentEnginePluginRegistry({
+  dataDir: DATA_DIR,
+  proposalStore: developmentProposals,
+});
+const developmentProjectArchive = new DevelopmentProjectArchiveStore(join(DATA_DIR, "development-project-archive.json"));
 const productReviewRuns = new ProductReviewRunStore(DATA_DIR);
 const knowledgeLibrary = new KnowledgeLibrary(DATA_DIR);
 const relationships = new RelationshipMemory(DATA_DIR);
@@ -371,16 +402,16 @@ const capabilities = new CapabilityRuntime({
   toolBinding: (personaId) => personaToolBindings.get(personaId),
   runDeveloper: async (input) => {
     if (!modelConnection) throw new Error("请先在设置中连接一个可用模型。");
-    const result = await runPiDevelopment({
+    const developmentEngine = normalizeDevelopmentEngine(input.engine);
+    const developmentModel = normalizeDevelopmentModel(input.model) || modelConnection.model;
+    const developmentConnection = developmentModel === modelConnection.model
+      ? modelConnection
+      : { ...modelConnection, model: developmentModel };
+    const result = await developmentEnginePlugins.run(developmentEngine, {
       ...input,
-      connection: modelConnection,
-      agentDir: join(DATA_DIR, "pi-development"),
-      proposalStore: developmentProposals,
-      // 复用小丑鱼自己的技能库：pi 负责加载与编排，技能来源仍由能力层掌握。
-      // 目录在 DATA_DIR 下，不在被开发的项目里，所以过得了工作区隔离检查。
-      skillPaths: [join(DATA_DIR, "skills")],
+      connection: developmentConnection,
     });
-    return result;
+    return { ...result, engine: developmentEngine };
   },
   notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode) => {
     const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode });
@@ -392,6 +423,67 @@ const capabilities = new CapabilityRuntime({
   },
 });
 const agentJobQueue = new FileAgentJobQueue(AGENT_JOBS_FILE, { onChange: broadcastAgentEvent });
+
+function developmentProjectThread(rootJobId: string) {
+  return developmentProjectThreads(agentJobQueue.list({ limit: 500 })).find((thread) => thread.root.id === rootJobId);
+}
+
+function developmentProjectArchiveItems() {
+  const threads = new Map(developmentProjectThreads(agentJobQueue.list({ limit: 500 })).map((thread) => [thread.root.id, thread]));
+  return developmentProjectArchive.list().map((record) => {
+    const thread = threads.get(record.rootJobId);
+    const workspacePath = String(thread?.latest.payload.workspacePath || thread?.root.payload.workspacePath || record.workspacePath || "");
+    return {
+      ...record,
+      title: String(thread?.root.payload.title || record.title || "开发项目"),
+      workspacePath,
+      latestJobId: thread?.latest.id || "",
+      latestStatus: thread?.latest.status || "deleted",
+      updatedAt: thread?.latest.updatedAt || record.archivedAt,
+      turnCount: thread?.turns.length || 0,
+      managedWorkspace: Boolean(managedDevelopmentWorkspace(DEVELOPMENT_PROJECTS_ROOT, workspacePath)),
+    };
+  });
+}
+const deliveryOutbox = new FileDeliveryOutbox(DELIVERY_OUTBOX_FILE);
+
+function ensureJobDelivery(job: ReturnType<FileAgentJobQueue["get"]>): DeliveryRecord | null {
+  if (!job?.deliveryRequired || job.status !== "succeeded" || !job.result?.data || job.deliveredAt) return null;
+  return deliveryOutbox.enqueue({
+    dedupeKey: `agent-job:${job.id}`,
+    sourceType: "agent-job",
+    sourceId: job.id,
+    channel: "chat",
+    payload: { jobId: job.id },
+    maxAttempts: 5,
+  });
+}
+
+function jobWithDelivery(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): typeof job & { delivery: DeliveryRecord | null } {
+  return { ...job, delivery: deliveryOutbox.getBySource("agent-job", job.id) };
+}
+
+function projectDeliveredJob(jobId: string, delivery: DeliveryRecord): void {
+  const job = agentJobQueue.get(jobId);
+  if (!job) return;
+  const resultData = job.result?.data as { artifact?: { taskId?: string } } | undefined;
+  const taskId = String(job.metadata?.workTaskId || resultData?.artifact?.taskId || "");
+  if (!taskId) return;
+  const checkpoint = job.checkpoints[job.checkpoints.length - 1];
+  const artifactId = job.result?.artifactRefs?.find((item) => item.startsWith("artifact:"))?.slice("artifact:".length);
+  capabilities.projectTaskExecution({
+    taskId,
+    jobId: job.id,
+    status: delivery.status === "delivered" ? "succeeded" : "running",
+    progress: checkpoint?.progress,
+    label: delivery.status === "delivered" ? checkpoint?.status : delivery.status === "failed" ? "结果送达失败" : "结果等待送达",
+    artifactId,
+    error: delivery.status === "failed" ? delivery.lastError : job.error,
+    updatedAt: delivery.updatedAt,
+  });
+}
+
+for (const legacyJob of agentJobQueue.listPendingDeliveries({ limit: 500 })) ensureJobDelivery(legacyJob);
 const companionAgentTools = createCompanionAgentToolProvider({
   memory: () => mem,
   capabilities: () => capabilities,
@@ -519,7 +611,15 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       memoryMode: pinnedPreferenceContext ? "off" : requestedMemoryMode,
       workspacePath: String(job.payload.workspacePath || ""),
       accessMode: job.payload.accessMode === "inspect" ? "inspect" : "develop",
+      approvalPolicy: normalizeDevelopmentApprovalPolicy(
+        normalizeDevelopmentEngine(job.payload.developmentEngine),
+        job.payload.approvalPolicy,
+        job.payload.accessMode === "inspect" ? "inspect" : "develop",
+      ),
       installDependencies: job.payload.installDependencies === true,
+      developmentEngine: normalizeDevelopmentEngine(job.payload.developmentEngine),
+      model: normalizeDevelopmentModel(job.payload.model),
+      reasoning: normalizeDevelopmentReasoning(job.payload.reasoning),
       continuationTaskId: String(job.payload.continuationTaskId || ""),
       origin: {
         kind: handoff?.source === "capability" ? "capability" : job.payload.conversationKey ? "chat" : "direct",
@@ -2335,6 +2435,11 @@ function conversationSendOptions(body: ChatBody): {
   };
 }
 
+function normalizeDevelopmentModel(value: unknown): string | undefined {
+  const model = String(value || "").trim();
+  return model && model !== "default" && /^[a-z0-9._:/-]{1,120}$/i.test(model) ? model : undefined;
+}
+
 function defaultDataSyncSettings(): DataSyncStoredSettings {
   return {
     mode: "local",
@@ -3194,11 +3299,15 @@ const server = createServer(async (req, res) => {
       send(res, 200, readFileSync(join(WEB_DIR, "develop.html"), "utf-8"), "text/html");
       return;
     }
+    if (req.method === "GET" && (pathname === "/develop/archive" || pathname === "/develop-archive.html")) {
+      send(res, 200, readFileSync(join(WEB_DIR, "develop-archive.html"), "utf-8"), "text/html");
+      return;
+    }
     if (req.method === "GET" && (pathname === "/settings" || pathname === "/settings.html")) {
       send(res, 200, readFileSync(join(WEB_DIR, "settings.html"), "utf-8"), "text/html");
       return;
     }
-    if (req.method === "GET" && ["/tasks", "/spaces", "/automations", "/collaboration", "/resources", "/artifacts", "/runs", "/memory"].includes(pathname)) {
+    if (req.method === "GET" && ["/work", "/work.html", "/tasks", "/spaces", "/automations", "/collaboration", "/resources", "/artifacts", "/runs", "/memory"].includes(pathname)) {
       send(res, 200, readFileSync(join(WEB_DIR, "work.html"), "utf-8"), "text/html");
       return;
     }
@@ -3636,34 +3745,144 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
+    if (req.method === "GET" && url === "/api/development/projects") {
+      send(res, 200, { ok: true, root: DEVELOPMENT_PROJECTS_ROOT });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/development/project-archive") {
+      send(res, 200, {
+        ok: true,
+        archivedRootJobIds: developmentProjectArchive.list().map((record) => record.rootJobId),
+        projects: developmentProjectArchiveItems(),
+      });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/project/archive") {
+      const body = (await readBody(req)) as { rootJobId?: string };
+      const rootJobId = String(body.rootJobId || "").trim();
+      const thread = rootJobId ? developmentProjectThread(rootJobId) : undefined;
+      if (!thread) { send(res, 404, { error: "找不到这个开发项目" }); return; }
+      if (thread.turns.some((job) => job.status === "queued" || job.status === "running")) {
+        send(res, 409, { error: "项目仍有任务在执行，请先停止或等待完成" });
+        return;
+      }
+      const workspacePath = String(thread.latest.payload.workspacePath || thread.root.payload.workspacePath || "");
+      const project = developmentProjectArchive.archive({
+        rootJobId: thread.root.id,
+        title: String(thread.root.payload.title || "开发项目"),
+        workspacePath,
+      });
+      send(res, 200, { ok: true, project });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/project/restore") {
+      const body = (await readBody(req)) as { rootJobId?: string };
+      const rootJobId = String(body.rootJobId || "").trim();
+      if (!rootJobId || !developmentProjectArchive.restore(rootJobId)) {
+        send(res, 404, { error: "找不到这个归档项目" });
+        return;
+      }
+      send(res, 200, { ok: true, rootJobId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/project/delete") {
+      const body = (await readBody(req)) as { rootJobId?: string; deleteWorkspace?: boolean; confirmation?: string };
+      const rootJobId = String(body.rootJobId || "").trim();
+      const archived = rootJobId ? developmentProjectArchive.get(rootJobId) : undefined;
+      if (!archived) { send(res, 404, { error: "项目必须先归档，才能彻底删除" }); return; }
+      if (body.confirmation !== "delete-archived-development-project") {
+        send(res, 400, { error: "请确认彻底删除这个归档项目" });
+        return;
+      }
+      const thread = developmentProjectThread(rootJobId);
+      if (thread?.turns.some((job) => job.status === "queued" || job.status === "running")) {
+        send(res, 409, { error: "项目仍有任务在执行，不能删除" });
+        return;
+      }
+      const workspacePath = String(thread?.latest.payload.workspacePath || thread?.root.payload.workspacePath || archived.workspacePath || "");
+      const managedWorkspace = managedDevelopmentWorkspace(DEVELOPMENT_PROJECTS_ROOT, workspacePath);
+      if (body.deleteWorkspace && !managedWorkspace) {
+        send(res, 400, { error: "这个目录不是由小丑鱼建立的项目目录，只能删除项目记录" });
+        return;
+      }
+      const jobs = thread?.turns ?? [];
+      const jobIds = jobs.map((job) => job.id);
+      const taskIds = new Set<string>();
+      for (const job of jobs) {
+        const resultData = job.result?.data as { artifact?: { taskId?: string } } | undefined;
+        const taskId = String(resultData?.artifact?.taskId || job.payload.continuationTaskId || "").trim();
+        if (taskId) taskIds.add(taskId);
+      }
+      const capabilityData = capabilities.deleteTaskData([...taskIds]);
+      const proposals = workspacePath ? developmentProposals.removeForWorkspace(workspacePath) : 0;
+      const deliveries = deliveryOutbox.deleteBySources("agent-job", jobIds);
+      const deletedJobs = agentJobQueue.deleteMany(jobIds);
+      developmentProjectArchive.remove(rootJobId);
+      const workspaceDeleted = body.deleteWorkspace
+        ? deleteManagedDevelopmentWorkspace(DEVELOPMENT_PROJECTS_ROOT, workspacePath)
+        : false;
+      send(res, 200, {
+        ok: true,
+        deleted: { jobs: deletedJobs, tasks: capabilityData.tasks, artifacts: capabilityData.artifacts, proposals, deliveries },
+        workspaceDeleted,
+        workspacePreserved: !workspaceDeleted,
+      });
+      return;
+    }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/jobs") {
       const query = new URLSearchParams(url.split("?")[1] || "");
       const status = query.get("status") || undefined;
       const allowed = status === "queued" || status === "running" || status === "succeeded" || status === "failed" || status === "cancelled"
         ? status
         : undefined;
-      send(res, 200, { ok: true, jobs: agentJobQueue.list({ status: allowed, limit: Number(query.get("limit") || 100) }) });
+      send(res, 200, { ok: true, jobs: agentJobQueue.list({ status: allowed, limit: Number(query.get("limit") || 100) }).map(jobWithDelivery) });
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/deliveries") {
       const query = new URLSearchParams(url.split("?")[1] || "");
+      const owner = `browser:${USER}`;
+      for (const job of agentJobQueue.listPendingDeliveries({ limit: 500 })) ensureJobDelivery(job);
+      const claims = deliveryOutbox.claimPending(owner, { channel: "chat", limit: Number(query.get("limit") || 100) });
+      const jobs = claims.flatMap((delivery) => {
+        const job = agentJobQueue.get(delivery.sourceId);
+        return job ? [{ ...job, delivery }] : [];
+      });
       send(res, 200, {
         ok: true,
-        jobs: agentJobQueue.listPendingDeliveries({ limit: Number(query.get("limit") || 100) }),
+        jobs,
       });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/delivery/ack") {
-      const body = (await readBody(req)) as { id?: string };
+      const body = (await readBody(req)) as { id?: string; deliveryId?: string; receiptId?: string };
       if (!body.id) { send(res, 400, { error: "missing job id" }); return; }
-      send(res, 200, { ok: true, job: agentJobQueue.acknowledgeDelivery(body.id) });
+      const record = body.deliveryId
+        ? deliveryOutbox.get(body.deliveryId)
+        : deliveryOutbox.getBySource("agent-job", body.id);
+      if (!record) { send(res, 404, { error: "delivery not found" }); return; }
+      const delivery = deliveryOutbox.acknowledge(record.id, `browser:${USER}`, body.receiptId);
+      const job = agentJobQueue.acknowledgeDelivery(body.id);
+      projectDeliveredJob(body.id, delivery);
+      send(res, 200, { ok: true, job: jobWithDelivery(job), delivery });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/agent/delivery/fail") {
+      const body = (await readBody(req)) as { id?: string; deliveryId?: string; error?: string };
+      if (!body.id) { send(res, 400, { error: "missing job id" }); return; }
+      const record = body.deliveryId
+        ? deliveryOutbox.get(body.deliveryId)
+        : deliveryOutbox.getBySource("agent-job", body.id);
+      if (!record) { send(res, 404, { error: "delivery not found" }); return; }
+      const delivery = deliveryOutbox.fail(record.id, `browser:${USER}`, body.error || "客户端未能展示任务结果");
+      projectDeliveredJob(body.id, delivery);
+      send(res, 200, { ok: true, delivery });
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/job") {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id") || "";
       const job = id ? agentJobQueue.get(id) : null;
       if (!job) send(res, 404, { error: "agent job not found" });
-      else send(res, 200, { ok: true, job });
+      else send(res, 200, { ok: true, job: jobWithDelivery(job) });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/job") {
@@ -3679,6 +3898,11 @@ const server = createServer(async (req, res) => {
         workspacePath?: string;
         accessMode?: DevelopmentAccessMode;
         installDependencies?: boolean;
+        developmentEngine?: DevelopmentEngine;
+        model?: string;
+        reasoning?: DevelopmentReasoning;
+        approvalPolicy?: DevelopmentApprovalPolicy;
+        fullControlConfirmed?: boolean;
         parentJobId?: string;
         handoffChain?: string[];
         handoff?: CapabilityHandoffInput;
@@ -3696,14 +3920,38 @@ const server = createServer(async (req, res) => {
         return;
       }
       const capabilityPersonaId = body.kind === "capability-adhoc" ? "clownfish" : body.personaId;
+      let developmentWorkspace = "";
+      let developmentApprovalPolicy: DevelopmentApprovalPolicy = "request";
       if (body.kind === "capability-adhoc" && body.capabilityId === "project-development") {
-        try { validateDevelopmentWorkspace(String(body.workspacePath || "")); }
+        try {
+          const developmentEngine = normalizeDevelopmentEngine(body.developmentEngine);
+          const accessMode = body.accessMode === "inspect" ? "inspect" : "develop";
+          const requestedPolicy = String(body.approvalPolicy || "request") as DevelopmentApprovalPolicy;
+          if (!developmentApprovalPolicies(developmentEngine).includes(requestedPolicy)) {
+            throw new Error("当前开发引擎不支持所选执行权限。");
+          }
+          if (requestedPolicy === "full" && accessMode !== "develop") {
+            throw new Error("完全控制只适用于修改项目。");
+          }
+          if (requestedPolicy === "full" && body.fullControlConfirmed !== true) {
+            throw new Error("使用完全控制前需要明确确认本次风险。");
+          }
+          developmentApprovalPolicy = normalizeDevelopmentApprovalPolicy(developmentEngine, requestedPolicy, accessMode);
+          const requestedWorkspace = String(body.workspacePath || "").trim()
+            || extractDevelopmentWorkspaceReference(String(body.instruction || ""));
+          if (!requestedWorkspace && developmentApprovalPolicy === "full") {
+            throw new Error("完全控制需要在任务说明中提供一个已有且干净的 Git 项目目录。");
+          }
+          developmentWorkspace = requestedWorkspace
+            ? validateDevelopmentWorkspace(requestedWorkspace)
+            : createManagedDevelopmentProject(DEVELOPMENT_PROJECTS_ROOT, String(body.title || body.instruction || "新项目")).path;
+        }
         catch (error) { send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) }); return; }
       }
       const parentJobId = String(body.parentJobId || "").trim();
       const parentJob = parentJobId ? agentJobQueue.get(parentJobId) : null;
-      if (parentJobId && (!parentJob || parentJob.status !== "succeeded")) {
-        send(res, 400, { error: "上一步能力结果不存在或尚未完成" });
+      if (parentJobId && (!parentJob || ["queued", "running"].includes(parentJob.status))) {
+        send(res, 400, { error: "当前开发任务不存在或尚未结束" });
         return;
       }
       const parentResult = parentJob?.result?.data as { artifact?: { taskId?: string } } | undefined;
@@ -3764,9 +4012,13 @@ const server = createServer(async (req, res) => {
                 instruction: body.instruction,
                 conversationKey: /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(body.conversationKey || "")) ? body.conversationKey : "",
                 continuationTaskId,
-                workspacePath: body.capabilityId === "project-development" ? validateDevelopmentWorkspace(String(body.workspacePath || "")) : "",
+                workspacePath: body.capabilityId === "project-development" ? developmentWorkspace : "",
                 accessMode: body.accessMode === "inspect" ? "inspect" : "develop",
                 installDependencies: body.installDependencies === true,
+                developmentEngine: normalizeDevelopmentEngine(body.developmentEngine),
+                model: normalizeDevelopmentModel(body.model),
+                reasoning: normalizeDevelopmentReasoning(body.reasoning),
+                approvalPolicy: developmentApprovalPolicy,
                 parentJobId,
                 handoff,
                 handoffChain: Array.isArray(body.handoffChain)
@@ -3986,7 +4238,11 @@ const server = createServer(async (req, res) => {
       const supports = modelConnectionStatus().supports as { webSearch?: boolean } | undefined;
       send(res, 200, {
         ok: true,
-        development: developmentEnvironment(),
+        development: {
+          ...developmentEnvironment(),
+          ...developmentEnginePlugins.readiness(),
+          enginePlugins: developmentEnginePlugins.list(),
+        },
         connectors: platformConnectorStatuses(extensions, {
           files: true,
           browser: Boolean(supports?.webSearch),

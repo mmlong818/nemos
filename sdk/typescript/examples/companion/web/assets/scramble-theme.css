@@ -1,0 +1,767 @@
+/* macOS 风格覆盖层 —— 小丑鱼界面升级
+ * 核心特征：macOS 系统色 + SF 字体栈 + 中性灰表面 + 细腻投影 + 液态玻璃
+ */
+
+:root {
+  /* macOS 系统调色板 */
+  --mac-blue: #007AFF;
+  --mac-blue-dark: #0062CC;
+  --mac-indigo: #5856D6;
+  --mac-indigo-dark: #463FB8;
+  --mac-purple: #AF52DE;
+  --mac-pink: #FF2D55;
+  --mac-pink-dark: #D91A46;
+  --mac-orange: #FF9500;
+  --mac-orange-dark: #D97D00;
+  --mac-teal: #30B0C7;
+  --mac-teal-dark: #248B9E;
+  --mac-green: #34C759;
+  --mac-green-dark: #248A3D;
+  --mac-gray: #8E8E93;
+
+  /* 中性色（macOS 风格） */
+  --mac-ink: #1D1D1F;
+  --mac-muted: #6E6E73;
+  --mac-bg: #F5F5F7;
+
+  /* 玻璃描边 */
+  --scramble-hairline: rgba(255, 255, 255, 0.72);
+  --scramble-hairline-soft: rgba(255, 255, 255, 0.44);
+
+  /* 字体：macOS 系统字体栈 */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro SC",
+    "PingFang SC", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei",
+    "Noto Sans CJK SC", sans-serif;
+
+  /* 页面级强调色（默认 = 任务/工作 系统蓝） */
+  --page-accent: #007AFF;
+  --page-accent-dark: #0062CC;
+  --page-accent-soft: rgba(0, 122, 255, 0.10);
+  --page-accent-grad: linear-gradient(135deg, #007AFF, #30B0C7);
+
+  /* 覆盖小丑鱼原有变量 */
+  --cf-coral: var(--page-accent);
+  --cf-coral-hover: var(--page-accent-dark);
+  --cf-coral-soft: var(--page-accent-soft);
+  --cf-sea: var(--mac-teal);
+  --cf-sea-soft: rgba(48, 176, 199, 0.12);
+
+  --accent: var(--page-accent);
+  --accent-dark: var(--page-accent-dark);
+  --accent-soft: var(--page-accent-soft);
+  --good: var(--mac-teal);
+  --task-accent: var(--page-accent);
+}
+
+/* 页面级色彩区分（home/tasks 沿用 :root 默认系统蓝，无需覆盖） */
+body[data-page="develop"]   { --page-accent: var(--mac-indigo); --page-accent-dark: var(--mac-indigo-dark); --page-accent-soft: rgba(88, 86, 214, 0.10); --page-accent-grad: linear-gradient(135deg, #5856D6, #AF52DE); }
+body[data-page="office"]    { --page-accent: var(--mac-orange); --page-accent-dark: var(--mac-orange-dark); --page-accent-soft: rgba(255, 149, 0, 0.12); --page-accent-grad: linear-gradient(135deg, #FF9500, #FFCC00); }
+body[data-page="capabilities"] { --page-accent: var(--mac-pink); --page-accent-dark: var(--mac-pink-dark); --page-accent-soft: rgba(255, 45, 85, 0.10); --page-accent-grad: linear-gradient(135deg, #FF2D55, #AF52DE); }
+body[data-page="settings"]  { --page-accent: var(--mac-teal); --page-accent-dark: var(--mac-teal-dark); --page-accent-soft: rgba(48, 176, 199, 0.12); --page-accent-grad: linear-gradient(135deg, #30B0C7, #007AFF); }
+body[data-page="tasks"]     { --page-accent: var(--mac-green); --page-accent-dark: var(--mac-green-dark); --page-accent-soft: rgba(52, 199, 89, 0.12); --page-accent-grad: linear-gradient(135deg, #34C759, #30B0C7); }
+
+/* ---------- 全局 ---------- */
+html {
+  color-scheme: light;
+}
+
+body {
+  font-family: var(--font-ui);
+  background:
+    radial-gradient(circle at 14% 0%, color-mix(in srgb, var(--page-accent) 7%, transparent), transparent 34%),
+    radial-gradient(circle at 86% 12%, rgba(88, 86, 214, 0.05), transparent 30%),
+    linear-gradient(145deg, #f5f5f7 0%, #ececf1 55%, #e8e9ee 100%);
+}
+
+::selection {
+  color: var(--mac-ink);
+  background: color-mix(in srgb, var(--page-accent) 24%, transparent);
+}
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.34);
+  background-clip: padding-box;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--page-accent) 55%, transparent) !important;
+}
+
+/* ---------- Liquid Glass 滤镜 ---------- */
+.lg-glass,
+.rail,
+#wechatRail::before,
+.app-shell > main,
+.topbar,
+#topbar,
+#composer,
+.surface,
+.card,
+.task-card,
+.capability-card,
+.start-card,
+.run-card,
+.history-card,
+.settings-section,
+.settings-nav,
+.empty-state,
+.coding-sidebar,
+.file-panel,
+#sessionPane,
+.document-header,
+.document-view-bar {
+  backdrop-filter: blur(26px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(160%) !important;
+}
+
+/* ---------- 导航 Dock ---------- */
+.rail,
+#wechatRail::before {
+  border: 1px solid var(--scramble-hairline) !important;
+  border-radius: 26px !important;
+  background:
+    linear-gradient(155deg, rgba(255,255,255,.84), rgba(243, 244, 248, .68)) !important;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, .14),
+    0 2px 10px rgba(0, 0, 0, .06),
+    inset 0 1px 0 rgba(255,255,255,.94) !important;
+  backdrop-filter: blur(28px) saturate(160%) url(#lg-refraction) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(160%) url(#lg-refraction) !important;
+}
+
+/* 品牌 logo：6 页统一规格（macOS 圆角图标，无额外底色） */
+.rail > .brand,
+#wechatRail > .rail-avatar {
+  box-sizing: border-box !important;
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  min-height: 42px !important;
+  flex: 0 0 42px !important;
+  padding: 0 !important;
+  margin: 0 auto 12px !important;
+  display: block !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.rail > .brand img,
+#wechatRail > .rail-avatar img {
+  width: 42px !important;
+  height: 42px !important;
+  display: block !important;
+  border-radius: 10px !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .16), 0 0 0 1px rgba(0, 0, 0, .05) !important;
+}
+
+/* macOS 侧栏导航：单色 SF 风格图标，无彩色色块 */
+.rail nav > a,
+.rail nav > button,
+.rail-secondary,
+.rail-settings,
+#settingsbtn,
+#wechatRail .rail-main-nav > button {
+  border-radius: 10px !important;
+  border-color: transparent !important;
+  color: #3a3a3c !important;
+  transform: none !important;
+}
+
+.rail nav > a:hover,
+.rail nav > button:hover,
+.rail-secondary:hover,
+.rail-settings:hover,
+#settingsbtn:hover,
+#wechatRail .rail-main-nav > button:hover {
+  color: #1d1d1f !important;
+  border-color: transparent !important;
+  background: rgba(0, 0, 0, .045) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.rail nav > a.is-current,
+.rail nav > button.is-current,
+.rail-secondary.is-current,
+.rail-settings.is-current,
+#settingsbtn.is-current,
+#wechatRail .rail-main-nav > button.active {
+  color: #1d1d1f !important;
+  border-color: transparent !important;
+  background: rgba(0, 0, 0, .07) !important;
+  box-shadow: none !important;
+}
+
+/* 选中态不再使用右侧小圆点 */
+.rail nav > a.is-current::after,
+.rail nav > button.is-current::after,
+.rail-secondary.is-current::after,
+.rail-settings.is-current::after,
+#settingsbtn.is-current::after,
+#wechatRail .rail-main-nav > button.active::after {
+  display: none !important;
+}
+
+/* 图标槽位：无色块单色 glyph（macOS Finder 侧栏形式，选中不出现双层方框） */
+.rail nav > a > span,
+.rail nav > button > span,
+.rail-secondary > span,
+.rail-settings > span,
+.rail-icon > .ui-icon-slot,
+#settingsbtn > .ui-icon-slot,
+#wechatRail .rail-main-nav > button > .ui-icon-slot {
+  color: #007AFF !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transition: none !important;
+}
+
+.rail nav > a:hover > span,
+.rail nav > button:hover > span,
+.rail-secondary:hover > span,
+.rail-settings:hover > span,
+#settingsbtn:hover > .ui-icon-slot,
+#wechatRail .rail-main-nav > button:hover > .ui-icon-slot {
+  filter: none !important;
+  transform: none !important;
+}
+
+.rail nav > a.is-current > span,
+.rail nav > button.is-current > span,
+.rail-secondary.is-current > span,
+.rail-settings.is-current > span,
+#settingsbtn.is-current > .ui-icon-slot,
+#wechatRail .rail-main-nav > button.active > .ui-icon-slot {
+  color: #007AFF !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.rail nav > a.is-current > small,
+.rail nav > button.is-current > small,
+.rail-secondary.is-current > small,
+.rail-settings.is-current > small,
+#settingsbtn.is-current > small {
+  color: #1d1d1f !important;
+  font-weight: 700 !important;
+}
+
+/* 单色 glyph 线宽 */
+.rail nav svg,
+.rail-settings svg,
+.rail-secondary svg,
+.rail-icon svg,
+#settingsbtn svg,
+#wechatRail .app-icon {
+  stroke-width: 1.6 !important;
+}
+
+/* ---------- 主工作区 ---------- */
+.app-shell > main,
+body > #main {
+  border: 1px solid var(--scramble-hairline) !important;
+  border-radius: 28px !important;
+  background: rgba(255, 255, 255, .66) !important;
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, .12),
+    0 2px 12px rgba(0, 0, 0, .05),
+    inset 0 1px 0 rgba(255,255,255,.9) !important;
+}
+
+.topbar,
+#topbar,
+.office-topbar,
+.coding-topbar {
+  border-bottom: 1px solid rgba(0, 0, 0, .06) !important;
+  background: rgba(255, 255, 255, .58) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,.8), 0 10px 30px rgba(0, 0, 0, .04) !important;
+}
+
+.wordmark,
+.office-title,
+.coding-sidebar-head strong {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+/* ---------- 卡片与表面 ---------- */
+.surface,
+.workspace-dialog,
+.new-document-dialog > form,
+.card,
+.task-card,
+.capability-card,
+.start-card,
+.run-card,
+.history-card,
+.settings-section,
+.settings-nav,
+.project-picker,
+.file-item,
+.empty-state {
+  border: 1px solid rgba(0, 0, 0, .05) !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, .78) !important;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .07), inset 0 1px 0 rgba(255,255,255,.9) !important;
+}
+
+.settings-nav { background: rgba(255, 255, 255, .68) !important; }
+.settings-nav button { border-radius: 10px !important; }
+.settings-nav button.is-current {
+  color: var(--page-accent-dark) !important;
+  background: var(--page-accent-soft) !important;
+}
+
+/* ---------- 按钮 ---------- */
+.primary,
+.primary-button,
+.send-development,
+.send-to-capability,
+#send,
+#send.task-workbench-send,
+#startDevelop.task-workbench-send {
+  border-color: var(--page-accent) !important;
+  color: #fff !important;
+  background: var(--page-accent) !important;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--page-accent) 24%, transparent) !important;
+}
+.primary:hover,
+.primary-button:hover,
+.send-development:hover,
+.send-to-capability:hover,
+#send:hover,
+#send.task-workbench-send:hover,
+#startDevelop.task-workbench-send:hover {
+  border-color: var(--page-accent-dark) !important;
+  background: var(--page-accent-dark) !important;
+}
+
+.quiet-button,
+.button:not(.primary) {
+  border-radius: 10px !important;
+}
+
+.task-workbench-send {
+  border-color: var(--page-accent) !important;
+  background: var(--page-accent) !important;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--page-accent) 20%, transparent) !important;
+}
+.task-workbench-send:hover {
+  border-color: var(--page-accent-dark) !important;
+  background: var(--page-accent-dark) !important;
+}
+
+/* ---------- 表单 ---------- */
+input,
+textarea,
+select,
+.toolbar input,
+.field input,
+.field select,
+.field textarea,
+.goal-box textarea,
+.launch-form textarea {
+  border-color: rgba(0, 0, 0, .10) !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, .92) !important;
+}
+input:focus,
+textarea:focus,
+select:focus,
+.toolbar input:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.goal-box textarea:focus,
+.launch-form textarea:focus {
+  border-color: var(--page-accent) !important;
+  box-shadow: 0 0 0 3px var(--page-accent-soft) !important;
+}
+
+/* ---------- 标签 ---------- */
+.tabs a.is-current::after,
+.view-tabs button.is-current::after {
+  background: var(--page-accent) !important;
+}
+
+.eyebrow,
+.section-label,
+.page-head h1,
+.coding-empty h1,
+.empty-copy h2 {
+  font-family: var(--font-ui);
+}
+.eyebrow,
+.section-label {
+  color: var(--page-accent-dark);
+}
+
+/* ---------- 侧边栏与会话列表 ---------- */
+#sidebar,
+#contacts,
+#sessionPane {
+  background: rgba(245, 245, 247, .72) !important;
+  border-right-color: rgba(0, 0, 0, .06) !important;
+  box-shadow: 16px 0 34px rgba(0, 0, 0, .05) !important;
+}
+
+#sessionPane {
+  background: rgba(245, 245, 247, .72) !important;
+  border-right-color: rgba(0, 0, 0, .06) !important;
+}
+
+.contact {
+  border-color: transparent !important;
+  border-radius: 12px !important;
+}
+.contact:hover {
+  background: rgba(255, 255, 255, .72) !important;
+}
+.contact.active {
+  border-color: color-mix(in srgb, var(--page-accent) 16%, transparent) !important;
+  background: rgba(255, 255, 255, .9) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .06) !important;
+}
+.contact.active::before {
+  background: var(--page-accent) !important;
+}
+
+.mode-switch button[aria-pressed="true"] {
+  color: var(--page-accent-dark) !important;
+  border-color: color-mix(in srgb, var(--page-accent) 22%, transparent) !important;
+  background: var(--page-accent-soft) !important;
+}
+
+.empty-state {
+  border-color: rgba(255,255,255,.8) !important;
+}
+.empty-prompts button {
+  border-color: rgba(0, 0, 0, .08) !important;
+}
+.empty-prompts button:hover {
+  color: var(--page-accent-dark) !important;
+  border-color: color-mix(in srgb, var(--page-accent) 30%, transparent) !important;
+}
+
+/* ---------- 办公文件页 ---------- */
+.office-main { background: transparent !important; }
+.file-panel { background: rgba(245, 245, 247, .72) !important; }
+.source-preview,
+.document-surface { background: rgba(245, 245, 247, .55) !important; }
+.assistant-panel {
+  border-left-color: rgba(0, 0, 0, .06) !important;
+  background: rgba(255, 255, 255, .85) !important;
+}
+
+/* ---------- 开发页 ---------- */
+.coding-message.user > div { background: color-mix(in srgb, var(--page-accent) 9%, #fff) !important; }
+.coding-progress { background: rgba(255, 255, 255, .55) !important; }
+
+/* ---------- 首页内联元素覆盖 ---------- */
+/* 首页聊天区：与开发页一致，透出壁纸玻璃 */
+body[data-page="home"] #main {
+  background: transparent !important;
+}
+
+#header {
+  border-color: rgba(0, 0, 0, .05) !important;
+  background: rgba(255, 255, 255, .72) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .06) !important;
+}
+
+.contact.active .contact-signal {
+  background: var(--page-accent) !important;
+  box-shadow: 0 0 0 4px var(--page-accent-soft), 0 0 22px color-mix(in srgb, var(--page-accent) 30%, transparent) !important;
+}
+
+#side-actions button {
+  border-color: rgba(255,255,255,.16) !important;
+  background: rgba(255,255,255,.1) !important;
+}
+#side-actions button:hover {
+  background: rgba(255,255,255,.16) !important;
+}
+#sideCap {
+  background: var(--page-accent-grad) !important;
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--page-accent) 26%, transparent) !important;
+}
+
+/* 品牌文字 */
+#brand,
+.rail-brand-label {
+  font-family: var(--font-ui) !important;
+}
+#brand::before {
+  background: linear-gradient(90deg, var(--page-accent), var(--mac-teal), var(--mac-indigo)) !important;
+  box-shadow: 0 0 24px color-mix(in srgb, var(--page-accent) 30%, transparent) !important;
+}
+
+/* ---------- 液态玻璃折射滤镜 ---------- */
+#lg-refraction {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+/* ---------- 移动端 ---------- */
+@media (max-width: 800px) {
+  .rail,
+  #wechatRail::before {
+    border-radius: 22px 22px 0 0 !important;
+    background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(244, 244, 248, .78)) !important;
+  }
+  .app-shell > main,
+  #main {
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+}
+
+/* ---------- 减少动画 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .rail nav > a,
+  .rail nav > button,
+  .rail-secondary,
+  .rail-settings,
+  #settingsbtn,
+  #wechatRail .rail-main-nav > button {
+    transform: none !important;
+  }
+}
+
+/* ---------- 透明度统一（macOS 中性玻璃，6 页同规格） ---------- */
+/* 所有左侧栏：同一冷灰半透明 */
+#sessionPane,
+#contacts,
+#sidebar,
+.task-workbench-sidebar,
+.coding-sidebar,
+#sessionPane.task-workbench-sidebar,
+.coding-sidebar.task-workbench-sidebar {
+  background: rgba(245, 245, 247, .72) !important;
+}
+
+/* 任务页底部输入区：与顶栏同一半透明规格 */
+#composer,
+#composer.task-workbench-composer,
+.coding-composer.task-workbench-composer {
+  background: rgba(255, 255, 255, .58) !important;
+}
+
+/* 任务页消息滚动区：透明，露出主窗口玻璃底（与开发页一致） */
+#msgs {
+  background-color: transparent !important;
+}
+
+/* ---------- 文字规范（macOS Type Ramp，6 页统一） ---------- */
+:root {
+  /* 字号阶梯：大标题 / 一级标题 / 区块标题 / 卡片标题 / 正文 / 辅助 / 标注 */
+  --fs-large-title: 26px;
+  --fs-title-1: 20px;
+  --fs-title-2: 17px;
+  --fs-title-3: 15px;
+  --fs-body: 14px;
+  --fs-sub: 13px;
+  --fs-caption: 11px;
+  /* 字色阶梯：主文 / 次文 / 弱提示 */
+  --text-1: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #aeaeb2;
+}
+
+/* 页面大标题与导语 */
+.page-head h1,
+.page h1 {
+  margin: 0 !important;
+  max-width: none !important;
+  font-family: var(--font-ui) !important;
+  font-size: var(--fs-large-title) !important;
+  font-weight: 700 !important;
+  line-height: 1.28 !important;
+  letter-spacing: -.02em !important;
+  color: var(--text-1) !important;
+}
+
+.page-head .lede,
+.lede {
+  font-family: var(--font-ui) !important;
+  font-size: var(--fs-body) !important;
+  font-weight: 400 !important;
+  line-height: 1.6 !important;
+  color: var(--text-2) !important;
+}
+
+.eyebrow {
+  font-family: var(--font-ui) !important;
+  font-size: var(--fs-caption) !important;
+  font-weight: 700 !important;
+  letter-spacing: .08em !important;
+  text-transform: none !important;
+}
+
+/* 区块标题与说明 */
+.section-head h2 {
+  font-size: var(--fs-title-2) !important;
+  font-weight: 600 !important;
+  letter-spacing: -.01em !important;
+  color: var(--text-1) !important;
+}
+
+.section-head p {
+  font-size: var(--fs-sub) !important;
+  line-height: 1.55 !important;
+  color: var(--text-2) !important;
+}
+
+/* ---------- 任务页空态：扁平化（去掉上部圆角框） ---------- */
+.task-workbench-stage .empty-state.task-workbench-empty-frame,
+.task-workbench-stage .role-intro-state,
+.task-workbench-stage .empty-state {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.task-workbench-stage .role-intro-card {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 8px 24px !important;
+  text-align: center !important;
+}
+
+.task-workbench-stage .role-intro-head {
+  justify-content: center !important;
+}
+
+.task-workbench-stage .role-intro-head h2 {
+  font-family: var(--font-ui) !important;
+  font-size: var(--fs-title-1) !important;
+  font-weight: 700 !important;
+  letter-spacing: -.01em !important;
+  color: var(--text-1) !important;
+}
+
+.task-workbench-stage .role-intro-card > p {
+  font-size: var(--fs-body) !important;
+  color: var(--text-2) !important;
+}
+
+/* 对话方式：macOS 分段控件，明确可选 */
+.task-workbench-stage .mode-switch {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: safe center;
+  gap: 2px !important;
+  width: fit-content;
+  margin: 0 auto 20px !important;
+  padding: 2px !important;
+  min-height: 0 !important;
+  border-radius: 10px !important;
+  background: rgba(0, 0, 0, .055) !important;
+}
+
+.task-workbench-stage .mode-switch button {
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 16px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-2) !important;
+  font-size: var(--fs-sub) !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+}
+
+.task-workbench-stage .mode-switch button:hover {
+  color: var(--text-1) !important;
+}
+
+.task-workbench-stage .mode-switch button[aria-pressed="true"] {
+  color: var(--text-1) !important;
+  background: #fff !important;
+  border: none !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .14), 0 0 0 .5px rgba(0, 0, 0, .05) !important;
+}
+
+/* ---------- 空态上输入框（模仿能力页：新建时在内容区上方，对话后恢复底部输入框） ---------- */
+.hero-composer {
+  box-sizing: border-box;
+  width: min(840px, 100%);
+  margin: 20px auto 0;
+  border: 1px solid rgba(0, 0, 0, .06);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .8);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .08), inset 0 1px 0 rgba(255, 255, 255, .85);
+  overflow: hidden;
+  text-align: left;
+}
+
+.hero-composer textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  padding: 16px 18px 6px;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-1);
+}
+
+.hero-composer textarea::placeholder { color: var(--text-3); }
+
+.hero-composer-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 14px 14px;
+}
+
+.hero-composer-bar button {
+  height: 36px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 9px;
+  background: var(--page-accent);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--page-accent) 26%, transparent);
+}
+
+.hero-composer-bar button:hover { background: var(--page-accent-dark); }
+
+/* 空态时隐藏底部输入框 */
+#composer.hero-mode,
+#developForm.hero-mode {
+  display: none !important;
+}

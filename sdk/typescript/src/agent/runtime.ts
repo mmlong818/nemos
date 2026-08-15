@@ -49,6 +49,7 @@ export class AgentRuntime {
     const resume = input.resume ? cloneCheckpoint(input.resume) : undefined;
     let messages = resume ? resume.messages : initialMessages(input);
     let usage = normalizeTokenUsage(resume?.usage);
+    const destructiveState = { stopped: resume?.destructiveFailureStopped === true, failedTool: undefined as string | undefined };
     const emit = (event: AgentRunEvent): void => {
       input.onEvent?.(event);
       observe(() => input.observer?.onEvent?.(runId, event));
@@ -72,6 +73,7 @@ export class AgentRuntime {
         repeatedToolCallCount,
         pendingToolCalls: pendingToolCalls ? pendingToolCalls.map((call) => structuredClone(call)) : undefined,
         usage: { ...usage },
+        destructiveFailureStopped: destructiveState.stopped || undefined,
       };
       observe(() => input.observer?.onCheckpoint?.(runId, checkpoint));
       return checkpoint;
@@ -115,6 +117,7 @@ export class AgentRuntime {
           controller.signal,
           emit,
           input.metadata,
+          destructiveState,
         ));
         messages = trimHistory(messages, this.config.maxHistoryChars);
         completedRounds = resume.round;
@@ -212,6 +215,7 @@ export class AgentRuntime {
           controller.signal,
           emit,
           input.metadata,
+          destructiveState,
         ));
         messages = trimHistory(messages, this.config.maxHistoryChars);
         saveCheckpoint(
@@ -241,6 +245,7 @@ export class AgentRuntime {
     signal: AbortSignal,
     emit: (event: AgentRunEvent) => void,
     metadata?: Readonly<Record<string, string>>,
+    destructiveState?: { stopped: boolean; failedTool?: string },
   ): Promise<AgentMessage[]> {
     const scheduler = new ToolScheduler(this.tools, {
       runId,
@@ -251,6 +256,7 @@ export class AgentRuntime {
       emit,
       metadata,
       authorizeTool: this.config.authorizeTool,
+      destructiveState,
     });
     const results = await scheduler.execute(calls);
     return results.map((result, index) => ({

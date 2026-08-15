@@ -1,0 +1,254 @@
+/* 任务页/开发页：文件页式通长横栏 + 扁平内容区
+ * 只保留最外层 OS 浮窗，内部不再叠加第二层圆角区块
+ * 首页（任务页）与其他页面共用 .app-shell > .rail + main 骨架，
+ * 这里只保留页面级微调，不再另立布局方案
+ */
+
+/* ---------- 首页：body 恢复标准文档流（覆盖遗留内联布局） ---------- */
+body[data-page="home"] {
+  display: block !important;
+  height: auto !important;
+  min-height: 100vh;
+  overflow: visible !important;
+  padding-left: 0 !important;
+}
+
+.home-shell {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#sessionPane { height: 100%; }
+
+/* 桌面端：app-shell 恢复标准网格，为悬浮 dock 预留列（与其他页面一致） */
+@media (min-width: 721px) {
+  body[data-page="home"] .app-shell {
+    display: grid;
+    grid-template-columns: var(--app-rail-reserved, 100px) minmax(0, 1fr);
+    min-height: 100vh;
+  }
+
+  body[data-page="home"] .app-shell > main { grid-column: 2; }
+}
+
+/* 移动端：rail 固定为底部横栏（与其他页面一致） */
+@media (max-width: 720px) {
+  body[data-page="home"] .rail {
+    position: fixed;
+    z-index: 30;
+    inset: auto 0 0 0;
+    width: auto;
+    height: 64px;
+    padding: 5px 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    border-right: 0;
+    border-top: 1px solid var(--cf-line, rgba(31, 75, 68, .12));
+  }
+
+  body[data-page="home"] .rail .brand { display: none; }
+  body[data-page="home"] .rail nav { display: flex; flex: 1; justify-content: space-around; }
+
+  body[data-page="home"] .rail nav a,
+  body[data-page="home"] .rail .rail-secondary,
+  body[data-page="home"] .rail .rail-settings {
+    width: 52px;
+    height: 52px;
+    min-height: 52px;
+    margin: 0;
+  }
+
+  body[data-page="home"] .workbench-body { padding-bottom: 64px; }
+}
+
+/* 顶栏标题与统一规格对齐（去掉遗留的胶囊样式与加高） */
+#topbar {
+  min-height: 0 !important;
+}
+
+#header {
+  margin-left: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ---------- 开发页新骨架 ---------- */
+.coding-shell.task-workbench {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.workbench-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.workbench-body .coding-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.workbench-body #main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ---------- 通长横栏 ---------- */
+#topbar.task-workbench-topbar,
+.coding-topbar.task-workbench-topbar {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* 顶栏中的能力控件（开发页：选择项目/工作方式/依赖） */
+.topbar-capabilities {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.topbar-capabilities button,
+.topbar-capabilities select {
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--task-shell-line, #cfd9d2);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #45463f;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.topbar-capabilities button:hover,
+.topbar-capabilities select:hover {
+  border-color: var(--page-accent);
+  background: #fff;
+}
+
+.topbar-capabilities [data-app-icon],
+.topbar-capabilities [data-app-icon] > span,
+.topbar-capabilities [data-app-icon] svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+/* ---------- 去掉第二层圆角区块 ---------- */
+.task-workbench-stage::before {
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.task-workbench-stage {
+  background: transparent !important;
+}
+
+/* ---------- 移动端（≤800px，共享规则的补充） ---------- */
+@media (max-width: 800px) {
+  body[data-page="home"] {
+    padding-left: 0 !important;
+  }
+  body[data-page="home"] #main {
+    flex: 1;
+    min-height: 0;
+    height: auto !important;
+  }
+  .topbar-capabilities select { max-width: 132px; }
+
+  /* 开发页：侧栏与主区纵向堆叠 */
+  .workbench-body { flex-direction: column; }
+  .workbench-body .coding-sidebar {
+    width: 100% !important;
+    max-height: 210px;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--task-shell-line, #cfd9d2);
+  }
+  .coding-topbar.task-workbench-topbar {
+    flex-wrap: wrap;
+    height: auto !important;
+    min-height: 58px;
+    row-gap: 6px;
+    padding-block: 8px !important;
+  }
+  .topbar-capabilities { flex-wrap: wrap; margin-left: 0; }
+}
+
+/* 首页移动端沿用原设计：会话列表隐藏，主区占满（rail 由共享规则变为底部横栏） */
+@media (max-width: 720px) {
+  body[data-page="home"] #sessionPane { display: none !important; }
+  /* 窄屏对话方式胶囊：缩短内距避免文字被裁，超出时保持横向滚动 */
+  .task-workbench-stage .mode-switch button {
+    padding: 0 10px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* ---------- 开发页：窗口归还给最外层 ---------- */
+@media (min-width: 801px) {
+  .task-workbench--development {
+    height: calc(100vh - (var(--cf-workspace-gap, 14px) * 2)) !important;
+    margin: var(--cf-workspace-gap, 14px) var(--cf-workspace-gap, 14px) var(--cf-workspace-gap, 14px) 0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.86) !important;
+    border-radius: var(--cf-workspace-radius, 24px) !important;
+    background: rgba(250, 252, 250, 0.52) !important;
+    backdrop-filter: blur(28px) saturate(150%);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    box-shadow: var(--cf-workspace-shadow, 0 24px 70px rgba(30, 58, 50, 0.12)), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .task-workbench--development .task-workbench-main {
+    height: auto !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .task-workbench--development .task-workbench-sidebar {
+    transform: none !important;
+  }
+}
+
+/* 开发页空态合并为单卡片后，按钮组间距 */
+.task-workbench-stage .role-intro-card .mode-switch {
+  margin: 16px 0 0;
+}
+
+/* 新对话空态占满消息画布，让标题与主输入框默认落在可用区域正中。 */
+body[data-page="home"] #msgs > .task-workbench-empty-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100% !important;
+  min-height: 100% !important;
+  padding-block: clamp(24px, 5vh, 64px) !important;
+}
+
+/* 以输入框而不是整组说明文字作为视觉中心。 */
+body[data-page="home"] .is-composer-empty {
+  transform: translateY(clamp(-72px, -9vh, -56px));
+}
+
+@media (max-width: 720px) {
+  body[data-page="home"] .is-composer-empty {
+    transform: translateY(-32px);
+  }
+}

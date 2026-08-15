@@ -42,10 +42,11 @@ test("Word 转换副本使用文档式编辑器而不是 Markdown 三栏源码�
 
 test("办公文件工作台拥有独立入口且三个主界面导航一致", () => {
   assert.match(server, /pathname === "\/office"/);
-  assert.match(chatHtml, /id="railOffice"[^>]+aria-label="办公文件"/);
+  assert.match(chatHtml, /id="railOffice"[^>]+data-app-icon="file"/);
   assert.match(chatHtml, /window\.location\.href = "\/office"/);
   assert.match(capabilityHtml, /href="\/office"[^>]+aria-label="办公文件"/);
   assert.match(officeHtml, /class="is-current" href="\/office"/);
+  assert.doesNotMatch(officeHtml, /class="panel-title">文件<\/strong>/);
 });
 
 test("带结果参数的办公文件地址可以打开，并通过浏览器下载通道导出", () => {
@@ -152,13 +153,10 @@ test("聊天与能力结果可以直接进入文件工作台继续编辑", () =>
   assert.match(capabilityJs, /download>\$\{compact \? "下载"/);
 });
 
-test("聊天设置统一提供记忆与数据入口，新用户看到可直接使用的例子", () => {
+test("聊天设置统一提供记忆与数据入口，不再显示固定的新手帮助", () => {
   assert.match(chatHtml, /id="sm-data"/);
   assert.match(chatHtml, /window\.location\.href = "\/memory"/);
-  assert.match(chatHtml, /function renderStarterPrompts/);
-  assert.match(chatHtml, /整理一段文字/);
-  assert.match(chatHtml, /做一份汇报/);
-  assert.match(chatHtml, /梳理一个问题/);
+  assert.doesNotMatch(chatHtml, /function renderStarterPrompts|starter-prompts|starter-help-close/);
 });
 
 test("聊天区可上传文件，并把附件原文传给对话和后续能力", () => {
@@ -176,6 +174,7 @@ test("聊天区可上传文件，并把附件原文传给对话和后续能力",
 });
 
 test("原文件保存在本机并提供格式化预览", () => {
+  assert.doesNotMatch(officeSourceJs, /正在按 Word 原始结构显示正文|复杂域或特殊字体/);
   assert.match(officeHtml, /office-source-preview\.js/);
   assert.match(officeHtml, /vendor\/jszip\.min\.js/);
   assert.match(officeHtml, /vendor\/docx-preview\.min\.js/);
@@ -226,12 +225,13 @@ test("工作台遵守小丑鱼视觉与无障碍基线", () => {
 });
 
 test("新建文件和打开文件位于最近文件列表上方", () => {
-  const actionsAt = officeHtml.indexOf('class="file-panel-actions"');
+  const fileActionsAt = officeHtml.indexOf('class="file-panel-actions app-create-search"');
   const recentFilesAt = officeHtml.indexOf('id="recentFiles"');
-  assert.ok(actionsAt >= 0);
-  assert.ok(recentFilesAt > actionsAt);
-  assert.match(officeHtml.slice(actionsAt, recentFilesAt), /id="newDocument"[\s\S]+id="officeFileInput"/);
-  assert.doesNotMatch(officeHtml, /class="topbar-actions"/);
+  assert.ok(fileActionsAt >= 0);
+  assert.ok(recentFilesAt > fileActionsAt);
+  assert.match(officeHtml.slice(fileActionsAt, recentFilesAt), /id="newDocument"[\s\S]+data-open-office-file[\s\S]+id="fileSearchToggle"/);
+  assert.doesNotMatch(officeHtml.slice(officeHtml.indexOf('class="topbar-actions"'), fileActionsAt), /data-open-office-file/);
+  assert.match(officeCss, /file-panel-actions\.app-create-search\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\) 34px/);
   assert.match(officeJs, /const createdDocument = safeDocument/);
   assert.match(officeHtml, /data-new-document-kind="docx"/);
   assert.match(officeHtml, /data-new-document-kind="md"/);
@@ -261,8 +261,8 @@ test("旧版结构化结果在本地工作副本中也会恢复成可读正文",
 
 test("点选最近文件只切换当前文件，不改变更新时间或列表顺序", () => {
   assert.match(officeJs, /function persistSelection\(\)/);
-  assert.match(officeJs, /state\.selectedId = button\.dataset\.documentId;[\s\S]{0,180}persistSelection\(\)/);
-  assert.doesNotMatch(officeJs, /state\.selectedId = button\.dataset\.documentId;[\s\S]{0,180}persistState\(/);
+  assert.match(officeJs, /function openDocumentFromLibrary\(documentId\)[\s\S]{0,320}state\.selectedId = documentId;[\s\S]{0,180}persistSelection\(\)/);
+  assert.doesNotMatch(officeJs, /state\.selectedId = documentId;[\s\S]{0,180}persistState\(/);
 });
 
 test("文件页保持操作连续，不暴露内部页面结构", () => {
