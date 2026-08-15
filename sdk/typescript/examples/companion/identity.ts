@@ -27,6 +27,7 @@ const legacyToCurrent = new Map(
 const currentToLegacy = new Map(
   [...legacyToCurrent].map(([legacy, current]) => [current, legacy]),
 );
+const STORAGE_KEYS_THAT_COLLIDE_WITH_LEGACY_PERSONAS = new Set(["jobs"]);
 
 export function normalizePersonaId(value: string): string {
   return legacyToCurrent.get(value) ?? value;
@@ -62,7 +63,9 @@ export function migratePersonaIdentityValue<T>(input: T): { value: T; changed: b
 
     const next: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
-      const normalizedKey = normalizePersonaReference(key);
+      const normalizedKey = STORAGE_KEYS_THAT_COLLIDE_WITH_LEGACY_PERSONAS.has(key)
+        ? key
+        : normalizePersonaReference(key);
       if (normalizedKey !== key) changed = true;
       next[normalizedKey] = visit(item);
     }

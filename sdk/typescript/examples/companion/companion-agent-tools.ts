@@ -155,7 +155,9 @@ function taskCreateTool(
   _context: ChatAgentContext,
 ): AgentTool {
   const abilities = dependencies.capabilities().snapshot().abilities
-    .filter((ability) => !ability.archivedAt)
+    // 开发项目有独立的工作区授权与提案流程，不能从通用重复任务入口
+    // 创建一个缺少工作区边界的空任务。
+    .filter((ability) => !ability.archivedAt && ability.id !== "project-development")
     .map((ability) => ({ id: ability.id, name: ability.name }));
   return {
     definition: {

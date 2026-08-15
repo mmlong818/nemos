@@ -1,0 +1,138 @@
+/* 工作页接入 task-workbench 壳后的页面级补充
+ * 目标：与开发页（develop.html）壳完全一致，仅业务内容不同
+ */
+
+main.task-workbench.work-shell {
+  grid-column: 2;
+  display: flex !important;
+  min-width: 0;
+  min-height: 100vh;
+  padding-bottom: 0 !important;
+  grid-template-columns: none !important;
+  gap: 0 !important;
+  align-items: stretch !important;
+}
+
+.work-sidebar .task-sidebar-brand strong {
+  color: var(--task-text, #24251f);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 视图导航：侧栏垂直列表（覆盖旧 .tabs 横向样式） */
+.work-view-nav.tabs {
+  display: flex !important;
+  flex-direction: column !important;
+  height: auto !important;
+  gap: 2px !important;
+  padding: 0 9px 12px !important;
+  max-width: none !important;
+  overflow-x: visible !important;
+  justify-content: initial !important;
+  grid-column: auto !important;
+  grid-row: auto !important;
+}
+
+.work-view-nav.tabs a {
+  position: relative;
+  display: flex !important;
+  align-items: center;
+  min-width: 0 !important;
+  height: 32px;
+  padding: 0 10px !important;
+  border-radius: var(--task-control-radius, 7px);
+  color: var(--task-muted, #66625b) !important;
+  font-size: 12.5px !important;
+  font-weight: 500;
+  place-items: initial !important;
+}
+
+.work-view-nav.tabs a:hover {
+  color: var(--task-text, #24251f) !important;
+  background: #e9e2d7;
+}
+
+.work-view-nav.tabs a.is-current {
+  color: var(--page-accent-dark) !important;
+  background: var(--page-accent-soft) !important;
+}
+
+.work-view-nav.tabs a.is-current::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--page-accent) !important;
+}
+
+/* 主区域页头 */
+.work-page-head {
+  padding: 0 0 2px;
+}
+
+.work-page-head .eyebrow {
+  margin: 0 0 2px;
+}
+
+.work-page-description {
+  margin: 0;
+  color: var(--task-muted, #66625b);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 内容列宽 */
+.work-stage .content {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  padding: 0 0 48px;
+}
+
+/* ---------- 移动端：侧栏视图变横向滚动条 ---------- */
+@media (max-width: 800px) {
+  main.task-workbench.work-shell {
+    flex-direction: column !important;
+  }
+
+  .work-sidebar {
+    width: 100% !important;
+    min-width: 0;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--task-shell-line, #cfd9d2);
+  }
+
+  .work-view-section {
+    padding-bottom: 4px;
+  }
+
+  .work-view-nav.tabs {
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    padding: 0 9px 8px !important;
+    scrollbar-width: none;
+  }
+
+  .work-view-nav.tabs::-webkit-scrollbar { display: none; }
+
+  .work-view-nav.tabs a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .work-view-nav.tabs a.is-current::after {
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    height: 3px;
+  }
+}
+
+/* 窗口不滚动：侧栏与内容区各自滚动，顶栏不动 */
+.work-sidebar { overflow-y: auto; min-height: 0; }
+.work-main { min-height: 0; }

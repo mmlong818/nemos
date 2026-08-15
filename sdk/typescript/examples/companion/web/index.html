@@ -415,21 +415,6 @@
     flex-direction:column;
     gap:16px;
   }
-  .starter-prompts {
-    align-self:flex-start;
-    max-width:min(680px,100%);
-    display:grid;
-    gap:9px;
-    padding:14px;
-    border:1px solid #d8d1c6;
-    border-radius:12px;
-    background:rgba(255,252,247,.86);
-  }
-  .starter-prompts strong { font-size:13px; }
-  .starter-prompts span { color:#77736b; font-size:12px; }
-  .starter-prompt-actions { display:flex; flex-wrap:wrap; gap:7px; }
-  .starter-prompt-actions button { min-height:34px; padding:0 11px; border:1px solid #d8d1c6; border-radius:7px; color:#45463f; background:#fff; font-size:12px; cursor:pointer; }
-  .starter-prompt-actions button:hover { border-color:#b33f72; color:#8f2854; background:#fff7fa; }
   .row {
     display:flex;
     max-width:min(86%,860px);
@@ -2982,14 +2967,6 @@
   #quickGroup:hover { background:#ddd5ca !important; }
   #quickGroup:focus-visible { outline:2px solid #8f2f59; outline-offset:1px; }
   #quickGroup .ui-icon { width:16px; height:16px; margin:0; }
-  .thread-search { position:relative; display:none; }
-  #wechatSearch.search-open .thread-search { display:block; }
-  .thread-search > .ui-icon { position:absolute; top:50%; left:9px; width:14px; height:14px; color:#85877f; transform:translateY(-50%); pointer-events:none; }
-  #wechatSearch .thread-search input { width:100%; height:32px; padding:0 36px 0 29px; border:1px solid #d7cfc4; border-radius:6px; background:#fbf8f2; color:#4f514b; font-size:12px; letter-spacing:.01em; outline:none; }
-  #wechatSearch .thread-search:focus-within input { border-color:#a66a84; box-shadow:0 0 0 2px rgba(179,63,114,.1); }
-  #closeConversationSearch { position:absolute; top:3px; right:3px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:0; border-radius:5px; color:#777970; background:transparent; cursor:pointer; }
-  #closeConversationSearch:hover, #closeConversationSearch:focus-visible { color:#8f2f59; background:#f0e7ea; }
-  #closeConversationSearch .ui-icon { width:13px; height:13px; }
   #contacts { padding:4px 8px 12px; }
   .task-list-label { padding:8px 9px 5px; color:#8b8d85; font-size:11px; font-weight:500; letter-spacing:.02em; }
   #contacts .contact { width:100%; min-height:36px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:center; margin:1px 0; padding:0 3px 0 0; border:0; border-radius:6px; background:transparent; cursor:pointer; }
@@ -3021,36 +2998,53 @@
     #composer{position:relative}
   }
 </style>
+  <link rel="stylesheet" href="/assets/clownfish-theme.css" />
   <link rel="stylesheet" href="/assets/app-navigation-labels.css" />
-</head>
-<body>
-  <div id="sidebar">
-    <div id="wechatRail">
-      <button class="rail-avatar" id="railUserAvatar" type="button" title="小丑鱼" aria-label="回到小丑鱼对话"><img class="avatar-img" alt="" src="/assets/brand/clownfish-mark.svg" /></button>
-      <span class="rail-brand-label">小丑鱼</span>
-      <nav class="rail-main-nav" aria-label="主导航">
-        <button class="rail-icon active" type="button" title="任务" aria-label="任务" aria-current="page" data-icon="message-circle" data-rail-label="任务"></button>
-        <button class="rail-icon" id="railCap" type="button" title="能力" aria-label="能力" data-icon="boxes" data-rail-label="能力"></button>
-        <button class="rail-icon" id="railOffice" type="button" title="办公文件" aria-label="办公文件" data-icon="file" data-rail-label="文件"></button>
-        <button class="rail-icon" id="railDev" type="button" title="开发" aria-label="开发" data-icon="code" data-rail-label="开发"></button>
-        <button class="rail-icon" id="railWork" type="button" title="工作" aria-label="工作" data-icon="work" data-rail-label="工作"></button>
+  <link rel="stylesheet" href="/assets/task-workbench.css" />
+  <link rel="stylesheet" href="/assets/scramble-theme.css">
+  <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
+  <link rel="stylesheet" href="/assets/flat-workbench.css">
+  <link rel="stylesheet" href="/assets/app-search-overlay.css">
+  <script src="/assets/scramble-wallpaper.js"></script>
+  </head>
+<body data-page="home">
+  <div class="app-shell">
+    <aside class="rail" aria-label="主导航">
+      <a class="brand" href="/" id="railUserAvatar" aria-label="回到小丑鱼对话"><img class="avatar-img" alt="" src="/assets/brand/clownfish-mark.svg" /></a>
+      <nav>
+        <a class="is-current" href="/" aria-current="page" data-app-icon="message"><span></span><small>任务</small></a>
+        <a href="/capabilities" id="railCap" data-app-icon="boxes"><span></span><small>能力</small></a>
+        <a href="/office" id="railOffice" data-app-icon="file"><span></span><small>文件</small></a>
+        <a href="/develop" id="railDev" data-app-icon="code"><span></span><small>开发</small></a>
+        <a href="/tasks" id="railWork" data-app-icon="work"><span></span><small>工作</small></a>
       </nav>
-      <div class="rail-spacer"></div>
-      <button class="rail-icon" id="settingsbtn" type="button" title="设置" aria-label="设置" data-icon="settings" data-rail-label="设置"></button>
-    </div>
-    <div id="sessionPane">
-      <div id="brand"><div class="sidebar-header-actions"><button class="sidebar-header-action" id="sidebarSearchToggle" type="button" title="搜索对话" aria-label="搜索对话" aria-expanded="false"><span data-icon="search" aria-hidden="true"></span></button></div><small id="llm">…</small></div>
-      <div id="wechatSearch">
-        <button id="quickGroup" type="button" title="新对话" aria-label="新对话"><span data-icon="plus-circle" aria-hidden="true"></span><span>新对话</span></button>
-        <div class="thread-search"><span data-icon="search" aria-hidden="true"></span><input id="contactSearch" type="search" placeholder="搜索对话" autocomplete="off" aria-label="搜索对话" /><button id="closeConversationSearch" type="button" aria-label="关闭搜索" title="关闭搜索" data-icon="x"></button></div>
+      <a class="rail-secondary" href="/settings" id="settingsbtn" data-app-icon="settings"><span></span><small>设置</small></a>
+    </aside>
+    <main class="task-workbench home-shell">
+    <div id="topbar" class="task-workbench-topbar">
+      <div id="header" class="task-workbench-title">新的任务</div>
+      <div id="relbar"></div>
+      <button id="composerTool" type="button" title="翻译、语音转写和文字润色已移至能力页面" aria-label="翻译、语音转写和文字润色已移至能力页面" hidden><span data-icon="wrench" aria-hidden="true"></span><span>小工具</span></button>
+      <button id="composerCapability" type="button" title="把当前目标交给能力" aria-label="把当前目标交给能力"><span data-icon="boxes" aria-hidden="true"></span><span>交给能力</span></button>
+      <div id="topActions" class="task-workbench-top-actions">
+        <button class="top-icon" id="topChat" type="button" title="任务记录" aria-label="任务记录" data-icon="message-circle"></button>
+        <button class="top-icon" id="topDrop" type="button" title="更多选项" aria-label="更多选项" data-icon="chevron-down"></button>
       </div>
-      <div id="contacts"></div>
+    </div>
+      <div class="workbench-body">
+    <div id="sessionPane" class="task-workbench-sidebar">
+      <div id="brand" class="task-sidebar-brand app-search-brand-empty"><small id="llm">…</small></div>
+      <div id="wechatSearch" class="task-sidebar-primary app-create-search">
+        <button id="quickGroup" class="task-workbench-new" type="button" title="新对话" aria-label="新对话"><span data-icon="plus-circle" aria-hidden="true"></span><span>新对话</span></button>
+        <button class="app-search-trigger" id="sidebarSearchToggle" type="button" title="搜索对话" aria-label="搜索对话" aria-haspopup="dialog" aria-expanded="false"><span data-icon="search" aria-hidden="true"></span></button>
+      </div>
+      <div id="contacts" class="task-sidebar-list"></div>
       <div id="side-actions">
-        <button id="sideDesktopTool" type="button">小工具</button>
+        <button id="sideDesktopTool" type="button" hidden>小工具</button>
         <button id="sideCap" type="button">能力与任务</button>
       </div>
     </div>
-  </div>
+
   <div id="onboardingmodal" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
     <div class="onboard-box">
       <div class="onboard-head">
@@ -3619,23 +3613,15 @@
       <nav class="command-strip" aria-label="快捷操作"><button data-conversation-command="branch">从末尾建立分支</button><button data-conversation-command="capabilities">打开能力</button><button data-conversation-command="office">打开文件</button><button data-conversation-command="tasks">查看任务</button><button data-conversation-command="memory">查看记忆</button></nav>
     </div>
   </div>
-  <div id="main">
-    <div id="topbar">
-      <div id="header">新的任务</div>
-      <div id="relbar"></div>
-      <div id="topActions">
-        <button class="top-icon" id="topChat" type="button" title="任务记录" aria-label="任务记录" data-icon="message-circle"></button>
-        <button class="top-icon" id="topDrop" type="button" title="更多选项" aria-label="更多选项" data-icon="chevron-down"></button>
-      </div>
-    </div>
+  <div id="main" class="task-workbench-main">
     <section id="chatCapabilityBridge" aria-live="polite" hidden>
       <span class="chat-capability-icon" data-icon="boxes" aria-hidden="true"></span>
       <span class="chat-capability-copy"><strong id="chatCapabilityTitle">能力任务正在执行</strong><small id="chatCapabilityStatus">完成后会回到这段对话</small></span>
       <button id="chatCapabilityOpen" type="button">查看进度</button>
     </section>
-    <div id="msgs"></div>
-      <div id="composer">
-        <div id="txtWrap">
+    <div id="msgs" class="task-workbench-stage"></div>
+      <div id="composer" class="task-workbench-composer">
+        <div id="txtWrap" class="task-workbench-input-wrap">
           <div id="attachmentPreview" class="attachment-preview" aria-live="polite">
             <span data-icon="file" aria-hidden="true"></span>
             <span class="attachment-preview-copy"><strong id="attachmentName"></strong><small id="attachmentMeta"></small></span>
@@ -3645,9 +3631,9 @@
             <img id="imagePreviewImg" alt="待发送图片" />
             <button id="imageClear" type="button" title="移除图片" aria-label="移除图片" data-icon="x"></button>
           </div>
-          <textarea id="txt" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）" autocomplete="off" rows="3"></textarea>
+          <textarea id="txt" class="task-workbench-input" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）" autocomplete="off" rows="3"></textarea>
         </div>
-        <div id="composerTools">
+        <div id="composerTools" class="task-workbench-tools">
           <div class="tool-left">
             <button id="vbtn" title="切换语音条" data-icon="mic" hidden></button>
             <button id="shotbtn" title="截屏" data-icon="scissors"></button>
@@ -3655,10 +3641,8 @@
             <input type="file" id="imgfile" accept="image/*" style="display:none" />
             <button id="filebtn" type="button" title="上传文件" aria-label="上传文件" data-icon="file"></button>
             <input type="file" id="chatfile" accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown,.json" style="display:none" />
-            <button id="composerTool" type="button" title="翻译、语音转写和文字润色" aria-label="打开小工具"><span data-icon="wrench" aria-hidden="true"></span><span>小工具</span></button>
-            <button id="composerCapability" type="button" title="把当前目标交给能力" aria-label="把当前目标交给能力"><span data-icon="boxes" aria-hidden="true"></span><span>交给能力</span></button>
           </div>
-        <button id="send">发送</button>
+        <button id="send" class="task-workbench-send">发送</button>
       </div>
     </div>
   </div>
@@ -3681,7 +3665,18 @@
     <div class="rail-actions">
     </div>
   </aside>
+      </div>
+    </main>
+  </div>
+  <dialog class="app-search-dialog" id="conversationSearchDialog" aria-labelledby="conversationSearchTitle">
+    <form class="app-search-surface" method="dialog">
+      <header class="app-search-head"><div><p>对话记录</p><h2 id="conversationSearchTitle">搜索对话</h2></div><button class="app-search-close" id="closeConversationSearch" type="button" aria-label="关闭搜索">×</button></header>
+      <label class="app-search-field"><span data-icon="search" aria-hidden="true"></span><input id="contactSearch" type="search" placeholder="输入标题或对话内容" autocomplete="off" aria-label="搜索对话"></label>
+      <div class="app-search-results" id="conversationSearchResults" role="listbox" aria-live="polite"></div>
+    </form>
+  </dialog>
 <script src="/assets/app-icons.js"></script>
+<script src="/assets/app-search-overlay.js"></script>
 <script>
 const BUILD = "v16 clownfish-identity-migration";
 const APP_PERSONA_ID = "clownfish";
@@ -3762,6 +3757,7 @@ function hydrateIcons(root = document) {
   root.querySelectorAll("[data-icon]").forEach((el) => setIcon(el, el.dataset.icon));
 }
 hydrateIcons();
+window.ClownfishIcons?.hydrate();
 
 const dialogFocusReturn = new WeakMap();
 function openDialogs() {
@@ -4515,13 +4511,14 @@ function emptyStateHtml() {
         ? { title: "今天想学会什么？", desc: "可以发来知识点、题目或不理解的地方；系统会通过讲解、提问和练习陪你掌握。" }
         : { title: "想聊点什么？", desc: "可以直接提问、讨论想法，或从一件小事开始。" };
     return ''
-      + '<section class="empty-state role-intro-state">'
-      + '  <article class="role-intro-card">'
+      + '<section class="empty-state role-intro-state task-workbench-empty-frame">'
+      + '  <article class="role-intro-card task-workbench-empty is-composer-empty">'
       + '    <nav class="mode-switch" aria-label="对话方式">'
       + Object.entries(WORK_MODES).map(([key, item]) => '<button type="button" data-work-mode="' + esc(key) + '" aria-pressed="' + String(key === mode) + '">' + esc(item.label) + '</button>').join('')
       + '    </nav>'
       + '    <header class="role-intro-head"><h2>' + esc(content.title) + '</h2></header>'
       + '    <p>' + esc(content.desc) + '</p>'
+      + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><button type="button" id="heroSend">发送</button></div></div>'
       + '  </article>'
       + '</section>';
   }
@@ -4529,8 +4526,8 @@ function emptyStateHtml() {
   if (intro && state.target) {
     const av = visualOf(state.target.kind, state.target.id);
     return ''
-      + '<section class="empty-state role-intro-state">'
-      + '  <article class="role-intro-card">'
+      + '<section class="empty-state role-intro-state task-workbench-empty-frame">'
+      + '  <article class="role-intro-card task-workbench-empty">'
       + '    <header class="role-intro-head"><span class="avatar" style="background:' + av.g + '">' + faceHtml(state.target.kind, state.target.id) + '</span><h2>' + esc(state.target.name) + '</h2></header>'
       + '    <p>' + esc(intro.lead) + '</p>'
       + '    <ul>' + intro.items.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul>'
@@ -4550,7 +4547,7 @@ function emptyStateHtml() {
     + '  </div>'
     + '</section>';
 }
-function showEmptyState() { $("#msgs").innerHTML = emptyStateHtml(); }
+function showEmptyState() { const m = $("#msgs"); m.innerHTML = emptyStateHtml(); const composer = $("#composer"); if (composer) composer.classList.toggle("hero-mode", !!m.querySelector(".hero-composer")); }
 function updateRailStats() {
   const personas = $("#statPersonas"), chats = $("#statChats"), groups = $("#statGroups"), mode = $("#statMode");
   if (personas) personas.textContent = String(state.personas.length || 0);
@@ -4674,10 +4671,12 @@ function exportCurrentChatHtml() {
     + '.bubble{white-space:pre-wrap;word-break:break-word;line-height:1.68;padding:12px 15px;border-radius:18px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 8px 22px rgba(15,23,42,.06)}'
     + '.row.me .bubble{background:linear-gradient(135deg,#8b5cf6,#ec4899);color:#fff;border:none}'
     + '@media(max-width:640px){.body{max-width:calc(100vw - 92px)}.wrap{padding:18px 12px 36px}}'
-    + '</style></head><body><main class="wrap"><div class="head"><h1>' + esc(meta.name) + '</h1>'
+    + `</style>
+</head><body><main class="wrap"><div class="head"><h1>` + esc(meta.name) + `</h1>`
     + '<div class="meta">小丑鱼 对话导出 · ' + esc(exportedAt) + ' · ' + esc(log.length + " 条消息") + '</div></div>'
     + rows
-    + '</main></body></html>';
+    + `</main>
+</body></html>`;
   const safe = (meta.name || "chat").replace(/[\\/:*?"<>|]/g, "-");
   downloadFile("nemos-chat-" + safe + "-" + new Date().toISOString().slice(0, 10) + ".html", html, "text/html;charset=utf-8");
 }
@@ -4781,7 +4780,7 @@ function renderLog() {
   const m = $("#msgs"); m.innerHTML = "";
   ensureConversationTree(logKey());
   const log = chatLogs[logKey()] || [];
-  if (!log.length) { m.innerHTML = emptyStateHtml(); renderStarterPrompts(log); m.scrollTop = 0; return; }
+  if (!log.length) { m.innerHTML = emptyStateHtml(); const composer = $("#composer"); if (composer) composer.classList.toggle("hero-mode", !!m.querySelector(".hero-composer")); m.scrollTop = 0; return; }
   m.innerHTML = "";
   for (let messageIndex = 0; messageIndex < log.length; messageIndex += 1) {
     const e = log[messageIndex];
@@ -4796,30 +4795,8 @@ function renderLog() {
       addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, messageId });
     }
   }
-  renderStarterPrompts(log);
+  const composerAfter = $("#composer"); if (composerAfter) composerAfter.classList.remove("hero-mode");
   m.scrollTop = m.scrollHeight;
-}
-
-function renderStarterPrompts(log) {
-  const isClownfish = state.target?.kind === "persona" && state.target.id === APP_PERSONA_ID;
-  if (!isClownfish || log.some((entry) => entry.side === "me" || entry.side === "user")) return;
-  const mode = activeWorkMode();
-  const prompts = mode === "task"
-    ? { title: "说清目标就可以开始", note: "系统会自己判断需要哪些能力，不用先选专家。", actions: [["做一份汇报", "帮我完成一份工作汇报，主题是："], ["分析一个问题", "帮我深入分析这个问题："], ["处理一份文件", "请根据我上传的文件完成："]] }
-    : mode === "study"
-      ? { title: "从你卡住的地方开始", note: "不需要知道由谁辅导，只要说明想学什么。", actions: [["讲懂一个概念", "请帮助我真正理解这个概念："], ["带我解一道题", "请一步步带我理解这道题："], ["检查掌握程度", "请通过几个问题检查我是否掌握了："]] }
-      : { title: "第一次可以从一件小事开始", note: "点一个例子，再补充你的具体内容。", actions: [["整理一段文字", "帮我整理这段文字："], ["讨论一个想法", "我想和你讨论："], ["梳理一个问题", "帮我梳理这个问题："]] };
-  const card = document.createElement("section");
-  card.className = "starter-prompts";
-  card.setAttribute("aria-label", prompts.title);
-  card.innerHTML = '<strong>' + esc(prompts.title) + '</strong><span>' + esc(prompts.note) + '</span><div class="starter-prompt-actions">' + prompts.actions.map(([label, value]) => '<button type="button" data-starter="' + esc(value) + '">' + esc(label) + '</button>').join('') + '</div>';
-  card.querySelectorAll("[data-starter]").forEach((button) => button.addEventListener("click", () => {
-    $("#txt").value = button.dataset.starter;
-    saveConversationDraft();
-    $("#txt").focus();
-    $("#txt").setSelectionRange($("#txt").value.length, $("#txt").value.length);
-  }));
-  $("#msgs").appendChild(card);
 }
 
 async function loadState() {
@@ -4933,7 +4910,6 @@ function addablePersonas() {
 
 function renderContacts() {
   const c = $("#contacts"); c.innerHTML = "";
-  const query = String($("#contactSearch")?.value || "").trim().toLowerCase();
   const tree = ensureConversationTree("persona:" + APP_PERSONA_ID);
   if (!tree) return;
   const nodes = Object.values(tree.nodes).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
@@ -4947,10 +4923,27 @@ function renderContacts() {
     const title = conversationTitle(node.messages, node.title || "新任务");
     const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
     const preview = threadPreview(node.messages, mode.label);
-    if (query && !(title + " " + preview + " " + mode.label).toLowerCase().includes(query)) continue;
     c.appendChild(threadEl(node, tree.activeId));
   }
-  if (!nodes.length || (query && c.children.length === 1)) c.innerHTML = '<div class="contact-search-empty" role="status">没有找到匹配的对话</div>';
+  if (!nodes.length) c.innerHTML = '<div class="contact-search-empty" role="status">还没有对话</div>';
+}
+
+function renderConversationSearchResults(queryText) {
+  const root = $("#conversationSearchResults");
+  const tree = ensureConversationTree("persona:" + APP_PERSONA_ID);
+  const query = String(queryText || "").trim().toLowerCase();
+  const nodes = Object.values(tree?.nodes || {}).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
+  const visible = nodes.filter((node) => {
+    const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
+    const title = conversationTitle(node.messages, node.title || "新任务");
+    const preview = threadPreview(node.messages, mode.label);
+    return !query || `${title} ${preview} ${mode.label}`.toLowerCase().includes(query);
+  });
+  root.innerHTML = visible.length ? visible.map((node) => {
+    const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
+    const title = conversationTitle(node.messages, node.title || "新任务");
+    return `<button class="app-search-result" type="button" role="option" data-search-conversation="${esc(node.id)}"><span><strong>${esc(title)}</strong><small>${esc(threadPreview(node.messages, mode.label))}</small></span><small>${esc(threadTime(node.updatedAt || node.createdAt))}</small></button>`;
+  }).join("") : '<div class="app-search-empty">没有找到匹配的对话</div>';
 }
 
 function threadEl(node, activeId) {
@@ -5455,6 +5448,8 @@ async function sendMsg(voiceFlag, overrideText) {
   const attachmentLabel = attachment ? `【文件：${attachment.name}】 ` : "";
   const utext = (image ? "[图片] " : "") + attachmentLabel + (text || (attachment ? "请查看这个文件" : "（图片）"));
   addRow("me", null, utext, { voice });
+  const composerEl = $("#composer");
+  if (composerEl) composerEl.classList.remove("hero-mode");
   record(key, { id: messageId, side: "me", who: null, text: utext, voice, attachment });
   if (shouldAutoName) void autoNameConversation(key, conversationBeforeSend.id, text || utext);
   setPendingImage(null); $("#imgfile").value = "";
@@ -5472,6 +5467,21 @@ async function sendMsg(voiceFlag, overrideText) {
 }
 
 $("#send").onclick = () => sendMsg();
+document.addEventListener("click", (e) => {
+  const heroBtn = e.target && e.target.closest ? e.target.closest("#heroSend") : null;
+  if (!heroBtn) return;
+  const heroTxt = document.getElementById("heroTxt");
+  const heroText = heroTxt ? heroTxt.value.trim() : "";
+  if (!heroText) return;
+  sendMsg(false, heroText);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.target && e.target.id === "heroTxt" && e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    const heroBtn = document.getElementById("heroSend");
+    if (heroBtn) heroBtn.click();
+  }
+});
 $("#txt").addEventListener("input", saveConversationDraft);
 $("#txt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -6522,9 +6532,20 @@ async function deliverCompletedAgentJobs(jobs) {
     job.status === "succeeded" && job.result && job.result.data && job.result.data.personaId);
   let delivered = 0;
   for (const job of pending) {
-    await pushCapabilityNotifications([{ ...job.result.data, deliveryId: "agent-job:" + job.id }]);
-    await api("/api/agent/delivery/ack", { id: job.id });
-    delivered++;
+    const deliveryId = job.delivery && job.delivery.id;
+    try {
+      await pushCapabilityNotifications([{ ...job.result.data, deliveryId: "agent-job:" + job.id }]);
+      await api("/api/agent/delivery/ack", { id: job.id, deliveryId });
+      delivered++;
+    } catch (error) {
+      try {
+        await api("/api/agent/delivery/fail", {
+          id: job.id,
+          deliveryId,
+          error: String(error && error.message || error || "页面未能展示任务结果").slice(0, 500)
+        });
+      } catch {}
+    }
   }
   return delivered;
 }
@@ -7971,33 +7992,23 @@ function smRun(fn) {
   fn();
 }
 $("#quickGroup").onclick = () => createConversation("chat");
-function setConversationSearchOpen(open) {
-  const area = $("#wechatSearch");
-  const input = $("#contactSearch");
-  area.classList.toggle("search-open", open);
-  $("#sidebarSearchToggle").setAttribute("aria-expanded", String(open));
-  if (open) requestAnimationFrame(() => input.focus());
-  else if (input.value) {
-    input.value = "";
-    renderContacts();
-  }
-}
-$("#sidebarSearchToggle").onclick = () => setConversationSearchOpen(!$("#wechatSearch").classList.contains("search-open"));
-$("#closeConversationSearch").onclick = () => {
-  setConversationSearchOpen(false);
-  $("#sidebarSearchToggle").focus();
-};
+const conversationSearchOverlay = window.AppSearchOverlay.bind({
+  dialog: "#conversationSearchDialog",
+  trigger: "#sidebarSearchToggle",
+  input: "#contactSearch",
+  close: "#closeConversationSearch",
+  render: renderConversationSearchResults,
+});
+$("#conversationSearchResults").addEventListener("click", (event) => {
+  const result = event.target.closest("[data-search-conversation]");
+  if (!result) return;
+  conversationSearchOverlay.close();
+  openAppIfNeeded();
+  switchConversation(result.dataset.searchConversation);
+});
 $("#msgs").addEventListener("click", (event) => {
   const option = event.target.closest("[data-work-mode]");
   if (option) setActiveWorkMode(option.dataset.workMode);
-});
-$("#contactSearch").addEventListener("input", renderContacts);
-$("#contactSearch").addEventListener("keydown", (event) => {
-  if (event.key === "Escape") setConversationSearchOpen(false);
-  if (event.key === "Tab" && !event.shiftKey) {
-    event.preventDefault();
-    $("#closeConversationSearch").focus();
-  }
 });
 $("#contacts").addEventListener("click", (event) => {
   const row = event.target.closest(".contact[data-conversation-id]");
@@ -8047,6 +8058,7 @@ $("#onboardName").addEventListener("keydown", (e) => {
 applyDeveloperMode();
 refreshToolSettings().catch(() => {});
 loadState();
+refreshAgentOps().catch(() => {});
 if (location.hash === "#settings") {
   setTimeout(() => {
     openSettingsMenu();
@@ -8056,5 +8068,7 @@ if (location.hash === "#settings") {
 pollCapabilityTasks();
 setInterval(pollCapabilityTasks, 60000);
 </script>
+    <script src="/assets/scramble-confetti.js" defer></script>
+
 </body>
 </html>

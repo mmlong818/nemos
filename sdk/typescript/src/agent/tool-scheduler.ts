@@ -17,6 +17,7 @@ interface SchedulerOptions {
   emit: (event: AgentRunEvent) => void;
   metadata?: Readonly<Record<string, string>>;
   authorizeTool?: (input: AgentToolAuthorizationInput) => Promise<AgentToolAuthorizationResult>;
+  destructiveState?: { stopped: boolean; failedTool?: string };
 }
 
 export class ToolScheduler {
@@ -63,6 +64,12 @@ export class ToolScheduler {
       this.options.emit({ type: "tool_end", call, result });
       return result;
     }
+    if (tool.definition.risk === "destructive" && this.options.destructiveState?.stopped) {
+      const failedTool = this.options.destructiveState.failedTool;
+      const result = errorResult(`destructive operation blocked after failure${failedTool ? `: ${failedTool}` : ""}; review the previous failure before continuing`);
+      this.options.emit({ type: "tool_end", call, result });
+      return result;
+    }
     let validationErrors: string[];
     try {
       validationErrors = validateToolInput(tool.definition.inputSchema, call.arguments);
@@ -95,6 +102,10 @@ export class ToolScheduler {
       ...result,
       content: boundText(result.content, this.options.maxResultChars),
     };
+    if (bounded.isError && tool.definition.risk === "destructive" && this.options.destructiveState) {
+      this.options.destructiveState.stopped = true;
+      this.options.destructiveState.failedTool = tool.definition.name;
+    }
     this.options.emit({ type: "tool_end", call, result: bounded });
     return bounded;
   }

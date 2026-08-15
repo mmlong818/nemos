@@ -7,6 +7,15 @@ import test from "node:test";
 
 import { detectDevelopmentChecks, runPiDevelopment, validateDevelopmentWorkspace } from "../../examples/companion/pi-development.js";
 
+test("开发内核直接嵌入 Pi Agent SDK，不依赖第三方工作台", () => {
+  const source = readFileSync(join(process.cwd(), "examples", "companion", "pi-development.ts"), "utf8");
+  assert.match(source, /@earendil-works\/pi-coding-agent/);
+  assert.match(source, /pi\.createAgentSession/);
+  assert.match(source, /SessionManager\.(?:create|continueRecent|open)/);
+  assert.match(source, /session\.subscribe/);
+  assert.doesNotMatch(source, /pi-workbench|ZY-LI-F/i);
+});
+
 test("开发能力拒绝磁盘根目录和不存在的路径", () => {
   assert.throws(() => validateDevelopmentWorkspace(parse(process.cwd()).root), /整个磁盘/);
   assert.throws(() => validateDevelopmentWorkspace(join(tmpdir(), "missing-clownfish-workspace")), /不存在/);

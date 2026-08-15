@@ -215,3 +215,21 @@ test("persists pending chat deliveries and removes them only after client acknow
     rmSync(fixture.dir, { recursive: true, force: true });
   }
 });
+
+test("deletes terminal jobs in one persisted operation but protects active jobs", () => {
+  const events: AgentJobQueueEvent[] = [];
+  const fixture = temporaryQueue({ onChange: (event) => events.push(event) });
+  try {
+    const first = fixture.queue.enqueue({ type: "project", payload: {} });
+    const second = fixture.queue.enqueue({ type: "project", payload: {} });
+    const running = fixture.queue.claimNext("worker-a")!;
+    fixture.queue.complete(running.id, "worker-a", { summary: "done" });
+    assert.throws(() => fixture.queue.deleteMany([first.id, second.id]), /Active Agent job/);
+    assert.equal(fixture.queue.deleteMany([first.id]), 1);
+    assert.equal(new FileAgentJobQueue(fixture.file).get(first.id), null);
+    assert.ok(new FileAgentJobQueue(fixture.file).get(second.id));
+    assert.equal(events.at(-1)?.action, "deleted");
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});

@@ -12,7 +12,12 @@ import {
   type DevelopmentProposalState,
 } from "./development-proposals.js";
 import type { CompanionModelConnection } from "./model-connection.js";
+import type { DevelopmentReasoning } from "./capabilities.js";
 import { detectDevelopmentDependencies, installDevelopmentDependencies, type DevelopmentDependencyReceipt } from "./development-dependencies.js";
+import {
+  shouldAutoApplyDevelopmentProposal,
+  type DevelopmentApprovalPolicy,
+} from "./development-approval.js";
 
 const execFileAsync = promisify(execFile);
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", ".next", "dist", "build", "coverage"]);
@@ -31,8 +36,10 @@ export interface PiDevelopmentInput {
   workspacePath: string;
   instruction: string;
   accessMode: DevelopmentAccessMode;
+  approvalPolicy?: DevelopmentApprovalPolicy;
   installDependencies?: boolean;
   connection: CompanionModelConnection;
+  reasoning?: DevelopmentReasoning;
   agentDir: string;
   signal?: AbortSignal;
   onProgress?: (message: string, percent: number) => void;
@@ -68,6 +75,7 @@ export interface PiDevelopmentResult {
   reply: string;
   workspacePath: string;
   accessMode: DevelopmentAccessMode;
+  approvalPolicy: DevelopmentApprovalPolicy;
   changedFiles: string[];
   baseRevision?: string;
   fileReceipts: DevelopmentFileReceipt[];
@@ -135,7 +143,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
         return receipts;
       })()
     : [];
-  const baseRevision = await currentRevision(workspace);
+  const baseRevision = await currentDevelopmentRevision(workspace);
   const checks: DevelopmentCheckReceipt[] = [];
   const contextReceipts: DevelopmentContextReceipt[] = [];
   mkdirSync(input.agentDir, { recursive: true });
@@ -143,6 +151,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
   input.onProgress?.("正在读取项目规则和目录", 12);
 
   const pi = await nativeImport<PiModule>("@earendil-works/pi-coding-agent");
+  const reasoning = input.reasoning === "fast" ? "fast" : input.reasoning === "deep" ? "deep" : "balanced";
   const modelRuntime = await pi.ModelRuntime.create({ modelsPath: null, allowModelNetwork: false });
   const providerId = "clownfish-model";
   modelRuntime.registerProvider(providerId, {
@@ -152,7 +161,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     models: [{
       id: input.connection.model,
       name: input.connection.model,
-      reasoning: false,
+      reasoning: reasoning !== "fast",
       input: ["text", "image"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: 128_000,
@@ -199,7 +208,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
         agentDir: input.agentDir,
         modelRuntime,
         model,
-        thinkingLevel: "medium",
+        thinkingLevel: reasoning === "fast" ? "off" : reasoning === "deep" ? "high" : "medium",
         noTools: "builtin",
         customTools: createDevelopmentTools(executionWorkspace, input.accessMode, checks, contextReceipts, proposalSession) as never,
         resourceLoader,
@@ -244,11 +253,15 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     if (!reply) throw new Error("开发能力没有生成可交付结果。");
     input.onProgress?.("正在整理修改和验证结果", 88);
     const staged = proposalSession?.finalize();
+    const completedProposal = staged?.state === "pending" && shouldAutoApplyDevelopmentProposal(input.approvalPolicy ?? "request", checks)
+      ? proposalStore.apply(staged.id)
+      : staged;
     const changed = staged ? staged.files.map((file) => file.path) : await changedFiles(executionWorkspace);
     return {
       reply,
       workspacePath: workspace,
       accessMode: input.accessMode,
+      approvalPolicy: input.accessMode === "inspect" ? "request" : input.approvalPolicy ?? "request",
       changedFiles: changed,
       baseRevision,
       fileReceipts: staged
@@ -257,7 +270,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
       checks,
       contextReceipts,
       unverifiedRisks: developmentRisks(input.accessMode, checks),
-      proposal: staged ? developmentProposalSummary(staged) : undefined,
+      proposal: completedProposal ? developmentProposalSummary(completedProposal) : undefined,
       toolCalls,
       sessionId: sessionManager.manager.getSessionId(),
       sessionFile: sessionManager.manager.getSessionFile(),
@@ -741,7 +754,7 @@ export async function runDevelopmentCheck(workspace: string, command: Developmen
   }
 }
 
-async function currentRevision(workspace: string): Promise<string | undefined> {
+export async function currentDevelopmentRevision(workspace: string): Promise<string | undefined> {
   try {
     const result = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace, windowsHide: true, timeout: 10_000, maxBuffer: 100_000 });
     return result.stdout.trim() || undefined;
@@ -750,14 +763,14 @@ async function currentRevision(workspace: string): Promise<string | undefined> {
   }
 }
 
-function developmentFileReceipt(workspace: string, path: string): DevelopmentFileReceipt {
+export function developmentFileReceipt(workspace: string, path: string): DevelopmentFileReceipt {
   const file = resolve(workspace, path);
   if (!existsSync(file) || !statSync(file).isFile()) return { path, state: "deleted" };
   const content = readFileSync(file);
   return { path, state: "present", sha256: createHash("sha256").update(content).digest("hex"), byteLength: content.byteLength };
 }
 
-function developmentRisks(mode: DevelopmentAccessMode, checks: DevelopmentCheckReceipt[]): string[] {
+export function developmentRisks(mode: DevelopmentAccessMode, checks: DevelopmentCheckReceipt[]): string[] {
   const verification = checks.filter(
     (item) => !READ_ONLY_CHECKS.includes(item.command as (typeof READ_ONLY_CHECKS)[number]),
   );
@@ -767,7 +780,7 @@ function developmentRisks(mode: DevelopmentAccessMode, checks: DevelopmentCheckR
   return risks;
 }
 
-function developmentProposalSummary(proposal: DevelopmentProposal): DevelopmentProposalSummary {
+export function developmentProposalSummary(proposal: DevelopmentProposal): DevelopmentProposalSummary {
   return {
     id: proposal.id,
     state: proposal.state,

@@ -10,9 +10,16 @@
   <link rel="stylesheet" href="/assets/work-storyline.css">
   <link rel="stylesheet" href="/assets/work-stability.css">
   <link rel="stylesheet" href="/assets/work-platform.css">
+  <link rel="stylesheet" href="/assets/clownfish-theme.css">
   <link rel="stylesheet" href="/assets/app-navigation-labels.css">
+  <link rel="stylesheet" href="/assets/task-workbench.css">
+  <link rel="stylesheet" href="/assets/work-shell.css">
+  <link rel="stylesheet" href="/assets/scramble-theme.css">
+  <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
+  <link rel="stylesheet" href="/assets/app-search-overlay.css">
+  <script src="/assets/scramble-wallpaper.js"></script>
 </head>
-<body>
+<body data-page="tasks">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
       <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
@@ -25,34 +32,53 @@
       </nav>
       <a class="rail-settings" href="/settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
     </aside>
+    <main class="task-workbench work-shell">
+      <aside class="task-workbench-sidebar work-sidebar">
+        <header class="task-sidebar-head">
+          <div class="task-sidebar-brand"><strong>工作</strong></div>
+          <div class="task-sidebar-primary app-create-search">
+            <button id="newTaskSide" class="task-workbench-new" type="button"><span data-app-icon="plus-circle" aria-hidden="true"><span></span></span><span>新任务</span></button>
+            <button class="app-search-trigger" id="workSearchToggle" type="button" title="搜索工作内容" aria-label="搜索工作内容" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span></button>
+          </div>
+        </header>
+        <section class="task-sidebar-section task-sidebar-list work-view-section">
+          <div class="task-list-label">视图</div>
+          <nav class="tabs work-view-nav" aria-label="工作页面">
+            <a href="/tasks" data-view="tasks">任务</a>
+            <a href="/automations" data-view="automations">自动化</a>
+            <a href="/spaces" data-view="spaces" id="projectsViewLink" hidden>项目</a>
+          </nav>
+        </section>
+      </aside>
 
-    <main>
-      <header class="topbar">
-        <a class="wordmark" href="/tasks">工作</a>
-        <nav class="tabs" aria-label="工作页面">
-          <a href="/tasks" data-view="tasks">任务</a>
-          <a href="/spaces" data-view="spaces">空间</a>
-          <a href="/automations" data-view="automations">自动化</a>
-          <a href="/collaboration" data-view="collaboration">协作</a>
-          <a href="/resources" data-view="resources">资料</a>
-          <a href="/artifacts" data-view="artifacts">结果</a>
-          <a href="/runs" data-view="runs">运行</a>
-          <a href="/memory" data-view="memory">记忆</a>
-        </nav>
-        <a class="back" href="/">返回任务</a>
-      </header>
-
-      <section class="page-head">
-        <p class="eyebrow" id="pageEyebrow">持续工作</p>
-        <h1 id="pageTitle">任务</h1>
-        <p id="pageDescription">把需要重复执行的事情留在这里。</p>
-      </section>
-
-      <section class="content" id="content" aria-live="polite">
-        <div class="loading">正在读取本机数据…</div>
+      <section class="task-workbench-main work-main">
+        <header class="task-workbench-topbar">
+          <div class="task-workbench-title"><div><div class="hname" id="pageTitle">任务</div></div></div>
+          <div class="task-workbench-top-actions work-top-actions">
+            <a href="/" title="返回对话" aria-label="返回对话"><span data-app-icon="message-circle" aria-hidden="true"><span></span></span></a>
+          </div>
+        </header>
+        <div class="task-workbench-stage work-stage">
+          <header class="work-page-head">
+            <p class="eyebrow" id="pageEyebrow">持续工作</p>
+            <p class="work-page-description" id="pageDescription">把需要重复执行的事情留在这里。</p>
+          </header>
+          <section class="content" id="content" aria-live="polite">
+            <div class="loading">正在读取本机数据…</div>
+          </section>
+        </div>
       </section>
     </main>
+
   </div>
+
+  <dialog class="app-search-dialog" id="workSearchDialog" aria-labelledby="workSearchTitle">
+    <form class="app-search-surface" method="dialog">
+      <header class="app-search-head"><div><p id="workSearchEyebrow">当前页面</p><h2 id="workSearchTitle">搜索工作内容</h2></div><button class="app-search-close" id="closeWorkSearch" type="button" aria-label="关闭搜索">×</button></header>
+      <label class="app-search-field"><span data-app-icon="search" aria-hidden="true"><span></span></span><input id="workSearch" type="search" placeholder="输入名称或内容" autocomplete="off" aria-label="搜索工作内容"></label>
+      <div class="app-search-results" id="workSearchResults" role="listbox" aria-live="polite"></div>
+    </form>
+  </dialog>
 
   <dialog id="taskDialog">
     <form class="dialog-card" id="taskForm">
@@ -62,7 +88,7 @@
       <input id="taskId" type="hidden">
       <label>任务名称<input id="taskTitle" maxlength="60" required placeholder="例如：每周经营复盘"></label>
       <label>具体要求<textarea id="taskInstruction" rows="5" maxlength="2000" required placeholder="说清要处理什么、交付给谁、最重要的标准"></textarea></label>
-      <label>归入工作空间
+      <label>归入项目
         <select id="taskSpace"><option value="">暂不归类</option></select>
         <small class="field-hint">只有同一件事包含多个任务时才需要。</small>
       </label>
@@ -87,11 +113,11 @@
     <form class="dialog-card" id="spaceForm">
       <button class="dialog-close" type="button" data-close-space aria-label="关闭">×</button>
       <p class="eyebrow">相关工作放在一起</p>
-      <h2 id="spaceDialogTitle">新建工作空间</h2>
+      <h2 id="spaceDialogTitle">新建项目</h2>
       <input id="spaceId" type="hidden">
-      <label>空间名称<input id="spaceTitle" maxlength="60" required placeholder="例如：新版发布"></label>
+      <label>项目名称<input id="spaceTitle" maxlength="60" required placeholder="例如：新版发布"></label>
       <label>这件事要做到什么<textarea id="spaceDescription" rows="4" maxlength="400" placeholder="简要记录目标、范围或完成标准"></textarea></label>
-      <button class="primary" type="submit">保存工作空间</button>
+      <button class="primary" type="submit">保存项目</button>
     </form>
   </dialog>
 
@@ -163,7 +189,7 @@
       <label>资料名称<input id="knowledgeTitle" maxlength="100" required placeholder="例如：客户访谈整理"></label>
       <div class="form-row">
         <label>资料类型<select id="knowledgeKind"><option value="note">文字笔记</option><option value="file">文本文件</option><option value="link">网页链接</option></select></label>
-        <label>归入工作空间<select id="knowledgeSpace"><option value="">暂不归类</option></select></label>
+        <label>归入项目<select id="knowledgeSpace"><option value="">暂不归类</option></select></label>
       </div>
       <label id="knowledgeUrlField" hidden>网页链接<input id="knowledgeUrl" type="url" placeholder="https://"></label>
       <label id="knowledgeFileField" hidden>选择文本文件<input id="knowledgeFile" type="file" accept=".txt,.md,.csv,.json,.html,.xml,text/*"></label>
@@ -192,6 +218,9 @@
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/assets/app-icons.js" defer></script>
+  <script src="/assets/app-search-overlay.js" defer></script>
+  <script id="newTaskSideBinder">document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("newTaskSide");if(b)b.addEventListener("click",function(){if(typeof openTaskDialog==="function")openTaskDialog();});});</script>
   <script src="/assets/work-center.js" defer></script>
+  <script src="/assets/scramble-confetti.js" defer></script>
 </body>
 </html>

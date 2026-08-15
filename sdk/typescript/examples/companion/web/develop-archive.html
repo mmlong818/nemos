@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="/assets/brand/clownfish-mark.svg">
+  <title>归档项目 · 小丑鱼</title>
+  <link rel="stylesheet" href="/assets/system-center.css">
+  <link rel="stylesheet" href="/assets/clownfish-theme.css">
+  <link rel="stylesheet" href="/assets/app-navigation-labels.css">
+  <link rel="stylesheet" href="/assets/task-workbench.css">
+  <link rel="stylesheet" href="/assets/scramble-theme.css">
+  <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
+  <link rel="stylesheet" href="/assets/flat-workbench.css">
+  <link rel="stylesheet" href="/assets/development-coding.css">
+  <link rel="stylesheet" href="/assets/development-studio.css">
+  <script src="/assets/scramble-wallpaper.js"></script>
+</head>
+<body data-page="develop" class="coding-page development-archive-page">
+  <div class="app-shell">
+    <aside class="rail" aria-label="主导航">
+      <a class="brand" href="/" aria-label="返回任务"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
+      <nav>
+        <a href="/" data-app-icon="message"><span></span><small>任务</small></a>
+        <a href="/capabilities" data-app-icon="boxes"><span></span><small>能力</small></a>
+        <a href="/office" data-app-icon="file"><span></span><small>文件</small></a>
+        <a class="is-current" href="/develop" aria-current="page" data-app-icon="code"><span></span><small>开发</small></a>
+        <a href="/tasks" data-app-icon="work"><span></span><small>工作</small></a>
+      </nav>
+      <a class="rail-secondary" href="/settings" data-app-icon="settings"><span></span><small>设置</small></a>
+    </aside>
+
+    <main class="coding-shell task-workbench task-workbench--development archive-workbench">
+      <header class="coding-topbar task-workbench-topbar">
+        <div class="task-workbench-title"><div><div class="hname">归档项目</div><div class="htag">开发</div></div></div>
+      </header>
+      <div class="workbench-body">
+        <aside class="coding-sidebar task-workbench-sidebar archive-sidebar">
+          <header class="coding-sidebar-head task-sidebar-head">
+            <div class="task-sidebar-brand app-search-brand-empty"></div>
+            <a class="task-workbench-new archive-back" href="/develop"><span data-app-icon="code" aria-hidden="true"><span></span></span><span>返回开发</span></a>
+          </header>
+          <section class="task-sidebar-section archive-sidebar-copy">
+            <p>归档只收起项目，不会删除任务记录或开发目录。</p>
+          </section>
+        </aside>
+
+        <section class="task-workbench-main archive-main">
+          <header class="archive-main-head"><div><small>项目生命周期</small><h1>归档项目</h1><p>恢复后可继续开发；彻底删除只在这里提供。</p></div><span id="archiveCount">正在读取…</span></header>
+          <div id="archiveProjectList" class="archive-project-list" aria-live="polite"></div>
+          <p id="archiveStatus" class="archive-status" role="status"></p>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="archive-delete-dialog" id="archiveDeleteDialog" aria-labelledby="archiveDeleteTitle">
+    <form method="dialog">
+      <span class="archive-delete-mark" data-app-icon="boxes" aria-hidden="true"><span></span></span>
+      <div><small>不可撤销</small><h2 id="archiveDeleteTitle">彻底删除项目？</h2></div>
+      <p id="archiveDeleteSummary">项目在界面中的记录和数据库内容会被删除。</p>
+      <label class="archive-directory-choice" id="archiveDirectoryChoice"><input id="deleteWorkspace" type="checkbox"><span><b>同时删除开发目录</b><small id="deleteWorkspacePath"></small></span></label>
+      <p class="archive-delete-note" id="archiveDeleteNote">不勾选时，本地目录和其中的文件不会改变。</p>
+      <div class="archive-delete-actions"><button type="submit" value="cancel">返回</button><button class="danger" id="confirmArchiveDelete" type="submit" value="confirm">只删除记录</button></div>
+    </form>
+  </dialog>
+
+  <script src="/assets/app-icons.js"></script>
+  <script src="/assets/develop-archive.js"></script>
+  <script src="/assets/scramble-confetti.js" defer></script>
+</body>
+</html>

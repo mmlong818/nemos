@@ -90,6 +90,24 @@ test("重启时恢复中断开发留下的原文件", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("服务启动可只读取中断提案而不自动改动用户项目", () => {
+  const { root, workspace, dataDir } = fixture();
+  const target = join(workspace, "index.ts");
+  writeFileSync(target, "safe\n", "utf8");
+  try {
+    const store = new DevelopmentProposalStore(dataDir);
+    const session = store.begin(workspace);
+    session.write(target, "interrupted\n");
+
+    const reopened = new DevelopmentProposalStore(dataDir, { recoverInterrupted: false });
+    assert.equal(readFileSync(target, "utf8"), "interrupted\n");
+    assert.equal(reopened.get(session.proposal.id)?.state, "staging");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("开发执行期间的用户修改不会被恢复动作覆盖", () => {
   const { root, workspace, dataDir } = fixture();
   const target = join(workspace, "index.ts");

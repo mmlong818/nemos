@@ -7,10 +7,18 @@
   <link rel="icon" href="/assets/brand/clownfish-mark.svg">
   <title>开发 · 小丑鱼</title>
   <link rel="stylesheet" href="/assets/system-center.css">
-  <link rel="stylesheet" href="/assets/development-coding.css">
+  <link rel="stylesheet" href="/assets/clownfish-theme.css">
   <link rel="stylesheet" href="/assets/app-navigation-labels.css">
+  <link rel="stylesheet" href="/assets/task-workbench.css">
+  <link rel="stylesheet" href="/assets/scramble-theme.css">
+  <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
+  <link rel="stylesheet" href="/assets/flat-workbench.css">
+  <link rel="stylesheet" href="/assets/development-coding.css">
+  <link rel="stylesheet" href="/assets/development-studio.css">
+  <link rel="stylesheet" href="/assets/app-search-overlay.css">
+  <script src="/assets/scramble-wallpaper.js"></script>
 </head>
-<body class="coding-page">
+<body data-page="develop" class="coding-page">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
       <a class="brand" href="/" aria-label="返回任务"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
@@ -24,70 +32,137 @@
       <a class="rail-secondary" href="/settings" data-app-icon="settings"><span></span><small>设置</small></a>
     </aside>
 
-    <main class="coding-shell">
-      <aside class="coding-sidebar">
-        <header class="coding-sidebar-head">
-          <strong>开发</strong>
-          <button id="newDevelopment" type="button">新任务</button>
-        </header>
-        <section class="project-block">
-          <span class="side-label">当前项目</span>
-          <button class="project-picker" id="projectPicker" type="button">
-            <span data-app-icon="code"><span></span></span>
-            <span><b id="projectName">选择项目目录</b><small id="projectPath">尚未选择</small></span>
-          </button>
-        </section>
-        <section class="development-history">
-          <span class="side-label">最近任务</span>
-          <div id="developmentList" class="development-list"><p>正在读取…</p></div>
-        </section>
-        <a class="development-settings-link" href="/settings#development">开发设置</a>
-      </aside>
-
-      <section class="coding-main">
-        <header class="coding-topbar">
-          <div><b id="taskTitle">新开发任务</b><small id="taskMeta">小丑鱼会修改代码并运行检查</small></div>
-          <a id="openReview" href="/tasks" hidden>查看完整记录</a>
-        </header>
-
-        <div class="coding-transcript" id="transcript">
-          <div class="coding-empty" id="codingEmpty">
-            <span class="coding-mark" data-app-icon="code"><span></span></span>
-            <h1>今天想开发什么？</h1>
-            <p>描述结果即可。小丑鱼会先阅读项目，再修改、运行检查并说明变化。</p>
-            <div class="prompt-examples">
-              <button type="button" data-example="检查这个项目目前最影响使用的问题，修复后运行完整验证">检查并修复项目问题</button>
-              <button type="button" data-example="实现一个完整的新功能，保持现有风格，并补充必要测试">实现一个新功能</button>
-              <button type="button" data-example="审查最近的代码改动，定位风险并直接修复可以确认的问题">审查最近改动</button>
-            </div>
+    <main class="coding-shell task-workbench task-workbench--development">
+      <header class="coding-topbar task-workbench-topbar">
+        <div id="taskTitle" class="task-workbench-title">
+          <div>
+            <div class="hname">新开发任务</div>
+            <div class="htag">开发</div>
           </div>
+          <span id="taskMeta" class="development-task-meta">项目将自动建立</span>
         </div>
+        <div class="task-workbench-top-actions">
+          <a id="openReview" href="/tasks" title="查看任务详情" aria-label="查看任务详情" hidden><span data-app-icon="message-circle" aria-hidden="true"><span></span></span></a>
+        </div>
+      </header>
 
-        <form class="coding-composer" id="developForm">
-          <div class="composer-context">
-            <button type="button" id="workspaceButton"><span data-app-icon="code"><span></span></span><span id="workspaceLabel">选择项目</span></button>
-            <label><span class="sr-only">工作方式</span><select id="accessMode"><option value="develop">直接修改</option><option value="inspect">只检查</option></select></label>
-            <label><span class="sr-only">项目依赖</span><select id="dependencyMode"><option value="install">需要时安装依赖</option><option value="skip">不安装依赖</option></select></label>
+      <div class="workbench-body">
+        <aside class="coding-sidebar task-workbench-sidebar">
+          <header class="coding-sidebar-head task-sidebar-head">
+            <div class="task-sidebar-brand app-search-brand-empty"></div>
+            <div class="task-sidebar-primary app-create-search" id="developmentSearchPanel">
+              <button id="newDevelopment" class="task-workbench-new" type="button"><span data-app-icon="plus-circle" aria-hidden="true"><span></span></span><span>新任务</span></button>
+              <button class="app-search-trigger" id="developmentSearchToggle" type="button" title="搜索开发任务" aria-label="搜索开发任务" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span></button>
+            </div>
+          </header>
+          <section class="development-history task-sidebar-section task-sidebar-list">
+            <div class="task-list-label development-list-heading"><span>最近</span><a href="/develop/archive">归档项目</a></div>
+            <div id="developmentList" class="development-list"><p>正在读取…</p></div>
+          </section>
+        </aside>
+
+        <section class="coding-main task-workbench-main">
+          <div class="development-studio">
+            <section class="development-activity" aria-label="开发活动">
+              <header class="development-control-bar">
+                <span class="development-context" id="activityContext">新任务</span>
+                <div class="development-profile-controls" aria-label="开发运行配置">
+                  <label class="development-profile-field" for="developmentEngine"><span>引擎</span><select id="developmentEngine"><option value="pi">Pi Agent（默认）</option><option value="dsh">DeepSeek Harness</option><option value="kilo">Kilo Code</option><option value="opencode">OpenCode</option><option value="codex">Codex</option></select></label>
+                  <label class="development-profile-field development-model-field" for="developmentModel"><span>模型</span><select id="developmentModel"><option value="default">当前任务模型</option></select></label>
+                  <label class="development-profile-field" for="developmentReasoning"><span>思考</span><select id="developmentReasoning"><option value="fast">快速</option><option value="balanced" selected>标准</option><option value="deep">深入</option></select></label>
+                </div>
+                <span class="development-engine-state" id="developmentEngineHint">内置执行，适合大多数开发任务</span>
+              </header>
+              <aside class="development-process" id="developmentProcess" aria-live="polite" hidden></aside>
+              <div class="coding-transcript task-workbench-stage" id="transcript">
+                <section class="coding-empty development-empty role-intro-state task-workbench-empty-frame" id="codingEmpty">
+                  <article class="role-intro-card task-workbench-empty">
+                    <header class="role-intro-head"><span class="development-empty-icon" data-app-icon="code" aria-hidden="true"><span></span></span><div><small id="developmentEnginePresence">Pi Agent · 灵活编排</small><h2>说明你想开发什么</h2></div></header>
+                    <p>新任务会在小丑鱼项目中建立独立目录；已有项目只需在说明中粘贴目录地址。</p>
+                  </article>
+                </section>
+              </div>
+              <div class="development-composer-host" id="developmentComposerHost">
+                <form class="coding-composer task-workbench-composer" id="developForm">
+                  <div class="task-workbench-input-wrap"><textarea id="instruction" class="task-workbench-input" required rows="3" maxlength="16000" placeholder="例如：修复首页按钮没有反应的问题，并检查有没有类似错误"></textarea></div>
+                  <div class="composer-context task-workbench-tools">
+                    <div class="development-execution-controls" aria-label="执行设置">
+                      <div class="development-project-chip" title="新项目自动建立独立目录；在任务说明中粘贴已有目录可直接关联"><span data-app-icon="file" aria-hidden="true"><span></span></span><span><b id="workspaceLabel">小丑鱼项目</b><small id="workspaceHint">正在读取默认目录…</small></span></div>
+                      <fieldset class="task-mode-setting" id="taskModeSetting">
+                        <legend class="visually-hidden">任务方式</legend>
+                        <div class="task-mode-options">
+                          <label><input type="radio" name="accessModeChoice" value="develop" checked><span>修改</span></label>
+                          <label><input type="radio" name="accessModeChoice" value="inspect"><span>只读</span></label>
+                        </div>
+                        <input id="accessMode" name="accessMode" type="hidden" value="develop">
+                      </fieldset>
+                      <div class="access-permission" id="approvalPermission">
+                        <button class="access-permission-trigger" id="approvalPolicyTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="approvalPolicyMenu">
+                          <span class="access-permission-icon" data-app-icon="shield" aria-hidden="true"><span></span></span>
+                          <span class="access-permission-copy"><b id="approvalPolicyLabel">请求批准</b><small id="approvalPolicySummary">修改后由你确认</small></span>
+                          <span class="access-permission-chevron" data-app-icon="chevron-down" aria-hidden="true"><span></span></span>
+                        </button>
+                        <div class="access-mode-menu" id="approvalPolicyMenu" role="listbox" aria-label="选择更改权限" hidden>
+                          <button class="access-mode-menu-item" type="button" role="option" data-approval-policy="request" aria-selected="true">
+                            <span><b>请求批准</b><small>修改先进入待确认区，由你决定是否写入</small></span><span class="access-mode-check" aria-hidden="true">✓</span>
+                          </button>
+                          <button class="access-mode-menu-item" type="button" role="option" data-approval-policy="auto" aria-selected="false">
+                            <span><b>帮我批准</b><small>没有检查失败时，由小丑鱼自动写入项目</small></span><span class="access-mode-check" aria-hidden="true">✓</span>
+                          </button>
+                          <button class="access-mode-menu-item is-danger" type="button" role="option" data-approval-policy="full" aria-selected="false" hidden>
+                            <span><b>完全控制</b><small>仅 Codex；直接操作当前项目，不经过待确认区</small></span><span class="access-mode-check" aria-hidden="true">✓</span>
+                          </button>
+                        </div>
+                        <input id="approvalPolicy" name="approvalPolicy" type="hidden" value="request">
+                      </div>
+                      <label class="dependency-choice" title="仅在项目目录内按需安装依赖"><input type="checkbox" id="installDependencies" checked><span>自动装依赖</span></label>
+                      <span class="development-safety-note" id="approvalPolicyHint">修改内容会先等待确认</span>
+                    </div>
+                    <div class="development-composer-actions">
+                      <button class="cancel-development" id="cancelDevelop" type="button" hidden><span data-app-icon="square" aria-hidden="true"><span></span></span>停止</button>
+                      <button class="send-development task-workbench-send" id="startDevelop" type="submit">开始任务</button>
+                    </div>
+                  </div>
+                  <p class="status" id="developStatus" role="status"></p>
+                </form>
+              </div>
+            </section>
+
           </div>
-          <textarea id="instruction" required rows="3" maxlength="16000" placeholder="告诉小丑鱼要实现、修复或检查什么…"></textarea>
-          <div class="composer-footer"><span>Enter 发送 · Shift+Enter 换行</span><button class="send-development" id="startDevelop" type="submit" aria-label="开始开发">发送</button></div>
-          <p class="status" id="developStatus" role="status"></p>
-        </form>
-      </section>
+        </section>
+      </div>
     </main>
   </div>
 
-  <dialog id="workspaceDialog">
-    <form class="workspace-dialog" method="dialog">
-      <button class="dialog-close" value="cancel" aria-label="关闭">×</button>
-      <p class="eyebrow">项目目录</p>
-      <h2>选择要开发的项目</h2>
-      <label class="field"><span>本机目录</span><input id="workspacePath" placeholder="例如：C:\Users\你\Documents\my-project" autocomplete="off"><small>小丑鱼只会在这个目录内工作。</small></label>
-      <div class="recent-workspaces" id="recentPanel" hidden><span>最近使用</span><div id="recentList"></div></div>
-      <div class="form-actions"><button class="primary" id="confirmWorkspace" value="default">使用这个项目</button></div>
+  <dialog class="app-search-dialog" id="developmentSearchDialog" aria-labelledby="developmentSearchTitle">
+    <form class="app-search-surface" method="dialog">
+      <header class="app-search-head"><div><p>开发记录</p><h2 id="developmentSearchTitle">搜索开发任务</h2></div><button class="app-search-close" id="closeDevelopmentSearch" type="button" aria-label="关闭搜索">×</button></header>
+      <label class="app-search-field"><span data-app-icon="search" aria-hidden="true"><span></span></span><input id="developmentSearch" type="search" placeholder="输入任务名称或状态" autocomplete="off" aria-label="搜索开发任务"></label>
+      <div class="app-search-results" id="developmentSearchResults" role="listbox" aria-live="polite"></div>
     </form>
   </dialog>
+
+  <dialog class="full-control-dialog" id="fullControlDialog" aria-labelledby="fullControlTitle">
+    <form method="dialog">
+      <span class="full-control-mark" data-app-icon="shield" aria-hidden="true"><span></span></span>
+      <h2 id="fullControlTitle">允许 Codex 完全控制？</h2>
+      <p>它会直接修改当前项目，不再生成待确认提案，并可能运行可访问网络和项目外文件的命令。仅支持已有且没有未提交修改的 Git 项目。</p>
+      <div><button type="submit" value="cancel">返回</button><button class="danger" type="submit" value="confirm">确认本次使用</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="project-archive-dialog" id="projectArchiveDialog" aria-labelledby="projectArchiveTitle">
+    <form method="dialog">
+      <span class="project-archive-mark" data-app-icon="boxes" aria-hidden="true"><span></span></span>
+      <h2 id="projectArchiveTitle">归档这个开发项目？</h2>
+      <p>项目会移到归档页面，开发目录和历史内容都会保留，之后可以恢复。</p>
+      <div><button type="submit" value="cancel">返回</button><button class="primary" type="submit" value="confirm">归档项目</button></div>
+    </form>
+  </dialog>
+
   <script src="/assets/app-icons.js"></script>
+  <script src="/assets/app-search-overlay.js"></script>
   <script src="/assets/develop-center.js"></script>
+  <script src="/assets/scramble-confetti.js" defer></script>
 </body>
 </html>

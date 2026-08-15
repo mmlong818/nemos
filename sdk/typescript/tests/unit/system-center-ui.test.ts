@@ -15,17 +15,96 @@ test("开发成为一级入口并启动真实开发任务", () => {
     assert.match(readWeb(file), /(?:href="\/develop"|id="railDev")/);
   }
   assert.match(server, /pathname === "\/develop"/);
-  assert.match(html, /id="workspacePath"/);
-  assert.match(html, /id="accessMode"/);
+  assert.match(server, /\/api\/development\/projects/);
+  assert.match(html, /id="approvalPolicyTrigger"/);
+  assert.match(html, /name="accessMode"/);
+  assert.match(html, /name="accessModeChoice"/);
+  assert.match(html, /name="approvalPolicy"/);
   assert.match(script, /capabilityId: "project-development"/);
-  assert.match(html, /id="dependencyMode"/);
+  assert.match(html, /id="installDependencies"/);
   assert.match(script, /installDependencies:/);
   assert.match(script, /history\.replaceState\(null, "", `\/develop\?job=/);
-  assert.match(html, /class="coding-sidebar"/);
-  assert.match(html, /class="coding-transcript"/);
-  assert.match(html, /class="coding-composer"/);
-  assert.match(script, /\/api\/agent\/jobs\?limit=100/);
+  assert.match(html, /class="coding-sidebar task-workbench-sidebar"/);
+  assert.match(html, /class="coding-transcript task-workbench-stage"/);
+  assert.match(html, /class="coding-composer task-workbench-composer[^"]*"/);
+  assert.match(script, /\/api\/agent\/jobs\?limit=500/);
   assert.match(script, /setTimeout\(\(\) => loadJobs\(true\), 2200\)/);
+});
+
+test("开发项目支持独立归档、恢复和安全删除", () => {
+  const server = readFileSync(join(root, "server.ts"), "utf8");
+  const develop = readWeb("develop.html");
+  const archive = readWeb("develop-archive.html");
+  const archiveScript = readWeb(join("assets", "develop-archive.js"));
+  assert.match(server, /pathname === "\/develop\/archive"/);
+  assert.match(server, /\/api\/development\/project\/archive/);
+  assert.match(server, /\/api\/development\/project\/restore/);
+  assert.match(server, /\/api\/development\/project\/delete/);
+  assert.match(develop, /href="\/develop\/archive"/);
+  assert.match(archive, /id="archiveProjectList"/);
+  assert.match(archive, /id="deleteWorkspace"/);
+  assert.match(archiveScript, /delete-archived-development-project/);
+  assert.match(archiveScript, /只删除记录/);
+  assert.match(archiveScript, /删除记录和目录/);
+});
+
+test("开发页把运行配置置顶，并把执行设置收进输入框", () => {
+  const html = readWeb("develop.html");
+  const script = readWeb(join("assets", "develop-center.js"));
+  const server = readFileSync(join(root, "server.ts"), "utf8");
+  assert.equal((html.match(/id="developForm"/g) || []).length, 1);
+  assert.doesNotMatch(html, /class="topbar-capabilities"/);
+  assert.match(html, /id="workspaceLabel"/);
+  assert.doesNotMatch(html, /id="executionSettingsToggle"/);
+  assert.doesNotMatch(html, /id="executionSettingsPanel"/);
+  assert.doesNotMatch(html, /class="development-starters"/);
+  assert.match(html, /class="development-studio"/);
+  assert.match(html, /class="development-activity"/);
+  assert.doesNotMatch(html, /class="development-inspector"/);
+  assert.match(html, /class="development-control-bar"/);
+  assert.match(html, /class="development-execution-controls"/);
+  assert.doesNotMatch(html, /data-development-intent=/);
+  assert.match(html, /id="developmentModel"/);
+  assert.match(html, /id="developmentReasoning"/);
+  assert.match(html, /请求批准/);
+  assert.match(html, /帮我批准/);
+  assert.match(html, /完全控制/);
+  assert.match(html, /选择更改权限/);
+  assert.match(html, />只读</);
+  assert.match(html, /role="listbox"/);
+  assert.match(html, /role="option" data-approval-policy="request" aria-selected="true"/);
+  assert.match(html, /role="option" data-approval-policy="auto" aria-selected="false"/);
+  assert.match(html, /role="option" data-approval-policy="full" aria-selected="false" hidden/);
+  assert.match(script, /function openApprovalPolicyMenu/);
+  assert.match(script, /engineApprovalPolicies/);
+  assert.match(script, /fullControlConfirmed/);
+  assert.match(script, /event\.key === "Escape"/);
+  assert.match(html, /id="developmentEngine"/);
+  assert.match(html, /Pi Agent（默认）/);
+  assert.match(html, /DeepSeek Harness/);
+  assert.match(html, /Kilo Code/);
+  assert.match(html, /OpenCode/);
+  assert.match(html, /Codex/);
+  assert.match(html, /自动装依赖/);
+  assert.match(html, />开始任务</);
+  assert.match(script, /api\("\/api\/development\/projects"\)/);
+  assert.match(script, /api\("\/api\/agent\/job\/cancel"/);
+  assert.match(html, /id="developmentProcess"/);
+  assert.match(script, /function renderProcessPanel\(job\)/);
+  assert.match(script, /job\.checkpoints/);
+  assert.match(script, /document\.body\.dataset\.developmentEngine = value/);
+  assert.match(script, /if \(presence\) presence\.textContent/);
+  assert.match(script, /model: developmentModelValue\(\)/);
+  assert.match(script, /reasoning: developmentReasoningValue\(\)/);
+  assert.match(script, /function openDevelopmentJob\(jobId\)/);
+  assert.match(script, /requestedJobId !== activeJobId/);
+  assert.match(script, /projectName\(workspace\).*statusLabel/);
+  assert.match(script, /function developmentThreads\(jobs = developmentHistory\)/);
+  assert.match(script, /parentJobId: continuation\.parentJobId/);
+  assert.match(script, /continuationTaskId: continuation\.continuationTaskId/);
+  assert.match(script, /正在继续当前项目/);
+  assert.match(server, /\["queued", "running"\]\.includes\(parentJob\.status\)/);
+  assert.doesNotMatch(script, /workspaceDialog|recentPaths/);
 });
 
 test("设置中心统一模型、开发、连接与本机数据", () => {
@@ -61,13 +140,16 @@ test("所有主页面都进入独立设置中心", () => {
     assert.doesNotMatch(readWeb(file), /href="\/#settings"/);
   }
   const chat = readWeb("index.html");
-  assert.match(chat, /id="settingsbtn"[^>]*data-icon="settings"/);
+  assert.match(chat, /id="settingsbtn"[^>]*data-app-icon="settings"/);
   assert.match(chat, /window\.location\.href = "\/settings"/);
 });
 
 test("桌面端所有页面使用同一套左栏起点与按钮尺寸", () => {
   const css = readWeb(join("assets", "app-navigation-labels.css"));
-  assert.match(css, /\.rail \{[^}]*width: 76px;[^}]*padding: 20px 8px 14px;[^}]*gap: 0;/s);
-  assert.match(css, /\.rail > \.brand \{[^}]*width: 36px;[^}]*height: 36px;[^}]*margin: 0 auto 28px;/s);
-  assert.match(css, /width: 60px;\s*height: 52px;/);
+  assert.match(css, /--app-rail-reserved: 100px/);
+  assert.match(css, /--app-rail-shell: 72px/);
+  assert.match(css, /--app-brand-size: 46px/);
+  assert.match(css, /--app-nav-width: 60px/);
+  assert.match(css, /--app-nav-height: 54px/);
+  assert.match(css, /--app-icon-size: 20px/);
 });

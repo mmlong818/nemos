@@ -653,29 +653,36 @@ function renderRecentFiles() {
     root.innerHTML = '<div class="empty-recent">打开过的文件会出现在这里，关闭页面后也能继续。</div>';
     return;
   }
-  const visible = state.documents.filter((document) => {
-    const formatMatches = libraryFormat === "all" || formatGroup(sourceKind(document)) === libraryFormat;
-    return formatMatches && (!libraryQuery || document.name.toLocaleLowerCase("zh-CN").includes(libraryQuery));
-  });
-  if (!visible.length) {
-    root.innerHTML = '<div class="empty-recent">没有符合条件的文件。</div>';
-    return;
-  }
-  root.innerHTML = visible.map((document) => `
+  root.innerHTML = state.documents.map((document) => `
     <button class="file-row${document.id === state.selectedId ? " is-current" : ""}" type="button" data-document-id="${escapeHtml(document.id)}">
       <span class="file-row-icon" aria-hidden="true">${iconSvg("file")}</span>
       <span class="file-row-copy"><strong>${escapeHtml(document.name)}</strong><small>${formatLabel(sourceKind(document))} · ${displayDate(document.updatedAt)}</small></span>
     </button>`).join("");
-  root.querySelectorAll("[data-document-id]").forEach((button) => button.addEventListener("click", () => {
+  root.querySelectorAll("[data-document-id]").forEach((button) => button.addEventListener("click", () => openDocumentFromLibrary(button.dataset.documentId)));
+}
+
+function openDocumentFromLibrary(documentId) {
     const current = currentDocument();
-    if (current && dirtyWordDocuments.has(current.id) && button.dataset.documentId !== current.id && !window.confirm("当前 Word 工作副本还有未保存修改。放弃修改并打开其他文件吗？")) return;
-    state.selectedId = button.dataset.documentId;
+    if (current && dirtyWordDocuments.has(current.id) && documentId !== current.id && !window.confirm("当前 Word 工作副本还有未保存修改。放弃修改并打开其他文件吗？")) return;
+    state.selectedId = documentId;
     state.view = currentDocument()?.sourceSize ? "source" : "edit";
     activeStructuredSection.delete(state.selectedId);
     persistSelection();
     render();
     closeFilePanel();
-  }));
+}
+
+function renderFileSearchResults(queryText) {
+  libraryQuery = String(queryText || "").trim().toLocaleLowerCase("zh-CN");
+  const visible = state.documents.filter((document) => {
+    const formatMatches = libraryFormat === "all" || formatGroup(sourceKind(document)) === libraryFormat;
+    return formatMatches && (!libraryQuery || document.name.toLocaleLowerCase("zh-CN").includes(libraryQuery));
+  });
+  document.querySelector("#fileSearchResults").innerHTML = visible.length ? visible.map((document) => `
+    <button class="app-search-result" type="button" role="option" data-search-document="${escapeHtml(document.id)}">
+      <span><strong>${escapeHtml(document.name)}</strong><small>${formatLabel(sourceKind(document))}</small></span>
+      <small>${displayDate(document.updatedAt)}</small>
+    </button>`).join("") : '<div class="app-search-empty">没有找到匹配的文件</div>';
 }
 
 function renderTrashFiles() {
@@ -2019,13 +2026,22 @@ function bindEvents() {
   document.querySelector("#toggleFiles").addEventListener("click", openFilePanel);
   document.querySelector("#closeFiles").addEventListener("click", closeFilePanel);
   document.querySelector("#filePanelBackdrop").addEventListener("click", closeFilePanel);
-  document.querySelector("#fileLibrarySearch").addEventListener("input", (event) => {
-    libraryQuery = event.target.value.trim().toLocaleLowerCase("zh-CN");
-    renderRecentFiles();
+  const fileSearchOverlay = window.AppSearchOverlay.bind({
+    dialog: "#fileSearchDialog",
+    trigger: "#fileSearchToggle",
+    input: "#fileLibrarySearch",
+    close: "#closeFileSearch",
+    render: renderFileSearchResults,
+  });
+  document.querySelector("#fileSearchResults").addEventListener("click", (event) => {
+    const result = event.target.closest("[data-search-document]");
+    if (!result) return;
+    fileSearchOverlay.close();
+    openDocumentFromLibrary(result.dataset.searchDocument);
   });
   document.querySelector("#fileLibraryFormat").addEventListener("change", (event) => {
     libraryFormat = event.target.value;
-    renderRecentFiles();
+    fileSearchOverlay.refresh();
   });
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
