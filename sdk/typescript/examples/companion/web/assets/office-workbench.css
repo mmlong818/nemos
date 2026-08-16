@@ -16,11 +16,14 @@
   --office-fast: 120ms;
   --office-default: 200ms;
   --office-ease: cubic-bezier(.4, 0, .2, 1);
+  --office-app-background: #eef0f2;
+  --office-workbench-background: #e4e7eb;
+  --office-editor-frame: #f5f6f7;
 }
 
 html, body { height: 100%; overflow: hidden; }
 button, a, label { touch-action: manipulation; }
-.office-main { min-height: 100vh; background: var(--office-canvas); }
+.office-main { min-height: 100vh; background: var(--office-app-background); }
 .office-topbar {
   position: relative;
   z-index: 20;
@@ -222,7 +225,7 @@ button, a, label { touch-action: manipulation; }
 .local-note strong { color: var(--office-ink); font-size: 11.5px; }
 .local-note small { font-size: 10.5px; line-height: 1.45; letter-spacing: .01em; }
 
-.editor-pane { min-width: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--office-canvas); }
+.editor-pane { min-width: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--office-workbench-background); }
 .editor-empty {
   width: min(560px, calc(100% - 40px));
   min-height: calc(100vh - 56px);
@@ -606,7 +609,23 @@ button, a, label { touch-action: manipulation; }
 .word-section [data-indent="8"] { padding-inline-start:12em; }
 .word-section-body blockquote { margin:1em 0;padding:4px 0 4px 16px;border-left:3px solid #d7a4b7;color:var(--office-muted); }
 .word-section-body ul { padding-left:1.5em; }
-.document-surface.is-markdown { width: min(1280px, calc(100% - 32px)); margin:0 auto; padding: 0; overflow: hidden; }
+
+/* 办公编辑区使用稳定的实色层级，避免壁纸透过文档外围影响阅读。 */
+body[data-page="office"] .office-main {
+  background: var(--office-app-background) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body[data-page="office"] .office-layout,
+body[data-page="office"] .editor-pane {
+  background: var(--office-workbench-background) !important;
+}
+body[data-page="office"] .source-preview,
+body[data-page="office"] .document-surface {
+  background: var(--office-editor-frame) !important;
+}
+
+.document-surface.is-markdown { width: min(1280px, calc(100% - 32px)); margin:0 auto; padding: 0; overflow: hidden; container-type: inline-size; }
 .document-surface.is-pdf-markdown .markdown-workspace { grid-template-columns:170px minmax(0,1fr); }
 .document-surface.is-pdf-markdown .markdown-preview-panel { display:none; }
 .document-surface.is-presentation, .document-surface.is-spreadsheet { width: min(1320px, calc(100% - 32px)); margin:0 auto; padding: 0; overflow: hidden; }
@@ -1214,6 +1233,101 @@ button, a, label { touch-action: manipulation; }
 .selection-context { background: var(--page-accent-soft); border-left-color: var(--page-accent); }
 .assistant-card textarea:focus-visible { border-color: var(--page-accent); box-shadow: 0 0 0 3px var(--page-accent-soft); }
 .sheet-cell-input:focus { box-shadow: inset 0 0 0 2px var(--page-accent); background: #fff; }
+
+/* Milkdown 与 Tiptap 共用办公工作台的纸张、字号和工具栏契约。 */
+.tiptap-toolbar {
+  flex-wrap: wrap;
+  align-content: center;
+}
+.tiptap-toolbar button.is-active {
+  color: var(--page-accent-dark);
+  background: var(--page-accent-soft);
+}
+.tiptap-editor-host .tiptap-document {
+  min-height: 950px;
+  outline: 0;
+  color: #34312d;
+  font: 15.5px/1.9 "Noto Serif SC", "Songti SC", SimSun, serif;
+}
+.tiptap-editor-host .tiptap-document > *:first-child { margin-top: 0; }
+.tiptap-editor-host .tiptap-document h1,
+.tiptap-editor-host .tiptap-document h2,
+.tiptap-editor-host .tiptap-document h3 {
+  scroll-margin-top: 72px;
+  color: #24221f;
+  font-family: "Noto Serif SC", "Songti SC", SimSun, serif;
+  letter-spacing: -.015em;
+}
+.tiptap-editor-host .tiptap-document h1 { margin: 0 0 22px; font-size: 28px; line-height: 1.3; }
+.tiptap-editor-host .tiptap-document h2 { margin: 32px 0 15px; font-size: 22px; line-height: 1.35; }
+.tiptap-editor-host .tiptap-document h3 { margin: 26px 0 12px; font-size: 18px; line-height: 1.4; }
+.tiptap-editor-host .tiptap-document p { margin: 0 0 1em; }
+.tiptap-editor-host .tiptap-document ul,
+.tiptap-editor-host .tiptap-document ol { margin: 0 0 1em; padding-inline-start: 1.6em; }
+.tiptap-editor-host .tiptap-document blockquote { margin: 1em 0; padding: 4px 0 4px 16px; border-left: 3px solid var(--page-accent); color: var(--office-muted); }
+.tiptap-editor-host .tiptap-document .tableWrapper { margin: 1.4em 0; overflow-x: auto; }
+.tiptap-editor-host .tiptap-document table { width: 100%; border-collapse: collapse; table-layout: fixed; font: 13px/1.55 "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif; }
+.tiptap-editor-host .tiptap-document th,
+.tiptap-editor-host .tiptap-document td { min-width: 90px; padding: 8px 10px; border: 1px solid #d9dde2; vertical-align: top; }
+.tiptap-editor-host .tiptap-document th { background: #f3f5f7; font-weight: 650; }
+.tiptap-editor-host .tiptap-document th p,
+.tiptap-editor-host .tiptap-document td p { margin: 0; }
+.tiptap-editor-host .tiptap-document:focus { caret-color: var(--page-accent); }
+
+.document-surface.is-markdown { background: var(--office-editor-frame) !important; }
+.document-surface.is-markdown .markdown-workspace { grid-template-columns: 180px minmax(0, 1fr); }
+.markdown-editor-panel { overflow: auto; background: #e4e7eb; }
+.milkdown-editor-host {
+  width: min(860px, calc(100% - 48px));
+  min-height: 100%;
+  margin: 28px auto 64px;
+}
+.milkdown-editor-host > .milkdown {
+  min-height: 1080px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, .08);
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .10);
+  --crepe-color-primary: var(--page-accent-dark);
+  --crepe-color-selected: var(--page-accent-soft);
+  --crepe-color-hover: color-mix(in srgb, var(--page-accent-soft) 72%, #fff);
+  --crepe-font-title: "Noto Serif SC", "Songti SC", SimSun, serif;
+  --crepe-font-default: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+.milkdown-editor-host .milkdown .ProseMirror {
+  min-height: 900px;
+  padding: 72px clamp(54px, 8vw, 78px) 96px;
+}
+.document-surface.is-pdf-markdown .milkdown-editor-host {
+  width: min(794px, calc(100% - 48px));
+}
+.milkdown-editor-host .milkdown .ProseMirror { outline: 0; }
+.milkdown-fallback:not([hidden]) {
+  flex: 1 1 auto;
+  min-height: 720px;
+  margin: 24px;
+  padding: 28px;
+  border: 1px solid var(--office-line);
+  background: #fff;
+}
+
+@container (max-width: 1040px) {
+  .document-surface.is-markdown .markdown-workspace { grid-template-columns: minmax(0, 1fr); }
+  .document-surface.is-markdown .markdown-outline-panel { display: none; }
+  .document-surface.is-markdown .milkdown-editor-host {
+    width: min(794px, calc(100% - 24px));
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 720px) {
+  .tiptap-toolbar { position: static; overflow-x: auto; flex-wrap: nowrap; }
+  .tiptap-toolbar button { flex: 0 0 auto; }
+  .tiptap-editor-host .tiptap-document { min-height: 620px; }
+  .milkdown-editor-host { width: calc(100% - 20px); margin: 10px auto 28px; }
+  .milkdown-editor-host > .milkdown { min-height: 720px; }
+  .milkdown-editor-host .milkdown .ProseMirror { min-height: 620px; padding: 42px 26px 64px; }
+}
 .content-block:focus-within { border-left-color: var(--page-accent); background: rgba(255, 255, 255, .8); }
 .word-section [contenteditable]:focus { background: var(--page-accent-soft); box-shadow: -3px 0 0 var(--page-accent); }
 .processing-result-progress, .assistant-run-progress { background: rgba(0, 0, 0, .08); }
@@ -1587,7 +1701,11 @@ body:has(#editorWorkspace[hidden]) .office-fab { display: none; }
  * - 面板打开时右下浮动入口收起；移动端保持底部浮层不变
  * ============================================================ */
 @media (min-width: 801px) {
-  .office-layout { grid-template-columns: 252px minmax(0, 1fr) auto; }
+  .office-layout {
+    --office-file-panel-width: 252px;
+    position: relative;
+    grid-template-columns: var(--office-file-panel-width) minmax(0, 1fr) auto;
+  }
   .assistant-panel {
     position: static;
     top: auto;
@@ -1615,3 +1733,79 @@ body:has(#editorWorkspace[hidden]) .office-fab { display: none; }
 
 /* ---------- 重设计 v5 修正：小丑鱼处理与文件工具合并为同一侧边栏 ---------- */
 .tools-label { margin: 4px 10px 6px; }
+
+/* 文件名回到编辑区顶部；侧栏只负责选择，不再承担当前文档标题。 */
+.document-name {
+  display: flex !important;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.document-name > div { min-width: 0; flex: 1 1 auto; }
+.document-name input,
+.document-name textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+  padding: 2px 0;
+  border: 0;
+  outline: 0;
+  color: var(--office-ink);
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.document-name textarea {
+  min-height: 1.35em;
+  max-height: 2.7em;
+  resize: none;
+  field-sizing: content;
+  white-space: normal;
+}
+.document-name textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--page-accent) 45%, transparent);
+  outline-offset: 2px;
+}
+.document-header { justify-content: space-between; }
+.document-actions { flex: 0 0 auto; }
+
+/* 桌面端文件栏可拖动；细分隔线只在悬停、聚焦或拖动时强调。 */
+.file-panel-resizer { display: none; }
+@media (min-width: 801px) {
+  .file-panel-resizer {
+    position: absolute;
+    z-index: 18;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--office-file-panel-width) - 4px);
+    width: 8px;
+    display: block;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .file-panel-resizer::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 3px;
+    width: 2px;
+    background: transparent;
+    transition: background-color var(--office-fast) ease;
+  }
+  .file-panel-resizer:hover::after,
+  .file-panel-resizer:focus-visible::after,
+  .office-layout.is-resizing-files .file-panel-resizer::after { background: var(--page-accent); }
+  .file-panel-resizer:focus-visible { outline: 0; }
+  .office-layout.is-resizing-files { cursor: col-resize; user-select: none; }
+}
+
+@media (max-width: 800px) {
+  .document-header { align-items: center; }
+  .document-name .capability-badge,
+  .document-name p { display: none; }
+  .document-name input,
+  .document-name textarea { font-size: 13px; }
+}

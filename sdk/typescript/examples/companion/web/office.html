@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
   <link rel="stylesheet" href="/assets/app-search-overlay.css">
   <link rel="stylesheet" href="/assets/office-workbench.css">
+  <link rel="stylesheet" href="/assets/office-editor-engines.css">
   <script src="/assets/scramble-wallpaper.js"></script>
 </head>
 <body data-page="office">
@@ -67,6 +68,7 @@
             <p><strong>内容留在本机</strong><small>TXT 和 Markdown 可以写回原文件；Office 文件生成可编辑副本；PDF 转为 Markdown 编辑，原 PDF 保持不变。</small></p>
           </div>
         </aside>
+        <div class="file-panel-resizer" id="filePanelResizer" role="separator" aria-label="调整文件栏宽度" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="440" aria-valuenow="252" tabindex="0"></div>
         <button class="file-panel-backdrop" id="filePanelBackdrop" type="button" aria-label="关闭文件列表" tabindex="-1"></button>
 
         <section class="editor-pane" aria-label="文件编辑区">
@@ -87,7 +89,7 @@
               <div class="document-name">
                 <span class="format-badge" id="formatBadge">DOCX</span>
                 <div>
-                  <input id="documentName" maxlength="120" aria-label="文件名称">
+                  <textarea id="documentName" rows="1" maxlength="120" aria-label="文件名称"></textarea>
                   <p id="documentMeta">本机工作副本</p>
                 </div>
                 <span class="capability-badge" id="capabilityBadge" data-capability="view" tabindex="0" role="note">仅查看</span>
@@ -222,6 +224,7 @@
   <script src="/assets/vendor/docx-preview.min.js"></script>
   <script src="/assets/office-capabilities.js"></script>
   <script src="/assets/office-source-preview.js"></script>
+  <script src="/assets/office-editor-engines.js"></script>
   <script src="/assets/office-workbench.js"></script>
   <script src="/assets/scramble-confetti.js" defer></script>
 </body>
