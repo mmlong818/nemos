@@ -85,7 +85,13 @@ import {
   type CapabilityHandoffEnvelope,
   type CapabilityHandoffInput,
 } from "./capability-handoff.js";
-import { createDefaultCapabilityToolRegistry } from "./capability-tools.js";
+import { createDefaultCapabilityToolRegistry, type CapabilityToolSummary } from "./capability-tools.js";
+import {
+  buildCapabilitySystemRegistry,
+  capabilityToolFilterForSurface,
+  type CapabilityExtensionSummary,
+  type CapabilityProviderSummary,
+} from "./capability-system-registry.js";
 import { createCompanionAgentToolProvider } from "./companion-agent-tools.js";
 import {
   hasImagePromptIntent,
@@ -378,12 +384,12 @@ for (const extension of agentExtensions.list()) {
 }
 const marketData = createMarketDataAdapter({ dataDir: DATA_DIR });
 const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
-  hasLiveSearch: () => llm.live,
+  hasLiveSearch: () => Boolean(process.env.ZHIPU_API_KEY || (modelConnection?.provider === "zhipu" && modelConnection.apiKey)),
   hasVision: () => !!llm.vision,
   hasVoice: () => !!llm.tts || !!llm.asr,
   marketData,
   runLiveSearch: async (query, signal) => {
-    const key = process.env.ZHIPU_API_KEY;
+    const key = process.env.ZHIPU_API_KEY || (modelConnection?.provider === "zhipu" ? modelConnection.apiKey : "");
     if (!key) throw new Error("联网搜索尚未配置");
     return searchWeb(key, query, signal);
   },
@@ -1001,7 +1007,7 @@ function makeEngine(): CompanionEngine {
 
 function wireAgentTools(target: ResolvedLLM): void {
   target.configureAgentTools(async (instruction, context) => [
-    ...capabilityTools.toAgentTools(instruction),
+    ...capabilityTools.toAgentTools(instruction, undefined, capabilityToolFilterForSurface("task")),
     ...await companionAgentTools(instruction, context),
     ...await agentExtensions.toolsForRequest(instruction, { signal: context?.signal }),
   ]);
@@ -1023,6 +1029,7 @@ async function rebuildLLM(next: CompanionModelConnection | undefined): Promise<v
   }
   const old = mem;
   llm = resolveLLM(modelConnection);
+  capabilityTools.invalidateReadiness();
   wireAgentTools(llm);
   mem = makeMem();
   engine = makeEngine();
@@ -1226,6 +1233,104 @@ function developmentModelConnectionStatus(): Record<string, unknown> {
     engines,
     providers: COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => ({ ...preset })),
   };
+}
+
+function capabilityProviderSummaries(): CapabilityProviderSummary[] {
+  const model = publicModelConnection(modelConnection);
+  const toolReadiness = new Map(capabilityTools.list().map((tool) => [tool.id, tool.available]));
+  const builtins: CapabilityProviderSummary[] = [
+    {
+      id: model.provider || "offline",
+      name: model.providerName,
+      kind: "model",
+      available: llm.live,
+      model: model.model || undefined,
+      detail: llm.live ? "主模型连接可用" : "尚未连接主模型",
+    },
+    {
+      id: "web-search",
+      name: "联网搜索",
+      kind: "search",
+      available: toolReadiness.get("web.search") === true,
+      detail: toolReadiness.get("web.search") ? "搜索执行器可用" : "尚未配置联网搜索服务",
+    },
+    {
+      id: "voice",
+      name: "语音",
+      kind: "voice",
+      available: Boolean(llm.tts || llm.asr),
+      detail: llm.tts || llm.asr ? "语音服务可用" : "尚未配置语音服务",
+    },
+    {
+      id: "vision",
+      name: "图像理解",
+      kind: "vision",
+      available: Boolean(llm.vision),
+      detail: llm.vision ? "图像理解可用" : "尚未配置图像理解服务",
+    },
+  ];
+  const extensions: CapabilityProviderSummary[] = agentExtensions.list().map((extension) => {
+    const runtimeError = agentExtensionRuntimeErrors.get(extension.manifest.id);
+    const available = extension.enabled && extension.providerAttached && !runtimeError;
+    return {
+      id: extension.manifest.id,
+      name: extension.manifest.name,
+      kind: "connector",
+      available,
+      detail: runtimeError || (available ? `已连接 ${extension.manifest.runtime.type}` : "连接器未启用或运行时未就绪"),
+    };
+  });
+  return [...builtins, ...extensions];
+}
+
+function capabilityExtensionSummaries(): CapabilityExtensionSummary[] {
+  return agentExtensions.list().map((extension) => {
+    const runtimeError = agentExtensionRuntimeErrors.get(extension.manifest.id);
+    return {
+      id: extension.manifest.id,
+      name: extension.manifest.name,
+      version: extension.manifest.version,
+      kind: extension.manifest.kind,
+      runtime: extension.manifest.runtime.type,
+      enabled: extension.enabled,
+      providerAttached: extension.providerAttached,
+      executionSecurity: extension.executionSecurity,
+      available: extension.enabled && extension.providerAttached && !runtimeError,
+      runtimeError,
+      tools: extension.manifest.tools.map((tool) => tool.name),
+    };
+  });
+}
+
+function extensionToolSummaries(): CapabilityToolSummary[] {
+  const checkedAt = new Date().toISOString();
+  return agentExtensions.list().flatMap((extension) => {
+    const runtimeError = agentExtensionRuntimeErrors.get(extension.manifest.id);
+    const available = extension.enabled && extension.providerAttached && !runtimeError;
+    const message = runtimeError || (available ? "扩展运行时已就绪，将在请求命中时加载" : "扩展未启用或运行时未就绪");
+    return extension.manifest.tools.map((tool) => ({
+      id: `${extension.manifest.id}.${tool.name}`,
+      name: tool.name,
+      description: tool.description,
+      toolset: "extension",
+      available,
+      requires: [...extension.manifest.permissions],
+      readiness: {
+        available,
+        reason: available ? "ready" as const : runtimeError ? "probe-failed" as const : "disabled" as const,
+        message,
+        checkedAt,
+        version: extension.manifest.version,
+      },
+      source: {
+        kind: extension.manifest.runtime.type === "mcp" ? "mcp" as const : "plugin" as const,
+        id: extension.manifest.id,
+        version: extension.manifest.version,
+      },
+      isAsync: true,
+      dynamic: true,
+    }));
+  });
 }
 
 async function updateDevelopmentModelConnection(input: {
@@ -5058,6 +5163,18 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url === "/api/capabilities/tools") {
       const snap = capabilities.snapshot();
       send(res, 200, { tools: snap.tools, sourceConnectors: snap.sourceConnectors });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/capabilities/registry") {
+      const snap = capabilities.snapshot();
+      send(res, 200, buildCapabilitySystemRegistry({
+        tools: capabilityTools,
+        additionalTools: extensionToolSummaries(),
+        abilities: snap.abilities,
+        engines: developmentEnginePlugins,
+        providers: capabilityProviderSummaries(),
+        extensions: capabilityExtensionSummaries(),
+      }));
       return;
     }
     if (req.method === "GET" && url === "/api/capabilities/roadmap") {

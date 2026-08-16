@@ -139,6 +139,7 @@ const state = {
   view: "start",
   selectedId: "presentation",
   snapshot: { abilities: [], artifacts: [] },
+  registry: { skills: [], tools: [], engines: [], providers: [], extensions: [], surfaces: [] },
   llm: { live: false },
   toolSettings: {},
   toolStatus: { hasZhipuKey: false },
@@ -232,10 +233,12 @@ function availability(item) {
     }
     return { ready: true, label: "可直接使用", action: "开始使用" };
   }
-  const wired = state.snapshot.abilities.some((ability) => ability.id === item.backendId && !ability.archived);
+  const wired = state.registry.skills.length
+    ? state.registry.skills.some((ability) => ability.id === item.backendId && ability.available)
+    : state.snapshot.abilities.some((ability) => ability.id === item.backendId && !ability.archived);
   if (!wired) return { ready: false, label: "尚未接入", action: "此能力尚未接入" };
   if (!state.llm.live) return { ready: false, label: "需设置模型", action: "设置模型后即可使用" };
-  const search = state.snapshot.tools?.find((tool) => tool.id === "web.search");
+  const search = (state.registry.tools.length ? state.registry.tools : state.snapshot.tools)?.find((tool) => tool.id === "web.search");
   if (item.id === "research" && !search?.available) return { ready: false, label: "需联网搜索", action: "配置联网搜索后使用" };
   return { ready: true, label: "可直接使用", action: "开始使用" };
 }
@@ -1135,8 +1138,9 @@ function openView(view, updateUrl = true) {
 
 async function refreshData() {
   try {
-    const [snapshot, jobsResponse, appState, memory, llm, toolStatus] = await Promise.all([
+    const [snapshot, registry, jobsResponse, appState, memory, llm, toolStatus] = await Promise.all([
       api("/api/capabilities"),
+      api("/api/capabilities/registry"),
       api("/api/agent/jobs?limit=200"),
       api("/api/state"),
       api("/api/memory?who=me"),
@@ -1144,6 +1148,7 @@ async function refreshData() {
       api("/api/tool-settings"),
     ]);
     state.snapshot = snapshot || { abilities: [], artifacts: [] };
+    state.registry = registry || { skills: [], tools: [], engines: [], providers: [], extensions: [], surfaces: [] };
     state.jobs = Array.isArray(jobsResponse.jobs) ? jobsResponse.jobs : [];
     state.personas = Array.isArray(appState.personas) ? appState.personas : [];
     state.memoryCount = Array.isArray(memory.facts) ? memory.facts.filter((fact) => fact.layer === "procedural" || fact.layer === "personal_semantic").length : 0;
