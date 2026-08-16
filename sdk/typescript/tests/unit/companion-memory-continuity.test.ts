@@ -23,6 +23,53 @@ function makeMemory(dir: string): Nemos {
   });
 }
 
+test("产品模式可追加教学方法且不改变角色记忆命名空间", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-study-guidance-"));
+  const memory = makeMemory(dir);
+  let receivedSystem = "";
+  const engine = new CompanionEngine(memory, [persona], async (system) => {
+    receivedSystem = system;
+    return "先从一个小问题开始。";
+  }, { asyncIngest: false });
+
+  try {
+    await engine.send("me", "feifei", "我想学习函数", { systemAddendum: "每轮只推进一个关键步骤。" });
+    assert.match(receivedSystem, /自然、可靠的朋友/);
+    assert.match(receivedSystem, /每轮只推进一个关键步骤/);
+    const entries = await memory.forUser("me").listByLayer("archival", {
+      scope: convScope("me", "feifei"),
+      limit: 10,
+    });
+    assert.ok(entries.some((entry) => entry.content === "我想学习函数"));
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("不同学习对话的短期上下文互不串线", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-study-session-isolation-"));
+  const memory = makeMemory(dir);
+  const prompts: string[] = [];
+  const engine = new CompanionEngine(memory, [persona], async (_system, user) => {
+    prompts.push(user);
+    return "继续下一步。";
+  }, { asyncIngest: false });
+
+  try {
+    await engine.send("me", "feifei", "我在学习负数", { sessionId: "math-session" });
+    await engine.send("me", "feifei", "我在学习长城", { sessionId: "history-session" });
+    await engine.send("me", "feifei", "负数下一步怎么做", { sessionId: "math-session" });
+
+    assert.doesNotMatch(prompts[1], /学习负数/);
+    assert.match(prompts[2], /学习负数/);
+    assert.doesNotMatch(prompts[2], /学习长城/);
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
 test("one-on-one user messages stay in the user namespace without persona attribution", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-memory-owner-"));
   const memory = makeMemory(dir);

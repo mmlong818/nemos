@@ -2501,8 +2501,12 @@
   }
   .expert-longform {
     width:100%;
-    padding:0;
+    padding:24px 26px 28px;
     color:#292b27;
+    background:#fffcf7;
+    border:1px solid #ddd7cd;
+    border-radius:16px;
+    box-shadow:0 12px 30px rgba(61,54,44,.08);
   }
   .expert-longform-header {
     display:flex;
@@ -2907,7 +2911,7 @@
     #msgs { padding:14px 12px; }
     .row { max-width:96%; }
     .expert-longform-row { width:100%; max-width:none; }
-    .expert-longform { padding:0; }
+    .expert-longform { padding:18px 16px 20px; border-radius:12px; }
     .expert-longform-header { gap:12px; }
     .expert-longform-content { font-size:14px; line-height:1.68; }
     .msg-body { max-width:calc(100vw - 84px); }
@@ -4699,6 +4703,23 @@ function renderLog() {
       for (const section of e.longform.sections) {
         addRow("other", section.name || null, section.text || "", { pid: section.personaId || e.pid });
       }
+    } else if (e.side === "other" && !e.who && !e.artifact) {
+      const run = [e];
+      let nextIndex = messageIndex + 1;
+      while (nextIndex < log.length) {
+        const next = log[nextIndex];
+        if (!next || next.side !== "other" || next.who || next.artifact || next.longform || next.pid !== e.pid) break;
+        run.push(next);
+        nextIndex += 1;
+      }
+      const combined = run.map((entry) => String(entry.text || "").trim()).filter(Boolean).join("\n\n");
+      if (run.length > 1 && isSubstantialAssistantLongform(combined)) {
+        const last = run[run.length - 1];
+        addRow("other", null, combined, { mem: last.mem, pid: e.pid, messageId });
+        messageIndex = nextIndex - 1;
+      } else {
+        addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, messageId });
+      }
     } else {
       addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, messageId });
     }
@@ -5160,6 +5181,17 @@ function splitStreamMessages(text) {
   const parts = String(text || "").split(/\n\s*\n+/).map((part) => part.trim()).filter(Boolean);
   return parts.length ? parts : [String(text || "").trim()].filter(Boolean);
 }
+function isSubstantialAssistantLongform(text) {
+  const raw = String(text || "").trim();
+  return raw.length >= 320 || isLikelyMarkdown(raw);
+}
+function collapseStreamLongform(inner, text, artifact) {
+  inner.innerHTML = "";
+  const node = document.createElement("div");
+  node.className = "bub";
+  renderBubbleContent(node, text, { artifact });
+  inner.appendChild(node);
+}
 function syncStreamBubbles(inner, text, visibleCount, opts = {}) {
   const parts = splitStreamMessages(text).slice(0, Math.max(1, visibleCount));
   let nodes = [...inner.querySelectorAll(".bub")];
@@ -5243,7 +5275,11 @@ async function streamPersona(key, text, voice, image, attachment, messageId, req
     acc = finalText;
     scheduleNewMessages();
     await revealChain;
-    const finalMessages = syncStreamBubbles(inner, finalText, splitStreamMessages(finalText).length, { final: true, artifact });
+    const splitFinalMessages = splitStreamMessages(finalText);
+    const renderAsLongform = splitFinalMessages.length > 1 && isSubstantialAssistantLongform(finalText);
+    const finalMessages = renderAsLongform ? [finalText] : splitFinalMessages;
+    if (renderAsLongform) collapseStreamLongform(inner, finalText, artifact);
+    else syncStreamBubbles(inner, finalText, finalMessages.length, { final: true, artifact });
     finalMessages.forEach((message, index) => record(key, {
       side: "other",
       who: null,

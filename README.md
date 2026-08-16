@@ -3,6 +3,7 @@
 **中文** · [English](README.en.md)
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
+[![版本](https://img.shields.io/badge/版本-v0.2.1-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.1)
 [![License](https://img.shields.io/badge/接入层-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#本地运行)
 

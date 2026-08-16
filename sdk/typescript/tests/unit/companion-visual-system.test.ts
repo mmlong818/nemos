@@ -136,4 +136,5 @@ test("任务页的小丑鱼回复可使用八成内容宽度", () => {
   assert.match(home, /\.row\.other:not\(\.expert-longform-row\) \{[\s\S]*?width:calc\(80% \+ 44px\);[\s\S]*?max-width:calc\(80% \+ 44px\);/);
   assert.match(home, /\.row\.other:not\(\.expert-longform-row\) \.msg-body \{[\s\S]*?width:calc\(100% - 44px\);[\s\S]*?max-width:none;[\s\S]*?align-items:flex-start;/);
   assert.match(home, /\.row\.other:not\(\.expert-longform-row\) \.bub \{[\s\S]*?max-width:100%;/);
+  assert.match(home, /\.expert-longform \{[\s\S]*?background:#fffcf7;[\s\S]*?border:1px solid #ddd7cd;[\s\S]*?border-radius:16px;/);
 });
