@@ -16,14 +16,16 @@ const server = readFileSync(join(companionRoot, "server.ts"), "utf8");
 test("Word 转换副本使用文档式编辑器而不是 Markdown 三栏源码界面", () => {
   assert.match(officeJs, /function isWordWorkingCopy/);
   assert.match(officeJs, /function renderWordWorkspace/);
-  assert.match(officeJs, /data-word-field="text"/);
+  assert.match(officeJs, /id="wordTiptapEditor"/);
+  assert.match(officeJs, /mountRichText/);
+  assert.match(officeHtml, /office-editor-engines\.js/);
   assert.match(officeJs, /编辑文档/);
   assert.match(officeCss, /\.word-paper/);
   assert.match(officeCss, /\.word-format-toolbar/);
-  assert.match(officeJs, /data-word-align="center"/);
+  assert.match(officeJs, /data-tiptap-command="alignCenter"/);
   assert.match(officeJs, /paragraphAlignments/);
-  assert.match(officeCss, /\[data-align="center"\]/);
-  assert.match(officeCss, /white-space:pre-wrap/);
+  assert.match(officeCss, /\.tiptap-editor-host \.tiptap-document/);
+  assert.match(officeCss, /\.tiptap-editor-host \.tiptap-document table/);
   assert.match(officeJs, /listMarker/);
   assert.match(officeJs, /richParagraphs/);
   assert.match(officeCss, /\.word-outline/);
@@ -203,16 +205,23 @@ test("Word 文字视图使用连续文字工作副本而不是数百个段落表
   assert.match(officeCss, /\.continuous-editor\s*\{/);
 });
 
-test("Markdown 提供目录、格式工具、实时预览并恢复编辑位置", () => {
+test("Markdown 使用 Milkdown 提供目录与所见即所得编辑", () => {
   assert.match(officeJs, /class="markdown-workspace"/);
   assert.match(officeJs, /id="markdownOutline"/);
-  assert.match(officeJs, /data-markdown-action="heading"/);
+  assert.match(officeJs, /id="milkdownEditor"/);
+  assert.match(officeJs, /mountMarkdown/);
+  assert.match(officeJs, /class="continuous-editor markdown-editor milkdown-fallback"/);
   assert.match(officeJs, /function updateMarkdownCompanions/);
-  assert.match(officeJs, /editorScrollTop/);
-  assert.match(officeSourceJs, /function renderMarkdown/);
-  assert.match(officeSourceJs, /markdown-table-wrap/);
-  assert.match(officeSourceJs, /loading="lazy"/);
-  assert.match(officeCss, /grid-template-columns:\s*180px minmax\(340px, 1fr\) minmax\(340px, 1fr\)/);
+  assert.match(officeHtml, /office-editor-engines\.css/);
+  assert.match(officeCss, /\.milkdown-editor-host/);
+  assert.match(officeCss, /\.document-surface\.is-pdf-markdown \.milkdown-editor-host \{\s*width: min\(794px, calc\(100% - 48px\)\);/);
+  assert.match(officeCss, /\.milkdown-editor-host > \.milkdown \{[\s\S]*?padding: 0;/);
+  assert.match(officeCss, /\.milkdown-editor-host \.milkdown \.ProseMirror \{[\s\S]*?padding: 72px clamp\(54px, 8vw, 78px\) 96px;/);
+  assert.match(officeCss, /@container \(max-width: 1040px\)/);
+  assert.match(officeCss, /\.document-surface\.is-markdown \.markdown-outline-panel \{ display: none; \}/);
+  assert.match(officeCss, /grid-template-columns:\s*180px minmax\(0, 1fr\)/);
+  assert.match(officeJs, /function preservePdfEditorLineBreaks/);
+  assert.match(officeJs, /isPdfDocument\(current\)\s*\? preservePdfEditorLineBreaks/);
 });
 
 test("工作台遵守小丑鱼视觉与无障碍基线", () => {
@@ -238,6 +247,17 @@ test("新建文件和打开文件位于最近文件列表上方", () => {
   assert.match(officeHtml, /data-new-document-kind="txt"/);
   assert.match(officeJs, /function createBlankDocument\(kind = "docx"\)/);
   assert.doesNotMatch(officeJs, /\bconst document = safeDocument/);
+});
+
+test("文件栏可调整宽度且编辑区顶部显示完整文件名", () => {
+  assert.match(officeHtml, /id="filePanelResizer"[^>]+role="separator"/);
+  assert.match(officeHtml, /<textarea id="documentName" rows="1"/);
+  assert.match(officeJs, /function bindFilePanelResize/);
+  assert.match(officeJs, /FILE_PANEL_WIDTH_KEY/);
+  assert.match(officeJs, /document\.querySelector\("#documentName"\)\.title = current\.name/);
+  assert.match(officeCss, /grid-template-columns: var\(--office-file-panel-width\) minmax\(0, 1fr\) auto/);
+  assert.match(officeCss, /\.document-name \{\s*display: flex !important;/);
+  assert.match(officeCss, /\.document-name textarea \{[\s\S]*?max-height: 2\.7em;/);
 });
 
 test("文件打开和导出显示持续状态、成功结果与可重试错误", () => {

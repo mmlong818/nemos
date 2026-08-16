@@ -20,6 +20,7 @@ interface RouteRule {
 
 const ROUTES: RouteRule[] = [
   { capabilityId: "ability-builder", catalogId: "ability", patterns: [/(生成|创建|新增|沉淀|锻造).{0,8}(能力|技能)/i, /做成.{0,6}(能力|技能)/i], reason: "目标是沉淀可重复使用的能力" },
+  { capabilityId: "meeting-minutes", catalogId: "meeting", patterns: [/(整理|生成|输出|写成|做成).{0,10}(会议纪要|会议记录|行动项)|(?:会议纪要|会议记录).{0,10}(整理|生成|输出)|把.{0,24}(记录|讨论|访谈).{0,12}(整理|提炼).{0,8}(纪要|行动项)/i], reason: "用户明确要求把记录整理成会议纪要" },
   { capabilityId: "project-development", catalogId: "developer", patterns: [/开发|写代码|改代码|修复.{0,8}(问题|bug)|项目检查|构建|测试|代码库|仓库/i], reason: "目标需要读取和修改项目文件" },
   { capabilityId: "presentation-builder", catalogId: "presentation", patterns: [/PPT|演示|汇报|路演|幻灯|提案|课件/i], reason: "目标交付物是演示文稿" },
   { capabilityId: "quick-speech", catalogId: "speech", patterns: [/语音转写|音频转写|录音转写|视频转写|识别音频|听写/i], reason: "目标是把音频内容快速转成文字" },
