@@ -141,6 +141,9 @@ test("设置中心统一模型、开发、连接与本机数据", () => {
   assert.match(server, /developmentModelConnection\(developmentEngine\)/);
   assert.match(script, /\/api\/platform\/connector\/test/);
   assert.match(script, /\/api\/agent\/extension\/validate/);
+  assert.match(html, /id="capabilityRuntimeList"/);
+  assert.match(script, /\/api\/capabilities\/registry/);
+  assert.match(script, /由产品流程承接/);
   assert.match(script, /\/api\/runtime/);
   assert.match(script, /`\/api\/data-sync\/\$\{operation\}`/);
   assert.match(script, /storageOperation\("push"\)/);

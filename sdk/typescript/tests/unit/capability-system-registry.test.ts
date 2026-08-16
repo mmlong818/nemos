@@ -133,5 +133,6 @@ function tool(id: string, toolset: string) {
     },
     source: { kind: "builtin" as const, id: "clownfish" },
     isAsync: false,
+    execution: "direct" as const,
   };
 }
