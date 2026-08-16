@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import type { ServerResponse } from "node:http";
 import type { AgentExtensionManifest } from "../../src/index.js";
 import type { CapabilityToolRegistry, CapabilityToolSummary, PersonaToolBinding } from "./capability-tools.js";
+import { capabilityToolFilterForSurface } from "./capability-system-registry.js";
 import { buildCapabilityRoadmap, type CapabilityRoadmap } from "./capability-roadmap.js";
 import { buildDemandIntakeReport, type DemandIntakeReport } from "./demand-intake.js";
 import { buildSourceConnectorGuide, listSourceConnectors, type SourceConnector } from "./source-connectors.js";
@@ -2272,7 +2273,11 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     const toolBinding = this.opts.toolBinding?.(task.personaId);
     const backendTools = isImagePrompt
       ? ""
-      : this.opts.toolRegistry?.buildPromptBlock(task.instruction, toolBinding)
+      : this.opts.toolRegistry?.buildPromptBlock(
+        task.instruction,
+        toolBinding,
+        capabilityToolFilterForSurface("capability"),
+      )
         ?? buildSourceConnectorGuide(task.instruction);
     const demandIntake = isImagePrompt ? "" : this.intakeDemand({ request: task.instruction, targetFormat: task.format, persist: false }).promptBlock;
     const sourceVerification = isVisualOnly ? "" : sourceVerificationPromptBlock(buildSourceVerificationReport(task.instruction));

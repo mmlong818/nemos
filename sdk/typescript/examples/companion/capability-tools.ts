@@ -29,7 +29,28 @@ export interface CapabilityTool {
   effect?: AgentToolEffect;
   timeoutMs?: number;
   check?: () => boolean;
+  /** 可选的可解释就绪检查；用于告诉界面为什么当前不能使用。 */
+  probe?: () => Omit<CapabilityToolReadiness, "checkedAt">;
+  source?: CapabilityToolSource;
+  isAsync?: boolean;
+  maxResultSizeChars?: number;
   run?: (args: Record<string, unknown>, context: CapabilityToolContext) => Promise<CapabilityToolResult>;
+}
+
+export type CapabilitySurface = "task" | "education" | "capability" | "office" | "development" | "automation";
+
+export interface CapabilityToolSource {
+  kind: "builtin" | "plugin" | "mcp";
+  id: string;
+  version?: string;
+}
+
+export interface CapabilityToolReadiness {
+  available: boolean;
+  reason: "ready" | "not-configured" | "missing-dependency" | "disabled" | "unavailable" | "probe-failed";
+  message: string;
+  checkedAt: string;
+  version?: string;
 }
 
 export interface CapabilityToolSummary {
@@ -39,6 +60,12 @@ export interface CapabilityToolSummary {
   toolset: string;
   available: boolean;
   requires: string[];
+  readiness: CapabilityToolReadiness;
+  source: CapabilityToolSource;
+  isAsync: boolean;
+  maxResultSizeChars?: number;
+  /** 声明存在、命中请求后才由扩展运行时加载。 */
+  dynamic?: boolean;
 }
 
 /**
@@ -51,6 +78,12 @@ export interface PersonaToolBinding {
   /** 不设或为空表示不限制。 */
   allow?: string[];
   deny?: string[];
+}
+
+/** 产品入口对工具池的第一层收窄；角色绑定会在其后继续收窄。 */
+export interface CapabilityToolFilter {
+  toolsets?: readonly string[];
+  tools?: readonly string[];
 }
 
 /** 工具 id 与它所属的 toolset 都算命中，便于按工具集整体授权或禁用。 */
@@ -71,37 +104,64 @@ export function isToolAllowedForPersona(
 
 export class CapabilityToolRegistry {
   private readonly tools = new Map<string, CapabilityTool>();
+  private readonly readinessCache = new Map<string, { expiresAt: number; value: CapabilityToolReadiness }>();
 
-  constructor(private readonly context: CapabilityToolContext) {}
+  constructor(
+    private readonly context: CapabilityToolContext,
+    private readonly readinessTtlMs = 30_000,
+  ) {}
 
   register(tool: CapabilityTool): void {
+    if (this.tools.has(tool.id)) throw new Error(`能力工具重复：${tool.id}`);
     this.tools.set(tool.id, tool);
+  }
+
+  invalidateReadiness(id?: string): void {
+    if (id) this.readinessCache.delete(id);
+    else this.readinessCache.clear();
   }
 
   list(): CapabilityToolSummary[] {
     return [...this.tools.values()]
       .sort((a, b) => a.toolset.localeCompare(b.toolset) || a.id.localeCompare(b.id))
-      .map((tool) => ({
-        id: tool.id,
-        name: tool.name,
-        description: tool.description,
-        toolset: tool.toolset,
-        available: this.isAvailable(tool),
-        requires: tool.requires ?? [],
-      }));
+      .map((tool) => {
+        const readiness = this.readiness(tool);
+        return {
+          id: tool.id,
+          name: tool.name,
+          description: tool.description,
+          toolset: tool.toolset,
+          available: readiness.available,
+          requires: tool.requires ?? [],
+          readiness,
+          source: tool.source ?? { kind: "builtin", id: "clownfish" },
+          isAsync: tool.isAsync ?? Boolean(tool.run),
+          maxResultSizeChars: tool.maxResultSizeChars,
+          dynamic: false,
+        };
+      });
   }
 
-  listAvailableForInstruction(instruction: string, binding?: PersonaToolBinding): CapabilityToolSummary[] {
+  listAvailableForInstruction(
+    instruction: string,
+    binding?: PersonaToolBinding,
+    filter?: CapabilityToolFilter,
+  ): CapabilityToolSummary[] {
     const matchedConnectors = new Set(matchSourceConnectors(instruction).map((item) => item.connector.id));
-    return this.list().filter((tool) => isToolAllowedForPersona(tool, binding)).filter((tool) => {
+    const allowedToolsets = filter?.toolsets ? new Set(filter.toolsets) : null;
+    const allowedTools = filter?.tools ? new Set(filter.tools) : null;
+    return this.list()
+      .filter((tool) => !filter || allowedTools?.has(tool.id) || allowedToolsets?.has(tool.toolset))
+      .filter((tool) => isToolAllowedForPersona(tool, binding))
+      .filter((tool) => {
       if (tool.toolset !== "source") return tool.available;
       if (tool.id === "source.discovery") return true;
       return matchedConnectors.has(tool.id.replace(/^source\./, ""));
     });
   }
 
-  buildPromptBlock(instruction: string, binding?: PersonaToolBinding): string {
-    const tools = this.listAvailableForInstruction(instruction, binding);
+  buildPromptBlock(instruction: string, binding?: PersonaToolBinding, filter?: CapabilityToolFilter): string {
+    const tools = this.listAvailableForInstruction(instruction, binding, filter);
     const toolLines = tools.length
       ? tools.map((tool) => `- ${tool.id} [${tool.available ? "available" : "not configured"}]: ${tool.description}`).join("\n")
       : "- no configured backend tools";
@@ -119,12 +179,12 @@ export class CapabilityToolRegistry {
     ].join("\n");
   }
 
-  toAgentTools(instruction: string, binding?: PersonaToolBinding): AgentTool[] {
+  toAgentTools(instruction: string, binding?: PersonaToolBinding, filter?: CapabilityToolFilter): AgentTool[] {
     const sourceMatches = matchSourceConnectors(instruction);
     const includeDiscovery = sourceMatches.some((item) => item.connector.id !== "source-discovery")
       || /(来源|查证|核实|验证|可靠数据|source|verify)/i.test(instruction);
     const available = new Set(
-      this.listAvailableForInstruction(instruction, binding)
+      this.listAvailableForInstruction(instruction, binding, filter)
         .filter((tool) => tool.available && (tool.id !== "source.discovery" || includeDiscovery))
         .map((tool) => tool.id),
     );
@@ -176,10 +236,11 @@ export class CapabilityToolRegistry {
         needsVerification: true,
       };
     }
-    if (!this.isAvailable(tool)) {
+    const readiness = this.readiness(tool);
+    if (!readiness.available) {
       return {
         ok: false,
-        text: `Capability tool is not configured: ${id}`,
+        text: `Capability tool is not configured: ${id}. ${readiness.message}`,
         checkedAt: new Date().toISOString(),
         needsVerification: true,
       };
@@ -202,12 +263,32 @@ export class CapabilityToolRegistry {
     return tool.run(args, { ...this.context, ...context });
   }
 
-  private isAvailable(tool: CapabilityTool): boolean {
+  private readiness(tool: CapabilityTool): CapabilityToolReadiness {
+    const cached = this.readinessCache.get(tool.id);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const checkedAt = new Date().toISOString();
+    let value: CapabilityToolReadiness;
     try {
-      return tool.check ? tool.check() : true;
-    } catch {
-      return false;
+      if (tool.probe) value = { ...tool.probe(), checkedAt };
+      else {
+        const available = tool.check ? tool.check() : true;
+        value = {
+          available,
+          reason: available ? "ready" : "not-configured",
+          message: available ? "可用" : `缺少配置：${(tool.requires ?? []).join("、") || "所需服务"}`,
+          checkedAt,
+        };
+      }
+    } catch (error) {
+      value = {
+        available: false,
+        reason: "probe-failed",
+        message: error instanceof Error ? error.message : "就绪检查失败",
+        checkedAt,
+      };
     }
+    this.readinessCache.set(tool.id, { expiresAt: Date.now() + this.readinessTtlMs, value });
+    return value;
   }
 }
 
