@@ -17,6 +17,17 @@ export interface CapabilityToolResult {
   checkedAt: string;
   needsVerification?: boolean;
   freshness?: SourceFreshnessReceipt;
+  receipt?: CapabilityToolExecutionReceipt;
+}
+
+export interface CapabilityToolExecutionReceipt {
+  toolId: string;
+  toolset: string;
+  source: CapabilityToolSource;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  truncated: boolean;
 }
 
 export interface CapabilityTool {
@@ -63,6 +74,7 @@ export interface CapabilityToolSummary {
   readiness: CapabilityToolReadiness;
   source: CapabilityToolSource;
   isAsync: boolean;
+  execution: "direct" | "runtime-integrated";
   maxResultSizeChars?: number;
   /** 声明存在、命中请求后才由扩展运行时加载。 */
   dynamic?: boolean;
@@ -136,6 +148,7 @@ export class CapabilityToolRegistry {
           readiness,
           source: tool.source ?? { kind: "builtin", id: "clownfish" },
           isAsync: tool.isAsync ?? Boolean(tool.run),
+          execution: tool.run ? "direct" : "runtime-integrated",
           maxResultSizeChars: tool.maxResultSizeChars,
           dynamic: false,
         };
@@ -209,6 +222,7 @@ export class CapabilityToolRegistry {
             data: {
               checkedAt: result.checkedAt,
               needsVerification: result.needsVerification,
+              receipt: result.receipt,
               result: result.data,
             },
           };
@@ -260,7 +274,28 @@ export class CapabilityToolRegistry {
         checkedAt: new Date().toISOString(),
       };
     }
-    return tool.run(args, { ...this.context, ...context });
+    const startedAt = new Date().toISOString();
+    const started = Date.now();
+    const result = await tool.run(args, { ...this.context, ...context });
+    const maxChars = tool.maxResultSizeChars;
+    const truncated = Boolean(maxChars && result.text.length > maxChars);
+    const text = truncated
+      ? `${result.text.slice(0, maxChars)}\n\n[结果过长，已在 ${maxChars} 个字符处截断；请缩小查询范围后继续。]`
+      : result.text;
+    const completedAt = new Date().toISOString();
+    return {
+      ...result,
+      text,
+      receipt: {
+        toolId: tool.id,
+        toolset: tool.toolset,
+        source: tool.source ?? { kind: "builtin", id: "clownfish" },
+        startedAt,
+        completedAt,
+        durationMs: Math.max(0, Date.now() - started),
+        truncated,
+      },
+    };
   }
 
   private readiness(tool: CapabilityTool): CapabilityToolReadiness {
@@ -324,6 +359,7 @@ export function createDefaultCapabilityToolRegistry(
     },
     effect: "read",
     timeoutMs: 30_000,
+    maxResultSizeChars: 40_000,
     run: checks.runLiveSearch ? async (args, context) => {
       const query = String(args.query || "").trim();
       if (!query) return { ok: false, text: "搜索词不能为空", checkedAt: new Date().toISOString(), needsVerification: true };
@@ -425,6 +461,7 @@ export function createDefaultCapabilityToolRegistry(
     },
     effect: "read",
     timeoutMs: 10_000,
+    maxResultSizeChars: 20_000,
     run: async (args) => {
       const query = String(args.query ?? args.instruction ?? "").trim();
       const report = buildSourceVerificationReport(query);
@@ -468,6 +505,7 @@ export function createDefaultCapabilityToolRegistry(
         },
         effect: "read",
         timeoutMs: 60_000,
+        maxResultSizeChars: 60_000,
         run: async (args, context) => {
           try {
             const snapshot = await marketData.snapshot({
@@ -509,6 +547,7 @@ export function createDefaultCapabilityToolRegistry(
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       effect: "read",
       timeoutMs: 10_000,
+      maxResultSizeChars: 20_000,
       run: async () => {
         const report = buildSourceVerificationReport(connector.terms.join(" "));
         return {

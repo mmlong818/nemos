@@ -164,7 +164,8 @@ export function buildCapabilitySystemRegistry(input: {
     return {
       ...surface,
       tools: selected.map((tool) => tool.id),
-      readyTools: selected.filter((tool) => tool.available).length,
+      readyTools: selected.filter((tool) => tool.available && tool.execution === "direct").length,
+      integratedTools: selected.filter((tool) => tool.available && tool.execution === "runtime-integrated").length,
       totalTools: selected.length,
     };
   });
@@ -174,7 +175,8 @@ export function buildCapabilitySystemRegistry(input: {
     counts: {
       skills: skills.length,
       tools: tools.length,
-      readyTools: tools.filter((tool) => tool.available).length,
+      readyTools: tools.filter((tool) => tool.available && tool.execution === "direct").length,
+      integratedTools: tools.filter((tool) => tool.available && tool.execution === "runtime-integrated").length,
       engines: engines.length,
       readyEngines: engines.filter((engine) => engine.readiness.available).length,
       providers: input.providers.length,
@@ -187,7 +189,8 @@ export function buildCapabilitySystemRegistry(input: {
     toolsets: [...new Set(tools.map((tool) => tool.toolset))].sort().map((id) => ({
       id,
       tools: tools.filter((tool) => tool.toolset === id).map((tool) => tool.id),
-      readyTools: tools.filter((tool) => tool.toolset === id && tool.available).length,
+      readyTools: tools.filter((tool) => tool.toolset === id && tool.available && tool.execution === "direct").length,
+      integratedTools: tools.filter((tool) => tool.toolset === id && tool.available && tool.execution === "runtime-integrated").length,
     })),
     surfaces: surfaceList,
     engines,

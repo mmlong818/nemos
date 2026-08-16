@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CapabilityToolRegistry,
   capabilityAgentToolName,
   createDefaultCapabilityToolRegistry,
 } from "../../examples/companion/capability-tools.js";
@@ -53,4 +54,31 @@ test("联网搜索工具有真实执行器并返回结构化来源", async () =>
   assert.equal(result.ok, true);
   assert.match(result.text, /官方说明/);
   assert.deepEqual((result.data as { query: string }).query, "测试问题");
+});
+
+test("工具执行返回来源回执，并明确截断超长结果", async () => {
+  const tools = new CapabilityToolRegistry({ dataDir: "." });
+  tools.register({
+    id: "demo.long",
+    name: "长结果",
+    description: "测试长结果边界",
+    toolset: "demo",
+    maxResultSizeChars: 5,
+    source: { kind: "plugin", id: "demo-plugin", version: "1.0.0" },
+    run: async () => ({ ok: true, text: "123456789", checkedAt: new Date().toISOString() }),
+  });
+  tools.register({
+    id: "demo.integrated",
+    name: "运行时能力",
+    description: "由产品运行时直接完成",
+    toolset: "demo",
+  });
+
+  const result = await tools.run("demo.long", {});
+  assert.match(result.text, /^12345/);
+  assert.match(result.text, /已在 5 个字符处截断/);
+  assert.equal(result.receipt?.toolId, "demo.long");
+  assert.equal(result.receipt?.source.id, "demo-plugin");
+  assert.equal(result.receipt?.truncated, true);
+  assert.equal(tools.list().find((item) => item.id === "demo.integrated")?.execution, "runtime-integrated");
 });

@@ -1328,6 +1328,7 @@ function extensionToolSummaries(): CapabilityToolSummary[] {
         version: extension.manifest.version,
       },
       isAsync: true,
+      execution: "direct",
       dynamic: true,
     }));
   });
