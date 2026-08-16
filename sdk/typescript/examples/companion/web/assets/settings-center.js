@@ -17,6 +17,82 @@
   function normalizedDevelopmentEngine(value) { return Object.prototype.hasOwnProperty.call(developmentEngineNames, value) ? value : "pi"; }
   function loadDevelopmentPreference() { const state = JSON.parse(localStorage.getItem("clownfish-development-settings") || "{}"); $("#defaultDevelopmentEngine").value = normalizedDevelopmentEngine(state.defaultDevelopmentEngine); $("#defaultAccessMode").value = state.defaultAccessMode === "inspect" ? "inspect" : "develop"; $("#defaultDependencyMode").value = state.installDependencies === false ? "skip" : "install"; }
   $("#saveDevelopment").onclick = () => { localStorage.setItem("clownfish-development-settings", JSON.stringify({ defaultDevelopmentEngine: normalizedDevelopmentEngine($("#defaultDevelopmentEngine").value), defaultAccessMode: $("#defaultAccessMode").value, installDependencies: $("#defaultDependencyMode").value === "install" })); $("#developmentStatus").className = "status success"; $("#developmentStatus").textContent = "开发设置已保存。"; };
+  let developmentModelState = null;
+  let editingDevelopmentEngine = "pi";
+  function ensureDevelopmentModelPanel() {
+    if ($("#developmentModelConnections")) return;
+    $("#developmentTools").insertAdjacentHTML("beforebegin", `<section class="development-model-panel" aria-labelledby="developmentModelTitle"><header><div><h3 id="developmentModelTitle">引擎模型</h3><p>默认继承上方模型。只有需要不同供应商、账号或模型时才单独设置。</p></div></header><div class="development-model-list" id="developmentModelConnections"><p class="status">正在读取…</p></div><form class="development-model-editor" id="developmentModelConnectionForm" hidden><div class="development-model-editor-head"><div><strong id="developmentModelEditorTitle">配置引擎模型</strong><small id="developmentModelEditorSummary"></small></div><button type="button" class="development-model-close" id="cancelDevelopmentModel" aria-label="关闭模型设置">×</button></div><div class="form-grid"><label class="field"><span>使用方式</span><select id="developmentModelMode"><option value="inherit">继承默认模型</option><option value="independent">使用独立模型</option></select><small>继承时会自动跟随“模型”页的修改。</small></label><label class="field development-independent-field"><span>模型服务</span><select id="developmentModelProvider"></select><small id="developmentModelKeyHint">独立密钥只加密保存在本机。</small></label><label class="field development-independent-field"><span>接口协议</span><select id="developmentModelProtocol"><option value="openai-compatible">OpenAI 兼容</option><option value="anthropic">Anthropic</option></select><small>Codex 必须使用 OpenAI Responses 兼容服务。</small></label><label class="field development-independent-field"><span>API 地址</span><input id="developmentModelBaseUrl" type="url" inputmode="url" spellcheck="false" autocomplete="off"><small>远程地址必须使用 HTTPS。</small></label><label class="field development-independent-field"><span>模型名称</span><input id="developmentModelName" spellcheck="false" autocomplete="off"><small>填写服务商提供的真实模型 ID。</small></label><label class="field development-independent-field"><span>API Key</span><input id="developmentModelKey" type="password" spellcheck="false" autocomplete="new-password"><small>留空会沿用该引擎已保存的密钥。</small></label></div><div class="development-model-warning" id="developmentModelWarning" hidden></div><div class="form-actions"><button class="primary" id="saveDevelopmentModel" type="submit">测试并保存</button><button class="button" id="cancelDevelopmentModelSecondary" type="button">取消</button></div><p class="status" id="developmentModelStatus" role="status" aria-live="polite"></p></form></section>`);
+  }
+  function developmentModelPreset(id) { return (developmentModelState?.providers || []).find((item) => item.id === id); }
+  function updateDevelopmentModelFields() {
+    const independent = $("#developmentModelMode").value === "independent";
+    document.querySelectorAll(".development-independent-field").forEach((field) => { field.hidden = !independent; });
+    const provider = $("#developmentModelProvider").value;
+    const preset = developmentModelPreset(provider);
+    $("#developmentModelProtocol").disabled = provider !== "custom" || editingDevelopmentEngine === "codex";
+    if (editingDevelopmentEngine === "codex") $("#developmentModelProtocol").value = "openai-compatible";
+    $("#developmentModelKeyHint").textContent = developmentModelState?.engines?.[editingDevelopmentEngine]?.hasKey
+      ? "已保存密钥；留空继续使用。"
+      : (preset?.keyRequired ? `需要 ${preset.name} API Key。` : "本机服务通常无需填写密钥。");
+    const warning = $("#developmentModelWarning");
+    warning.hidden = editingDevelopmentEngine !== "codex" || !independent;
+    warning.textContent = warning.hidden ? "" : "Codex 使用 Responses API；所填服务必须兼容该接口。";
+  }
+  function renderDevelopmentModelConnections(state) {
+    developmentModelState = state;
+    $("#developmentModelConnections").innerHTML = Object.entries(developmentEngineNames).map(([id, name]) => {
+      const item = state.engines?.[id] || {};
+      const detail = item.effective ? `${item.providerName || "模型服务"} · ${item.model || "未命名模型"}` : "尚未连接可用模型";
+      const mode = item.mode === "independent" ? "独立" : "继承";
+      return `<article class="development-model-row"><div class="development-model-identity"><strong>${escapeHtml(name)}</strong><span class="development-model-mode ${item.mode === "independent" ? "is-independent" : ""}">${mode}</span><small>${escapeHtml(detail)}</small></div><button type="button" data-development-model-engine="${escapeHtml(id)}">设置</button></article>`;
+    }).join("");
+  }
+  function openDevelopmentModelEditor(engine) {
+    editingDevelopmentEngine = normalizedDevelopmentEngine(engine);
+    const item = developmentModelState?.engines?.[editingDevelopmentEngine] || {};
+    $("#developmentModelEditorTitle").textContent = `${developmentEngineNames[editingDevelopmentEngine]} · 模型`;
+    $("#developmentModelEditorSummary").textContent = item.mode === "independent" ? "当前使用独立连接" : "当前继承默认模型";
+    $("#developmentModelMode").value = item.mode === "independent" ? "independent" : "inherit";
+    $("#developmentModelProvider").innerHTML = (developmentModelState?.providers || []).map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
+    $("#developmentModelProvider").value = item.provider || "zhipu";
+    $("#developmentModelProtocol").value = item.protocol || "openai-compatible";
+    $("#developmentModelBaseUrl").value = item.baseUrl || "";
+    $("#developmentModelName").value = item.model || "";
+    $("#developmentModelKey").value = "";
+    $("#developmentModelStatus").textContent = "";
+    $("#developmentModelConnectionForm").hidden = false;
+    updateDevelopmentModelFields();
+    $("#developmentModelMode").focus();
+  }
+  function closeDevelopmentModelEditor() { $("#developmentModelConnectionForm").hidden = true; }
+  async function loadDevelopmentModelConnections() {
+    ensureDevelopmentModelPanel();
+    try { renderDevelopmentModelConnections(await api("/api/development/model-connections")); }
+    catch (error) { $("#developmentModelConnections").innerHTML = `<p class="status error">${escapeHtml(error.message)}</p>`; }
+  }
+  ensureDevelopmentModelPanel();
+  $("#developmentModelConnections").onclick = (event) => { const button = event.target.closest("[data-development-model-engine]"); if (button) openDevelopmentModelEditor(button.dataset.developmentModelEngine); };
+  $("#developmentModelProvider").onchange = () => { const item = developmentModelPreset($("#developmentModelProvider").value); if (item) { $("#developmentModelProtocol").value = item.protocol; $("#developmentModelBaseUrl").value = item.baseUrl; $("#developmentModelName").value = item.model; } $("#developmentModelKey").value = ""; updateDevelopmentModelFields(); };
+  $("#developmentModelMode").onchange = updateDevelopmentModelFields;
+  $("#cancelDevelopmentModel").onclick = closeDevelopmentModelEditor;
+  $("#cancelDevelopmentModelSecondary").onclick = closeDevelopmentModelEditor;
+  $("#developmentModelConnectionForm").onsubmit = async (event) => {
+    event.preventDefault();
+    const button = $("#saveDevelopmentModel");
+    button.disabled = true;
+    $("#developmentModelStatus").className = "status";
+    $("#developmentModelStatus").textContent = $("#developmentModelMode").value === "inherit" ? "正在保存…" : "正在验证模型连接…";
+    try {
+      const state = await api("/api/development/model-connections", { method: "POST", body: JSON.stringify({ engine: editingDevelopmentEngine, mode: $("#developmentModelMode").value, provider: $("#developmentModelProvider").value, protocol: $("#developmentModelProtocol").value, baseUrl: $("#developmentModelBaseUrl").value.trim(), model: $("#developmentModelName").value.trim(), key: $("#developmentModelKey").value.trim() }) });
+      renderDevelopmentModelConnections(state);
+      closeDevelopmentModelEditor();
+      $("#developmentStatus").className = "status success";
+      $("#developmentStatus").textContent = `${developmentEngineNames[editingDevelopmentEngine]} 的模型设置已保存。`;
+    } catch (error) {
+      $("#developmentModelStatus").className = "status error";
+      $("#developmentModelStatus").textContent = `保存失败：${error.message}`;
+    } finally { button.disabled = false; }
+  };
   function renderTools(development = {}) {
     for (const [id, name] of Object.entries(developmentEngineNames)) {
       if (id === "pi") continue;
@@ -72,5 +148,5 @@
     } catch (error) { button.disabled = false; alert(error.message); }
   };
   async function loadPrivacy() { try { const state = await api("/api/runtime"); $("#privacyList").innerHTML = `<div class="privacy-row"><div><b>本机数据目录</b><p>${escapeHtml(state.dataDir)}</p></div></div><div class="privacy-row"><div><b>记忆与偏好</b><p>可查看整理后的记忆，不展示内部原始归档。</p></div><a class="button" href="/memory">查看记忆</a></div><div class="privacy-row"><div><b>运行与审计记录</b><p>能力执行、确认和异常都可以追溯。</p></div><a class="button" href="/runs">查看记录</a></div><div class="privacy-row"><div><b>备份</b><p>${state.backups?.latest ? `最近备份：${escapeHtml(state.backups.latest)}` : "暂未读取到备份记录"}</p></div></div>`; } catch (error) { $("#privacyList").innerHTML = `<p class="status error">${escapeHtml(error.message)}</p>`; } }
-  window.ClownfishIcons?.hydrate(); activate(location.hash.slice(1)); loadDevelopmentPreference(); loadModel(); loadPlatform(); loadStorage(); loadRetainedOutputs(); loadPrivacy();
+  window.ClownfishIcons?.hydrate(); activate(location.hash.slice(1)); loadDevelopmentPreference(); loadModel(); loadDevelopmentModelConnections(); loadPlatform(); loadStorage(); loadRetainedOutputs(); loadPrivacy();
 })();
