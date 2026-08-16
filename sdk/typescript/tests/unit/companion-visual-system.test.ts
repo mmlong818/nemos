@@ -130,3 +130,10 @@ test("新任务与开发复用同一套工作台组件", () => {
   assert.match(flatWorkbench, /body\[data-page="home"\] #msgs > \.task-workbench-empty-frame \{[\s\S]*height: 100% !important;[\s\S]*min-height: 100% !important;/);
   assert.match(flatWorkbench, /body\[data-page="home"\] \.is-composer-empty \{[\s\S]*translateY\(clamp\(-72px, -9vh, -56px\)\)/);
 });
+
+test("任务页的小丑鱼回复可使用八成内容宽度", () => {
+  const home = readWeb("index.html");
+  assert.match(home, /\.row\.other:not\(\.expert-longform-row\) \{[\s\S]*?width:calc\(80% \+ 44px\);[\s\S]*?max-width:calc\(80% \+ 44px\);/);
+  assert.match(home, /\.row\.other:not\(\.expert-longform-row\) \.msg-body \{[\s\S]*?width:calc\(100% - 44px\);[\s\S]*?max-width:none;[\s\S]*?align-items:flex-start;/);
+  assert.match(home, /\.row\.other:not\(\.expert-longform-row\) \.bub \{[\s\S]*?max-width:100%;/);
+});
