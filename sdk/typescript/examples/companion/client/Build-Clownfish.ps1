@@ -7,6 +7,7 @@ $PortableApp = Join-Path $PortableRoot "app"
 $PortableNode = Join-Path $PortableRoot "node"
 $PortableSandboxNode = Join-Path $PortableRoot "mcp-runtime"
 $PortableSandboxPython = Join-Path $PortableSandboxNode "python"
+$PortableLicenses = Join-Path $PortableRoot "licenses"
 $Vendor = Join-Path $ClientRoot "vendor\webview2"
 $Version = "1.0.4022.49"
 $PackageDir = Join-Path $Vendor $Version
@@ -192,7 +193,7 @@ if (Test-Path -LiteralPath (Join-Path $ClientRoot "desktop-helper")) {
 if (Test-Path -LiteralPath $PortableRoot) {
   Remove-Item -LiteralPath $PortableRoot -Recurse -Force
 }
-New-Item -ItemType Directory -Force -Path $PortableRoot, $PortableApp, $PortableNode, $PortableSandboxNode | Out-Null
+New-Item -ItemType Directory -Force -Path $PortableRoot, $PortableApp, $PortableNode, $PortableSandboxNode, $PortableLicenses | Out-Null
 
 Copy-Item -LiteralPath $Exe -Destination $PortableRoot -Force
 Copy-Item -LiteralPath $CoreDll -Destination $PortableRoot -Force
@@ -217,10 +218,30 @@ Copy-Item -LiteralPath $SandboxHostExe -Destination (Join-Path $PortableSandboxN
 Copy-Item -LiteralPath $SandboxPythonPackageDir -Destination $PortableSandboxPython -Recurse -Force
 Set-Content -LiteralPath (Join-Path $PortableSandboxPython "version.txt") -Encoding ASCII -Value $SandboxPythonVersion
 
+$SandboxNodeLicense = Join-Path $SandboxNodePackageDir "LICENSE"
+if (Test-Path -LiteralPath $SandboxNodeLicense) {
+  Copy-Item -LiteralPath $SandboxNodeLicense -Destination (Join-Path $PortableLicenses "Node.js-LICENSE.txt") -Force
+}
+$SandboxPythonLicense = Join-Path $SandboxPythonPackageDir "LICENSE.txt"
+if (Test-Path -LiteralPath $SandboxPythonLicense) {
+  Copy-Item -LiteralPath $SandboxPythonLicense -Destination (Join-Path $PortableLicenses "Python-LICENSE.txt") -Force
+}
+
+$WebView2LicenseRoot = Join-Path $PortableLicenses "webview2"
+New-Item -ItemType Directory -Force -Path $WebView2LicenseRoot | Out-Null
+Get-ChildItem -LiteralPath $PackageDir -Recurse -File | Where-Object {
+  $_.Name -match '^(LICENSE|NOTICE)' -or $_.Extension -eq '.nuspec'
+} | ForEach-Object {
+  Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $WebView2LicenseRoot $_.Name) -Force
+}
+
 $SdkRoot = Resolve-Path (Join-Path $ClientRoot "..\..\..")
 $RepoRoot = Resolve-Path (Join-Path $SdkRoot "..\..")
-if (Test-Path -LiteralPath (Join-Path $RepoRoot "README.md")) {
-  Copy-Item -LiteralPath (Join-Path $RepoRoot "README.md") -Destination $PortableRoot -Force
+foreach ($PublicDocument in @("README.md", "LICENSE", "LICENSING.md", "THIRD_PARTY_NOTICES.md")) {
+  $PublicDocumentPath = Join-Path $RepoRoot $PublicDocument
+  if (Test-Path -LiteralPath $PublicDocumentPath) {
+    Copy-Item -LiteralPath $PublicDocumentPath -Destination $PortableRoot -Force
+  }
 }
 Copy-Item -LiteralPath (Join-Path $SdkRoot "package.json") -Destination $PortableApp -Force
 Copy-Item -LiteralPath (Join-Path $SdkRoot "memory-core.version.json") -Destination $PortableApp -Force
@@ -239,8 +260,17 @@ Get-ChildItem -LiteralPath (Join-Path $SdkRoot "examples\companion") -File | For
   Copy-Item -LiteralPath $_.FullName -Destination $PortableCompanion -Force
 }
 Copy-Item -LiteralPath (Join-Path $SdkRoot "examples\companion\web") -Destination $PortableCompanion -Recurse -Force
+$CompanionVendor = Join-Path $SdkRoot "examples\companion\vendor"
+if (Test-Path -LiteralPath $CompanionVendor) {
+  Copy-Item -LiteralPath $CompanionVendor -Destination $PortableCompanion -Recurse -Force
+}
 New-Item -ItemType Directory -Force -Path (Join-Path $PortableCompanion "client") | Out-Null
 Copy-Item -LiteralPath $Manifest -Destination (Join-Path $PortableCompanion "client") -Force
+
+$CompanionLicense = Join-Path $SdkRoot "examples\companion\LICENSE"
+if (Test-Path -LiteralPath $CompanionLicense) {
+  Copy-Item -LiteralPath $CompanionLicense -Destination (Join-Path $PortableLicenses "Clownfish-LICENSE.txt") -Force
+}
 
 $LauncherPath = Join-Path $PortableRoot "启动小丑鱼.cmd"
 [System.IO.File]::WriteAllLines($LauncherPath, @(
