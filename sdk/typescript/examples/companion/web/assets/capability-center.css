@@ -149,6 +149,14 @@ main { grid-column: 2; min-width: 0; }
   font-weight: 600;
 }
 .capability-view-nav button.is-current > span:first-child { color: var(--accent); }
+.capability-drafts { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.capability-drafts-heading { display: flex; justify-content: space-between; padding: 0 10px 8px; color: var(--ink-faint); font-size: 11px; font-weight: 650; }
+.capability-draft-list { display: grid; gap: 3px; }
+.capability-draft-list button { width: 100%; min-width: 0; display: grid; gap: 3px; padding: 9px 10px; border: 1px solid transparent; border-radius: 8px; color: var(--ink); background: transparent; text-align: left; cursor: pointer; }
+.capability-draft-list button:hover { border-color: var(--line); background: rgba(255, 252, 247, .72); }
+.capability-draft-list strong, .capability-draft-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.capability-draft-list strong { font-size: 12.5px; font-weight: 600; }
+.capability-draft-list small { color: var(--ink-faint); font-size: 10.5px; }
 .capability-content { min-width: 0; }
 .count {
   display: inline-grid;
@@ -525,6 +533,10 @@ h1, h2 { text-wrap: balance; }
   .capability-view-nav button { min-height: 38px; grid-template-columns: 18px auto; justify-content: center; gap: 5px; padding: 0 6px; font-size: 12px; text-align: center; }
   .capability-view-nav button .count { position: absolute; top: 2px; right: 3px; }
   .capability-view-nav svg { width: 16px; height: 16px; }
+  .capability-drafts { margin-top: 6px; padding-top: 6px; }
+  .capability-drafts-heading { display: none; }
+  .capability-draft-list { display: flex; overflow-x: auto; gap: 6px; }
+  .capability-draft-list button { flex: 0 0 190px; padding: 7px 9px; background: rgba(255, 252, 247, .72); }
   .start-wrap, .list-page { width: calc(100% - 28px); padding: 26px 0 42px; }
   .chat-context, .conversation-bridge { grid-template-columns: auto minmax(0, 1fr); }
   .chat-context a, .conversation-bridge a { grid-column: 1 / -1; justify-content: center; }

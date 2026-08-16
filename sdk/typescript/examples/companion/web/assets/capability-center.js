@@ -129,6 +129,7 @@ migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 1
 migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 104, 97, 110, 100, 111, 102, 102, 45, 118, 49], "clownfish-capability-handoff-v1", sessionStorage);
 
 const DRAFT_KEY = "clownfish-capability-center-draft-v1";
+const DRAFTS_KEY = "clownfish-capability-drafts-v1";
 const ACTIVITY_KEY = "clownfish-capability-activity-v1";
 const HANDOFF_KEY = "clownfish-capability-handoff-v1";
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -158,6 +159,7 @@ const state = {
   parentJobId: "",
   continuationTaskId: "",
   handoffChain: [],
+  activeDraftId: "",
 };
 
 function escapeHtml(value) {
@@ -382,7 +384,7 @@ function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
   $(".start-wrap").classList.add("is-launching");
   updateLaunchState();
   renderExecutionState();
-  saveDraft();
+  if (goal) saveDraft();
   window.requestAnimationFrame(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
     if (options.focusInput && window.matchMedia("(min-width: 721px)").matches) {
@@ -397,6 +399,8 @@ function closeCapability() {
   $(".start-wrap").classList.remove("is-launching");
   window.scrollTo({ top: 0, behavior: "auto" });
   saveDraft();
+  state.activeDraftId = "";
+  localStorage.removeItem(DRAFT_KEY);
   window.requestAnimationFrame(() => $(`[data-capability="${state.selectedId}"]`)?.focus());
 }
 
@@ -457,9 +461,11 @@ function responseMessageForMaterial(isOffice, text) {
 
 function saveDraft() {
   const draft = {
+    id: state.activeDraftId || "",
     goal: $("#goalInput").value,
     instruction: $("#instructionInput").value,
     quickInput: $("#quickInput").value,
+    quickResult: $("#quickResult").value,
     selectedId: state.selectedId,
     format: $("#formatSelect").value,
     memoryMode: $("#memoryToggle").checked ? "preferences" : "off",
@@ -476,8 +482,20 @@ function saveDraft() {
     returnConversationKey: state.returnConversationKey,
     updatedAt: new Date().toISOString(),
   };
+  if (!draftHasWork(draft)) {
+    localStorage.removeItem(DRAFT_KEY);
+    if (draft.id) localStorage.setItem(DRAFTS_KEY, JSON.stringify(loadDrafts().filter((item) => item.id !== draft.id)));
+    renderDraftList();
+    return;
+  }
+  if (!draft.id) draft.id = crypto.randomUUID();
+  state.activeDraftId = draft.id;
+  draft.title = draftTitle(draft);
+  const drafts = loadDrafts().filter((item) => item.id !== draft.id);
+  drafts.unshift(draft);
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts.slice(0, 20)));
   localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  updateContinueButton();
+  renderDraftList();
 }
 
 function loadDraft() {
@@ -485,20 +503,63 @@ function loadDraft() {
 }
 
 
-function updateContinueButton() {
-  const draft = loadDraft();
-  $("#continueLast").hidden = !draft?.goal && !draft?.instruction;
+function loadDrafts() {
+  try {
+    const drafts = JSON.parse(localStorage.getItem(DRAFTS_KEY) || "[]");
+    return Array.isArray(drafts) ? drafts.filter((item) => item && typeof item.id === "string") : [];
+  } catch { return []; }
 }
 
-function restoreLast() {
+function draftHasWork(draft) {
+  return Boolean(String(draft?.goal || "").trim()
+    || String(draft?.instruction || "").trim()
+    || String(draft?.quickInput || "").trim()
+    || String(draft?.quickResult || "").trim()
+    || String(draft?.workspacePath || "").trim()
+    || (Array.isArray(draft?.materials) && draft.materials.length)
+    || String(draft?.handoffSummary || "").trim()
+    || (Array.isArray(draft?.handoffConversation) && draft.handoffConversation.length)
+    || String(draft?.parentJobId || "").trim());
+}
+
+function draftTitle(draft) {
+  const item = CATALOG.find((entry) => entry.id === draft.selectedId);
+  const source = String(draft.goal || draft.instruction || draft.quickInput || draft.quickResult || "").trim().replace(/\s+/g, " ");
+  return source ? source.slice(0, 30) : `${item?.name || "能力"}未完成内容`;
+}
+
+function renderDraftList() {
+  const drafts = loadDrafts().filter(draftHasWork);
+  $("#capabilityDraftSection").hidden = drafts.length === 0;
+  $("#capabilityDraftCount").textContent = String(drafts.length);
+  $("#capabilityDraftList").innerHTML = drafts.map((draft) => {
+    const item = CATALOG.find((entry) => entry.id === draft.selectedId);
+    return `<button type="button" data-capability-draft="${escapeHtml(draft.id)}"><strong>${escapeHtml(draft.title || draftTitle(draft))}</strong><small>${escapeHtml(item?.name || "能力")} · ${escapeHtml(displayDate(draft.updatedAt))}</small></button>`;
+  }).join("");
+}
+
+function migrateLegacyDraft() {
   const draft = loadDraft();
-  if (!draft?.goal && !draft?.instruction) return showToast("没有可继续的内容", true);
+  if (!draft || !draftHasWork(draft)) return;
+  draft.id = draft.id || crypto.randomUUID();
+  draft.title = draft.title || draftTitle(draft);
+  const drafts = loadDrafts().filter((item) => item.id !== draft.id);
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify([draft, ...drafts].slice(0, 20)));
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+}
+
+function restoreDraftById(id) {
+  const draft = loadDrafts().find((item) => item.id === id) || (loadDraft()?.id === id ? loadDraft() : null);
+  if (!draft || !draftHasWork(draft)) return showToast("这条未完成记录已经不存在", true);
+  state.activeDraftId = draft.id;
 
   state.selectedId = CATALOG.some((item) => item.id === draft.selectedId) ? draft.selectedId : "document";
   state.materials = Array.isArray(draft.materials) ? draft.materials.slice(-8) : [];
   $("#goalInput").value = draft.goal || "";
   $("#instructionInput").value = draft.instruction || "";
   $("#quickInput").value = draft.quickInput || "";
+  $("#quickResult").value = draft.quickResult || "";
+  $("#quickResultWrap").hidden = !String(draft.quickResult || "").trim();
   $("#memoryToggle").checked = draft.memoryMode !== "off";
   $("#workspaceInput").value = draft.workspacePath || "";
   setDevelopmentMode(draft.accessMode, false);
@@ -517,8 +578,19 @@ function restoreLast() {
   if ([...$("#formatSelect").options].some((option) => option.value === draft.format)) $("#formatSelect").value = draft.format;
 }
 
-function resetDraft() {
+function restoreLast() {
+  const draft = loadDraft();
+  if (!draft?.id) return showToast("没有可继续的内容", true);
+  restoreDraftById(draft.id);
+}
+
+function resetDraft(options = {}) {
+  const activeId = state.activeDraftId;
   localStorage.removeItem(DRAFT_KEY);
+  if (options.removeRecord && activeId) {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(loadDrafts().filter((draft) => draft.id !== activeId)));
+  }
+  state.activeDraftId = "";
   $("#goalInput").value = "";
   $("#instructionInput").value = "";
   $("#quickInput").value = "";
@@ -542,7 +614,7 @@ function resetDraft() {
   $("#chatContext").hidden = true;
   $("#launchPanel").hidden = true;
   $(".start-wrap").classList.remove("is-launching");
-  updateContinueButton();
+  renderDraftList();
 }
 
 function showQuickResult(text, status) {
@@ -550,6 +622,7 @@ function showQuickResult(text, status) {
   $("#quickResult").value = value;
   $("#quickResultWrap").hidden = !value;
   $("#quickStatus").textContent = status || (value ? "处理完成" : "没有得到可用结果");
+  saveDraft();
 }
 
 async function readQuickClipboard() {
@@ -779,7 +852,7 @@ async function startTask() {
     });
     const job = response.job || null;
     if (job) localStorage.setItem(ACTIVITY_KEY, JSON.stringify({ jobId: job.id, title: goal || instruction, personaId: "clownfish", startedAt: new Date().toISOString() }));
-    resetDraft();
+    resetDraft({ removeRecord: true });
     await refreshData();
     if (job) {
       $("#runConversationBridge").hidden = false;
@@ -1211,7 +1284,6 @@ function bindEvents() {
     selectCapability(await recommendCapability(goal));
     openCapability(goal);
   });
-  $("#continueLast").addEventListener("click", restoreLast);
   $("#closeLaunch").addEventListener("click", closeCapability);
   $("#goalInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
   $("#instructionInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
@@ -1241,6 +1313,11 @@ function bindEvents() {
   $("#memoryHelp").addEventListener("click", () => $("#memoryDialog").showModal());
   window.addEventListener("hashchange", () => openView(location.hash.slice(1) || "start", false));
   document.addEventListener("click", (event) => {
+    const draft = event.target.closest("[data-capability-draft]");
+    if (draft) {
+      restoreDraftById(draft.dataset.capabilityDraft);
+      return;
+    }
     const edit = event.target.closest("[data-artifact-edit]");
     if (!edit || event.defaultPrevented || event.button !== 0) return;
     event.preventDefault();
@@ -1251,11 +1328,12 @@ function bindEvents() {
 async function init() {
   renderStaticIcons();
   configureReturnLinks();
+  migrateLegacyDraft();
   bindEvents();
   renderRecentWorkspaces();
   renderCatalog();
   renderMaterials();
-  updateContinueButton();
+  renderDraftList();
   openView(location.hash.slice(1) || "start", false);
   await refreshData();
   await applyDevelopmentContinuation();

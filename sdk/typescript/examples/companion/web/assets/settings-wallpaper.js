@@ -14,8 +14,6 @@
   var resetButton = document.getElementById('wallpaperReset');
   var status = document.getElementById('wallpaperStatus');
 
-  var MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
-
   function say(message) {
     if (status) status.textContent = message;
   }
@@ -66,27 +64,27 @@
     fileInput.click();
   });
 
-  fileInput.addEventListener('change', function () {
+  fileInput.addEventListener('change', async function () {
     var file = fileInput.files && fileInput.files[0];
     if (!file) return;
-    if (file.size > MAX_UPLOAD_BYTES) {
-      say('图片超过 2MB，请压缩后再上传，或改用图片地址。');
+    if (!file.type || file.type.indexOf('image/') !== 0) {
+      say('请选择图片文件。');
       fileInput.value = '';
       return;
     }
-    var reader = new FileReader();
-    reader.onload = function () {
-      window.setWallpaper(String(reader.result));
+    try {
+      say('正在保存本机图片…');
+      await window.setWallpaperFile(file);
       refresh();
       say('已使用本机图片。');
+    } catch (error) {
+      say(error && error.message ? error.message : '保存图片失败，请重试。');
+    } finally {
       fileInput.value = '';
-    };
-    reader.onerror = function () {
-      say('读取图片失败，请重试。');
-      fileInput.value = '';
-    };
-    reader.readAsDataURL(file);
+    }
   });
+
+  window.addEventListener('clownfish-wallpaper-change', refresh);
 
   resetButton.addEventListener('click', function () {
     window.resetWallpaper();

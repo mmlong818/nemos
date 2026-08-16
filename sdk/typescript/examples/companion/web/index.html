@@ -2923,33 +2923,6 @@
     .persona-actions button { width:100%; min-height:42px; }
     .empty-state { min-height:240px; }
   }
-  #conversationmodal { position:fixed; inset:0; z-index:90; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(32,34,31,.42); backdrop-filter:blur(5px); }
-  #conversationmodal.show { display:flex; animation:fade .15s ease; }
-  .conversation-card { width:min(820px,100%); max-height:min(760px,calc(100vh - 36px)); overflow:auto; padding:24px; border:1px solid #d7d0c5; border-radius:12px; background:#fffcf7; box-shadow:0 28px 90px rgba(32,34,31,.2); }
-  .conversation-head,.conversation-section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-  .conversation-head p { margin:0 0 3px; color:#b33f72; font-size:10px; font-weight:700; letter-spacing:.09em; }
-  .conversation-head h2,.conversation-card h3 { margin:0; color:#20221f; }
-  .conversation-head h2 { font-size:23px; }
-  .conversation-card h3 { font-size:14px; }
-  .conversation-head>button { width:34px; height:34px; border:0; border-radius:7px; background:transparent; font-size:22px; }
-  .conversation-layout { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(240px,.65fr); gap:18px; margin:22px 0; }
-  .conversation-layout>section,.conversation-timeline { padding:16px; border:1px solid #ddd7cd; border-radius:9px; background:#f8f4ed; }
-  .conversation-layout label { display:grid; gap:5px; margin-top:11px; color:#656860; font-size:11px; }
-  .conversation-layout input,.conversation-layout select { width:100%; min-height:36px; padding:0 9px; border:1px solid #c9c1b5; border-radius:6px; background:#fff; }
-  .conversation-layout .primary { width:100%; min-height:38px; margin-top:12px; border:0; border-radius:6px; color:#fff; background:#b33f72; }
-  #conversationTree { display:grid; gap:6px; margin-top:11px; }
-  .conversation-node { width:100%; min-height:42px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:8px 10px; border:1px solid transparent; border-radius:7px; background:#fff; text-align:left; }
-  .conversation-node.is-active { border-color:#d1a7b9; background:#fff7fa; }
-  .conversation-node span { display:grid; gap:2px; min-width:0; }
-  .conversation-node strong { overflow:hidden; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
-  .conversation-node small,.conversation-section-head>span { color:#85887f; font-size:10px; }
-  .conversation-node em { color:#8f2f59; font-size:10px; font-style:normal; }
-  .conversation-section-head button,.command-strip button,.conversation-timeline button { min-height:30px; padding:0 9px; border:1px solid #d2cbc0; border-radius:6px; background:#fff; font-size:10.5px; }
-  #conversationTimeline { display:grid; gap:1px; max-height:180px; overflow:auto; margin-top:10px; }
-  .timeline-message { display:grid; grid-template-columns:70px minmax(0,1fr) auto; gap:9px; align-items:center; padding:7px 8px; border-top:1px solid #e3ddd3; font-size:11px; }
-  .timeline-message span { color:#8f2f59; }
-  .timeline-message p { overflow:hidden; margin:0; color:#5f625b; text-overflow:ellipsis; white-space:nowrap; }
-  .command-strip { display:flex; flex-wrap:wrap; gap:7px; margin-top:16px; }
   #brand { min-height:52px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 10px 6px 12px; color:#282923; font-size:14px; font-weight:600; letter-spacing:.01em; }
   #brand::before { display:none; }
   #brand small { display:none; }
@@ -2986,7 +2959,6 @@
   .mode-switch button:hover { background:#f0ebe3; color:#292a26; }
   .mode-switch button[aria-pressed="true"] { border-color:#d4cbc0; color:#282923; background:#f4efe7; }
   .mode-switch button:focus-visible { outline:2px solid #8f2f59; outline-offset:2px; }
-  @media(max-width:720px){.conversation-layout{grid-template-columns:1fr}.conversation-card{padding:18px}.timeline-message{grid-template-columns:54px minmax(0,1fr)}.timeline-message button{grid-column:2}}
   @media(max-width:520px){.mode-switch{gap:3px}.mode-switch button{padding:0 8px}#contacts .contact-delete{opacity:1}}
   @media(max-width:720px){
     body{display:block;padding-left:52px}
@@ -3026,10 +2998,6 @@
       <div id="relbar"></div>
       <button id="composerTool" type="button" title="翻译、语音转写和文字润色已移至能力页面" aria-label="翻译、语音转写和文字润色已移至能力页面" hidden><span data-icon="wrench" aria-hidden="true"></span><span>小工具</span></button>
       <button id="composerCapability" type="button" title="把当前目标交给能力" aria-label="把当前目标交给能力"><span data-icon="boxes" aria-hidden="true"></span><span>交给能力</span></button>
-      <div id="topActions" class="task-workbench-top-actions">
-        <button class="top-icon" id="topChat" type="button" title="任务记录" aria-label="任务记录" data-icon="message-circle"></button>
-        <button class="top-icon" id="topDrop" type="button" title="更多选项" aria-label="更多选项" data-icon="chevron-down"></button>
-      </div>
     </div>
       <div class="workbench-body">
     <div id="sessionPane" class="task-workbench-sidebar">
@@ -3600,17 +3568,6 @@
           <div id="artifactList"></div>
         </div>
       </div>
-    </div>
-  </div>
-  <div id="conversationmodal" role="dialog" aria-modal="true" aria-labelledby="conversationTitle">
-    <div class="conversation-card">
-      <div class="conversation-head"><div><p>当前任务</p><h2 id="conversationTitle">任务与分支</h2></div><button id="conversationClose" type="button" aria-label="关闭">×</button></div>
-      <div class="conversation-layout">
-        <section><div class="conversation-section-head"><h3>任务列表</h3><button id="newConversation" type="button">新建</button></div><div id="conversationTree"></div></section>
-        <section><h3>当前任务设置</h3><label>模型<input id="conversationModel" maxlength="120" placeholder="留空则自动分配快模型或主模型"></label><label>思考深度<select id="conversationReasoning"><option value="fast">快速</option><option value="balanced">均衡</option><option value="deep">深入</option></select></label><label>工具范围<select id="conversationTools"><option value="auto">按需使用</option><option value="read-only">只读工具</option><option value="off">不使用工具</option></select></label><button class="primary" id="saveConversationSettings" type="button">保存当前设置</button></section>
-      </div>
-      <section class="conversation-timeline"><div class="conversation-section-head"><h3>回到某一步</h3><span>回退前会自动保留备份分支</span></div><div id="conversationTimeline"></div></section>
-      <nav class="command-strip" aria-label="快捷操作"><button data-conversation-command="branch">从末尾建立分支</button><button data-conversation-command="capabilities">打开能力</button><button data-conversation-command="office">打开文件</button><button data-conversation-command="tasks">查看任务</button><button data-conversation-command="memory">查看记忆</button></nav>
     </div>
   </div>
   <div id="main" class="task-workbench-main">
@@ -4260,7 +4217,6 @@ function switchConversation(id) {
   saveConversationTrees();
   saveLogs();
   renderLog();
-  renderConversationPanel();
   renderContacts();
   renderConversationHeader();
   restoreConversationDraft();
@@ -4295,7 +4251,6 @@ async function autoNameConversation(key, conversationId, text) {
     saveLogs();
     renderContacts();
     renderConversationHeader();
-    renderConversationPanel();
   } catch {
     // 本地提炼标题已经写入；远程命名失败不影响对话。
   }
@@ -4308,7 +4263,6 @@ function createConversation(mode = "chat") {
   const node = makeConversationNode(mode);
   tree.nodes[node.id] = node;
   switchConversation(node.id);
-  $("#conversationmodal").classList.remove("show");
   $("#txt").focus();
 }
 function deleteConversation(id) {
@@ -4333,73 +4287,13 @@ function deleteConversation(id) {
   saveConversationTrees();
   saveLogs();
   renderLog();
-  renderConversationPanel();
   renderContacts();
   renderConversationHeader();
-}
-function branchConversation(index) {
-  const key = logKey();
-  const tree = ensureConversationTree(key);
-  if (!tree) return;
-  const parent = tree.nodes[tree.activeId];
-  const safeIndex = Math.max(-1, Math.min(Number(index), parent.messages.length - 1));
-  const messages = parent.messages.slice(0, safeIndex + 1).map((entry) => ({ ...entry }));
-  const id = "branch-" + crypto.randomUUID();
-  tree.nodes[id] = { id, title: conversationTitle(messages, "新分支"), parentId: parent.id, forkIndex: safeIndex, createdAt: Date.now(), messages, config: { ...conversationDefaults(), ...(parent.config || {}) } };
-  switchConversation(id);
-}
-function rollbackConversation(index) {
-  const key = logKey();
-  const tree = ensureConversationTree(key);
-  if (!tree) return;
-  const current = tree.nodes[tree.activeId];
-  const safeIndex = Math.max(-1, Math.min(Number(index), current.messages.length - 1));
-  const backupId = "backup-" + crypto.randomUUID();
-  tree.nodes[backupId] = { id: backupId, title: "回退前备份", parentId: current.id, forkIndex: current.messages.length - 1, createdAt: Date.now(), messages: current.messages.map((entry) => ({ ...entry })), config: { ...conversationDefaults(), ...(current.config || {}) } };
-  current.messages = current.messages.slice(0, safeIndex + 1);
-  current.title = conversationTitle(current.messages, current.title);
-  chatLogs[key] = current.messages;
-  saveLogs();
-  renderLog();
-  renderConversationPanel();
 }
 function conversationRequestOptions(key) {
   const node = activeConversation(key);
   const config = node?.config || conversationDefaults();
   return { sessionId: node?.id, model: config.model, reasoning: config.reasoning, toolMode: config.toolMode, workMode: normalizeWorkMode(config.workMode) };
-}
-function renderConversationPanel() {
-  const key = logKey();
-  const tree = ensureConversationTree(key);
-  if (!tree) return;
-  const active = tree.nodes[tree.activeId];
-  const nodes = Object.values(tree.nodes).sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0));
-  $("#conversationTree").innerHTML = nodes.map((node) => {
-    const parent = node.parentId ? tree.nodes[node.parentId] : null;
-    const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
-    return '<button class="conversation-node' + (node.id === tree.activeId ? ' is-active' : '') + '" data-conversation-id="' + esc(node.id) + '" type="button"><span><strong>' + esc(conversationTitle(node.messages, node.title || "对话")) + '</strong><small>' + esc(mode.label + ' · ' + (parent ? "来自 " + conversationTitle(parent.messages, parent.title) : "独立任务")) + ' · ' + String(node.messages.length) + ' 条</small></span><em>' + (node.id === tree.activeId ? "当前" : "切换") + '</em></button>';
-  }).join("");
-  $("#conversationTimeline").innerHTML = active.messages.length ? active.messages.map((entry, index) => '<div class="timeline-message"><span>' + esc(entry.side === "me" ? "我" : entry.who || "小丑鱼") + '</span><p>' + esc(String(entry.text || "").replace(/\s+/g, " ")) + '</p><span><button data-branch-index="' + index + '" type="button">分支</button> <button data-rollback-index="' + index + '" type="button">回到这里</button></span></div>').join("") : '<div class="timeline-message"><p>当前是空白对话。</p></div>';
-  $("#conversationModel").value = active.config?.model === "default" ? "" : active.config?.model || "";
-  $("#conversationReasoning").value = active.config?.reasoning || "balanced";
-  $("#conversationTools").value = active.config?.toolMode || "auto";
-}
-function openConversationPanel() {
-  if (!state.target) return alert("先打开一个聊天。");
-  renderConversationPanel();
-  $("#conversationmodal").classList.add("show");
-}
-function saveConversationSettings() {
-  const node = activeConversation(logKey());
-  if (!node) return;
-  node.config = {
-    model: ($("#conversationModel").value || "").trim() || "default",
-    reasoning: $("#conversationReasoning").value,
-    toolMode: $("#conversationTools").value,
-    workMode: normalizeWorkMode(node.config?.workMode),
-  };
-  saveConversationTrees();
-  renderConversationPanel();
 }
 function saveLogs() {
   try { localStorage.setItem(CHAT_LOGS_KEY, JSON.stringify(chatLogs)); } catch {}
@@ -7907,35 +7801,6 @@ $("#sourceSaveX").onclick = () => saveSources(false);
 $("#sourceClearX").onclick = () => saveSources(true);
 $("#sourceConnectX").onclick = connectXHomeTimeline;
 $("#wechatImportBtn").onclick = importWeChatMaterial;
-$("#topDrop").onclick = openConversationPanel;
-$("#conversationClose").onclick = () => $("#conversationmodal").classList.remove("show");
-$("#conversationmodal").onclick = (event) => {
-  if (event.target.id === "conversationmodal") $("#conversationmodal").classList.remove("show");
-  const node = event.target.closest("[data-conversation-id]");
-  const branch = event.target.closest("[data-branch-index]");
-  const rollback = event.target.closest("[data-rollback-index]");
-  const command = event.target.closest("[data-conversation-command]");
-  if (node) switchConversation(node.dataset.conversationId);
-  if (branch) branchConversation(Number(branch.dataset.branchIndex));
-  if (rollback && confirm("回到这一步？当前完整对话会自动保留为备份分支。")) rollbackConversation(Number(rollback.dataset.rollbackIndex));
-  if (command) {
-    const value = command.dataset.conversationCommand;
-    if (value === "branch") branchConversation((activeConversation(logKey())?.messages.length || 0) - 1);
-    if (value === "capabilities") location.href = "/capabilities";
-    if (value === "office") location.href = "/office";
-    if (value === "tasks") location.href = "/tasks";
-    if (value === "memory") location.href = "/memory";
-  }
-};
-$("#newConversation").onclick = () => createConversation("chat");
-$("#saveConversationSettings").onclick = saveConversationSettings;
-addEventListener("keydown", (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-    event.preventDefault();
-    openConversationPanel();
-  }
-});
-$("#topChat").onclick = openChatHistoryModal;
 $("#historySearch").addEventListener("input", renderHistoryModal);
 $("#historySearch").addEventListener("keydown", (e) => { if (e.key === "Escape") $("#historymodal").classList.remove("show"); });
 $("#historyclose").onclick = () => $("#historymodal").classList.remove("show");

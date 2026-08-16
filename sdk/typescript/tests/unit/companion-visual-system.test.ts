@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const web = join(__dirname, "..", "..", "examples", "companion", "web");
@@ -33,6 +33,18 @@ test("主要页面共享小丑鱼统一视觉层", () => {
   assert.match(css, /\.topbar, #topbar, \.office-topbar, \.coding-topbar/);
   assert.match(css, /\.app-shell \{ grid-template-columns: 76px minmax\(0, 1fr\); \}/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("本机背景图不设固定体积上限并使用 IndexedDB 保存", () => {
+  const wallpaper = readWeb(join("assets", "scramble-wallpaper.js"));
+  const settingsWallpaper = readWeb(join("assets", "settings-wallpaper.js"));
+  assert.match(wallpaper, /window\.setWallpaperFile = setWallpaperFile/);
+  assert.match(wallpaper, /indexedDB\.open\(DATABASE_NAME, 1\)/);
+  assert.match(wallpaper, /objectStore\(STORE_NAME\)\.put\(file, FILE_KEY\)/);
+  assert.match(wallpaper, /DEFAULT_WALLPAPER = '\/assets\/wallpapers\/wallpaper-anime-teal\.png'/);
+  assert.ok(existsSync(join(web, "assets", "wallpapers", "wallpaper-anime-teal.png")));
+  assert.doesNotMatch(settingsWallpaper, /MAX_UPLOAD_BYTES|2\s*\*\s*1024\s*\*\s*1024|超过 2MB/);
+  assert.match(settingsWallpaper, /await window\.setWallpaperFile\(file\)/);
 });
 
 test("带新建入口的页面共享右侧搜索按钮和独立浮层", () => {
@@ -86,8 +98,9 @@ test("新任务与开发复用同一套工作台组件", () => {
     assert.match(html, /task-workbench-composer/);
     assert.match(html, /task-sidebar-brand/);
     assert.match(html, /task-sidebar-primary/);
-    assert.match(html, /task-workbench-top-actions/);
   }
+  assert.doesNotMatch(home, /task-workbench-top-actions/);
+  assert.match(develop, /task-workbench-top-actions/);
   assert.match(home, /role-intro-state task-workbench-empty-frame/);
   assert.match(home, /role-intro-card task-workbench-empty is-composer-empty/);
   assert.match(develop, /role-intro-state task-workbench-empty-frame/);

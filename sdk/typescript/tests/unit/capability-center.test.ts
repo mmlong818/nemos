@@ -262,6 +262,7 @@ test("删除归档任务时可选择保留或一并删除产出文件", async ()
     const keepResult = runtime.deleteTaskData([kept.artifact.taskId], { keepFiles: true });
     assert.equal(keepResult.tasks, 1);
     assert.ok(existsSync(kept.artifact.file));
+    assert.equal(runtime.snapshot().retainedArtifacts[0]?.id, kept.artifact.id);
 
     const allResult = runtime.deleteTaskData([removed.artifact.taskId]);
     assert.equal(allResult.tasks, 1);
@@ -269,6 +270,15 @@ test("删除归档任务时可选择保留或一并删除产出文件", async ()
 
     assert.ok(!runtime.snapshot().tasks.some((item) => item.id === kept.artifact.taskId || item.id === removed.artifact.taskId));
     assert.ok(!runtime.snapshot().artifacts.some((item) => item.taskId === kept.artifact.taskId || item.taskId === removed.artifact.taskId));
+    const reloaded = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: THINKING_RESULT, facts: [] }),
+    });
+    assert.equal(reloaded.snapshot().retainedArtifacts[0]?.id, kept.artifact.id);
+    assert.equal(reloaded.deleteRetainedArtifact(kept.artifact.id), true);
+    assert.ok(!existsSync(kept.artifact.file));
+    assert.equal(reloaded.snapshot().retainedArtifacts.length, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -774,7 +784,12 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.doesNotMatch(html, /id="toggleAll"|常用能力|再次使用/);
   assert.match(script, /CATALOG\.slice\(0, 20\)/);
   assert.doesNotMatch(script, /showAll|RECENT_KEY|data-reuse-job|function reuseJob/);
-  assert.match(html, /id="closeLaunch">更换能力/);
+  assert.match(html, /id="closeLaunch"[^>]*>关闭/);
+  assert.match(html, /id="capabilityDraftList"/);
+  assert.doesNotMatch(html, /继续未完成内容/);
+  assert.match(script, /const DRAFTS_KEY = "clownfish-capability-drafts-v1"/);
+  assert.match(script, /function draftHasWork/);
+  assert.match(script, /function restoreDraftById/);
   assert.match(html, /class="launch-submit-row"/);
   assert.match(script, /data-capability[\s\S]*activateCapability/);
   assert.match(script, /focusInput: true/);
