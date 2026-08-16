@@ -24,7 +24,7 @@
         <a href="/capabilities" title="能力" aria-label="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></a>
         <a class="is-current" href="/office" title="办公文件" aria-label="办公文件" aria-current="page" data-app-icon="file"><span aria-hidden="true"></span><small>文件</small></a>
         <a href="/develop" title="开发" aria-label="开发" data-app-icon="code"><span aria-hidden="true"></span><small>开发</small></a>
-        <a href="/tasks" title="工作" aria-label="工作" data-app-icon="work"><span aria-hidden="true"></span><small>工作</small></a>
+        <a href="/automations" title="自动化" aria-label="自动化" data-app-icon="work"><span aria-hidden="true"></span><small>自动化</small></a>
       </nav>
       <a class="rail-secondary" href="/settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
     </aside>
@@ -93,23 +93,17 @@
                 <span class="capability-badge" id="capabilityBadge" data-capability="view" tabindex="0" role="note">仅查看</span>
               </div>
               <div class="document-actions">
-                <button class="toolbar-button danger" id="deleteDocument" type="button" data-office-icon="trash">删除</button>
-                <button class="toolbar-button assistant-trigger" id="openAssistantPanel" type="button" data-office-icon="spark" aria-controls="assistantPanel" aria-expanded="false">小丑鱼处理</button>
-                <button class="toolbar-button primary" id="saveWorkingCopy" type="button" data-office-icon="check" hidden>保存副本</button>
-                <button class="toolbar-button" id="openVersionPanel" type="button" data-office-icon="bookmark" aria-controls="assistantPanel" aria-expanded="false">版本</button>
-                <button class="toolbar-button" id="openDesktopEditor" type="button" data-office-icon="document" hidden>用桌面应用编辑</button>
-                <button class="toolbar-button" id="refreshDesktopFile" type="button" data-office-icon="download" hidden>载入修改</button>
-                <button class="toolbar-button" id="saveStructuredCopy" type="button" data-office-icon="check" hidden>另存为文字副本</button>
-                <button class="toolbar-button" id="writeBackSource" type="button" data-office-icon="download" hidden>写回原文件</button>
-                <label class="export-choice"><span class="sr-only">导出格式</span><select id="exportFormat" aria-label="导出格式"><option value="docx">Word</option><option value="pdf">PDF</option><option value="pptx">PowerPoint</option><option value="xlsx">Excel</option><option value="html">网页</option><option value="md">Markdown</option></select></label>
-                <button class="toolbar-button" id="exportDraft" type="button" data-office-icon="download">导出</button>
+                <button class="toolbar-button save-copy" id="saveWorkingCopy" type="button" data-office-icon="check" hidden>保存副本</button>
+                <button class="toolbar-button" id="openToolsPanel" type="button" data-office-icon="panel" aria-controls="assistantPanel" aria-expanded="false">工具</button>
               </div>
             </header>
 
             <div class="document-view-bar" role="tablist" aria-label="文件视图">
-              <button class="is-current" type="button" role="tab" aria-selected="true" data-document-view="source">原文件</button>
-              <button id="editViewTab" type="button" role="tab" aria-selected="false" data-document-view="edit">提取文字</button>
-              <button type="button" role="tab" aria-selected="false" data-document-view="result" id="resultViewTab" hidden>处理结果</button>
+              <div class="view-switch">
+                <button class="is-current" type="button" role="tab" aria-selected="true" data-document-view="source">原文件</button>
+                <button id="editViewTab" type="button" role="tab" aria-selected="false" data-document-view="edit">提取文字</button>
+                <button type="button" role="tab" aria-selected="false" data-document-view="result" id="resultViewTab" hidden>处理结果</button>
+              </div>
               <p class="capability-note" id="capabilityNote" hidden></p>
               <span id="sourceState">原文件保留在本机</span>
             </div>
@@ -166,6 +160,20 @@
               <div class="assistant-run-progress"><span id="assistantRunProgress"></span></div>
             </div>
             <p class="memory-note"><span data-office-icon="spark" aria-hidden="true"></span>会轻量参考你的文笔、排版和格式偏好。</p>
+          </section>
+
+          <section class="tools-card" id="toolsCard" hidden>
+            <p class="section-label tools-label">文件工具</p>
+            <div class="tools-list">
+              <button class="tool-row" id="openVersionPanel" type="button" data-office-icon="bookmark" aria-controls="assistantPanel" aria-expanded="false"><strong>版本记录</strong><small>查看、比较和恢复历史版本</small></button>
+              <button class="tool-row" id="saveStructuredCopy" type="button" data-office-icon="check" hidden><strong>另存为文字副本</strong><small>只保留文字结构，不带原版式</small></button>
+              <button class="tool-row" id="writeBackSource" type="button" data-office-icon="download" hidden><strong>写回原文件</strong><small>仅 TXT / Markdown 支持写回</small></button>
+            </div>
+            <div class="tools-export">
+              <label class="export-choice"><span>导出为</span><select id="exportFormat" aria-label="导出格式"><option value="docx">Word</option><option value="pdf">PDF</option><option value="pptx">PowerPoint</option><option value="xlsx">Excel</option><option value="html">网页</option><option value="md">Markdown</option></select></label>
+              <button class="toolbar-button primary" id="exportDraft" type="button" data-office-icon="download">导出</button>
+            </div>
+            <button class="tool-row danger" id="deleteDocument" type="button" data-office-icon="trash"><strong>删除文件</strong><small>移入垃圾桶，可以随时恢复</small></button>
           </section>
 
           <section class="version-card" id="versionCard" hidden>

@@ -8,11 +8,22 @@ import test from "node:test";
 import { DevelopmentProposalStore } from "../../examples/companion/development-proposals.js";
 import {
   buildDshSettings,
+  collectDshWorkspaceChanges,
+  dshPermissionMode,
   dshDevelopmentEnvironment,
   resolveDshEntrypoint,
   runDshDevelopment,
   stageDshWorkspaceChanges,
 } from "../../examples/companion/dsh-development.js";
+
+function git(cwd: string, ...args: string[]): void {
+  execFileSync("git", args, {
+    cwd,
+    windowsHide: true,
+    stdio: "ignore",
+    env: { ...process.env, GIT_AUTHOR_NAME: "Clownfish Test", GIT_AUTHOR_EMAIL: "test@localhost", GIT_COMMITTER_NAME: "Clownfish Test", GIT_COMMITTER_EMAIL: "test@localhost" },
+  });
+}
 
 test("DSH 设置复用小丑鱼模型连接但不落盘密钥", () => {
   const settings = buildDshSettings({
@@ -28,6 +39,11 @@ test("DSH 设置复用小丑鱼模型连接但不落盘密钥", () => {
   assert.match(settings, /baseURL: "http:\/\/127\.0\.0\.1:1234\/v1"/);
   assert.match(settings, /model: "local-model"/);
   assert.doesNotMatch(settings, /secret-should-not-appear/);
+});
+
+test("DSH 只读检查使用执行层只读沙箱", () => {
+  assert.equal(dshPermissionMode("inspect"), "read-only");
+  assert.equal(dshPermissionMode("develop"), "workspace-write");
 });
 
 test("已安装的 DSH CLI 可以被开发适配层发现", () => {
@@ -59,13 +75,33 @@ test("DSH 修改先转成可审阅提案，再恢复隔离工作区", () => {
   }
 });
 
+test("运行产物（__pycache__、pyc 等）不进入审阅提案", async () => {
+  const root = mkdtempSync(join(tmpdir(), "clownfish-dsh-artifacts-"));
+  const repo = join(root, "repo");
+  try {
+    mkdirSync(repo);
+    git(repo, "init");
+    writeFileSync(join(repo, "weather_check.py"), "print('ok')\n", "utf8");
+    git(repo, "add", "weather_check.py");
+    git(repo, "commit", "-m", "fixture");
+    // 引擎跑 Python 后产生的真实修改 + 字节码缓存
+    writeFileSync(join(repo, "weather_check.py"), "print('fixed')\n", "utf8");
+    mkdirSync(join(repo, "__pycache__"));
+    writeFileSync(join(repo, "__pycache__", "weather_check.cpython-314.pyc"), Buffer.from([0x42, 0x0d, 0x0d, 0x0a, 0x00]));
+    const changes = await collectDshWorkspaceChanges(repo, "HEAD");
+    assert.deepEqual(changes.map((change) => change.path), ["weather_check.py"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("标准开发入口展示已接通的五种编程引擎", () => {
   const companion = join(process.cwd(), "examples", "companion");
   const developHtml = readFileSync(join(companion, "web", "develop.html"), "utf8");
   const settingsHtml = readFileSync(join(companion, "web", "settings.html"), "utf8");
   const developScript = readFileSync(join(companion, "web", "assets", "develop-center.js"), "utf8");
   const server = readFileSync(join(companion, "server.ts"), "utf8");
-  const plugins = readFileSync(join(companion, "development-engine-plugins.ts"), "utf8");
+  const plugins = readFileSync(join(companion, "development-engine-plugins", "dsh.ts"), "utf8");
   assert.match(developHtml, /id="developmentEngine"/);
   assert.match(developHtml, /Pi Agent（默认）/);
   assert.match(developHtml, /DeepSeek Harness/);
@@ -78,7 +114,7 @@ test("标准开发入口展示已接通的五种编程引擎", () => {
   assert.match(settingsHtml, /Codex/);
   assert.match(developScript, /developmentEngine: developmentEngineValue\(\)/);
   assert.match(server, /developmentEnginePlugins\.run\(developmentEngine/);
-  assert.match(plugins, /manifest\("dsh", "DeepSeek Harness", "@deepseek-ai\/dsh"\)/);
+  assert.match(plugins, /id: "dsh"[\s\S]*name: "DeepSeek Harness"[\s\S]*packageName: "@deepseek-ai\/dsh"/);
   assert.match(plugins, /runDshDevelopment/);
 });
 

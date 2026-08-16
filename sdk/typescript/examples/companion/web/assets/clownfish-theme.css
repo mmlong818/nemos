@@ -135,10 +135,11 @@ button, a, input, textarea, select, summary {
 }
 
 button:active, .button:active { transform: scale(.98); }
-button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
+button:focus-visible, a:focus-visible, summary:focus-visible {
   outline: 2px solid rgba(173, 49, 95, .62) !important;
   outline-offset: 2px !important;
 }
+/* 表单字段聚焦由各自的 边框+光圈 表达，不再叠加 outline */
 
 /* 公共应用栏：固定尺寸，避免切换页面时跳动。 */
 .app-shell { grid-template-columns: 76px minmax(0, 1fr); }
@@ -167,6 +168,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .rail .brand img, .rail > .brand img { width: 36px; height: 36px; }
 .rail nav, .rail .rail-nav { width: 100%; display: grid; gap: 4px; }
 .rail nav a, .rail nav button, .rail-secondary, .rail-settings {
+  position: relative;
   width: 60px;
   height: 52px;
   min-height: 52px;
@@ -183,6 +185,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   background: transparent;
   box-shadow: none;
 }
+.rail-update-badge {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  width: 16px !important;
+  height: 16px !important;
+  display: grid;
+  place-items: center;
+  border: 2px solid #173f3c;
+  border-radius: 999px;
+  color: #fff;
+  background: #e35d52;
+  font: 700 9px/1 var(--cf-font-sans);
+  box-shadow: 0 3px 8px rgba(17, 48, 45, .28);
+  pointer-events: none;
+}
+.rail nav a.is-current .rail-update-badge { border-color: var(--cf-coral); }
 .rail nav a:hover, .rail nav button:hover, .rail-secondary:hover, .rail-settings:hover {
   color: #fff;
   background: rgba(255, 255, 255, .09);

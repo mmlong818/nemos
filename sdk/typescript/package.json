@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",
-    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@earendil-works/pi-coding-agent": "0.84.2",
     "@firecrawl/anydoc": "^0.1.8",
     "@modelcontextprotocol/client": "^2.0.0",
     "@napi-rs/canvas": "^1.0.3",

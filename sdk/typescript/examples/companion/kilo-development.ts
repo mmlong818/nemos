@@ -74,7 +74,9 @@ export async function runKiloDevelopment(input: KiloDevelopmentInput): Promise<P
     : { workspace, isolated: false, cleanup: async () => undefined };
   if (input.accessMode === "develop" && !isolation.isolated) {
     await isolation.cleanup();
-    throw new Error("Kilo Code 为避免覆盖现有修改，只能在干净的 Git 项目中直接开发。当前项目请先提交已有改动，或切换为内置引擎。");
+    throw new Error(isolation.reason === "not-a-repo"
+      ? "Kilo Code 需要在已有的 Git 项目中开发；当前目录还不是 Git 项目，全新项目请切换为内置引擎。"
+      : "Kilo Code 为避免覆盖现有修改，只能在干净的 Git 项目中直接开发。当前项目请先提交已有改动，或切换为内置引擎。");
   }
 
   const executionWorkspace = isolation.workspace;

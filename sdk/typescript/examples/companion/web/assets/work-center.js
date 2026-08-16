@@ -1,10 +1,8 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const workViews = new Set(["tasks", "spaces", "automations", "collaboration", "resources", "artifacts", "runs", "memory"]);
-const viewFromLocation = () => {
-  const route = location.pathname.replace(/^\/+|\/+$/g, "");
-  return workViews.has(route) ? route : "tasks";
-};
+// 工作页已精简为自动化单一视图；历史路由一律落到自动化
+const viewFromLocation = () => "automations";
 let view = viewFromLocation();
 const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [], productReviews: [], productReviewSummary: null };
 const loadedViews = new Set();
@@ -53,7 +51,7 @@ const pageCopy = {
 };
 
 function setPage() {
-  const copy = pageCopy[view] || pageCopy.tasks;
+  const copy = pageCopy[view] || pageCopy.automations;
   $("#pageEyebrow").textContent = copy[0];
   $("#pageTitle").textContent = copy[1];
   $("#pageDescription").textContent = copy[2];
@@ -190,7 +188,7 @@ function activateView(nextView, historyMode = "none") {
   void load();
 }
 
-$(".tabs").addEventListener("click", (event) => {
+$(".tabs")?.addEventListener("click", (event) => {
   const link = event.target.closest("a[data-view]");
   if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
@@ -424,7 +422,12 @@ async function continueOneOffTask(task) {
 
 function renderDecisionList(task) {
   const decisions = storylineOf(task).decisions || [];
-  $("#decisionList").innerHTML = decisions.length ? decisions.map((item) => `<article class="decision-item ${item.status === "superseded" ? "is-superseded" : ""}"><strong>${escapeHtml(item.text)}</strong>${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}<small>${item.status === "superseded" ? "已被后续决定替代" : "当前有效"} · ${date(item.createdAt)}</small></article>`).join("") : '<div class="story-empty">还没有关键决定。只记录会影响后续工作的结论。</div>';
+  const statusLabel = { candidate: "待确认", active: "当前有效", conflicted: "存在冲突", superseded: "已被后续决定替代", withdrawn: "已撤回" };
+  $("#decisionList").innerHTML = decisions.length ? decisions.map((item) => {
+    const confidence = Number.isFinite(item.confidence) ? ` · 可信度 ${Math.round(item.confidence * 100)}%` : "";
+    const evidence = Array.isArray(item.evidenceIds) && item.evidenceIds.length ? ` · ${item.evidenceIds.length} 项依据` : "";
+    return `<article class="decision-item ${item.status === "superseded" || item.status === "withdrawn" ? "is-superseded" : ""}"><strong>${escapeHtml(item.text)}</strong>${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}<small>${escapeHtml(statusLabel[item.status] || "当前有效")}${confidence}${evidence} · ${date(item.createdAt)}</small></article>`;
+  }).join("") : '<div class="story-empty">还没有关键决定。只记录会影响后续工作的结论。</div>';
   const active = decisions.filter((item) => item.status === "active");
   $("#decisionSupersedes").innerHTML = '<option value="">不替代</option>' + active.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.text.slice(0, 48))}</option>`).join("");
 }

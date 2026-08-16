@@ -88,13 +88,13 @@ test("Codex 已接入开发页面、任务路由和平台就绪检查", () => {
   const settings = readFileSync(join(companion, "web", "settings.html"), "utf8");
   const script = readFileSync(join(companion, "web", "assets", "develop-center.js"), "utf8");
   const server = readFileSync(join(companion, "server.ts"), "utf8");
-  const plugins = readFileSync(join(companion, "development-engine-plugins.ts"), "utf8");
+  const plugins = readFileSync(join(companion, "development-engine-plugins", "codex.ts"), "utf8");
   assert.match(html, /<option value="codex">Codex<\/option>/);
   assert.match(settings, /<option value="codex">Codex<\/option>/);
   assert.match(script, /codex: \{ name: "Codex"/);
   assert.match(server, /developmentEnginePlugins\.run\(developmentEngine/);
   assert.match(server, /developmentEnginePlugins\.readiness\(\)/);
-  assert.match(plugins, /manifest\("codex", "Codex", "@openai\/codex"\)/);
+  assert.match(plugins, /id: "codex"[\s\S]*name: "Codex"[\s\S]*packageName: "@openai\/codex"/);
   assert.match(plugins, /runCodexDevelopment/);
 });
 

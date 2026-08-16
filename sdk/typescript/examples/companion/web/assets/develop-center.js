@@ -42,6 +42,8 @@
   let developmentHistory = [];
   let managedProjectsRoot = "";
   let archivedRootJobIds = new Set();
+  let developmentContextFiles = [];
+  let contextSelection = { selectedPaths: [], includeGitDiff: true, autoSelect: true };
 
   const approvalPolicies = {
     request: { label: "请求批准", summary: "修改完成后由你确认是否写入" },
@@ -58,6 +60,59 @@
   const savedApprovalPolicies = preference.approvalPolicies && typeof preference.approvalPolicies === "object"
     ? { ...preference.approvalPolicies }
     : {};
+
+  function formatContextBytes(value) {
+    const bytes = Number(value || 0);
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function updateContextTrigger(bundle) {
+    const selected = contextSelection.selectedPaths.length;
+    const automatic = Number(bundle?.autoSelectedPaths?.length || 0);
+    const itemCount = Number(bundle?.itemCount || 0);
+    const tokenEstimate = Number(bundle?.tokenEstimate || 0);
+    $("#developmentContextCount").textContent = selected
+      ? `${selected} 文件`
+      : automatic ? `自动 ${automatic}` : itemCount ? `${itemCount} 项` : "自动";
+    $("#developmentContextUsage").textContent = tokenEstimate
+      ? `约 ${tokenEstimate.toLocaleString("zh-CN")} 个标记`
+      : selected ? `已选择 ${selected} 个文件` : "自动整理";
+    $("#developmentContextUsageDetail").textContent = bundle?.budgetTokens
+      ? `占本次 ${Math.round(Number(bundle.usageRatio || tokenEstimate / bundle.budgetTokens) * 100)}% · 目标和项目概览始终包含`
+      : "目标和项目概览始终包含";
+    $("#developmentCodeMapState").textContent = Number(bundle?.codeMapFiles || 0)
+      ? `已分析 ${Number(bundle.codeMapFiles).toLocaleString("zh-CN")} 个主要源文件`
+      : "自动识别入口、模块、依赖和关键符号";
+  }
+
+  function renderContextFiles() {
+    const query = $("#developmentContextSearch").value.trim().toLowerCase();
+    const selected = new Set(contextSelection.selectedPaths);
+    const files = developmentContextFiles.filter((file) => file.readable && (!query || file.path.toLowerCase().includes(query)));
+    $("#developmentContextFiles").innerHTML = files.length
+      ? files.slice(0, 300).map((file) => `<label class="development-context-file" role="option" aria-selected="${selected.has(file.path)}"><input type="checkbox" data-context-path="${escapeHtml(file.path)}" ${selected.has(file.path) ? "checked" : ""}><span title="${escapeHtml(file.path)}">${escapeHtml(file.path)}</span><small>${formatContextBytes(file.byteLength)}</small></label>`).join("")
+      : `<p>${activeJobId ? "没有找到可加入的文本文件。" : "打开一个已有开发项目后，可以选择重点文件。"}</p>`;
+  }
+
+  async function openContextDialog() {
+    const dialog = $("#developmentContextDialog");
+    $("#developmentContextDiff").checked = contextSelection.includeGitDiff;
+    $("#developmentContextAuto").checked = contextSelection.autoSelect !== false;
+    $("#developmentContextSearch").value = "";
+    developmentContextFiles = [];
+    renderContextFiles();
+    dialog.showModal();
+    if (!activeJobId) return;
+    try {
+      const result = await api(`/api/development/workspace?job=${encodeURIComponent(activeJobId)}`);
+      developmentContextFiles = Array.isArray(result.files) ? result.files : [];
+      renderContextFiles();
+    } catch (error) {
+      $("#developmentContextFiles").innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+    }
+  }
 
   function accessModeValue() {
     return $("#accessMode").value === "inspect" ? "inspect" : "develop";
@@ -116,12 +171,14 @@
   }
 
   const developmentEngines = {
-    pi: { name: "Pi Agent（默认）", hint: "内置执行，适合大多数开发任务", presence: "Pi Agent · 灵活编排" },
-    dsh: { name: "DeepSeek Harness", hint: "完整工具链引擎，适合复杂开发任务", presence: "DeepSeek Harness · 结构化执行" },
-    kilo: { name: "Kilo Code", hint: "独立 CLI 引擎，在隔离目录中执行", presence: "Kilo Code · 专注实现" },
-    opencode: { name: "OpenCode", hint: "开放式 CLI 引擎，适合多模型开发任务", presence: "OpenCode · 开放工作流" },
-    codex: { name: "Codex", hint: "Responses API 编程引擎，适合复杂修改与检查", presence: "Codex · 精确开发" },
+    pi: { name: "Pi Agent（默认）", hint: "实时过程与连续迭代", presence: "Pi Agent · 灵活编排", bestFor: "日常开发、边做边调和需要继续上次会话的任务" },
+    dsh: { name: "DeepSeek Harness", hint: "隔离执行的完整工具链", presence: "DeepSeek Harness · 结构化执行", bestFor: "复杂修改、需要先在独立目录验证的任务" },
+    kilo: { name: "Kilo Code", hint: "专注实现的独立引擎", presence: "Kilo Code · 专注实现", bestFor: "目标明确、希望集中完成代码修改的任务" },
+    opencode: { name: "OpenCode", hint: "开放的多模型工作流", presence: "OpenCode · 开放工作流", bestFor: "需要兼容不同模型与开放工具链的任务" },
+    codex: { name: "Codex", hint: "精确检查与分级控制", presence: "Codex · 精确开发", bestFor: "代码审查、复杂修改和需要完全控制的任务" },
   };
+  const developmentEngineReadiness = Object.fromEntries(Object.keys(developmentEngines).map((id) => [id, { available: id === "pi", version: "" }]));
+  let developmentEngineUpdates = [];
 
   const developmentReasoning = {
     fast: "快速",
@@ -142,7 +199,114 @@
       : developmentEngines[value].hint;
     const presence = $("#developmentEnginePresence");
     if (presence) presence.textContent = developmentEngines[value].presence;
+    $("#developmentEngineLabel").textContent = developmentEngines[value].name.replace("（默认）", "");
+    $("#developmentEngineStatus").textContent = option?.disabled ? "不可用" : "已就绪";
     document.body.dataset.developmentEngine = value;
+    renderDevelopmentEnginePicker();
+  }
+
+  function engineCapabilityLabels(engine) {
+    const capabilities = engine.capabilities || {};
+    const labels = [];
+    if (capabilities.eventDelivery === "live") labels.push("实时过程");
+    else if (capabilities.eventDelivery === "after-run") labels.push("运行后记录");
+    else labels.push("完成后摘要");
+    if (capabilities.sessionResume) labels.push("继续会话");
+    if (capabilities.isolation === "always" || capabilities.isolation === "develop-only") labels.push("隔离修改");
+    if (engine.id === "codex") labels.push("三档权限");
+    return labels.slice(0, 3);
+  }
+
+  function renderDevelopmentEnginePicker() {
+    const list = $("#developmentEngineList");
+    if (!list) return;
+    const selected = developmentEngineValue();
+    list.innerHTML = Object.entries(developmentEngines).map(([id, engine]) => {
+      const readiness = developmentEngineReadiness[id] || { available: false, version: "" };
+      const capabilities = engineCapabilityLabels({ id, capabilities: engine.capabilities });
+      return `<button class="development-engine-option${id === selected ? " is-selected" : ""}" type="button" role="option" data-development-engine-option="${escapeHtml(id)}" aria-selected="${id === selected}" ${readiness.available ? "" : "disabled"}>
+        <span class="development-engine-monogram" aria-hidden="true">${escapeHtml(id === "opencode" ? "OC" : id === "codex" ? "CX" : id.slice(0, 2).toUpperCase())}</span>
+        <span class="development-engine-option-copy"><span><b>${escapeHtml(engine.name.replace("（默认）", ""))}</b>${id === "pi" ? "<em>推荐</em>" : ""}</span><strong>${escapeHtml(engine.hint)}</strong><small>${escapeHtml(engine.bestFor)}</small><span class="development-engine-badges">${capabilities.map((label) => `<i>${escapeHtml(label)}</i>`).join("")}</span></span>
+        <span class="development-engine-ready"><i></i><b>${readiness.available ? "可用" : "未安装"}</b><small>${escapeHtml(readiness.version || "")}</small></span>
+      </button>`;
+    }).join("");
+  }
+
+  function renderDevelopmentEngineUpdates(snapshot = {}) {
+    developmentEngineUpdates = Array.isArray(snapshot.items) ? snapshot.items : developmentEngineUpdates;
+    const updates = developmentEngineUpdates.filter((item) => item.updateAvailable);
+    const notice = $("#developmentEngineUpdateNotice");
+    notice.hidden = updates.length === 0;
+    $("#developmentEngineUpdateCount").textContent = updates.length ? String(updates.length) : "";
+    const list = $("#developmentEngineUpdateList");
+    if (!list) return;
+    if (snapshot.checking) {
+      list.innerHTML = "<p>正在检查五个开发引擎的最新版本…</p>";
+      return;
+    }
+    if (snapshot.error && !developmentEngineUpdates.length) {
+      list.innerHTML = `<div class="development-engine-update-empty"><b>暂时无法检查版本</b><p>${escapeHtml(snapshot.error)}</p></div>`;
+      return;
+    }
+    if (!updates.length) {
+      list.innerHTML = '<div class="development-engine-update-empty"><b>所有引擎均为当前版本</b><p>启动时会再次自动检查。</p></div>';
+      return;
+    }
+    list.innerHTML = updates.map((item) => `<article class="development-engine-update-item ${item.risk === "review" ? "needs-review" : "is-compatible"}">
+      <span class="development-engine-monogram" aria-hidden="true">${escapeHtml(item.engine === "opencode" ? "OC" : item.engine === "codex" ? "CX" : item.engine.slice(0, 2).toUpperCase())}</span>
+      <div><header><b>${escapeHtml(item.name)}</b><em>${item.risk === "review" ? "需要确认" : "兼容检查通过"}</em></header><p><span>${escapeHtml(item.currentVersion)}</span><i>→</i><strong>${escapeHtml(item.latestVersion)}</strong></p><ul>${item.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul></div>
+      <button type="button" data-upgrade-engine="${escapeHtml(item.engine)}" data-upgrade-version="${escapeHtml(item.latestVersion)}">${item.risk === "review" ? "查看并升级" : "升级"}</button>
+    </article>`).join("");
+  }
+
+  async function loadDevelopmentEngineUpdates(force = false) {
+    const status = $("#developmentEngineUpdateStatus");
+    if (force) status.textContent = "正在重新检查…";
+    try {
+      const snapshot = await api(force ? "/api/development/engine-updates/check" : "/api/development/engine-updates", force ? { method: "POST", body: "{}" } : {});
+      renderDevelopmentEngineUpdates(snapshot);
+      status.textContent = snapshot.error ? `上次检查未完成：${snapshot.error}` : snapshot.checkedAt ? `检查时间：${new Date(snapshot.checkedAt).toLocaleString("zh-CN")}` : "启动检查正在进行";
+      return snapshot;
+    } catch (error) {
+      status.textContent = error.message;
+      return null;
+    }
+  }
+
+  function confirmRiskyEngineUpdate(item) {
+    const dialog = $("#developmentEngineRiskDialog");
+    $("#developmentEngineRiskTitle").textContent = `${item.name} ${item.latestVersion} 可能不兼容`;
+    $("#developmentEngineRiskText").textContent = item.reasons.join(" ");
+    return new Promise((resolve) => {
+      dialog.addEventListener("close", () => resolve(dialog.returnValue === "confirm"), { once: true });
+      dialog.showModal();
+    });
+  }
+
+  async function upgradeDevelopmentEngine(button) {
+    const engine = button.dataset.upgradeEngine;
+    const version = button.dataset.upgradeVersion;
+    const item = developmentEngineUpdates.find((candidate) => candidate.engine === engine && candidate.latestVersion === version);
+    if (!item) return;
+    const acceptRisk = item.risk === "review" ? await confirmRiskyEngineUpdate(item) : false;
+    if (item.risk === "review" && !acceptRisk) return;
+    const status = $("#developmentEngineUpdateStatus");
+    button.disabled = true;
+    button.textContent = "正在升级…";
+    status.textContent = `正在安装并验证 ${item.name}，请不要关闭小丑鱼…`;
+    try {
+      const result = await api("/api/development/engine-updates/upgrade", {
+        method: "POST",
+        body: JSON.stringify({ engine, latestVersion: version, acceptRisk }),
+      });
+      developmentEngineUpdates = developmentEngineUpdates.map((candidate) => candidate.engine === engine ? result.item : candidate);
+      renderDevelopmentEngineUpdates({ items: developmentEngineUpdates });
+      status.textContent = "升级和验证已完成，请重启小丑鱼后使用新版本。";
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = item.risk === "review" ? "查看并升级" : "升级";
+      status.textContent = error.message;
+    }
   }
 
   function setDevelopmentEngine(value) {
@@ -254,10 +418,16 @@
   async function loadDevelopmentEngines() {
     try {
       const result = await api("/api/platform/readiness");
+      for (const manifest of result.development?.enginePlugins || []) {
+        if (!Object.hasOwn(developmentEngines, manifest.id)) continue;
+        developmentEngines[manifest.id].capabilities = manifest.capabilities || {};
+        developmentEngines[manifest.id].hint = manifest.presentation?.tagline || developmentEngines[manifest.id].hint;
+        developmentEngines[manifest.id].bestFor = manifest.presentation?.bestFor || developmentEngines[manifest.id].bestFor;
+      }
       for (const [id, engine] of Object.entries(developmentEngines)) {
-        if (id === "pi") continue;
         const option = $("#developmentEngine").querySelector(`option[value="${id}"]`);
-        option.disabled = result.development?.[id]?.available !== true;
+        developmentEngineReadiness[id] = result.development?.[id] || { available: false, version: "" };
+        option.disabled = developmentEngineReadiness[id].available !== true;
         option.textContent = option.disabled ? `${engine.name}（不可用）` : engine.name;
       }
       setDevelopmentEngine(preference.defaultDevelopmentEngine);
@@ -270,6 +440,7 @@
       }
       setDevelopmentEngine("pi");
     }
+    renderDevelopmentEnginePicker();
   }
 
   async function loadDevelopmentModels() {
@@ -345,9 +516,50 @@
     setDevelopmentEngine($("#developmentEngine").value);
     persistTaskSettings();
   });
+  $("#developmentEngineTrigger").addEventListener("click", () => $("#developmentEngineDialog").showModal());
+  $("#developmentEngineList").addEventListener("click", (event) => {
+    const option = event.target.closest("[data-development-engine-option]");
+    if (!option || option.disabled) return;
+    setDevelopmentEngine(option.dataset.developmentEngineOption);
+    persistTaskSettings();
+    $("#developmentEngineDialog").close();
+    $("#developmentEngineTrigger").focus();
+  });
+  $("#developmentEngineUpdateNotice").addEventListener("click", () => $("#developmentEngineUpdateDialog").showModal());
+  $("#checkDevelopmentEngineUpdates").addEventListener("click", () => { void loadDevelopmentEngineUpdates(true); });
+  $("#developmentEngineUpdateList").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-upgrade-engine]");
+    if (button) void upgradeDevelopmentEngine(button);
+  });
   $("#developmentModel").addEventListener("change", persistTaskSettings);
   $("#developmentReasoning").addEventListener("change", persistTaskSettings);
   $("#installDependencies").addEventListener("change", persistTaskSettings);
+
+  // 项目目录：点击复制完整地址
+  const workspaceChip = $(".development-project-chip");
+  let workspaceChipTimer = null;
+  async function copyWorkspacePath() {
+    const hint = $("#workspaceHint");
+    const value = (hint.textContent || "").trim();
+    if (!value || value.includes("新项目") || value.includes("正在读取")) return;
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      return;
+    }
+    const original = value;
+    hint.textContent = "目录地址已复制";
+    workspaceChip.classList.add("is-copied");
+    clearTimeout(workspaceChipTimer);
+    workspaceChipTimer = setTimeout(() => {
+      if (hint.textContent === "目录地址已复制") hint.textContent = original;
+      workspaceChip.classList.remove("is-copied");
+    }, 1400);
+  }
+  workspaceChip.addEventListener("click", copyWorkspacePath);
+  workspaceChip.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void copyWorkspacePath(); }
+  });
 
   function developmentJobs(items) {
     return items.filter((job) => job.payload?.capabilityId === "project-development");
@@ -420,6 +632,81 @@
     return `<article class="coding-message ${role}"><header>${avatar}<b>${escapeHtml(title)}</b></header><div>${escapeHtml(content).replace(/\n/g, "<br>")}</div>${extra}</article>`;
   }
 
+  function runComparisonCard(turn) {
+    const comparison = turn.result?.data?.artifact?.metadata?.developmentComparison;
+    if (!comparison) return "";
+    const changes = [
+      comparison.addedFiles?.length ? `新增涉及 ${comparison.addedFiles.length} 个文件` : "",
+      comparison.removedFiles?.length ? `${comparison.removedFiles.length} 个上轮文件本轮未改` : "",
+      comparison.contextAdded || comparison.contextRemoved ? `上下文 +${comparison.contextAdded || 0}/-${comparison.contextRemoved || 0}` : "上下文保持一致",
+      comparison.engineChanged ? "已切换开发引擎" : "",
+    ].filter(Boolean);
+    return `<details class="development-run-comparison">
+      <summary><span><b>与上一次相比</b><small>${escapeHtml(comparison.summary || "本轮结果已完成")}</small></span><span data-app-icon="chevron-down" aria-hidden="true"><span></span></span></summary>
+      <div><p>${escapeHtml(changes.join(" · "))}</p>${comparison.retainedFiles?.length ? `<small>连续修改：${escapeHtml(comparison.retainedFiles.slice(0, 8).join("、"))}</small>` : ""}</div>
+    </details>`;
+  }
+
+  function runEvidenceCard(turn) {
+    const graph = turn.result?.data?.artifact?.metadata?.developmentDecisionGraph;
+    if (!graph?.summary) return "";
+    const summary = graph.summary;
+    return `<details class="development-run-comparison development-evidence-graph">
+      <summary><span><b>本轮依据</b><small>${summary.contexts || 0} 份上下文 · ${summary.decisions || 0} 项决定 · ${summary.checks || 0} 项检查</small></span><span data-app-icon="chevron-down" aria-hidden="true"><span></span></span></summary>
+      <div><p>${summary.files || 0} 个文件进入修改链，${summary.failedChecks ? `${summary.failedChecks} 项检查未通过` : "检查未发现失败"}。</p></div>
+    </details>`;
+  }
+
+  function successfulDevelopmentTurns() {
+    const active = developmentHistory.find((item) => item.id === activeJobId);
+    if (!active) return [];
+    return developmentThread(active).turns.filter((turn) => turn.status === "succeeded" && turn.result?.data?.artifact);
+  }
+
+  function renderDevelopmentRunComparison() {
+    const turns = successfulDevelopmentTurns();
+    const base = turns.find((turn) => turn.id === $("#developmentCompareBase").value) || turns[0];
+    const target = turns.find((turn) => turn.id === $("#developmentCompareTarget").value) || turns.at(-1);
+    if (!base || !target) return;
+    const snapshot = (turn) => {
+      const artifact = turn.result.data.artifact;
+      const development = artifact.metadata?.development || {};
+      return {
+        title: turn.payload?.instruction || turn.payload?.title || "开发版本",
+        engine: development.engine || turn.payload?.developmentEngine || "pi",
+        model: turn.payload?.model || "当前任务模型",
+        reasoning: developmentReasoning[turn.payload?.reasoning] || "标准",
+        files: development.changedFiles || [],
+        passed: (development.checks || []).filter((check) => check.passed).length,
+        failed: (development.checks || []).filter((check) => !check.passed).length,
+        tokens: artifact.metadata?.developmentContext?.tokenEstimate || 0,
+        resumed: development.sessionResumed === true,
+      };
+    };
+    const left = snapshot(base);
+    const right = snapshot(target);
+    const row = (label, first, second) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(first)}</td><td>${escapeHtml(second)}</td></tr>`;
+    $("#developmentCompareResult").innerHTML = `<table><thead><tr><th>项目</th><th>较早版本</th><th>较新版本</th></tr></thead><tbody>
+      ${row("目标", left.title, right.title)}${row("引擎", left.engine, right.engine)}${row("模型", left.model, right.model)}${row("思考", left.reasoning, right.reasoning)}
+      ${row("修改文件", left.files.length ? left.files.join("、") : "没有文件修改", right.files.length ? right.files.join("、") : "没有文件修改")}
+      ${row("检查", `${left.passed} 通过 / ${left.failed} 未通过`, `${right.passed} 通过 / ${right.failed} 未通过`)}
+      ${row("上下文", `约 ${left.tokens.toLocaleString("zh-CN")} 个标记`, `约 ${right.tokens.toLocaleString("zh-CN")} 个标记`)}
+      ${row("会话", left.resumed ? "恢复原会话" : "新会话", right.resumed ? "恢复原会话" : "新会话")}
+    </tbody></table>`;
+  }
+
+  function openDevelopmentRunComparison() {
+    const turns = successfulDevelopmentTurns();
+    if (turns.length < 2) return;
+    const options = turns.map((turn, index) => `<option value="${escapeHtml(turn.id)}">第 ${index + 1} 轮 · ${escapeHtml(String(turn.payload?.instruction || "开发版本").slice(0, 32))}</option>`).join("");
+    $("#developmentCompareBase").innerHTML = options;
+    $("#developmentCompareTarget").innerHTML = options;
+    $("#developmentCompareBase").value = turns[0].id;
+    $("#developmentCompareTarget").value = turns.at(-1).id;
+    renderDevelopmentRunComparison();
+    $("#developmentCompareDialog").showModal();
+  }
+
   function renderProcessPanel(job) {
     const panel = $("#developmentProcess");
     const running = job.status === "queued" || job.status === "running";
@@ -433,11 +720,15 @@
         }, []).slice(-6)
       : [{ status: job.status === "queued" ? "等待开始" : "正在读取项目并建立计划" }];
     const completed = running ? Math.max(0, checkpoints.length - 1) : checkpoints.length;
+    const needsAttention = checkpoints.at(-1)?.data?.runEvent?.type === "needs_attention";
     const wasCollapsed = panel.classList.contains("is-collapsed");
     const rows = checkpoints.map((item, index) => {
       const current = running && index === checkpoints.length - 1;
       const state = current ? "is-current" : failed && index === checkpoints.length - 1 ? "is-error" : "is-complete";
-      return `<li class="${state}"><i></i><span>${escapeHtml(item.status || "正在处理")}</span>${Number.isFinite(item.progress) ? `<small>${item.progress}%</small>` : ""}</li>`;
+      const runEvent = item.data?.runEvent;
+      const eventType = String(runEvent?.type || "progress").replace(/[^a-z_-]/g, "");
+      const label = runEvent?.label || item.status || "正在处理";
+      return `<li class="${state} event-${eventType}"><i></i><span>${escapeHtml(label)}</span>${Number.isFinite(item.progress) ? `<small>${item.progress}%</small>` : ""}</li>`;
     }).join("");
     panel.innerHTML = `<header>
       <div><b>进程</b><span>${completed}/${checkpoints.length}</span></div>
@@ -445,7 +736,7 @@
     </header>
     <div class="development-process-body">
       <ol>${rows}</ol>
-      <footer>${running ? '<span class="progress-spinner"></span>任务会在后台继续运行' : failed ? "任务未完成，可查看记录后重试" : "任务已完成，可查看修改与验证"}</footer>
+      <footer>${running ? '<span class="progress-spinner"></span>任务会在后台继续运行' : failed ? "任务未完成，可查看记录后重试" : needsAttention ? "修改已经准备好，等待你确认写入" : "任务已完成，可查看修改与验证"}</footer>
     </div>`;
     panel.hidden = false;
     panel.classList.toggle("is-collapsed", wasCollapsed);
@@ -471,6 +762,7 @@
     activeJobStatus = status;
     $("#instruction").disabled = running;
     $("#developmentEngine").disabled = running;
+    $("#developmentEngineTrigger").disabled = running;
     $("#developmentModel").disabled = running || $("#developmentModel").options[0]?.textContent === "尚未连接模型";
     $("#developmentReasoning").disabled = running;
     document.querySelectorAll('[name="accessModeChoice"]').forEach((option) => { option.disabled = running; });
@@ -499,6 +791,14 @@
     if (typeof job.payload?.installDependencies === "boolean") {
       $("#installDependencies").checked = job.payload.installDependencies;
     }
+    if (job.payload?.contextBundle) {
+      contextSelection = {
+        selectedPaths: Array.isArray(job.payload.contextBundle.selectedPaths) ? [...job.payload.contextBundle.selectedPaths] : [],
+        includeGitDiff: job.payload.contextBundle.includeGitDiff !== false,
+        autoSelect: job.payload.contextBundle.autoSelect !== false,
+      };
+      updateContextTrigger(job.payload.contextBundle);
+    }
     updateSafetyNote();
     activeJobStatus = job.status;
     placeComposer("active");
@@ -509,13 +809,14 @@
     $("#openReview").hidden = false;
     $("#openReview").href = `/development?job=${encodeURIComponent(job.id)}`;
     renderProcessPanel(job);
+    $("#compareDevelopmentRuns").hidden = thread.turns.filter((turn) => turn.status === "succeeded" && turn.result?.data?.artifact).length < 2;
 
     const html = thread.turns.map((turn) => {
       const instruction = turn.payload?.instruction || turn.payload?.title || "开发任务";
       let turnHtml = messageBlock("user", "你", instruction);
       const isLatest = turn.id === job.id;
       if (turn.status === "succeeded") {
-        turnHtml += messageBlock("assistant", "小丑鱼", turn.result?.summary || "开发任务已经完成。", isLatest ? outcomeActions(turn) : "");
+        turnHtml += messageBlock("assistant", "小丑鱼", turn.result?.summary || "开发任务已经完成。", `${runEvidenceCard(turn)}${runComparisonCard(turn)}${isLatest ? outcomeActions(turn) : ""}`);
       } else if (!["queued", "running"].includes(turn.status)) {
         const reason = turn.error || (turn.status === "cancelled" ? "任务已停止，项目中尚未确认的修改不会写入。" : "这次开发没有完成，请查看记录了解原因。");
         turnHtml += messageBlock("assistant", "小丑鱼", reason, isLatest ? outcomeActions(turn, true) : "");
@@ -616,6 +917,9 @@
     renderedJobId = "";
     renderedThreadRootId = "";
     activeWorkspace = "";
+    contextSelection = { selectedPaths: [], includeGitDiff: true, autoSelect: true };
+    developmentContextFiles = [];
+    updateContextTrigger();
     history.replaceState(null, "", "/develop");
     setTaskTitle("新开发任务");
     setTaskMeta("项目将自动建立");
@@ -625,6 +929,7 @@
     placeComposer("hero");
     setComposerState("idle");
     $("#openReview").hidden = true;
+    $("#compareDevelopmentRuns").hidden = true;
     $("#developmentProcess").hidden = true;
     $("#developmentProcess").classList.remove("is-collapsed");
     $("#developmentProcess").closest(".task-workbench-main").classList.remove("has-process");
@@ -654,6 +959,30 @@
   transcript.addEventListener("click", (event) => {
     if (event.target.closest("[data-continue-task]")) $("#instruction").focus();
   });
+
+  $("#developmentContextToggle").onclick = openContextDialog;
+  $("#developmentContextSearch").oninput = renderContextFiles;
+  $("#developmentContextFiles").onchange = (event) => {
+    const input = event.target.closest("[data-context-path]");
+    if (!input) return;
+    const selected = new Set(contextSelection.selectedPaths);
+    if (input.checked) selected.add(input.dataset.contextPath);
+    else selected.delete(input.dataset.contextPath);
+    contextSelection.selectedPaths = [...selected].slice(0, 12);
+    updateContextTrigger();
+    renderContextFiles();
+  };
+  $("#developmentContextDiff").onchange = (event) => {
+    contextSelection.includeGitDiff = event.target.checked;
+    updateContextTrigger();
+  };
+  $("#developmentContextAuto").onchange = (event) => {
+    contextSelection.autoSelect = event.target.checked;
+    updateContextTrigger();
+  };
+  $("#compareDevelopmentRuns").onclick = openDevelopmentRunComparison;
+  $("#developmentCompareBase").onchange = renderDevelopmentRunComparison;
+  $("#developmentCompareTarget").onchange = renderDevelopmentRunComparison;
 
   $("#developmentProcess").onclick = (event) => {
     const toggle = event.target.closest("[data-process-toggle]");
@@ -744,6 +1073,7 @@
           reasoning: developmentReasoningValue(),
           format: "md",
           memoryMode: "preferences",
+          contextSelection,
           idempotencyKey: crypto.randomUUID(),
         }),
       });
@@ -765,8 +1095,12 @@
   };
 
   window.ClownfishIcons?.hydrate();
+  updateContextTrigger();
   loadManagedProjectsRoot();
   loadDevelopmentEngines();
+  void loadDevelopmentEngineUpdates().then((snapshot) => {
+    if (!snapshot?.checkedAt || snapshot.checking) setTimeout(() => { void loadDevelopmentEngineUpdates(); }, 3_000);
+  });
   loadDevelopmentModels();
   if (activeJobId) loadJobs(true);
   else loadJobs(false);

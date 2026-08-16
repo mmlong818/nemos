@@ -129,6 +129,27 @@ type PiModule = typeof import("@earendil-works/pi-coding-agent");
 // SessionManager 的构造函数是私有的，只能从工厂方法的返回类型反推实例类型。
 type DevelopmentSessionManager = ReturnType<PiModule["SessionManager"]["create"]>;
 
+export function piDevelopmentEnvironment(): { available: boolean; version: string } {
+  for (const start of [resolve(process.cwd()), resolve(__dirname, "..", "..")]) {
+    let cursor = start;
+    while (true) {
+      const packageFile = resolve(cursor, "node_modules", "@earendil-works", "pi-coding-agent", "package.json");
+      if (existsSync(packageFile) && statSync(packageFile).isFile()) {
+        try {
+          const value = JSON.parse(readFileSync(packageFile, "utf8")) as { version?: string };
+          return { available: true, version: value.version ? `Pi Agent ${value.version}` : "Pi Agent" };
+        } catch {
+          return { available: false, version: "" };
+        }
+      }
+      const parent = dirname(cursor);
+      if (parent === cursor) break;
+      cursor = parent;
+    }
+  }
+  return { available: false, version: "" };
+}
+
 export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDevelopmentResult> {
   if (Number(process.versions.node.split(".")[0]) < 22) throw new Error("开发能力需要 Node.js 22.19 或更高版本。");
   const workspace = validateDevelopmentWorkspace(input.workspacePath);
@@ -241,7 +262,7 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
     }
     if (event.type !== "tool_execution_start") return;
     toolCalls += 1;
-    input.onProgress?.(`正在执行：${developmentToolLabel(String(event.toolName || ""))}`, Math.min(78, 22 + toolCalls * 8));
+    if (!input.onTelemetry) input.onProgress?.(`正在执行：${developmentToolLabel(String(event.toolName || ""))}`, Math.min(78, 22 + toolCalls * 8));
   });
   const abort = () => { void session.abort(); };
   input.signal?.addEventListener("abort", abort, { once: true });
@@ -292,17 +313,39 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
   }
 }
 
+export type DevelopmentIsolationFailure = "not-a-repo" | "dirty";
+
+// 自动建立的任务目录是全新空目录：初始化成 Git 项目后，外接引擎就能在隔离工作树中开发。
+// 有内容的目录保持原样——不能擅自把用户文件卷进版本库。
+async function initializeEmptyGitWorkspace(workspace: string): Promise<boolean> {
+  try {
+    if (readdirSync(workspace).length > 0) return false;
+    await execFileAsync("git", ["-C", workspace, "init"], { windowsHide: true, timeout: 10_000, maxBuffer: 100_000 });
+    await execFileAsync("git", ["-C", workspace, "-c", "user.name=Clownfish", "-c", "user.email=clownfish@localhost", "commit", "--allow-empty", "-m", "chore: initialize project"], { windowsHide: true, timeout: 10_000, maxBuffer: 100_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function prepareIsolatedDevelopmentWorkspace(
   workspace: string,
   agentDir: string,
-): Promise<{ workspace: string; isolated: boolean; cleanup: () => Promise<void> }> {
+): Promise<{ workspace: string; isolated: boolean; reason?: DevelopmentIsolationFailure; cleanup: () => Promise<void> }> {
+  const fallback = (reason: DevelopmentIsolationFailure) => ({ workspace, isolated: false, reason, cleanup: async () => undefined });
   try {
-    const rootResult = await execFileAsync("git", ["-C", workspace, "rev-parse", "--show-toplevel"], { windowsHide: true, timeout: 10_000, maxBuffer: 100_000 });
+    let rootResult;
+    try {
+      rootResult = await execFileAsync("git", ["-C", workspace, "rev-parse", "--show-toplevel"], { windowsHide: true, timeout: 10_000, maxBuffer: 100_000 });
+    } catch {
+      if (!(await initializeEmptyGitWorkspace(workspace))) return fallback("not-a-repo");
+      rootResult = await execFileAsync("git", ["-C", workspace, "rev-parse", "--show-toplevel"], { windowsHide: true, timeout: 10_000, maxBuffer: 100_000 });
+    }
     const repositoryRoot = realpathSync(rootResult.stdout.trim());
     const subdirectory = relative(repositoryRoot, workspace);
-    if (subdirectory === ".." || subdirectory.startsWith(`..${sep}`)) return { workspace, isolated: false, cleanup: async () => undefined };
+    if (subdirectory === ".." || subdirectory.startsWith(`..${sep}`)) return fallback("not-a-repo");
     const status = await execFileAsync("git", ["-C", repositoryRoot, "status", "--porcelain"], { windowsHide: true, timeout: 10_000, maxBuffer: 300_000 });
-    if (status.stdout.trim()) return { workspace, isolated: false, cleanup: async () => undefined };
+    if (status.stdout.trim()) return fallback("dirty");
     const worktreesRoot = resolve(agentDir, "worktrees");
     mkdirSync(worktreesRoot, { recursive: true });
     const worktreeRoot = resolve(worktreesRoot, `run-${randomUUID()}`);
@@ -321,7 +364,7 @@ export async function prepareIsolatedDevelopmentWorkspace(
       },
     };
   } catch {
-    return { workspace, isolated: false, cleanup: async () => undefined };
+    return fallback("not-a-repo");
   }
 }
 

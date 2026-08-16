@@ -26,7 +26,7 @@
         <a href="/capabilities" data-app-icon="boxes"><span></span><small>能力</small></a>
         <a href="/office" data-app-icon="file"><span></span><small>文件</small></a>
         <a class="is-current" href="/develop" aria-current="page" data-app-icon="code"><span></span><small>开发</small></a>
-        <a href="/tasks" data-app-icon="work"><span></span><small>工作</small></a>
+        <a href="/tasks" data-app-icon="work"><span></span><small>自动化</small></a>
       </nav>
       <a class="rail-secondary" href="/settings" data-app-icon="settings"><span></span><small>设置</small></a>
     </aside>
@@ -36,20 +36,12 @@
         <div class="task-workbench-title"><div><div class="hname">归档项目</div><div class="htag">开发</div></div></div>
       </header>
       <div class="workbench-body">
-        <aside class="coding-sidebar task-workbench-sidebar archive-sidebar">
-          <header class="coding-sidebar-head task-sidebar-head">
-            <div class="task-sidebar-brand app-search-brand-empty"></div>
-            <a class="task-workbench-new archive-back" href="/develop"><span data-app-icon="code" aria-hidden="true"><span></span></span><span>返回开发</span></a>
-          </header>
-          <section class="task-sidebar-section archive-sidebar-copy">
-            <p>归档只收起项目，不会删除任务记录或开发目录。</p>
-          </section>
-        </aside>
 
         <section class="task-workbench-main archive-main">
           <header class="archive-main-head"><div><small>项目生命周期</small><h1>归档项目</h1><p>恢复后可继续开发；彻底删除只在这里提供。</p></div><span id="archiveCount">正在读取…</span></header>
           <div id="archiveProjectList" class="archive-project-list" aria-live="polite"></div>
           <p id="archiveStatus" class="archive-status" role="status"></p>
+          <p class="archive-footnote">归档只收起项目，不会删除任务记录或开发目录。</p>
         </section>
       </div>
     </main>

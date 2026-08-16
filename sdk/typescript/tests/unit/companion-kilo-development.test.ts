@@ -66,14 +66,14 @@ test("开发入口提供 Pi Agent 默认值和可执行的 Kilo Code 选项", ()
   const html = readFileSync(join(companion, "web", "develop.html"), "utf8");
   const script = readFileSync(join(companion, "web", "assets", "develop-center.js"), "utf8");
   const server = readFileSync(join(companion, "server.ts"), "utf8");
-  const plugins = readFileSync(join(companion, "development-engine-plugins.ts"), "utf8");
+  const plugins = readFileSync(join(companion, "development-engine-plugins", "kilo.ts"), "utf8");
   assert.match(html, /id="developmentEngine"/);
   assert.match(html, /Pi Agent（默认）/);
   assert.match(html, /Kilo Code/);
   assert.match(script, /developmentEngine: developmentEngineValue\(\)/);
   assert.match(script, /function persistTaskSettings\(\)[\s\S]*updateDevelopmentEngineHint\(\);/);
   assert.match(server, /developmentEnginePlugins\.run\(developmentEngine/);
-  assert.match(plugins, /manifest\("kilo", "Kilo Code", "@kilocode\/cli"\)/);
+  assert.match(plugins, /id: "kilo"[\s\S]*name: "Kilo Code"[\s\S]*packageName: "@kilocode\/cli"/);
   assert.match(plugins, /runKiloDevelopment/);
 });
 
