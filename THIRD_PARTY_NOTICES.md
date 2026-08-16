@@ -33,6 +33,10 @@ OpenCode 的 Windows 平台二进制包没有单独填写 `license` 元数据；
 
 `sharp` 的 Windows 与 WebAssembly 预编译包包含按 LGPL-3.0-or-later 提供的 libvips 组件，同时包含 Apache-2.0（WebAssembly 包还包含 MIT）部分。便携包保留对应 npm 包内的 `LICENSE`，并以独立动态库或 WebAssembly 形式使用，不将其许可证扩展到小丑鱼自身代码。
 
+## 视觉素材
+
+`sdk/typescript/examples/companion/web/assets/wallpapers/wallpaper-anime-teal.png` 是用户提供的视觉素材，不包含在本仓库的软件许可证授权范围内；其中可能涉及的角色、商标与其他权利仍归各自权利人所有。
+
 ## 完整许可证位置
 
 - npm 依赖的许可证随各包保留在便携包的 `app/node_modules/<包名>/` 中；

@@ -1,0 +1,15 @@
+.retained-output-panel { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
+.retained-output-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 8px; }
+.retained-output-head h3 { margin: 0 0 5px; font-size: 16px; }
+.retained-output-head p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.retained-output-head > span { min-width: 24px; height: 24px; display: grid; place-items: center; border-radius: 12px; background: var(--soft); color: var(--muted); font-size: 11px; }
+.retained-output-list { display: grid; }
+.retained-output-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 15px 0; border-top: 1px solid var(--line); }
+.retained-output-row h4 { margin: 0 0 5px; font-size: 14px; }
+.retained-output-row p { margin: 0; color: var(--muted); font-size: 11px; }
+.retained-output-actions { display: flex; gap: 7px; }
+.retained-output-actions .button, .retained-output-actions button { min-height: 34px; padding: 0 11px; font-size: 12px; }
+@media (max-width: 800px) {
+  .retained-output-row { grid-template-columns: 1fr; }
+  .retained-output-actions { flex-wrap: wrap; }
+}

@@ -305,6 +305,11 @@ export interface CapabilityDevelopmentReceipt {
   isolatedWorkspace?: boolean;
 }
 
+export interface RetainedCapabilityArtifact extends CapabilityArtifact {
+  retainedAt: string;
+  originalTaskTitle?: string;
+}
+
 export interface CapabilityArtifactProof {
   version: 1;
   level: "produced" | "validated" | "verified" | "approved";
@@ -347,6 +352,7 @@ export interface CapabilitySnapshot {
   spaces: CapabilitySpace[];
   tasks: CapabilityTask[];
   artifacts: CapabilityArtifact[];
+  retainedArtifacts: RetainedCapabilityArtifact[];
   tools: CapabilityToolSummary[];
   sourceConnectors: SourceConnector[];
   roadmap: CapabilityRoadmap;
@@ -463,6 +469,7 @@ export class CapabilityRuntime {
   private readonly spacesFile: string;
   private readonly tasksFile: string;
   private readonly artifactsFile: string;
+  private readonly retainedArtifactsFile: string;
   private readonly intakesFile: string;
   private readonly artifactDir: string;
   private readonly skillsDir: string;
@@ -473,6 +480,7 @@ export class CapabilityRuntime {
   private spaces: CapabilitySpace[] = [];
   private tasks: CapabilityTask[] = [];
   private artifacts: CapabilityArtifact[] = [];
+  private retainedArtifacts: RetainedCapabilityArtifact[] = [];
   private intakes: DemandIntakeReport[] = [];
 
   constructor(private readonly opts: CapabilityRuntimeOptions) {
@@ -482,6 +490,7 @@ export class CapabilityRuntime {
     this.spacesFile = join(root, "spaces.json");
     this.tasksFile = join(root, "tasks.json");
     this.artifactsFile = join(root, "artifacts.json");
+    this.retainedArtifactsFile = join(root, "retained-artifacts.json");
     this.intakesFile = join(root, "intakes.json");
     this.skillsDir = join(root, "skills");
     this.skillUsageFile = join(this.skillsDir, ".usage.json");
@@ -501,6 +510,7 @@ export class CapabilityRuntime {
       spaces: [...this.spaces].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       tasks: [...this.tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       artifacts: [...this.artifacts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 80),
+      retainedArtifacts: [...this.retainedArtifacts].sort((a, b) => b.retainedAt.localeCompare(a.retainedAt)),
       tools: this.opts.toolRegistry?.list() ?? [],
       sourceConnectors: listSourceConnectors(),
       roadmap: buildCapabilityRoadmap(),
@@ -1244,8 +1254,18 @@ export class CapabilityRuntime {
     const removedArtifacts = this.artifacts.filter((artifact) => taskIds.has(artifact.taskId));
     this.tasks = this.tasks.filter((task) => !taskIds.has(task.id));
     this.artifacts = this.artifacts.filter((artifact) => !taskIds.has(artifact.taskId));
-    // keepFiles：只移除记录，产出文件保留在本机目录
-    if (!options?.keepFiles) {
+    if (options?.keepFiles) {
+      const retainedAt = new Date().toISOString();
+      const taskTitles = new Map(removedTasks.map((task) => [task.id, task.title]));
+      const removedIds = new Set(removedArtifacts.map((artifact) => artifact.id));
+      this.retainedArtifacts = this.retainedArtifacts.filter((artifact) => !removedIds.has(artifact.id));
+      this.retainedArtifacts.push(...removedArtifacts.map((artifact) => ({
+        ...artifact,
+        retainedAt,
+        originalTaskTitle: taskTitles.get(artifact.taskId),
+      })));
+      this.saveRetainedArtifacts();
+    } else {
       for (const artifact of removedArtifacts) {
         this.removeArtifactFile(artifact.file);
         if (artifact.previewFile) this.removeArtifactFile(artifact.previewFile);
@@ -1254,6 +1274,16 @@ export class CapabilityRuntime {
     this.saveTasks();
     this.saveArtifacts();
     return { tasks: removedTasks.length, artifacts: removedArtifacts.length };
+  }
+
+  deleteRetainedArtifact(id: string): boolean {
+    const artifact = this.retainedArtifacts.find((item) => item.id === id);
+    if (!artifact) return false;
+    this.removeArtifactFile(artifact.file);
+    if (artifact.previewFile) this.removeArtifactFile(artifact.previewFile);
+    this.retainedArtifacts = this.retainedArtifacts.filter((item) => item.id !== id);
+    this.saveRetainedArtifacts();
+    return true;
   }
 
   projectTaskExecution(input: CapabilityTaskExecution & { taskId: string }): CapabilityTask | null {
@@ -1949,7 +1979,7 @@ export class CapabilityRuntime {
   }
 
   sendArtifact(res: ServerResponse, id: string | null, disposition: "inline" | "attachment" = "inline"): boolean {
-    const artifact = this.artifacts.find((item) => item.id === id);
+    const artifact = this.findVisibleArtifact(id);
     if (!artifact) return false;
     const root = resolve(this.artifactDir);
     const file = resolve(artifact.file);
@@ -1977,7 +2007,7 @@ export class CapabilityRuntime {
   }
 
   previewArtifact(res: ServerResponse, id: string | null): boolean {
-    const artifact = this.artifacts.find((item) => item.id === id);
+    const artifact = this.findVisibleArtifact(id);
     if (!artifact) return false;
     const root = resolve(this.artifactDir);
     const file = resolve(artifact.previewFile || artifact.file);
@@ -2045,6 +2075,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
       storyline: normalizeTaskStoryline(task.storyline, task.createdAt),
     }));
     this.artifacts = readJson<CapabilityArtifact[]>(this.artifactsFile, []);
+    this.retainedArtifacts = readJson<RetainedCapabilityArtifact[]>(this.retainedArtifactsFile, []);
     this.intakes = readJson<DemandIntakeReport[]>(this.intakesFile, []);
   }
 
@@ -2124,6 +2155,15 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
 
   private saveArtifacts(): void {
     writeJson(this.artifactsFile, this.artifacts.slice(-200));
+  }
+
+  private saveRetainedArtifacts(): void {
+    writeJson(this.retainedArtifactsFile, this.retainedArtifacts.slice(-200));
+  }
+
+  private findVisibleArtifact(id: string | null): CapabilityArtifact | undefined {
+    return this.artifacts.find((item) => item.id === id)
+      ?? this.retainedArtifacts.find((item) => item.id === id);
   }
 
   private removeArtifactFile(file: string): void {
