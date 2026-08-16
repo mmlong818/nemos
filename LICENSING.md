@@ -1,6 +1,6 @@
 # 授权结构
 
-更新：2026-08-13
+更新：2026-08-16
 
 本仓库采用**双授权结构**。这份文件是授权范围的权威说明；`LICENSE` 文件只是其中一部分的许可证正文。
 
@@ -41,20 +41,19 @@
 
 ## 第三方依赖
 
-2026-08-10 全量核查：`sdk/typescript` 的依赖树共 236 个包，**无 AGPL、SSPL、BUSL、Commons Clause、CC-BY-NC 或其他限制商业使用的许可证**。
+2026-08-16 按当前锁文件和已安装树重新核查，共 708 个唯一的“包名 + 版本”条目。主要许可证为 MIT、Apache-2.0、BSD、ISC 与 BlueOak；未发现 AGPL、SSPL、BUSL、Commons Clause 或 CC-BY-NC。
 
-两处需说明：
+需要明确记录的例外：
 
 - `jszip@3.10.1` 为 `MIT OR GPL-3.0-or-later` 双许可，本项目选择 MIT；
-- `png-js@1.1.0`（`pdfkit` 的传递依赖）未在 `package.json` 声明许可证，但包内 `LICENSE` 文件为 MIT。
+- `png-js@1.1.0` 未在 `package.json` 声明许可证，但包内 `LICENSE` 为 MIT；
+- `opencode-windows-x64@1.18.18` 与 `opencode-windows-x64-baseline@1.18.18` 未单独填写许可证元数据；它们是 MIT 许可的 `opencode-ai@1.18.18` 同版平台二进制发行物，上游仓库同为 MIT；
+- `@img/sharp-win32-x64@0.35.3` 和 `@img/sharp-wasm32@0.35.3` 含 LGPL-3.0-or-later 的 libvips 组件。便携包保留其完整许可证，并以独立动态库或 WebAssembly 形式使用；
+- `fast-xml-parser` 是 MIT 直接依赖，此前也已作为传递依赖存在。
 
-依赖层面不构成商业化阻碍。新增依赖时应复核许可证。
+因此不能再笼统写成“所有依赖均为宽松许可证”。当前分发方式可以保留项目自身授权边界，但必须携带第三方许可证。主要组件清单与许可证位置见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。新增或升级依赖后必须重新核查。
 
-2026-08-10 增补：`fast-xml-parser` 提升为直接依赖（MIT）。它此前已作为
-`@aws-sdk/xml-builder` 的传递依赖存在于树中，因此没有引入新的许可证主体。
-复核后依赖树共 245 个包，受限许可仍为零。
-
-2026-08-13 本机重新统计当前安装树为 263 个包。这个数字只证明依赖数量，不等同于新的许可证审计；正式发布前仍须对当前锁文件重新执行完整许可证复核，不能沿用 2026-08-10 的结论冒充最新结果。
+仓库的 `npm run licenses:check` 会扫描实际安装树：出现明确禁止的许可证或未经登记的许可证元数据缺失时直接失败，并已纳入 `npm run check`。人工判断仍以许可证原文和真实分发方式为准，自动检查只负责防止明显回退。
 
 ### 一条与分发方式相关的依赖约束
 

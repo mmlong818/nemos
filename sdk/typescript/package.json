@@ -47,8 +47,9 @@
     "quality:development-corpus": "tsx scripts/development-corpus.ts",
     "vendor:docx-engine": "tsc -p examples/companion/vendor/docx-engine/tsconfig.json",
     "vendor:pptx-engine": "tsc -p examples/companion/vendor/pptx-engine/tsconfig.json",
+    "licenses:check": "node scripts/audit-licenses.mjs",
     "prepublishOnly": "npm run build",
-    "check": "npm run build && npm run typecheck && npm test"
+    "check": "npm run build && npm run typecheck && npm run licenses:check && npm test"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",
