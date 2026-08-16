@@ -5258,6 +5258,13 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, state, snapshot: capabilities.snapshot() });
       return;
     }
+    if (req.method === "POST" && url === "/api/capabilities/retained-artifact/delete") {
+      const body = (await readBody(req)) as { id?: string; confirm?: boolean };
+      if (!body.id || body.confirm !== true) { send(res, 400, { error: "需要确认删除保留文件" }); return; }
+      if (!capabilities.deleteRetainedArtifact(body.id)) { send(res, 404, { error: "保留文件不存在" }); return; }
+      send(res, 200, { ok: true, snapshot: capabilities.snapshot() });
+      return;
+    }
     if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact/preview") {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id");
       if (!capabilities.previewArtifact(res, id)) send(res, 404, { error: "artifact not found" });

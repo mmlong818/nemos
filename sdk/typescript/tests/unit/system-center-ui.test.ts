@@ -136,6 +136,14 @@ test("设置中心统一模型、开发、连接与本机数据", () => {
   assert.match(script, /\/api\/runtime/);
   assert.match(script, /`\/api\/data-sync\/\$\{operation\}`/);
   assert.match(script, /storageOperation\("push"\)/);
+  assert.match(script, /id=\"retainedOutputList\"/);
+  assert.match(script, /\/api\/capabilities\/retained-artifact\/delete/);
+  assert.match(server, /\/api\/capabilities\/retained-artifact\/delete/);
+});
+
+test("任务页不再展示任务记录与分支弹窗", () => {
+  const chat = readWeb("index.html");
+  assert.doesNotMatch(chat, /id="topChat"|id="topDrop"|id="conversationmodal"|>任务与分支</);
 });
 
 test("窄屏任务页收起会话列表并保留一级导航", () => {

@@ -47,6 +47,30 @@
   $("#testStorage").onclick = () => storageOperation("test");
   $("#pushStorage").onclick = () => storageOperation("push");
   $("#pullStorage").onclick = () => { if (confirm("从服务器下载的数据会在重启后替换本机同步数据。当前模型密钥不会被替换。继续吗？")) storageOperation("pull"); };
+  function ensureRetainedOutputPanel() {
+    const storagePanel = document.querySelector('[data-panel="storage"]');
+    if (!storagePanel || $("#retainedOutputList")) return;
+    storagePanel.insertAdjacentHTML("beforeend", `<section class="retained-output-panel" aria-labelledby="retainedOutputTitle"><div class="retained-output-head"><div><h3 id="retainedOutputTitle">保留的产出</h3><p>删除归档记录时选择保留的文件会集中放在这里。</p></div><span id="retainedOutputCount">0</span></div><div class="retained-output-list" id="retainedOutputList"><p class="status">正在读取…</p></div></section>`);
+  }
+  function renderRetainedOutputs(items = []) {
+    $("#retainedOutputCount").textContent = String(items.length);
+    $("#retainedOutputList").innerHTML = items.length ? items.map((item) => `<article class="retained-output-row"><div><h4>${escapeHtml(item.title || item.originalTaskTitle || "保留文件")}</h4><p>${escapeHtml(String(item.format || "file").toUpperCase())} · 保留于 ${escapeHtml(new Date(item.retainedAt || item.createdAt).toLocaleString("zh-CN"))}</p></div><div class="retained-output-actions"><a class="button" target="_blank" rel="noopener" href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.id)}">查看</a><a class="button" href="/api/capabilities/artifact?id=${encodeURIComponent(item.id)}&download=1">下载</a><button type="button" data-delete-retained="${escapeHtml(item.id)}">彻底删除</button></div></article>`).join("") : `<p class="status">目前没有单独保留的产出文件。</p>`;
+  }
+  async function loadRetainedOutputs() {
+    ensureRetainedOutputPanel();
+    try { renderRetainedOutputs((await api("/api/capabilities")).retainedArtifacts || []); }
+    catch (error) { $("#retainedOutputList").innerHTML = `<p class="status error">${escapeHtml(error.message)}</p>`; }
+  }
+  ensureRetainedOutputPanel();
+  $("#retainedOutputList").onclick = async (event) => {
+    const button = event.target.closest("[data-delete-retained]");
+    if (!button || !confirm("彻底删除这个文件？删除后无法恢复。")) return;
+    button.disabled = true;
+    try {
+      await api("/api/capabilities/retained-artifact/delete", { method: "POST", body: JSON.stringify({ id: button.dataset.deleteRetained, confirm: true }) });
+      await loadRetainedOutputs();
+    } catch (error) { button.disabled = false; alert(error.message); }
+  };
   async function loadPrivacy() { try { const state = await api("/api/runtime"); $("#privacyList").innerHTML = `<div class="privacy-row"><div><b>本机数据目录</b><p>${escapeHtml(state.dataDir)}</p></div></div><div class="privacy-row"><div><b>记忆与偏好</b><p>可查看整理后的记忆，不展示内部原始归档。</p></div><a class="button" href="/memory">查看记忆</a></div><div class="privacy-row"><div><b>运行与审计记录</b><p>能力执行、确认和异常都可以追溯。</p></div><a class="button" href="/runs">查看记录</a></div><div class="privacy-row"><div><b>备份</b><p>${state.backups?.latest ? `最近备份：${escapeHtml(state.backups.latest)}` : "暂未读取到备份记录"}</p></div></div>`; } catch (error) { $("#privacyList").innerHTML = `<p class="status error">${escapeHtml(error.message)}</p>`; } }
-  window.ClownfishIcons?.hydrate(); activate(location.hash.slice(1)); loadDevelopmentPreference(); loadModel(); loadPlatform(); loadStorage(); loadPrivacy();
+  window.ClownfishIcons?.hydrate(); activate(location.hash.slice(1)); loadDevelopmentPreference(); loadModel(); loadPlatform(); loadStorage(); loadRetainedOutputs(); loadPrivacy();
 })();

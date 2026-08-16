@@ -40,6 +40,10 @@
             <button class="is-current" type="button" data-capability-nav data-view-target="start" data-app-icon="spark"><span aria-hidden="true"></span><span>开始</span></button>
             <button type="button" data-capability-nav data-view-target="record" data-app-icon="bookmark"><span aria-hidden="true"></span><span>归档</span><span class="count" id="runningCount" hidden>0</span></button>
           </nav>
+          <section class="capability-drafts" id="capabilityDraftSection" hidden aria-labelledby="capabilityDraftTitle">
+            <div class="capability-drafts-heading"><span id="capabilityDraftTitle">未完成</span><span id="capabilityDraftCount">0</span></div>
+            <div class="capability-draft-list" id="capabilityDraftList"></div>
+          </section>
         </aside>
 
         <div class="capability-content">
@@ -60,7 +64,7 @@
             <label class="sr-only" for="goalInput">任务目标</label>
             <textarea id="goalInput" rows="3" maxlength="2000" placeholder="例如：把这份季度总结做成一套适合汇报的演示稿"></textarea>
             <div class="goal-actions">
-              <button class="quiet-button" type="button" id="continueLast" hidden>继续未完成内容</button>
+              <span></span>
               <button class="primary-button" type="submit">自动选择能力</button>
             </div>
           </form>
@@ -87,7 +91,7 @@
                 <h2 id="launchTitle">做 PPT</h2>
                 <p class="launch-summary" id="launchSummary">生成可放映、可继续编辑的演示文稿</p>
               </div>
-              <button class="quiet-button" type="button" id="closeLaunch">更换能力</button>
+              <button class="quiet-button" type="button" id="closeLaunch" aria-label="关闭当前能力">关闭</button>
             </div>
             <div class="launch-layout">
               <div class="launch-form">
