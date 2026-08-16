@@ -2021,6 +2021,23 @@ export class CapabilityRuntime {
       createReadStream(file).pipe(res);
       return true;
     }
+    if (["doc", "pptx", "xlsx"].includes(artifact.format)) {
+      res.writeHead(302, {
+        "Location": `/office?artifact=${encodeURIComponent(artifact.id)}`,
+        "Cache-Control": "no-store",
+      });
+      res.end();
+      return true;
+    }
+    if (artifact.format === "pdf") {
+      res.writeHead(200, {
+        "Content-Type": contentType(artifact.format),
+        "Content-Disposition": "inline",
+        "Cache-Control": "no-store",
+      });
+      createReadStream(file).pipe(res);
+      return true;
+    }
     const raw = readFileSync(file, "utf8");
     const downloadUrl = `/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}`;
     const html = `<!doctype html>

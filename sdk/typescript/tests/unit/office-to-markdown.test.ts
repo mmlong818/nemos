@@ -3,7 +3,7 @@ import test from "node:test";
 import JSZip from "jszip";
 
 import { exportOfficeDocument } from "../../examples/companion/office-export.js";
-import { convertOfficeToMarkdown } from "../../examples/companion/office-to-markdown.js";
+import { convertOfficeToMarkdown, preservePdfLineBreaks } from "../../examples/companion/office-to-markdown.js";
 
 test("PDF converts through AnyDoc into an editable Markdown copy", async () => {
   const exported = await exportOfficeDocument({
@@ -15,6 +15,15 @@ test("PDF converts through AnyDoc into an editable Markdown copy", async () => {
   assert.equal(result.sourceFormat, "pdf");
   assert.match(result.markdown, /Quarterly report|Revenue increased/);
   assert.ok(result.notes.some((note) => note.includes("Markdown 编辑副本")));
+});
+
+test("PDF 的视觉换行会成为 Markdown 硬换行", () => {
+  const source = "第一行\n第二行\n\n## 标题\n\n- 列表项\n续行\n\n场景正文 【场景设计】：室内 △ 人物进门 张三（低声）：开始吧";
+  const result = preservePdfLineBreaks(source);
+  assert.match(result, /第一行  \n第二行/);
+  assert.match(result, /- 列表项\n续行/);
+  assert.match(result, /场景正文\n\n【场景设计】/);
+  assert.match(result, /室内\n\n△ 人物进门\n\n张三（低声）：/);
 });
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';

@@ -13,6 +13,7 @@
     "dist",
     "examples/companion/client/dist",
     "examples/companion/client/vendor",
-    "examples/companion/vendor"
+    "examples/companion/vendor",
+    "examples/companion/web/editor-engines"
   ]
 }

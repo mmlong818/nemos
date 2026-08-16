@@ -312,7 +312,7 @@ async function xlsxToMarkdown(fileName: string, data: Uint8Array): Promise<[stri
 // ── PDF ───────────────────────────────────────────────────────────────
 
 async function pdfToMarkdown(fileName: string, data: Uint8Array): Promise<[string, string[]]> {
-  const markdown = await readDocumentAsMarkdown(fileName, data);
+  const markdown = preservePdfLineBreaks(await readDocumentAsMarkdown(fileName, data));
   return [
     markdown,
     [
@@ -320,4 +320,20 @@ async function pdfToMarkdown(fileName: string, data: Uint8Array): Promise<[strin
       "扫描件没有可提取的文字时会是空白，需要先做 OCR。",
     ],
   ];
+}
+
+export function preservePdfLineBreaks(markdown: string): string {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const withVisualBreaks = lines.map((line, index) => {
+    const value = line.trimEnd();
+    const next = lines[index + 1] ?? "";
+    if (!value || !next.trim()) return value;
+    if (/ {2}$|\\$/.test(value)) return value;
+    if (/^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~|\|)/.test(value)) return value;
+    if (/^\s*\|/.test(next)) return value;
+    return `${value}  `;
+  }).join("\n").trim();
+  return withVisualBreaks
+    .replace(/[ \t]+(?=\*\*\d{1,3}-\d{1,3}\*\*)/g, "\n\n")
+    .replace(/[ \t]+(?=(?:【(?:场景设计|道具设计|人物状态)】|△|[\p{L}\p{N}·]{1,12}（[^）\n]{1,16}）：))/gu, "\n\n");
 }

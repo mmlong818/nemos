@@ -8,6 +8,9 @@ const MAX_VERSIONS = 8;
 const MAX_TRASH_DOCUMENTS = 30;
 const JOB_POLL_INTERVAL = 1400;
 const AUTO_CHECKPOINT_INTERVAL = 5 * 60 * 1000;
+const FILE_PANEL_WIDTH_KEY = "clownfish-office-file-panel-width";
+const FILE_PANEL_MIN_WIDTH = 220;
+const FILE_PANEL_MAX_WIDTH = 440;
 const CONVERTED_FILE_KINDS = [
   "doc", "docx", "docm", "odt", "rtf", "epub",
   "ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "odp",
@@ -70,12 +73,79 @@ function formatLabel(kind) {
   })[kind] || "文稿";
 }
 
+function clampFilePanelWidth(value) {
+  return Math.min(FILE_PANEL_MAX_WIDTH, Math.max(FILE_PANEL_MIN_WIDTH, Math.round(Number.parseFloat(value) || 252)));
+}
+
+function setFilePanelWidth(value, persist = false) {
+  const width = clampFilePanelWidth(value);
+  const layout = document.querySelector(".office-layout");
+  const separator = document.querySelector("#filePanelResizer");
+  layout?.style.setProperty("--office-file-panel-width", `${width}px`);
+  separator?.setAttribute("aria-valuenow", String(width));
+  if (persist) localStorage.setItem(FILE_PANEL_WIDTH_KEY, String(width));
+  return width;
+}
+
+function bindFilePanelResize() {
+  const layout = document.querySelector(".office-layout");
+  const separator = document.querySelector("#filePanelResizer");
+  if (!layout || !separator) return;
+  setFilePanelWidth(localStorage.getItem(FILE_PANEL_WIDTH_KEY));
+  let startX = 0;
+  let startWidth = 252;
+  const finish = (event) => {
+    if (!layout.classList.contains("is-resizing-files")) return;
+    layout.classList.remove("is-resizing-files");
+    separator.releasePointerCapture?.(event.pointerId);
+    setFilePanelWidth(getComputedStyle(layout).getPropertyValue("--office-file-panel-width"), true);
+  };
+  separator.addEventListener("pointerdown", (event) => {
+    if (window.innerWidth <= 800 || event.button !== 0) return;
+    startX = event.clientX;
+    startWidth = document.querySelector("#filePanel")?.getBoundingClientRect().width || 252;
+    layout.classList.add("is-resizing-files");
+    separator.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+  separator.addEventListener("pointermove", (event) => {
+    if (!layout.classList.contains("is-resizing-files")) return;
+    setFilePanelWidth(startWidth + event.clientX - startX);
+  });
+  separator.addEventListener("pointerup", finish);
+  separator.addEventListener("pointercancel", finish);
+  separator.addEventListener("dblclick", () => setFilePanelWidth(252, true));
+  separator.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
+    const current = document.querySelector("#filePanel")?.getBoundingClientRect().width || 252;
+    const next = event.key === "Home" ? 252 : current + (event.key === "ArrowLeft" ? -16 : 16);
+    setFilePanelWidth(next, true);
+    event.preventDefault();
+  });
+}
+
 function sourceKind(document) {
   return document?.convertedFrom || document?.kind || "md";
 }
 
 function isPdfDocument(document) {
   return sourceKind(document) === "pdf";
+}
+
+function preservePdfEditorLineBreaks(markdown) {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const withVisualBreaks = lines.map((line, index) => {
+    const value = line.trimEnd();
+    const next = lines[index + 1] || "";
+    if (!value || !next.trim()) return value;
+    if (/ {2}$|\\$/.test(value)) return value;
+    if (/^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~|\|)/.test(value)) return value;
+    if (/^\s*\|/.test(next)) return value;
+    return `${value}  `;
+  }).join("\n").trim();
+  return withVisualBreaks
+    .replace(/[ \t]+(?=\*\*\d{1,3}-\d{1,3}\*\*)/g, "\n\n")
+    .replace(/[ \t]+(?=(?:【(?:场景设计|道具设计|人物状态)】|△|[\p{L}\p{N}·]{1,12}（[^）\n]{1,16}）：))/gu, "\n\n");
 }
 
 function formatGroup(kind) {
@@ -225,7 +295,7 @@ function safeWordHtml(value) {
   if (!value) return "";
   const template = document.createElement("template");
   template.innerHTML = String(value).slice(0, 2_000_000);
-  const allowed = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "BLOCKQUOTE"]);
+  const allowed = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "S", "UL", "OL", "LI", "BLOCKQUOTE", "HR", "PRE", "CODE", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD"]);
   [...template.content.querySelectorAll("*")].forEach((node) => {
     if (!allowed.has(node.tagName)) node.replaceWith(document.createTextNode(node.textContent || ""));
     else {
@@ -249,6 +319,7 @@ function safeBlock(block, index, kind) {
     title: String(block?.title || kindTitle(kind, index)).slice(0, 120),
     text: readableLegacyCapabilityText(String(block?.text || "")).slice(0, 2_000_000),
     richHtml: safeWordHtml(block?.richHtml),
+    headingLevel: Math.max(1, Math.min(3, Number(block?.headingLevel || (index ? 2 : 1)) || 1)),
     titleAlignment: safeAlignment(block?.titleAlignment),
     paragraphAlignments: Array.isArray(block?.paragraphAlignments) ? block.paragraphAlignments.slice(0, 1000).map(safeAlignment) : [],
   };
@@ -726,11 +797,11 @@ function markdownHeadings(text) {
 function updateMarkdownCompanions(editor) {
   const preview = document.querySelector("#markdownLivePreview");
   const outline = document.querySelector("#markdownOutline");
-  if (!editor || !preview || !outline) return;
-  preview.innerHTML = window.ClownfishOfficeSource.renderMarkdown(editor.value);
+  if (!editor) return;
+  if (preview) preview.innerHTML = window.ClownfishOfficeSource.renderMarkdown(editor.value);
   const headings = markdownHeadings(editor.value);
-  outline.innerHTML = headings.length
-    ? headings.map((heading) => `<button type="button" style="--heading-level:${heading.level}" data-markdown-line="${heading.line}">${escapeHtml(heading.title)}</button>`).join("")
+  if (outline) outline.innerHTML = headings.length
+    ? headings.map((heading, index) => `<button type="button" style="--heading-level:${heading.level}" data-markdown-heading-index="${index}" data-markdown-line="${heading.line}">${escapeHtml(heading.title)}</button>`).join("")
     : '<p>添加标题后会在这里生成目录。</p>';
 }
 
@@ -764,7 +835,7 @@ function applyMarkdownAction(editor, action) {
 }
 
 function isWordWorkingCopy(current) {
-  return ["doc", "docx", "docm", "odt", "rtf"].includes(String(current.convertedFrom || "").toLowerCase());
+  return current?.kind === "docx" || ["doc", "docx", "docm", "odt", "rtf"].includes(String(current?.convertedFrom || "").toLowerCase());
 }
 
 function markWordCopyDirty(current) {
@@ -807,20 +878,91 @@ function applyWordAlignment(alignment) {
 function renderWordWorkspace(root, current) {
   const meaningful = current.blocks.filter((block) => !(/^#+$/.test(block.title.trim()) && !block.text.trim()));
   const sections = meaningful.length ? meaningful : [safeBlock({ title: "正文", text: "" }, 0, current.kind)];
+  const alignmentStyle = (alignment) => safeAlignment(alignment) === "left" ? "" : ` style="text-align:${safeAlignment(alignment)}"`;
+  const markdownSource = sections.length === 1 && !sections[0].richHtml && /(^|\n)#{1,6}\s+|(^|\n)\s*[-*+]\s+|\*\*[^*]+\*\*/m.test(sections[0].text)
+    ? sections[0].text
+    : "";
+  const editorHtml = markdownSource ? "" : sections.map((block, index) => {
+    const level = Math.max(1, Math.min(3, Number(block.headingLevel || (index ? 2 : 1)) || 1));
+    const body = block.richHtml || wordParagraphs(block.text).map((paragraph, paragraphIndex) => `<p${alignmentStyle(block.paragraphAlignments?.[paragraphIndex])}>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("") || "<p></p>";
+    const normalizedBody = body.replace(/ data-align="(center|right|justify)"/g, ' style="text-align:$1"');
+    return `<h${level}${alignmentStyle(block.titleAlignment)}>${escapeHtml(block.title || "")}</h${level}>${normalizedBody}`;
+  }).join("");
   root.innerHTML = `<div class="word-workspace">
-    <aside class="word-outline" aria-label="文档目录"><strong>目录</strong><nav>${sections.map((block, index) => `<button type="button" data-word-section="${escapeHtml(block.id)}">${escapeHtml(block.title || `第 ${index + 1} 节`)}</button>`).join("")}</nav></aside>
+    <aside class="word-outline" aria-label="文档目录"><strong>目录</strong><nav>${sections.map((block, index) => `<button type="button" data-word-heading-index="${index}">${escapeHtml(block.title || `第 ${index + 1} 节`)}</button>`).join("")}</nav></aside>
     <section class="word-editor-stage">
-      <div class="word-format-toolbar" role="toolbar" aria-label="文字格式"><button type="button" data-word-command="bold"><strong>加粗</strong></button><button type="button" data-word-command="insertUnorderedList">列表</button><button type="button" data-word-command="formatBlock" data-command-value="blockquote">引用</button><i aria-hidden="true"></i><button type="button" data-word-align="left">左对齐</button><button type="button" data-word-align="center">居中</button><button type="button" data-word-align="right">右对齐</button><button type="button" data-word-align="justify">两端</button><span>修改后请单独保存副本</span></div>
-      <article class="word-paper" aria-label="Word 可编辑副本">${sections.map((block, index) => {
-        const level = index === 0 ? 1 : 2;
-        const body = block.richHtml || wordParagraphs(block.text).map((paragraph, paragraphIndex) => `<p data-align="${safeAlignment(block.paragraphAlignments?.[paragraphIndex])}">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("") || "<p><br></p>";
-        return `<section class="word-section" id="word-section-${escapeHtml(block.id)}" data-word-block="${escapeHtml(block.id)}"><h${level} data-align="${safeAlignment(block.titleAlignment)}" contenteditable="true" spellcheck="true" data-word-field="title" data-placeholder="输入标题">${escapeHtml(block.title || "")}</h${level}><div class="word-section-body" contenteditable="true" spellcheck="true" data-word-field="text" data-placeholder="在这里输入正文">${body}</div></section>`;
-      }).join("")}</article>
+      <div class="word-format-toolbar tiptap-toolbar" id="wordTiptapToolbar" role="toolbar" aria-label="文字格式">
+        <button type="button" data-tiptap-command="paragraph">正文</button><button type="button" data-tiptap-command="heading1">标题 1</button><button type="button" data-tiptap-command="heading2">标题 2</button><i aria-hidden="true"></i>
+        <button type="button" data-tiptap-command="bold"><strong>加粗</strong></button><button type="button" data-tiptap-command="italic"><em>斜体</em></button><button type="button" data-tiptap-command="underline"><u>下划线</u></button><button type="button" data-tiptap-command="bulletList">项目符号</button><button type="button" data-tiptap-command="orderedList">编号</button><button type="button" data-tiptap-command="blockquote">引用</button><i aria-hidden="true"></i>
+        <button type="button" data-tiptap-command="alignLeft">左对齐</button><button type="button" data-tiptap-command="alignCenter">居中</button><button type="button" data-tiptap-command="alignRight">右对齐</button><button type="button" data-tiptap-command="alignJustify">两端</button><i aria-hidden="true"></i><button type="button" data-tiptap-command="undo">撤销</button><button type="button" data-tiptap-command="redo">重做</button>
+      </div>
+      <article class="word-paper tiptap-editor-host" id="wordTiptapEditor" aria-label="Word 可编辑副本"></article>
     </section>
   </div>`;
+  const editorRoot = root.querySelector("#wordTiptapEditor");
+  const toolbar = root.querySelector("#wordTiptapToolbar");
+  window.requestAnimationFrame(() => {
+    if (!editorRoot?.isConnected || currentDocument()?.id !== current.id) return;
+    window.ClownfishDocumentEditors?.mountRichText({
+      root: editorRoot,
+      toolbar,
+      initialHtml: editorHtml,
+      initialMarkdown: markdownSource,
+      onChange: (html) => updateWordDocumentFromRichText(current, html),
+      onReady: () => refreshWordOutlineFromEditor(editorRoot),
+    });
+  });
+}
+
+function refreshWordOutlineFromEditor(editorRoot) {
+  const outline = document.querySelector(".word-outline nav");
+  if (!outline) return;
+  const headings = [...editorRoot.querySelectorAll("h1, h2, h3")].map((heading) => heading.textContent.trim()).filter(Boolean);
+  outline.innerHTML = headings.length
+    ? headings.map((title, index) => `<button type="button" data-word-heading-index="${index}">${escapeHtml(title)}</button>`).join("")
+    : '<p>添加标题后会在这里生成目录。</p>';
+}
+
+function updateWordDocumentFromRichText(current, html) {
+  if (currentDocument()?.id !== current.id) return;
+  const template = document.createElement("template");
+  template.innerHTML = String(html || "");
+  const sections = [];
+  let active = null;
+  const flush = () => {
+    if (!active) return;
+    const body = document.createElement("div");
+    active.nodes.forEach((node) => body.append(node.cloneNode(true)));
+    const previous = current.blocks[sections.length];
+    sections.push(safeBlock({
+      id: previous?.id || uid("block"),
+      title: active.title || (sections.length ? `第 ${sections.length + 1} 节` : "正文"),
+      text: active.nodes.map((node) => node.innerText || node.textContent || "").join("\n\n").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim(),
+      richHtml: body.innerHTML,
+      headingLevel: active.level,
+      titleAlignment: active.alignment,
+      paragraphAlignments: [...body.querySelectorAll("p, blockquote, li")].map((node) => safeAlignment(node.style.textAlign)),
+    }, sections.length, current.kind));
+  };
+  [...template.content.children].forEach((node) => {
+    if (/^H[1-3]$/.test(node.tagName)) {
+      flush();
+      active = { title: node.textContent.trim(), level: Number(node.tagName.slice(1)) || 2, alignment: safeAlignment(node.style.textAlign), nodes: [] };
+    } else {
+      if (!active) active = { title: "正文", level: 1, alignment: "left", nodes: [] };
+      active.nodes.push(node);
+    }
+  });
+  flush();
+  current.blocks = sections.length ? sections : [safeBlock({ title: "正文", text: "" }, 0, current.kind)];
+  current.updatedAt = new Date().toISOString();
+  const outline = document.querySelector(".word-outline nav");
+  if (outline) outline.innerHTML = current.blocks.map((block, index) => `<button type="button" data-word-heading-index="${index}">${escapeHtml(block.title || `第 ${index + 1} 节`)}</button>`).join("");
+  markWordCopyDirty(current);
 }
 
 function renderBlocks(current) {
+  window.ClownfishDocumentEditors?.destroyAll();
   const root = window.document.querySelector("#blockList");
   const continuous = current.kind === "docx" || current.kind === "txt" || current.kind === "md";
   const importedStructured = Boolean(current.desktopSessionId && ["docx", "pptx", "xlsx"].includes(current.kind));
@@ -835,24 +977,34 @@ function renderBlocks(current) {
     return;
   }
   if (current.kind === "md") {
+    const editorMarkdown = isPdfDocument(current)
+      ? preservePdfEditorLineBreaks(continuousDocumentText(current))
+      : continuousDocumentText(current);
     root.innerHTML = `
       <div class="markdown-workspace">
         <aside class="markdown-outline-panel"><strong>目录</strong><nav id="markdownOutline" aria-label="Markdown 目录"></nav></aside>
         <section class="markdown-editor-panel">
-          <div class="markdown-toolbar" role="toolbar" aria-label="Markdown 格式">
-            <button type="button" data-markdown-action="heading">标题</button><button type="button" data-markdown-action="bold">加粗</button><button type="button" data-markdown-action="list">列表</button><button type="button" data-markdown-action="quote">引用</button><button type="button" data-markdown-action="code">代码</button><button type="button" data-markdown-action="link">链接</button>
-          </div>
           <label class="sr-only" for="continuousEditor">Markdown 内容</label>
-          <textarea class="continuous-editor markdown-editor" id="continuousEditor" data-continuous-editor maxlength="120000" spellcheck="true" placeholder="使用 Markdown 编写内容…">${escapeHtml(continuousDocumentText(current))}</textarea>
+          <textarea class="continuous-editor markdown-editor milkdown-fallback" id="continuousEditor" data-continuous-editor maxlength="120000" spellcheck="true" placeholder="使用 Markdown 编写内容…" hidden>${escapeHtml(editorMarkdown)}</textarea>
+          <div class="milkdown-editor-host" id="milkdownEditor" aria-label="Markdown 可视化编辑器"></div>
         </section>
-        <section class="markdown-preview-panel" aria-label="Markdown 实时预览"><header><strong>预览</strong><span>随输入更新</span></header><div id="markdownLivePreview"></div></section>
       </div>`;
     const editor = root.querySelector("#continuousEditor");
     updateMarkdownCompanions(editor);
     window.requestAnimationFrame(() => {
-      const position = Math.min(current.caretPosition, editor.value.length);
-      editor.setSelectionRange(position, position);
-      editor.scrollTop = current.editorScrollTop || 0;
+      const editorRoot = root.querySelector("#milkdownEditor");
+      if (!editorRoot?.isConnected || currentDocument()?.id !== current.id) return;
+      window.ClownfishDocumentEditors?.mountMarkdown({
+        root: editorRoot,
+        initialMarkdown: editor.value,
+        placeholder: "开始编写内容…",
+        onChange: (markdown) => {
+          if (currentDocument()?.id !== current.id || editor.value === markdown) return;
+          editor.value = markdown;
+          editor.dispatchEvent(new Event("input", { bubbles: true }));
+        },
+        onError: () => { editor.hidden = false; editorRoot.hidden = true; },
+      });
     });
     return;
   }
@@ -1225,6 +1377,7 @@ function render() {
   const originalKind = sourceKind(current);
   document.querySelector("#formatBadge").textContent = formatLabel(originalKind);
   document.querySelector("#documentName").value = current.name;
+  document.querySelector("#documentName").title = current.name;
   const size = current.sourceSize ? ` · ${Math.max(1, Math.round(current.sourceSize / 1024))} KB` : "";
   const hasWorkingContent = current.blocks.some((block) => block.text.trim());
   document.querySelector("#sourceState").textContent = current.sourceStored
@@ -1890,6 +2043,7 @@ function bindEvents() {
     const current = currentDocument();
     if (!current) return;
     current.name = event.target.value.slice(0, 120);
+    event.target.title = current.name;
     scheduleSave();
   });
   document.querySelector("#blockList").addEventListener("input", (event) => {
@@ -1959,13 +2113,19 @@ function bindEvents() {
     const action = event.target.closest("[data-markdown-action]");
     const heading = event.target.closest("[data-markdown-line]");
     const wordSectionLink = event.target.closest("[data-word-section]");
+    const wordHeadingLink = event.target.closest("[data-word-heading-index]");
     const wordAlignment = event.target.closest("[data-word-align]");
     if (wordAlignment) applyWordAlignment(wordAlignment.dataset.wordAlign);
     const wordCommand = event.target.closest("[data-word-command]");
     if (wordSectionLink) document.querySelector(`#word-section-${CSS.escape(wordSectionLink.dataset.wordSection)}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (wordHeadingLink) document.querySelectorAll("#wordTiptapEditor h1, #wordTiptapEditor h2, #wordTiptapEditor h3")[Number(wordHeadingLink.dataset.wordHeadingIndex || 0)]?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (wordCommand) document.execCommand(wordCommand.dataset.wordCommand, false, wordCommand.dataset.commandValue || null);
     if (editor && action) applyMarkdownAction(editor, action.dataset.markdownAction);
-    if (editor && heading) markdownSelectionAtLine(editor, Number(heading.dataset.markdownLine || 0));
+    if (editor && heading) {
+      const richHeading = document.querySelectorAll("#milkdownEditor h1, #milkdownEditor h2, #milkdownEditor h3, #milkdownEditor h4, #milkdownEditor h5, #milkdownEditor h6")[Number(heading.dataset.markdownHeadingIndex || 0)];
+      if (richHeading) richHeading.scrollIntoView({ behavior: "smooth", block: "center" });
+      else markdownSelectionAtLine(editor, Number(heading.dataset.markdownLine || 0));
+    }
     const section = event.target.closest("[data-structured-section]");
     if (section) {
       const current = currentDocument();
@@ -2058,6 +2218,7 @@ function bindEvents() {
 }
 
 hydrateIcons();
+bindFilePanelResize();
 bindEvents();
 render();
 void hydrateWorkbenchState().then(() => importArtifactFromQuery());

@@ -6,6 +6,14 @@ test("routes explicit project work ahead of generic document words", () => {
   assert.equal(routeCapability({ goal: "检查项目文档并修复构建问题" }).capabilityId, "project-development");
 });
 
+test("explicit meeting-minute deliverables outrank incidental development vocabulary", () => {
+  const result = routeCapability({
+    goal: "把这段记录整理成会议纪要：周一上线新版；赵强周五前完成回归测试；风险是支付接口偶发超时。",
+  });
+  assert.equal(result.capabilityId, "meeting-minutes");
+  assert.equal(result.confidence, "high");
+});
+
 test("routes an attached presentation when the goal is otherwise vague", () => {
   const result = routeCapability({ goal: "帮我继续完善", materialNames: ["季度总结.pptx"] });
   assert.equal(result.capabilityId, "presentation-builder");
