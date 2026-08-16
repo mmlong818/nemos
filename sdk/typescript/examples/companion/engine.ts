@@ -93,6 +93,8 @@ export interface SendOptions {
   sessionId?: string;
   model?: string;
   toolMode?: "auto" | "read-only" | "off";
+  /** 由产品模式追加的系统约束；不改变对话角色和记忆命名空间。 */
+  systemAddendum?: string;
   /** 单次任务可关闭用户习惯与事实的召回；角色自身状态仍保留。 */
   memoryMode?: "default" | "preferences" | "off";
   /**
@@ -321,22 +323,27 @@ export class CompanionEngine {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
 
-    await this.ensureRecentHistory(userId, personaId);
+    const recentKey = this.recentKey(userId, personaId, opts.sessionId);
+    await this.ensureRecentHistory(userId, personaId, opts.sessionId);
     await this.ingestUtterance(userId, scope, text, opts);
 
     const count = this.bumpTurns(userId, personaId);
     const context = await this.recall(userId, personaId, text);
-    const reply = await this.chat(
+    const system = [
       this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text),
-      this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice),
+      opts.systemAddendum,
+    ].filter(Boolean).join("\n\n");
+    const reply = await this.chat(
+      system,
+      this.buildUserTurns(this.recent.get(recentKey) ?? [], text, !!opts.voice),
       opts.model || persona.chatModel,
       persona.maxReplyTokens,
       this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode),
     );
 
     await this.ingestPersonaReply(personaId, scope, reply);
-    this.pushRecent(this.recent, this.rkey(userId, personaId), "对方", text, !!opts.voice);
-    this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    this.pushRecent(this.recent, recentKey, "对方", text, !!opts.voice);
+    this.pushRecent(this.recent, recentKey, persona.name, reply, false);
     return { personaId, reply, context };
   }
 
@@ -350,12 +357,16 @@ export class CompanionEngine {
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
-    await this.ensureRecentHistory(userId, personaId);
+    const recentKey = this.recentKey(userId, personaId, opts.sessionId);
+    await this.ensureRecentHistory(userId, personaId, opts.sessionId);
     await this.ingestUtterance(userId, scope, text, opts);
     const count = this.bumpTurns(userId, personaId);
     const context = await this.recall(userId, personaId, text);
-    const system = this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text);
-    const userMsg = this.buildUserTurns(this.recent.get(this.rkey(userId, personaId)) ?? [], text, !!opts.voice);
+    const system = [
+      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text),
+      opts.systemAddendum,
+    ].filter(Boolean).join("\n\n");
+    const userMsg = this.buildUserTurns(this.recent.get(recentKey) ?? [], text, !!opts.voice);
     let reply: string;
     if (this.opts.chatStream) {
       reply = await this.opts.chatStream(
@@ -377,8 +388,8 @@ export class CompanionEngine {
       cb.onToken(reply);
     }
     await this.ingestPersonaReply(personaId, scope, reply);
-    this.pushRecent(this.recent, this.rkey(userId, personaId), "对方", text, !!opts.voice);
-    this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+    this.pushRecent(this.recent, recentKey, "对方", text, !!opts.voice);
+    this.pushRecent(this.recent, recentKey, persona.name, reply, false);
     return { personaId, reply, context };
   }
 
@@ -619,9 +630,15 @@ export class CompanionEngine {
 
   // ——— 私有 ———
 
-  private async ensureRecentHistory(userId: string, personaId: string): Promise<void> {
-    const key = this.rkey(userId, personaId);
+  private async ensureRecentHistory(userId: string, personaId: string, sessionId?: string): Promise<void> {
+    const key = this.recentKey(userId, personaId, sessionId);
     if (this.recent.has(key)) return;
+    // 网页中的每个对话都有独立 session。新对话不能把同一角色在其他对话中的
+    // 原始消息当作“刚才聊过的内容”恢复，否则学习目标和答题表现会串线。
+    if (sessionId) {
+      this.recent.set(key, []);
+      return;
+    }
     const scope = convScope(userId, personaId);
     const persona = this.requirePersona(personaId);
     const [userTurns, personaTurns] = await Promise.all([
@@ -994,6 +1011,10 @@ export class CompanionEngine {
 
   private rkey(userId: string, personaId: string): string {
     return `${userId}|${personaId}`;
+  }
+
+  private recentKey(userId: string, personaId: string, sessionId?: string): string {
+    return sessionId ? `${this.rkey(userId, personaId)}|session:${sessionId}` : this.rkey(userId, personaId);
   }
 
   private pushRecent(

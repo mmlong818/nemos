@@ -2595,6 +2595,7 @@ function conversationSendOptions(body: ChatBody): {
   model?: string;
   toolMode: "auto" | "read-only" | "off";
   memoryWriteMode: "default" | "archive-only" | "off";
+  systemAddendum?: string;
   runtimeLimits: { maxRounds: number; maxToolRounds: number; maxTotalTokens: number; maxOutputChars: number };
 } {
   const reasoning = body.reasoning === "fast" ? "fast" : body.reasoning === "deep" ? "deep" : "balanced";
@@ -2607,6 +2608,8 @@ function conversationSendOptions(body: ChatBody): {
   const requestedModel = model && model !== "default" && /^[a-z0-9._:/-]{1,120}$/i.test(model)
     ? model
     : undefined;
+  const teacherCore = PERSONAS.find((persona) => persona.id === "teacher_lin")?.persona || "";
+  const teachingMethod = teacherCore.split("\n\n").slice(1).join("\n\n").trim();
   return {
     sessionId: body.sessionId ? String(body.sessionId).slice(0, 120) : undefined,
     sourceMessageId: body.messageId && /^[a-z0-9:_-]{1,160}$/i.test(body.messageId) ? body.messageId : undefined,
@@ -2620,6 +2623,12 @@ function conversationSendOptions(body: ChatBody): {
     }),
     toolMode: body.toolMode === "off" ? "off" : body.toolMode === "read-only" ? "read-only" : "auto",
     memoryWriteMode: conversationMemoryWriteMode(body),
+    systemAddendum: body.workMode === "study"
+      ? [
+          "你正在通过小丑鱼的学习辅导模式回应。不要主动介绍或虚构教师姓名、性别和现实身份；保持同一对话角色与记忆连续性。",
+          teachingMethod,
+        ].filter(Boolean).join("\n\n")
+      : undefined,
     runtimeLimits,
   };
 }
