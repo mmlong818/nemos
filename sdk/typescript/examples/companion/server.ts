@@ -204,6 +204,7 @@ function runtimePath(envName: string, fileName: string): string {
 
 const DB = runtimePath("COMPANION_DB", "companion.db");
 const LLM_KEY_FILE = runtimePath("COMPANION_LLM_KEY", "llm-key.dpapi.json");
+const DEVELOPMENT_MODEL_CONNECTIONS_FILE = runtimePath("COMPANION_DEVELOPMENT_MODELS", "development-models.dpapi.json");
 const X_TOKEN_FILE = runtimePath("COMPANION_X_TOKEN", "x-token.dpapi.json");
 const TOOL_SETTINGS_FILE = runtimePath("COMPANION_TOOL_SETTINGS", "tool-settings.dpapi.json");
 const DATA_SYNC_SETTINGS_FILE = runtimePath("COMPANION_DATA_SYNC_SETTINGS", "data-sync.dpapi.json");
@@ -416,12 +417,13 @@ const capabilities = new CapabilityRuntime({
   counterpartContext: (counterpartId) => relationships.buildPromptBlock(counterpartId),
   toolBinding: (personaId) => personaToolBindings.get(personaId),
   runDeveloper: async (input) => {
-    if (!modelConnection) throw new Error("请先在设置中连接一个可用模型。");
     const developmentEngine = normalizeDevelopmentEngine(input.engine);
-    const developmentModel = normalizeDevelopmentModel(input.model) || modelConnection.model;
-    const developmentConnection = developmentModel === modelConnection.model
-      ? modelConnection
-      : { ...modelConnection, model: developmentModel };
+    const baseConnection = developmentModelConnection(developmentEngine);
+    if (!baseConnection) throw new Error(`请先在设置中为 ${developmentEngine} 连接一个可用模型。`);
+    const developmentModel = normalizeDevelopmentModel(input.model) || baseConnection.model;
+    const developmentConnection = developmentModel === baseConnection.model
+      ? baseConnection
+      : { ...baseConnection, model: developmentModel };
     const result = await developmentEnginePlugins.run(developmentEngine, {
       ...input,
       connection: developmentConnection,
@@ -1134,6 +1136,131 @@ function modelConnectionStatus(): Record<string, unknown> {
     },
     providers: COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => ({ ...preset })),
   };
+}
+
+type DevelopmentModelMode = "inherit" | "independent";
+type SavedDevelopmentModelConnection = {
+  provider?: CompanionModelProvider;
+  protocol?: CompanionModelProtocol;
+  baseUrl?: string;
+  model?: string;
+  cipher?: string;
+  savedAt?: string;
+};
+type SavedDevelopmentModelFile = {
+  version: 1;
+  encryption: "windows-dpapi";
+  engines: Partial<Record<DevelopmentEngine, SavedDevelopmentModelConnection>>;
+};
+
+const DEVELOPMENT_ENGINE_IDS: readonly DevelopmentEngine[] = ["pi", "dsh", "kilo", "opencode", "codex"];
+
+function loadDevelopmentModelConnections(): Partial<Record<DevelopmentEngine, CompanionModelConnection>> {
+  if (!existsSync(DEVELOPMENT_MODEL_CONNECTIONS_FILE)) return {};
+  try {
+    const saved = JSON.parse(readFileSync(DEVELOPMENT_MODEL_CONNECTIONS_FILE, "utf8")) as SavedDevelopmentModelFile;
+    if (saved.version !== 1 || !saved.engines) return {};
+    const result: Partial<Record<DevelopmentEngine, CompanionModelConnection>> = {};
+    for (const engine of DEVELOPMENT_ENGINE_IDS) {
+      const item = saved.engines[engine];
+      if (!item?.provider) continue;
+      result[engine] = normalizeCompanionModelConnection({
+        provider: item.provider,
+        protocol: item.protocol,
+        baseUrl: item.baseUrl,
+        model: item.model,
+        apiKey: item.cipher ? unprotectSecret(item.cipher).trim() : "",
+      });
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function saveDevelopmentModelConnections(
+  connections: Partial<Record<DevelopmentEngine, CompanionModelConnection>>,
+): void {
+  const engines: SavedDevelopmentModelFile["engines"] = {};
+  for (const engine of DEVELOPMENT_ENGINE_IDS) {
+    const connection = connections[engine];
+    if (!connection) continue;
+    engines[engine] = {
+      provider: connection.provider,
+      protocol: connection.protocol,
+      baseUrl: connection.baseUrl,
+      model: connection.model,
+      ...(connection.apiKey ? { cipher: protectSecret(connection.apiKey) } : {}),
+      savedAt: new Date().toISOString(),
+    };
+  }
+  writeFileSync(DEVELOPMENT_MODEL_CONNECTIONS_FILE, JSON.stringify({
+    version: 1,
+    encryption: "windows-dpapi",
+    engines,
+  } satisfies SavedDevelopmentModelFile, null, 2));
+}
+
+function developmentModelConnection(engine: DevelopmentEngine): CompanionModelConnection | undefined {
+  return loadDevelopmentModelConnections()[engine] ?? modelConnection;
+}
+
+function developmentModelConnectionStatus(): Record<string, unknown> {
+  const independent = loadDevelopmentModelConnections();
+  const engines = Object.fromEntries(DEVELOPMENT_ENGINE_IDS.map((engine) => {
+    const own = independent[engine];
+    const effective = own ?? modelConnection;
+    const publicConnection = publicModelConnection(effective);
+    return [engine, {
+      mode: own ? "independent" : "inherit",
+      ...publicConnection,
+      effective: Boolean(effective),
+      warning: engine === "codex" && effective?.protocol === "anthropic"
+        ? "Codex 不支持 Anthropic 协议，请改用 OpenAI Responses 兼容连接。"
+        : engine === "codex" && effective
+          ? "Codex 需要服务地址同时兼容 Responses API。"
+          : "",
+    }];
+  }));
+  return {
+    engines,
+    providers: COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => ({ ...preset })),
+  };
+}
+
+async function updateDevelopmentModelConnection(input: {
+  engine: DevelopmentEngine;
+  mode: DevelopmentModelMode;
+  provider?: CompanionModelProvider;
+  protocol?: CompanionModelProtocol;
+  baseUrl?: string;
+  model?: string;
+  key?: string;
+}): Promise<Record<string, unknown>> {
+  const connections = loadDevelopmentModelConnections();
+  if (input.mode === "inherit") {
+    delete connections[input.engine];
+    saveDevelopmentModelConnections(connections);
+    return developmentModelConnectionStatus();
+  }
+  const previous = connections[input.engine];
+  const provider = input.provider ?? previous?.provider ?? modelConnection?.provider ?? "zhipu";
+  const apiKey = String(input.key || "").trim()
+    || (previous?.provider === provider ? previous.apiKey : "");
+  const connection = normalizeCompanionModelConnection({
+    provider,
+    protocol: input.protocol,
+    baseUrl: input.baseUrl,
+    model: input.model,
+    apiKey,
+  });
+  if (input.engine === "codex" && connection.protocol !== "openai-compatible") {
+    throw new Error("Codex 只支持 OpenAI Responses 兼容连接，不能使用 Anthropic 协议。");
+  }
+  await validateCompanionModelConnection(connection);
+  connections[input.engine] = connection;
+  saveDevelopmentModelConnections(connections);
+  return developmentModelConnectionStatus();
 }
 
 type ToolSettings = {
@@ -3669,6 +3796,10 @@ const server = createServer(async (req, res) => {
       send(res, 200, modelConnectionStatus());
       return;
     }
+    if (req.method === "GET" && url === "/api/development/model-connections") {
+      send(res, 200, { ok: true, ...developmentModelConnectionStatus() });
+      return;
+    }
     if (req.method === "GET" && url === "/api/tool-settings") {
       send(res, 200, { ok: true, ...toolSettingsSummary() });
       return;
@@ -5771,6 +5902,54 @@ const server = createServer(async (req, res) => {
         send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       } catch (e) {
         send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/model-connections") {
+      const b = (await readBody(req)) as {
+        engine?: string;
+        mode?: string;
+        provider?: CompanionModelProvider;
+        protocol?: CompanionModelProtocol;
+        baseUrl?: string;
+        model?: string;
+        key?: string;
+      };
+      const engine = DEVELOPMENT_ENGINE_IDS.includes(b.engine as DevelopmentEngine)
+        ? b.engine as DevelopmentEngine
+        : undefined;
+      const mode = b.mode === "inherit" || b.mode === "independent" ? b.mode : undefined;
+      if (!engine || !mode) {
+        send(res, 400, { ok: false, error: "请选择有效的编程引擎和模型使用方式。" });
+        return;
+      }
+      try {
+        const action = await agentUserActions.execute({
+          name: "development_model_connection_update",
+          description: mode === "inherit" ? `${engine} 改为继承默认模型` : `验证并保存 ${engine} 的独立模型连接`,
+          arguments: {
+            engine,
+            mode,
+            provider: b.provider,
+            protocol: b.protocol,
+            baseUrl: b.baseUrl,
+            model: b.model,
+            keyUpdated: Boolean(b.key),
+          },
+          execute: () => updateDevelopmentModelConnection({
+            engine,
+            mode,
+            provider: b.provider,
+            protocol: b.protocol,
+            baseUrl: b.baseUrl,
+            model: b.model,
+            key: b.key,
+          }),
+          summarizeResult: (value) => ({ ok: true, engine, mode, configured: Boolean(value.engines) }),
+        });
+        send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
+      } catch (error) {
+        send(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
       }
       return;
     }
