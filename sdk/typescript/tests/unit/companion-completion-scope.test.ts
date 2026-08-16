@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { CapabilityRuntime } from "../../examples/companion/capabilities.js";
 
-test("工作页只保留任务、自动化和按需出现的项目入口", () => {
+test("工作页精简为自动化单一视图", () => {
   const root = join(process.cwd(), "examples", "companion", "web");
   const html = readFileSync(join(root, "work.html"), "utf8");
   const script = readFileSync(join(root, "assets", "work-center.js"), "utf8");
@@ -16,13 +16,14 @@ test("工作页只保留任务、自动化和按需出现的项目入口", () =>
   const capabilityHtml = readFileSync(join(root, "capabilities.html"), "utf8");
   const capabilityScript = readFileSync(join(root, "assets", "capability-center.js"), "utf8");
 
-  assert.match(html, /href="\/tasks"/);
+  assert.match(html, /href="\/automations"/);
+  assert.doesNotMatch(html, /href="\/tasks"/);
   assert.match(script, /function renderArtifacts/);
   assert.match(script, /function renderRuns/);
   assert.match(script, /function renderMemory/);
-  assert.match(html, /data-view="tasks">任务/);
-  assert.match(html, /data-view="automations">自动化/);
-  assert.match(html, /id="projectsViewLink" hidden>项目/);
+  assert.match(script, /const viewFromLocation = \(\) => "automations"/);
+  assert.doesNotMatch(html, /data-view="tasks">任务/);
+  assert.doesNotMatch(html, /id="projectsViewLink"/);
   assert.doesNotMatch(html, /data-view="(?:collaboration|resources|artifacts|runs|memory)"/);
   assert.match(script, /\/api\/memory\/preference/);
   assert.match(script, /\/api\/memory\/forget/);

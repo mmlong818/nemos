@@ -74,7 +74,7 @@ test("工作台真实读取常见文档格式并默认保护原文件", () => {
 });
 
 test("TXT 与 Markdown 可在明确授权后冲突安全地写回原文件", () => {
-  assert.match(officeHtml, /id="writeBackSource"[^>]*>写回原文件/);
+  assert.match(officeHtml, /id="writeBackSource"[^>]*><strong>写回原文件<\/strong>/);
   assert.match(officeJs, /showOpenFilePicker/);
   assert.match(officeJs, /sourceWritable/);
   assert.match(officeJs, /ClownfishOfficeSource\.writeText/);
@@ -86,9 +86,9 @@ test("TXT 与 Markdown 可在明确授权后冲突安全地写回原文件", () 
   assert.match(officeSourceJs, /await writable\.abort\?\.\(\)/);
 });
 
-test("Office 文件可以交给桌面原生编辑器，并把修改重新载入工作台", () => {
-  assert.match(officeHtml, /id="openDesktopEditor"[^>]*>用桌面应用编辑/);
-  assert.match(officeHtml, /id="refreshDesktopFile"[^>]*>载入修改/);
+test("Office 文件会话保留桌面修改载入的内部通路（界面入口已下线）", () => {
+  assert.doesNotMatch(officeHtml, /id="openDesktopEditor"/);
+  assert.doesNotMatch(officeHtml, /id="refreshDesktopFile"/);
   assert.match(server, /OfficeFileSessionStore/);
   assert.match(server, /\/api\/files\/session\/open/);
   assert.match(server, /\/api\/files\/session\/refresh/);
@@ -269,8 +269,8 @@ test("文件页保持操作连续，不暴露内部页面结构", () => {
   assert.match(officeHtml, /id="startOfficeTask"[^>]*>开始处理<\/button>/);
   assert.match(officeHtml, /id="processingResultFrame"/);
   assert.doesNotMatch(officeHtml, /带入能力页|继续到能力页/);
-  assert.match(officeHtml, /id="openAssistantPanel"[^>]*>小丑鱼处理<\/button>/);
-  assert.match(officeHtml, /id="openVersionPanel"[^>]*>版本<\/button>/);
+  assert.match(officeHtml, /id="openToolsPanel"[^>]*>工具<\/button>/);
+  assert.match(officeHtml, /id="openVersionPanel"[^>]*><strong>版本记录<\/strong>/);
   assert.match(officeHtml, /id="assistantPanel"[^>]+aria-hidden="true"[^>]+inert/);
   assert.match(officeJs, /function openAssistantPanel\(mode\)/);
   assert.match(officeCss, /\.assistant-panel\.is-open/);

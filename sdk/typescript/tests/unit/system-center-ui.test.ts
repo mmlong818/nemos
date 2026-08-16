@@ -80,6 +80,12 @@ test("开发页把运行配置置顶，并把执行设置收进输入框", () =>
   assert.match(script, /fullControlConfirmed/);
   assert.match(script, /event\.key === "Escape"/);
   assert.match(html, /id="developmentEngine"/);
+  assert.match(html, /id="developmentEngineTrigger"/);
+  assert.match(html, /id="developmentEngineDialog"/);
+  assert.match(html, /id="developmentEngineList"/);
+  assert.match(html, /id="developmentEngineUpdateNotice"/);
+  assert.match(html, /id="developmentEngineUpdateDialog"/);
+  assert.match(html, /id="developmentEngineRiskDialog"/);
   assert.match(html, /Pi Agent（默认）/);
   assert.match(html, /DeepSeek Harness/);
   assert.match(html, /Kilo Code/);
@@ -93,6 +99,11 @@ test("开发页把运行配置置顶，并把执行设置收进输入框", () =>
   assert.match(script, /function renderProcessPanel\(job\)/);
   assert.match(script, /job\.checkpoints/);
   assert.match(script, /document\.body\.dataset\.developmentEngine = value/);
+  assert.match(script, /result\.development\?\.enginePlugins/);
+  assert.match(script, /function renderDevelopmentEnginePicker/);
+  assert.match(script, /data-development-engine-option/);
+  assert.match(script, /function renderDevelopmentEngineUpdates/);
+  assert.match(script, /api\("\/api\/development\/engine-updates\/upgrade"/);
   assert.match(script, /if \(presence\) presence\.textContent/);
   assert.match(script, /model: developmentModelValue\(\)/);
   assert.match(script, /reasoning: developmentReasoningValue\(\)/);

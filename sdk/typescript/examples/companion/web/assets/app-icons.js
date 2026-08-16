@@ -67,5 +67,37 @@
     });
   }
 
+  async function hydrateDevelopmentUpdateBadge(attempt = 0) {
+    const link = document.querySelector('.rail a[href="/develop"]');
+    if (!link || link.querySelector(".rail-update-badge")) return;
+    try {
+      const response = await fetch("/api/development/engine-updates", {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      const state = await response.json();
+      if (attempt === 0 && (state.checking || !state.checkedAt)) {
+        setTimeout(() => { void hydrateDevelopmentUpdateBadge(1); }, 3_000);
+      }
+      const count = Array.isArray(state.items)
+        ? state.items.filter((item) => item?.updateAvailable).length
+        : 0;
+      if (!count) return;
+      const badge = document.createElement("span");
+      badge.className = "rail-update-badge";
+      badge.textContent = String(Math.min(count, 9));
+      badge.setAttribute("aria-label", `${count} 个开发引擎可更新`);
+      link.append(badge);
+      link.title = `${count} 个开发引擎可更新`;
+    } catch {
+      // 更新检查不能阻塞主界面。
+    }
+  }
+
   window.ClownfishIcons = Object.freeze({ paths: PATHS, render, hydrate });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", hydrateDevelopmentUpdateBadge, { once: true });
+  } else {
+    void hydrateDevelopmentUpdateBadge();
+  }
 })();

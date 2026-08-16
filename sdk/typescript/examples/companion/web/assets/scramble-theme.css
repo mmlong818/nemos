@@ -92,12 +92,12 @@ body {
 
 button:focus-visible,
 a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
 summary:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--page-accent) 55%, transparent) !important;
 }
+
+/* 表单字段聚焦：只保留 边框色 + 柔光圈 一种表达（见下方 input:focus 规则），
+   不再叠加 outline；无边框的输入框由容器的 :focus-within 光环表达 */
 
 /* ---------- Liquid Glass 滤镜 ---------- */
 .lg-glass,
@@ -580,7 +580,8 @@ body[data-page="home"] #main {
   --fs-title-3: 15px;
   --fs-body: 14px;
   --fs-sub: 13px;
-  --fs-caption: 11px;
+  /* 规则：界面文字最小 12px（网页可读性下限），不再新增 11px 及以下字号 */
+  --fs-caption: 12px;
   /* 字色阶梯：主文 / 次文 / 弱提示 */
   --text-1: #1d1d1f;
   --text-2: #6e6e73;
@@ -765,3 +766,35 @@ body[data-page="home"] #main {
 #developForm.hero-mode {
   display: none !important;
 }
+
+/* ---------- 输入框统一：首页空态输入对齐能力页 goal-box ---------- */
+.hero-composer textarea { min-height: 82px; padding: 13px 14px; }
+.hero-composer-bar { justify-content: flex-end; padding: 3px 7px 7px; }
+.hero-composer-bar button {
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-weight: 650;
+}
+
+/* ---------- 输入态统一修正：聚焦光环交给容器，无边框输入框自身不画线 ---------- */
+.hero-composer textarea:focus,
+.task-workbench-input:focus,
+.goal-box textarea:focus,
+.continuous-editor:focus,
+.block-text:focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.hero-composer:focus-within {
+  border-color: color-mix(in srgb, var(--page-accent) 55%, transparent);
+  box-shadow: 0 0 0 3px var(--page-accent-soft), 0 14px 34px rgba(0, 0, 0, .08);
+}
+.task-workbench-composer:focus-within {
+  border-color: color-mix(in srgb, var(--page-accent) 55%, var(--task-shell-line, rgba(0, 0, 0, .1))) !important;
+  box-shadow: 0 0 0 3px var(--page-accent-soft), 0 -10px 30px rgba(45, 39, 31, .04) !important;
+}
+
+/* goal-box 聚焦环去掉旧粉色字面量，跟随页面强调色 */
+.goal-box:focus-within { box-shadow: 0 0 0 3px var(--page-accent-soft); }

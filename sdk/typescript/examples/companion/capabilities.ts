@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ServerResponse } from "node:http";
@@ -39,6 +39,14 @@ import {
   normalizeDevelopmentEngine,
   type DevelopmentEngine,
 } from "./development-engine-contract.js";
+import {
+  developmentContextSummary,
+  renderDevelopmentContextBundle,
+  type DevelopmentContextBundle,
+} from "./development-context.js";
+import { compareDevelopmentRuns, type DevelopmentRunComparison } from "./development-run-comparison.js";
+import type { DevelopmentTelemetryEvent } from "./pi-development.js";
+import { buildDevelopmentDecisionGraph, type DevelopmentDecisionGraph } from "./development-decision-graph.js";
 export {
   DEVELOPMENT_ENGINES,
   normalizeDevelopmentEngine,
@@ -106,9 +114,17 @@ export interface CapabilityTaskDecision {
   id: string;
   text: string;
   note?: string;
-  status: "active" | "superseded";
+  status: "candidate" | "active" | "conflicted" | "superseded" | "withdrawn";
+  evidenceIds?: string[];
+  confidence?: number;
+  validFrom?: string;
+  validUntil?: string;
+  producedBy?: "user" | "clownfish" | "expert" | "capability";
+  derivedFrom?: string[];
+  sourceFingerprints?: string[];
   createdAt: string;
   supersededAt?: string;
+  withdrawnAt?: string;
 }
 
 export interface CapabilityTaskStorylineEvent {
@@ -193,6 +209,7 @@ export interface CapabilityTask {
   execution?: CapabilityTaskExecution;
   origin?: CapabilityTaskOrigin;
   workspace?: CapabilityTaskWorkspace;
+  contextBundle?: DevelopmentContextBundle;
   /** v0.8：这次交付面向的沟通对象；决定注入哪份关系档案。 */
   counterpartId?: string;
   spaceId?: string;
@@ -219,7 +236,9 @@ interface AdHocTaskInput {
   approvalPolicy?: DevelopmentApprovalPolicy;
   origin?: CapabilityTaskOrigin;
   continuationTaskId?: string;
+  contextBundle?: DevelopmentContextBundle;
   onProgress?: (message: string, percent: number) => void;
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
 }
 
 export interface CapabilityArtifact {
@@ -244,6 +263,9 @@ export interface CapabilityArtifact {
     presentationVisualReview?: import("./presentation-visual-review.js").PresentationVisualReview;
     lineage?: { version: number; previousArtifactId?: string };
     professionalReceipt?: ProfessionalArtifactReceipt;
+    developmentContext?: ReturnType<typeof developmentContextSummary>;
+    developmentComparison?: DevelopmentRunComparison;
+    developmentDecisionGraph?: DevelopmentDecisionGraph;
   };
   proof?: CapabilityArtifactProof;
   verification?: SourceVerificationReport;
@@ -305,6 +327,18 @@ export interface CapabilityNotification {
   name: string;
   text: string;
   artifact: CapabilityArtifact;
+}
+
+function developmentRunSnapshot(artifact: CapabilityArtifact) {
+  const development = artifact.metadata?.development;
+  return {
+    artifactId: artifact.id,
+    engine: development?.engine,
+    changedFiles: development?.changedFiles,
+    checks: development?.checks,
+    contextFingerprints: artifact.metadata?.developmentContext?.fingerprints,
+    sessionResumed: development?.sessionResumed,
+  };
 }
 
 export interface CapabilitySnapshot {
@@ -403,6 +437,7 @@ export interface CapabilityRuntimeOptions {
     approvalPolicy?: DevelopmentApprovalPolicy;
     signal?: AbortSignal;
     onProgress?: (message: string, percent: number) => void;
+    onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
     sessionMode?: "continue" | "new" | "resume";
     sessionFile?: string;
   }) => Promise<{ reply: string } & CapabilityDevelopmentReceipt>;
@@ -713,7 +748,7 @@ export class CapabilityRuntime {
     }
     const newSlug = skillSlug(ability);
     const newDir = this.skillDirPath(ability);
-    if (oldDir !== newDir) rmSync(oldDir, { recursive: true, force: true });
+    if (oldDir !== newDir) removeDirectoryQuietly(oldDir);
     if (oldSlug !== newSlug) {
       const usage = readJson<Record<string, Record<string, unknown>>>(this.skillUsageFile, {});
       delete usage[oldSlug];
@@ -728,7 +763,7 @@ export class CapabilityRuntime {
     if (index < 0) throw new Error(`只能删除生成或安装的能力：${id}`);
     const [ability] = this.generatedAbilities.splice(index, 1);
     this.tasks = this.tasks.filter((task) => task.capabilityId !== id);
-    rmSync(this.skillDirPath(ability), { recursive: true, force: true });
+    removeDirectoryQuietly(this.skillDirPath(ability));
     this.deleteSkillUsage(ability);
     this.saveAbilities();
     this.saveTasks();
@@ -1139,6 +1174,14 @@ export class CapabilityRuntime {
     text: string;
     note?: string;
     supersedesId?: string;
+    status?: CapabilityTaskDecision["status"];
+    evidenceIds?: string[];
+    confidence?: number;
+    validFrom?: string;
+    validUntil?: string;
+    producedBy?: CapabilityTaskDecision["producedBy"];
+    derivedFrom?: string[];
+    sourceFingerprints?: string[];
   }): CapabilityTask {
     const task = this.requireTask(input.id);
     const decisionText = text(input.text, "", 280);
@@ -1155,7 +1198,14 @@ export class CapabilityRuntime {
       id: uniqueId("decision"),
       text: decisionText,
       note: text(input.note, "", 800) || undefined,
-      status: "active",
+      status: normalizeDecisionStatus(input.status),
+      evidenceIds: cleanStringList(input.evidenceIds, 40, 180),
+      confidence: normalizeConfidence(input.confidence),
+      validFrom: normalizeOptionalIsoDate(input.validFrom),
+      validUntil: normalizeOptionalIsoDate(input.validUntil),
+      producedBy: normalizeDecisionProducer(input.producedBy),
+      derivedFrom: cleanStringList(input.derivedFrom, 20, 180),
+      sourceFingerprints: cleanStringList(input.sourceFingerprints, 40, 128),
       createdAt: now,
     });
     task.storyline.decisions = task.storyline.decisions.slice(0, 40);
@@ -1187,16 +1237,19 @@ export class CapabilityRuntime {
     this.saveTasks();
   }
 
-  deleteTaskData(ids: string[]): { tasks: number; artifacts: number } {
+  deleteTaskData(ids: string[], options?: { keepFiles?: boolean }): { tasks: number; artifacts: number } {
     const taskIds = new Set(ids.map((id) => String(id).trim()).filter(Boolean));
     if (!taskIds.size) return { tasks: 0, artifacts: 0 };
     const removedTasks = this.tasks.filter((task) => taskIds.has(task.id));
     const removedArtifacts = this.artifacts.filter((artifact) => taskIds.has(artifact.taskId));
     this.tasks = this.tasks.filter((task) => !taskIds.has(task.id));
     this.artifacts = this.artifacts.filter((artifact) => !taskIds.has(artifact.taskId));
-    for (const artifact of removedArtifacts) {
-      this.removeArtifactFile(artifact.file);
-      if (artifact.previewFile) this.removeArtifactFile(artifact.previewFile);
+    // keepFiles：只移除记录，产出文件保留在本机目录
+    if (!options?.keepFiles) {
+      for (const artifact of removedArtifacts) {
+        this.removeArtifactFile(artifact.file);
+        if (artifact.previewFile) this.removeArtifactFile(artifact.previewFile);
+      }
     }
     this.saveTasks();
     this.saveArtifacts();
@@ -1350,8 +1403,24 @@ export class CapabilityRuntime {
     reply: string,
     runtimeMetadata?: NonNullable<CapabilityArtifact["metadata"]>,
   ): Promise<CapabilityNotification> {
+    const previousArtifact = [...this.artifacts].reverse().find((item) => item.taskId === task.id);
     const artifact = await this.writeArtifact(task, ability, reply);
     if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
+    if (task.contextBundle) artifact.metadata = { ...artifact.metadata, developmentContext: developmentContextSummary(task.contextBundle) };
+    if (artifact.metadata?.development) {
+      artifact.metadata.developmentDecisionGraph = buildDevelopmentDecisionGraph({
+        instruction: task.instruction,
+        artifactId: artifact.id,
+        context: task.contextBundle,
+        development: artifact.metadata.development,
+      });
+    }
+    if (previousArtifact?.metadata?.development && artifact.metadata?.development) {
+      artifact.metadata.developmentComparison = compareDevelopmentRuns(
+        developmentRunSnapshot(previousArtifact),
+        developmentRunSnapshot(artifact),
+      );
+    }
     withArtifactProof(artifact);
     if (ability.id === "presentation-builder") {
       const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level !== "produced");
@@ -1577,6 +1646,7 @@ export class CapabilityRuntime {
       existing.instruction = text(input.instruction, existing.instruction, 160000);
       existing.format = normalizeFormat(input.format || ability.defaultFormat);
       existing.updatedAt = now;
+      existing.contextBundle = input.contextBundle;
       existing.origin = {
         ...origin,
         kind: existing.origin?.kind || origin.kind,
@@ -1629,6 +1699,7 @@ export class CapabilityRuntime {
       createdAt: now,
       updatedAt: now,
       origin,
+      contextBundle: input.contextBundle,
       workspace: input.workspacePath ? (() => {
         const developmentEngine = normalizeDevelopmentEngine(input.developmentEngine);
         const accessMode = input.accessMode === "inspect" ? "inspect" as const : "develop" as const;
@@ -1667,6 +1738,7 @@ export class CapabilityRuntime {
       reasoning?: DevelopmentReasoning;
       approvalPolicy?: DevelopmentApprovalPolicy;
       onProgress?: (message: string, percent: number) => void;
+      onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
       sessionMode?: "continue" | "new" | "resume";
       sessionFile?: string;
     },
@@ -1676,9 +1748,15 @@ export class CapabilityRuntime {
     if (!this.opts.runDeveloper) throw new Error("开发能力尚未完成运行连接。");
     const developmentEngine = normalizeDevelopmentEngine(input.developmentEngine);
     const accessMode = input.accessMode === "inspect" ? "inspect" : "develop";
+    const context = renderDevelopmentContextBundle(task.contextBundle);
+    const previousDevelopment = [...this.artifacts]
+      .reverse()
+      .find((artifact) => artifact.taskId === task.id && artifact.metadata?.development?.engine === developmentEngine)
+      ?.metadata?.development;
+    const canResume = developmentEngine === "pi" && Boolean(previousDevelopment?.sessionFile);
     const result = await this.opts.runDeveloper({
       workspacePath: String(input.workspacePath || ""),
-      instruction: task.instruction,
+      instruction: context ? `${task.instruction.trim()}\n\n${context}` : task.instruction,
       accessMode,
       installDependencies: input.installDependencies === true,
       engine: developmentEngine,
@@ -1687,8 +1765,9 @@ export class CapabilityRuntime {
       approvalPolicy: normalizeDevelopmentApprovalPolicy(developmentEngine, input.approvalPolicy, accessMode),
       signal,
       onProgress: input.onProgress,
-      sessionMode: input.sessionMode,
-      sessionFile: input.sessionFile,
+      onTelemetry: input.onTelemetry,
+      sessionMode: input.sessionMode ?? (canResume ? "resume" : "continue"),
+      sessionFile: input.sessionFile ?? (canResume ? previousDevelopment?.sessionFile : undefined),
     });
     return { ...result, checks: result.checks.map((check) => ({ ...check, output: check.output.slice(0, 12_000) })), facts: [] };
   }
@@ -1708,6 +1787,21 @@ export class CapabilityRuntime {
       lineage: { version, previousArtifactId: previousArtifact?.id },
     };
     if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
+    if (task.contextBundle) artifact.metadata = { ...artifact.metadata, developmentContext: developmentContextSummary(task.contextBundle) };
+    if (artifact.metadata?.development) {
+      artifact.metadata.developmentDecisionGraph = buildDevelopmentDecisionGraph({
+        instruction: task.instruction,
+        artifactId: artifact.id,
+        context: task.contextBundle,
+        development: artifact.metadata.development,
+      });
+    }
+    if (previousArtifact?.metadata?.development && artifact.metadata?.development) {
+      artifact.metadata.developmentComparison = compareDevelopmentRuns(
+        developmentRunSnapshot(previousArtifact),
+        developmentRunSnapshot(artifact),
+      );
+    }
     withArtifactProof(artifact);
     if (ability.id === "presentation-builder") {
       const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level !== "produced");
@@ -2037,7 +2131,12 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     const target = resolve(file);
     const child = relative(root, target);
     if (!child || child === ".." || child.startsWith("../") || child.startsWith("..\\") || isAbsolute(child)) return;
-    rmSync(target, { force: true });
+    // rmSync 在这台 Windows 上删除部分中文文件名会让进程直接中止；unlinkSync 没有这个问题。
+    try {
+      unlinkSync(target);
+    } catch {
+      // 文件不存在或暂不可删时按 force 语义忽略
+    }
   }
 
   private saveIntakes(): void {
@@ -3044,6 +3143,28 @@ function readJson<T>(file: string, fallback: T): T {
   }
 }
 
+// rmSync 在这台 Windows 上删除部分中文路径会让进程直接中止；手动递归没有这个问题。
+function removeDirectoryQuietly(target: string): void {
+  if (!existsSync(target)) return;
+  for (const entry of readdirSync(target, { withFileTypes: true })) {
+    const child = join(target, entry.name);
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      removeDirectoryQuietly(child);
+    } else {
+      try {
+        unlinkSync(child);
+      } catch {
+        // 单个文件删除失败不中断整体清理
+      }
+    }
+  }
+  try {
+    rmdirSync(target);
+  } catch {
+    // 目录删除失败按 force 语义忽略
+  }
+}
+
 function writeJson(file: string, value: unknown): void {
   mkdirSync(resolve(file, ".."), { recursive: true });
   writeFileSync(file, JSON.stringify(value, null, 2), "utf8");
@@ -3182,9 +3303,17 @@ function normalizeTaskStoryline(input: unknown, createdAt: string): CapabilityTa
       id: text(item.id, uniqueId("decision"), 100),
       text: text(item.text, "", 280),
       note: text(item.note, "", 800) || undefined,
-      status: item.status === "superseded" ? "superseded" as const : "active" as const,
+      status: normalizeDecisionStatus(item.status),
+      evidenceIds: cleanStringList(item.evidenceIds, 40, 180),
+      confidence: normalizeConfidence(item.confidence),
+      validFrom: normalizeOptionalIsoDate(item.validFrom),
+      validUntil: normalizeOptionalIsoDate(item.validUntil),
+      producedBy: normalizeDecisionProducer(item.producedBy),
+      derivedFrom: cleanStringList(item.derivedFrom, 20, 180),
+      sourceFingerprints: cleanStringList(item.sourceFingerprints, 40, 128),
       createdAt: typeof item.createdAt === "string" ? item.createdAt : createdAt,
       supersededAt: typeof item.supersededAt === "string" ? item.supersededAt : undefined,
+      withdrawnAt: typeof item.withdrawnAt === "string" ? item.withdrawnAt : undefined,
     }))
     .filter((item) => item.text)
     .slice(0, 40) : [];
@@ -3221,6 +3350,40 @@ function normalizeKnowledgeIds(input?: string[]): string[] | undefined {
   const ids = [...new Set(input.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, 8);
   return ids.length ? ids : undefined;
 }
+
+function normalizeDecisionStatus(value: unknown): CapabilityTaskDecision["status"] {
+  return value === "candidate" || value === "conflicted" || value === "superseded" || value === "withdrawn"
+    ? value
+    : "active";
+}
+
+function normalizeDecisionProducer(value: unknown): CapabilityTaskDecision["producedBy"] {
+  return value === "user" || value === "clownfish" || value === "expert" || value === "capability"
+    ? value
+    : undefined;
+}
+
+function normalizeConfidence(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : undefined;
+}
+
+function normalizeOptionalIsoDate(value: unknown): string | undefined {
+  const raw = String(value || "").trim();
+  if (!raw) return undefined;
+  const timestamp = Date.parse(raw);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
+}
+
+function cleanStringList(value: unknown, maxItems: number, maxChars: number): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = [...new Set(value.map((item) => String(item || "").trim()).filter(Boolean))]
+    .slice(0, maxItems)
+    .map((item) => item.slice(0, maxChars));
+  return items.length ? items : undefined;
+}
+
 function text(value: string | undefined, fallback: string, max: number): string {
   const out = (value || "").trim() || fallback;
   return out.slice(0, max);

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
   <link rel="icon" href="/assets/brand/clownfish-mark.svg">
-  <title>工作 · 小丑鱼</title>
+  <title>自动化 · 小丑鱼</title>
   <link rel="stylesheet" href="/assets/work-center.css">
   <link rel="stylesheet" href="/assets/work-storyline.css">
   <link rel="stylesheet" href="/assets/work-stability.css">
@@ -28,27 +28,19 @@
         <a href="/capabilities" title="能力" aria-label="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></a>
         <a href="/office" title="办公文件" aria-label="办公文件" data-app-icon="file"><span aria-hidden="true"></span><small>文件</small></a>
         <a href="/develop" title="开发" aria-label="开发" data-app-icon="code"><span aria-hidden="true"></span><small>开发</small></a>
-        <a class="is-current" href="/tasks" title="工作" aria-label="工作" aria-current="page" data-app-icon="work"><span aria-hidden="true"></span><small>工作</small></a>
+        <a class="is-current" href="/automations" title="自动化" aria-label="自动化" aria-current="page" data-app-icon="work"><span aria-hidden="true"></span><small>自动化</small></a>
       </nav>
       <a class="rail-settings" href="/settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
     </aside>
     <main class="task-workbench work-shell">
       <aside class="task-workbench-sidebar work-sidebar">
         <header class="task-sidebar-head">
-          <div class="task-sidebar-brand"><strong>工作</strong></div>
+          <div class="task-sidebar-brand"><strong>自动化</strong></div>
           <div class="task-sidebar-primary app-create-search">
-            <button id="newTaskSide" class="task-workbench-new" type="button"><span data-app-icon="plus-circle" aria-hidden="true"><span></span></span><span>新任务</span></button>
+            <button id="newTaskSide" class="task-workbench-new" type="button"><span data-app-icon="plus-circle" aria-hidden="true"><span></span></span><span>新建自动化</span></button>
             <button class="app-search-trigger" id="workSearchToggle" type="button" title="搜索工作内容" aria-label="搜索工作内容" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span></button>
           </div>
         </header>
-        <section class="task-sidebar-section task-sidebar-list work-view-section">
-          <div class="task-list-label">视图</div>
-          <nav class="tabs work-view-nav" aria-label="工作页面">
-            <a href="/tasks" data-view="tasks">任务</a>
-            <a href="/automations" data-view="automations">自动化</a>
-            <a href="/spaces" data-view="spaces" id="projectsViewLink" hidden>项目</a>
-          </nav>
-        </section>
       </aside>
 
       <section class="task-workbench-main work-main">

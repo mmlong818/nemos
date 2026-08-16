@@ -17,9 +17,12 @@ test("聊天、能力、办公文件和工作页共用同一套主导航图标",
     assert.match(icons, new RegExp(`\\b${name}:`));
   }
   assert.match(icons, /stroke-width="2"/);
+  assert.match(icons, /hydrateDevelopmentUpdateBadge/);
+  assert.match(icons, /\/api\/development\/engine-updates/);
+  assert.match(icons, /rail-update-badge/);
   assert.match(icons, /role-engineer/);
   assert.match(icons, /role-product/);
-  assert.match(pages[3], /aria-label="工作"[^>]+aria-current="page"[^>]+data-app-icon="work"/);
+  assert.match(pages[3], /aria-label="自动化"[^>]+aria-current="page"[^>]+data-app-icon="work"/);
   assert.match(pages[3], /aria-label="设置"[^>]+data-app-icon="settings"/);
   for (const script of scripts) assert.match(script, /window\.ClownfishIcons/);
   assert.doesNotMatch(scripts[2], /const icons\s*=/);
@@ -34,7 +37,7 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
   for (const page of pages) {
     assert.match(page, /\/assets\/app-navigation-labels\.css/);
   }
-  for (const label of ["任务", "能力", "文件", "工作", "设置"]) {
+  for (const label of ["任务", "能力", "文件", "自动化", "设置"]) {
     assert.ok(pages.every((page) => page.includes(`<small>${label}</small>`)));
   }
   assert.match(pages[0], /class="rail-label"/);

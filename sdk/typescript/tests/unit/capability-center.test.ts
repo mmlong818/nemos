@@ -236,6 +236,44 @@ test("失败的单次能力执行也会保留原因和重试入口", async () =>
   }
 });
 
+test("删除归档任务时可选择保留或一并删除产出文件", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-task-delete-"));
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: THINKING_RESULT, facts: [] }),
+    });
+    const kept = await runtime.runAdHocTask({
+      title: "保留文件的任务",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "整理问题",
+    });
+    const removed = await runtime.runAdHocTask({
+      title: "连同文件删除的任务",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "整理问题",
+    });
+    assert.ok(existsSync(kept.artifact.file));
+    assert.ok(existsSync(removed.artifact.file));
+
+    const keepResult = runtime.deleteTaskData([kept.artifact.taskId], { keepFiles: true });
+    assert.equal(keepResult.tasks, 1);
+    assert.ok(existsSync(kept.artifact.file));
+
+    const allResult = runtime.deleteTaskData([removed.artifact.taskId]);
+    assert.equal(allResult.tasks, 1);
+    assert.ok(!existsSync(removed.artifact.file));
+
+    assert.ok(!runtime.snapshot().tasks.some((item) => item.id === kept.artifact.taskId || item.id === removed.artifact.taskId));
+    assert.ok(!runtime.snapshot().artifacts.some((item) => item.taskId === kept.artifact.taskId || item.taskId === removed.artifact.taskId));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("开发项目作为独立能力执行，并保存可继续交接的完整结果", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-development-capability-"));
   const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-workspace-"));
@@ -266,6 +304,78 @@ test("开发项目作为独立能力执行，并保存可继续交接的完整�
     assert.equal(notification.artifact.metadata?.development?.proposal?.state, "pending");
     assert.equal(runtime.updateDevelopmentProposalState("devprop-test", "applied")?.metadata?.development?.proposal?.state, "applied");
     assert.equal(new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "", facts: [] }) }).snapshot().artifacts[0]?.metadata?.development?.proposal?.state, "applied");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("同一 Pi 开发任务会携带上下文包并精确恢复上一轮会话", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-development-resume-"));
+  const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-resume-workspace-"));
+  const calls: Array<{ instruction: string; sessionMode?: string; sessionFile?: string }> = [];
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => { throw new Error("开发能力不应走普通角色回复"); },
+      runDeveloper: async (input) => {
+        calls.push({ instruction: input.instruction, sessionMode: input.sessionMode, sessionFile: input.sessionFile });
+        return {
+          reply: "本轮完成。",
+          engine: "pi",
+          workspacePath: input.workspacePath,
+          accessMode: input.accessMode,
+          changedFiles: [],
+          fileReceipts: [],
+          checks: [],
+          unverifiedRisks: [],
+          toolCalls: 1,
+          sessionId: `session-${calls.length}`,
+          sessionFile: join(dir, "sessions", "same.jsonl"),
+          sessionResumed: calls.length > 1,
+        };
+      },
+    });
+    const contextBundle = {
+      version: 1 as const,
+      createdAt: new Date().toISOString(),
+      workspacePath: workspace,
+      budgetTokens: 32000,
+      tokenEstimate: 12,
+      itemCount: 1,
+      selectedPaths: [],
+      includeGitDiff: false,
+      items: [{ id: "summary:1", kind: "summary" as const, label: "背景", content: "保留现有公开接口", fingerprint: "a".repeat(64), tokenEstimate: 12, truncated: false }],
+    };
+    const first = await runtime.runAdHocTask({
+      title: "继续开发",
+      personaId: "clownfish",
+      capabilityId: "project-development",
+      instruction: "完成第一步",
+      workspacePath: workspace,
+      accessMode: "develop",
+      developmentEngine: "pi",
+      contextBundle,
+    });
+    const second = await runtime.runAdHocTask({
+      title: "继续开发",
+      personaId: "clownfish",
+      capabilityId: "project-development",
+      instruction: "完成第二步",
+      workspacePath: workspace,
+      accessMode: "develop",
+      developmentEngine: "pi",
+      continuationTaskId: first.artifact.taskId,
+      contextBundle,
+    });
+    assert.match(calls[0]!.instruction, /本次上下文包/);
+    assert.equal(calls[0]!.sessionMode, "continue");
+    assert.equal(calls[1]!.sessionMode, "resume");
+    assert.equal(calls[1]!.sessionFile, join(dir, "sessions", "same.jsonl"));
+    assert.equal(second.artifact.metadata?.developmentComparison?.previousArtifactId, first.artifact.id);
+    assert.equal(second.artifact.metadata?.developmentComparison?.sessionResumed, true);
+    assert.equal(second.artifact.metadata?.developmentComparison?.contextAdded, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });
@@ -462,6 +572,11 @@ test("长期任务脉络会保存进展、专家职责、决定替代关系和�
       id: task.id,
       text: "首页只保留对话入口，任务从工作页进入",
       supersedesId: firstDecision.id,
+      evidenceIds: ["artifact:prototype-1"],
+      confidence: 0.82,
+      producedBy: "user",
+      derivedFrom: [firstDecision.id],
+      sourceFingerprints: ["sha256:prototype-1"],
     });
 
     const reloaded = new CapabilityRuntime(options);
@@ -471,6 +586,9 @@ test("长期任务脉络会保存进展、专家职责、决定替代关系和�
     assert.equal(saved.storyline.nextAction, "完成轻量首页原型。");
     assert.deepEqual(saved.storyline.experts, [{ personaId: "product_lead", responsibility: "负责产品取舍和首次体验复核" }]);
     assert.equal(saved.storyline.decisions[0].status, "active");
+    assert.equal(saved.storyline.decisions[0].confidence, 0.82);
+    assert.deepEqual(saved.storyline.decisions[0].evidenceIds, ["artifact:prototype-1"]);
+    assert.equal(saved.storyline.decisions[0].producedBy, "user");
     assert.equal(saved.storyline.decisions[1].status, "superseded");
     assert.ok(saved.storyline.events.some((item) => item.type === "decision"));
     assert.equal(reloaded.snapshot().personas.find((item) => item.id === "product_lead")?.expert, true);
@@ -484,17 +602,22 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   const html = readFileSync(join(webDir, "capabilities.html"), "utf8");
   const script = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
 
-  for (const view of ["start", "runs", "history", "files"]) {
+  for (const view of ["start", "record"]) {
     assert.match(html, new RegExp(`data-view="${view}"`));
   }
   assert.match(html, /class="capability-panel"/);
   assert.match(html, /class="capability-view-nav"/);
-  assert.equal([...html.matchAll(/data-capability-nav/g)].length, 4);
+  assert.equal([...html.matchAll(/data-capability-nav/g)].length, 2);
   assert.doesNotMatch(html, /class="view-tabs"/);
   assert.match(script, /\$\$\('\[data-capability-nav\]'\)/);
   assert.equal([...script.matchAll(/backendId:/g)].length, 16);
   assert.match(script, /memoryMode:[^\n]+"preferences"/);
   assert.match(script, /\/api\/agent\/job/);
+  assert.match(html, /id="jobDeleteDialog"/);
+  assert.match(html, /仅删记录，保留文件/);
+  assert.match(script, /\/api\/agent\/job\/delete/);
+  assert.match(script, /data-delete-job/);
+  assert.match(script, /function askDeleteJob/);
   assert.match(html, /id="capabilityPicker"/);
   assert.match(html, /class="task-advanced"/);
   assert.doesNotMatch(html, /id="recentStrip"|id="recentTask"/);
@@ -626,13 +749,12 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
   assert.match(workScript, /这里只显示小丑鱼整理出的事实、经历与习惯/);
   assert.doesNotMatch(chatHtml, /协作进度|executionPanel/);
   assert.doesNotMatch(workHtml, /专家群聊|大群/);
-  assert.match(workHtml, /href="\/spaces" data-view="spaces" id="projectsViewLink" hidden>项目/);
+  assert.doesNotMatch(workHtml, /id="projectsViewLink"/);
   assert.match(workHtml, /id="taskSpace"/);
   assert.match(workScript, /function renderSpaces/);
   assert.match(workScript, /单个任务无需建项目/);
   assert.match(workScript, /\/tasks\?space=/);
-  assert.match(workHtml, /href="\/automations" data-view="automations">自动化/);
-  assert.doesNotMatch(workHtml, /data-view="(?:collaboration|resources|artifacts|runs|memory)"/);
+  assert.doesNotMatch(workHtml, /data-view="(?:tasks|spaces|collaboration|resources|artifacts|runs|memory)"/);
   assert.match(workScript, /function updatePrimaryWorkNavigation/);
   assert.match(workScript, /\/api\/capabilities\/task\/collaborate/);
   assert.match(workScript, /\/api\/knowledge/);

@@ -785,7 +785,7 @@ async function startTask() {
       $("#runConversationBridge").hidden = false;
       $("#runConversationText").textContent = "你可以继续聊天；完成后，结果会由小丑鱼直接送回。";
     }
-    openView("runs");
+    openView("record");
     showToast("任务已开始；可以回到对话继续，结果会自动送回");
   } catch (error) {
     showToast(error.message || "任务未能开始", true);
@@ -824,7 +824,7 @@ function artifactLinks(artifact, compact = false) {
   if (!artifact) return "";
   const preview = `<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(artifact.id)}" target="_blank" rel="noopener">${compact ? "预览" : "打开结果"}</a>`;
   const editUrl = `/office?artifact=${encodeURIComponent(artifact.id)}`;
-  const edit = `<a href="${editUrl}" data-artifact-edit="${editUrl}">${compact ? "继续编辑" : "在文件中继续"}</a>`;
+  const edit = `<a href="${editUrl}" data-artifact-edit="${editUrl}">${compact ? "去文件编辑" : "在文件中继续"}</a>`;
   const download = `<a href="/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}&download=1" download>${compact ? "下载" : `下载 ${String(artifact.format || "文件").toUpperCase()}`}</a>`;
   return preview + edit + download;
 }
@@ -881,29 +881,77 @@ function developmentReceipt(artifact) {
     ${risks.length ? `<p class="development-risk">仍需注意：${escapeHtml(risks[0])}${risks.length > 1 ? `，另有 ${risks.length - 1} 项` : ""}</p>` : ""}
   </section>`;
 }
-function renderRuns() {
-  const jobs = state.jobs.filter((job) => job.status === "queued" || job.status === "running");
-  $("#runsEmpty").hidden = jobs.length > 0;
-  $("#runsList").innerHTML = jobs.map((job) => {
+function renderRecord() {
+  const jobs = [...state.jobs].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  $("#recordEmpty").hidden = jobs.length > 0;
+  $("#recordList").innerHTML = jobs.map((job) => {
     const item = jobCapability(job);
     const checkpoint = latestCheckpoint(job);
+    const artifact = artifactFromJob(job);
+    const running = job.status === "queued" || job.status === "running";
     const progress = Math.max(3, Math.min(100, Number(checkpoint?.progress ?? (job.status === "running" ? 12 : 3))));
+    const installed = artifact?.metadata?.generatedAbilityId ? " · 已加入能力库" : "";
+    const statusLine = running
+      ? `${STATUS_TEXT[job.status]} · ${escapeHtml(checkpoint?.status || item.name)} · ${displayDate(job.updatedAt)}`
+      : `${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}`;
+    const files = artifact
+      ? `<div class="entry-files"><span class="file-type">${escapeHtml(String(artifact.format || "file").toUpperCase())}</span><span class="entry-files-name">${escapeHtml(artifactDisplayTitle(artifact))}</span><span class="version-actions">${artifactLinks(artifact, true)}</span></div>`
+      : "";
+    const actions = running
+      ? `${item.id === "developer" ? `<a href="/development?job=${encodeURIComponent(job.id)}">查看工作台</a>` : ""}<a href="${escapeHtml(chatHref(job.id))}">回到对话</a><button type="button" data-cancel-job="${escapeHtml(job.id)}">取消任务</button>`
+      : `${job.status === "succeeded" ? `${item.id === "developer" ? `<button type="button" data-revise-job="${escapeHtml(job.id)}">继续调整</button>` : ""}<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}<button class="danger" type="button" data-delete-job="${escapeHtml(job.id)}">删除</button>`;
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
-      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${escapeHtml(checkpoint?.status || item.name)} · ${displayDate(job.updatedAt)}</p>${jobMemoryUsage(job)}${developmentProgress(job, item, progress)}<div class="progress-track" aria-label="进度 ${progress}%"><span style="width:${progress}%"></span></div></div>
-      <div class="task-actions">${item.id === "developer" ? `<a href="/development?job=${encodeURIComponent(job.id)}">查看工作台</a>` : ""}<a href="${escapeHtml(chatHref(job.id))}">回到对话</a><button type="button" data-cancel-job="${escapeHtml(job.id)}">取消任务</button></div>
+      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${statusLine}</p>${jobMemoryUsage(job)}${running ? developmentProgress(job, item, progress) + `<div class="progress-track" aria-label="进度 ${progress}%"><span style="width:${progress}%"></span></div>` : ""}${files}</div>
+      ${running ? "" : developmentReceipt(artifact)}
+      <div class="task-actions">${actions}</div>
     </article>`;
   }).join("");
   $$('[data-cancel-job]').forEach((button) => button.addEventListener("click", () => cancelJob(button.dataset.cancelJob)));
+  $$('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
+  $$('[data-revise-job]').forEach((button) => button.addEventListener("click", () => continueDevelopment(button.dataset.reviseJob)));
+  $$('[data-apply-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.applyProposal, "apply")));
+  $$('[data-reject-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.rejectProposal, "reject")));
+  $$('[data-delete-job]').forEach((button) => button.addEventListener("click", () => askDeleteJob(button.dataset.deleteJob)));
+  const runningJobs = jobs.filter((job) => job.status === "queued" || job.status === "running");
   const bridge = $("#runConversationBridge");
-  bridge.hidden = jobs.length === 0;
-  if (jobs[0]) {
-    $("#runConversationText").textContent = `「${jobTitle(jobs[0])}」正在进行；完成后会直接送回对话。`;
+  bridge.hidden = runningJobs.length === 0;
+  if (runningJobs[0]) {
+    $("#runConversationText").textContent = `「${jobTitle(runningJobs[0])}」正在进行；完成后会直接送回对话。`;
   }
   const badge = $("#runningCount");
-  badge.textContent = jobs.length;
-  badge.hidden = jobs.length === 0;
+  badge.textContent = runningJobs.length;
+  badge.hidden = runningJobs.length === 0;
 }
+
+let pendingJobDelete = null;
+
+function askDeleteJob(id) {
+  const job = state.jobs.find((item) => item.id === id);
+  if (!job) return;
+  pendingJobDelete = job;
+  const artifact = artifactFromJob(job);
+  $("#jobDeleteTitle").textContent = `删除「${jobTitle(job)}」？`;
+  $("#jobDeleteSummary").textContent = artifact
+    ? "可以同时删除产出文件，或只删任务记录、把文件保留在本机目录。"
+    : "这条任务没有产出文件，只会删除任务记录。";
+  $("#jobDeleteDialog").showModal();
+}
+
+$("#jobDeleteDialog").addEventListener("close", async () => {
+  const job = pendingJobDelete;
+  pendingJobDelete = null;
+  const decision = $("#jobDeleteDialog").returnValue;
+  if (!job || (decision !== "all" && decision !== "keep")) return;
+  try {
+    await api("/api/agent/job/delete", { method: "POST", body: JSON.stringify({ id: job.id, deleteFiles: decision === "all" }) });
+    state.jobs = state.jobs.filter((item) => item.id !== job.id);
+    await refreshData();
+    showToast(decision === "all" ? "任务和产出文件已删除" : "任务记录已删除，产出文件保留在本机");
+  } catch (error) {
+    showToast(error.message || "删除失败", true);
+  }
+});
 
 async function cancelJob(id) {
   try {
@@ -928,10 +976,10 @@ function renderHistory() {
       <div class="task-actions">${job.status === "succeeded" ? `${item.id === "developer" ? `<button type="button" data-revise-job="${escapeHtml(job.id)}">继续调整</button>` : ""}<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}${open}</div>
     </article>`;
   }).join("");
-  $$('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
-  $$('[data-revise-job]').forEach((button) => button.addEventListener("click", () => continueDevelopment(button.dataset.reviseJob)));
-  $$('[data-apply-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.applyProposal, "apply")));
-  $$('[data-reject-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.rejectProposal, "reject")));
+  $('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
+  $('[data-revise-job]').forEach((button) => button.addEventListener("click", () => continueDevelopment(button.dataset.reviseJob)));
+  $('[data-apply-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.applyProposal, "apply")));
+  $('[data-reject-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.rejectProposal, "reject")));
 }
 
 async function decideDevelopmentProposal(id, action) {
@@ -994,28 +1042,9 @@ async function handoffJob(id) {
   }
 }
 
-function renderFiles() {
-  const artifacts = Array.isArray(state.snapshot.artifacts) ? [...state.snapshot.artifacts] : [];
-  artifacts.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const groups = new Map();
-  for (const artifact of artifacts) {
-    const key = `${artifact.capabilityId || "file"}:${artifactDisplayTitle(artifact) || artifact.taskId || artifact.id}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(artifact);
-  }
-  $("#filesEmpty").hidden = groups.size > 0;
-  $("#filesList").innerHTML = [...groups.values()].map((versions) => {
-    const latest = versions[0];
-    const capability = capabilityForBackend(latest.capabilityId);
-    return `<article class="file-card">
-      <div class="file-card-top"><div><h2>${escapeHtml(artifactDisplayTitle(latest))}</h2><p>${capability.name} · ${versions.length > 1 ? `${versions.length} 个版本` : displayDate(latest.createdAt)}</p></div><span class="file-type">${escapeHtml(String(latest.format || "file").toUpperCase())}</span></div>
-      <div class="versions">${versions.slice(0, 5).map((file, index) => `<div class="version-row"><span>${versions.length > 1 ? `版本 ${versions.length - index}` : "最新结果"} · ${artifactProofLabel(file)} · ${displayDate(file.createdAt)}</span><span class="version-actions">${artifactLinks(file, true)}</span></div>`).join("")}</div>
-    </article>`;
-  }).join("");
-}
-
 function openView(view, updateUrl = true) {
-  if (!["start", "runs", "history", "files"].includes(view)) view = "start";
+  if (["runs", "history", "files"].includes(view)) view = "record";
+  if (!["start", "record"].includes(view)) view = "start";
   state.view = view;
   $$("[data-view]").forEach((node) => node.classList.toggle("is-active", node.dataset.view === view));
   $$('[data-capability-nav]').forEach((node) => {
@@ -1025,9 +1054,9 @@ function openView(view, updateUrl = true) {
     else node.removeAttribute("aria-current");
   });
   const viewTitle = $("#capabilityViewTitle");
-  if (viewTitle) viewTitle.textContent = { start: "开始", runs: "进行中", history: "已完成", files: "文件" }[view];
+  if (viewTitle) viewTitle.textContent = { start: "开始", record: "归档" }[view];
   if (updateUrl) history.replaceState(null, "", view === "start" ? location.pathname : `#${view}`);
-  document.title = `${{ start: "能力", runs: "进行中", history: "已完成", files: "文件" }[view]} · 小丑鱼`;
+  document.title = `${{ start: "能力", record: "归档" }[view]} · 小丑鱼`;
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
@@ -1051,9 +1080,7 @@ async function refreshData() {
     $("#memorySummary").textContent = state.memoryCount > 0 ? `可轻量参考 ${state.memoryCount} 条写作、排版或格式习惯` : "会轻量参考文笔、排版和格式偏好";
     renderCatalog();
     renderExecutionState();
-    renderRuns();
-    renderHistory();
-    renderFiles();
+    renderRecord();
   } catch (error) {
     showToast(`暂时无法读取能力数据：${error.message}`, true);
   }

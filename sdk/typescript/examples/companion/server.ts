@@ -71,6 +71,7 @@ import {
   type CapabilityNotification,
   type CapabilityStreamCb,
   type CapabilityTaskExpertAssignment,
+  type CapabilityTaskDecision,
   type CapabilityTaskStorylineStatus,
   type DevelopmentEngine,
   type DevelopmentReasoning,
@@ -105,10 +106,19 @@ import { OfficeFileSessionStore } from "./office-file-sessions.js";
 import { OfficeWorkbenchRevisionConflict, OfficeWorkbenchStateStore } from "./office-workbench-state.js";
 import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
-import { validateDevelopmentWorkspace, type DevelopmentAccessMode } from "./pi-development.js";
+import { validateDevelopmentWorkspace, type DevelopmentAccessMode, type DevelopmentTelemetryEvent } from "./pi-development.js";
 import { createDevelopmentEnginePluginRegistry } from "./development-engine-plugins.js";
+import { DevelopmentEngineUpdateService } from "./development-engine-updates.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
 import { listDevelopmentWorkspace, readDevelopmentWorkspaceFile } from "./development-workspace.js";
+import {
+  buildDevelopmentContextBundle,
+  developmentContextSummary,
+  normalizeDevelopmentContextSelection,
+  type DevelopmentContextBundle,
+  type DevelopmentContextSelection,
+} from "./development-context.js";
+import { createDevelopmentRunEvent } from "./development-run-events.js";
 import { createManagedDevelopmentProject, ensureDevelopmentProjectsRoot, extractDevelopmentWorkspaceReference } from "./development-projects.js";
 import {
   DevelopmentProjectArchiveStore,
@@ -383,6 +393,11 @@ const developmentEnginePlugins = createDevelopmentEnginePluginRegistry({
   dataDir: DATA_DIR,
   proposalStore: developmentProposals,
 });
+const developmentEngineUpdates = new DevelopmentEngineUpdateService({
+  registry: developmentEnginePlugins,
+  stateFile: join(DATA_DIR, "development-engine-updates.json"),
+  packageRoot: resolve(__dirname, "..", ".."),
+});
 const developmentProjectArchive = new DevelopmentProjectArchiveStore(join(DATA_DIR, "development-project-archive.json"));
 const productReviewRuns = new ProductReviewRunStore(DATA_DIR);
 const knowledgeLibrary = new KnowledgeLibrary(DATA_DIR);
@@ -423,6 +438,20 @@ const capabilities = new CapabilityRuntime({
   },
 });
 const agentJobQueue = new FileAgentJobQueue(AGENT_JOBS_FILE, { onChange: broadcastAgentEvent });
+
+function developmentNativeEvent(
+  event: DevelopmentTelemetryEvent,
+  engine: DevelopmentEngine,
+): { type: "thinking" | "tool_call" | "checking"; label: string; progress?: number; detail: string } | undefined {
+  if (engine !== "pi") return undefined;
+  if (event.type === "tool_execution_start") {
+    const tool = String(event.toolName || "工具").trim() || "工具";
+    return { type: "tool_call", label: `正在执行：${tool}`, detail: event.type };
+  }
+  if (event.type === "agent_start") return { type: "thinking", label: "Pi Agent 已开始处理", progress: 20, detail: event.type };
+  if (event.type === "agent_end") return { type: "checking", label: "Pi Agent 已完成执行，正在核对结果", progress: 84, detail: event.type };
+  return undefined;
+}
 
 function developmentProjectThread(rootJobId: string) {
   return developmentProjectThreads(agentJobQueue.list({ limit: 500 })).find((thread) => thread.root.id === rootJobId);
@@ -596,7 +625,19 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       ? `\n\n## 本次交付习惯\n\n${appliedPreferences.map((item) => `- ${item}`).join("\n")}\n\n具体任务要求优先于这些习惯。`
       : "";
     const handoffReceipt = handoff ? receiveCapabilityHandoff(handoff) : undefined;
-    context.checkpoint(handoff ? "已接收上一步上下文" : "正在执行临时任务", 10, handoffReceipt);
+    const developmentEngine = normalizeDevelopmentEngine(job.payload.developmentEngine);
+    const contextBundle = job.payload.contextBundle as DevelopmentContextBundle | undefined;
+    const firstStatus = handoff ? "已接收上一步上下文" : contextBundle ? "已整理本次上下文" : "正在执行临时任务";
+    context.checkpoint(firstStatus, 10, {
+      ...(handoffReceipt ? { handoffReceipt } : {}),
+      ...(contextBundle ? { context: developmentContextSummary(contextBundle) } : {}),
+      runEvent: createDevelopmentRunEvent({
+        type: contextBundle ? "context_ready" : "queued",
+        label: firstStatus,
+        progress: 10,
+        engine: developmentEngine,
+      }),
+    });
     const notification = await capabilities.runAdHocTask({
       title: String(job.payload.title || "后台任务"),
       personaId,
@@ -617,17 +658,28 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
         job.payload.accessMode === "inspect" ? "inspect" : "develop",
       ),
       installDependencies: job.payload.installDependencies === true,
-      developmentEngine: normalizeDevelopmentEngine(job.payload.developmentEngine),
+      developmentEngine,
       model: normalizeDevelopmentModel(job.payload.model),
       reasoning: normalizeDevelopmentReasoning(job.payload.reasoning),
       continuationTaskId: String(job.payload.continuationTaskId || ""),
+      contextBundle,
       origin: {
         kind: handoff?.source === "capability" ? "capability" : job.payload.conversationKey ? "chat" : "direct",
         conversationKey: String(job.payload.conversationKey || ""),
         parentJobId: String(job.payload.parentJobId || ""),
         jobId: job.id,
       },
-      onProgress: (message, percent) => context.checkpoint(message, percent),
+      onProgress: (message, percent) => context.checkpoint(message, percent, {
+        runEvent: createDevelopmentRunEvent({ label: message, progress: percent, engine: developmentEngine }),
+      }),
+      onTelemetry: (event) => {
+        const projected = developmentNativeEvent(event, developmentEngine);
+        if (!projected) return;
+        context.checkpoint(projected.label, projected.progress, {
+          nativeEvent: event,
+          runEvent: createDevelopmentRunEvent({ ...projected, engine: developmentEngine }),
+        });
+      },
     }, context.signal).catch((error: unknown) => {
       // 交接失败必须有自己的落点。只留在 received 上，中断的交接会一直显示为「进行中」；
       // 作业本身仍然抛出失败，这里只保证回执被持久记录下来。
@@ -640,7 +692,17 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       }
       throw error;
     });
-    context.checkpoint("产物已保存", 100, { artifactId: notification.artifact.id });
+    const pendingDevelopmentProposal = notification.artifact.metadata?.development?.proposal?.state === "pending";
+    const completionLabel = pendingDevelopmentProposal ? "修改已完成，等待你确认写入" : "产物已保存";
+    context.checkpoint(completionLabel, 100, {
+      artifactId: notification.artifact.id,
+      runEvent: createDevelopmentRunEvent({
+        type: pendingDevelopmentProposal ? "needs_attention" : "completed",
+        label: completionLabel,
+        progress: 100,
+        engine: developmentEngine,
+      }),
+    });
     return {
       summary: notification.text,
       artifactRefs: [`artifact:${notification.artifact.id}`],
@@ -3910,6 +3972,7 @@ const server = createServer(async (req, res) => {
         idempotencyKey?: string;
         timeoutMs?: number;
         memoryMode?: "default" | "preferences" | "off";
+        contextSelection?: DevelopmentContextSelection;
       };
       if (body.kind === "capability-task" && !body.taskId) {
         send(res, 400, { error: "missing taskId" });
@@ -3959,6 +4022,23 @@ const server = createServer(async (req, res) => {
       if (continuationTaskId && !capabilities.snapshot().tasks.some((item) => item.id === continuationTaskId && item.oneOff)) {
         send(res, 400, { error: "要继续的任务不存在" });
         return;
+      }
+      let developmentContextBundle: DevelopmentContextBundle | undefined;
+      if (body.kind === "capability-adhoc" && body.capabilityId === "project-development") {
+        const continuationTask = capabilities.snapshot().tasks.find((item) => item.id === continuationTaskId);
+        try {
+          developmentContextBundle = buildDevelopmentContextBundle({
+            workspacePath: developmentWorkspace,
+            instruction: String(body.instruction || ""),
+            selection: normalizeDevelopmentContextSelection(body.contextSelection),
+            decisions: continuationTask?.storyline.decisions
+              .filter((decision) => decision.status === "active")
+              .map((decision) => decision.text),
+          });
+        } catch (error) {
+          send(res, 400, { error: error instanceof Error ? error.message : String(error) });
+          return;
+        }
       }
       const handoff = body.kind === "capability-adhoc" && body.handoff
         ? createCapabilityHandoffEnvelope({
@@ -4027,6 +4107,7 @@ const server = createServer(async (req, res) => {
                 format: body.format,
                 memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
                 appliedPreferences,
+                contextBundle: developmentContextBundle,
               },
           metadata: {
             userId: USER,
@@ -4128,6 +4209,28 @@ const server = createServer(async (req, res) => {
         summarizeResult: (job) => ({ ok: true, jobId: job.id, status: job.status }),
       });
       send(res, 200, { ok: true, job: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/agent/job/delete") {
+      const body = (await readBody(req)) as { id?: string; deleteFiles?: boolean };
+      const job = body.id ? agentJobQueue.get(body.id) : undefined;
+      if (!job) { send(res, 404, { error: "找不到这条任务记录" }); return; }
+      if (job.status === "queued" || job.status === "running") { send(res, 409, { error: "任务仍在执行，请先取消" }); return; }
+      const resultData = job.result?.data as { artifact?: { taskId?: string } } | undefined;
+      const taskId = String(resultData?.artifact?.taskId || job.payload.continuationTaskId || "").trim();
+      const action = await agentUserActions.execute({
+        name: "agent_job_delete",
+        description: "删除用户在能力归档中选中的任务记录，可选择同时删除产出文件",
+        arguments: { jobId: job.id, deleteFiles: !!body.deleteFiles },
+        execute: () => {
+          const capabilityData = taskId ? capabilities.deleteTaskData([taskId], { keepFiles: !body.deleteFiles }) : { tasks: 0, artifacts: 0 };
+          const deliveries = deliveryOutbox.deleteBySources("agent-job", [job.id]);
+          const deletedJobs = agentJobQueue.deleteMany([job.id]);
+          return { jobs: deletedJobs, tasks: capabilityData.tasks, artifacts: capabilityData.artifacts, deliveries };
+        },
+        summarizeResult: (value) => ({ ok: true, ...value }),
+      });
+      send(res, 200, { ok: true, deleted: action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/job/retry") {
@@ -4249,6 +4352,35 @@ const server = createServer(async (req, res) => {
         }),
         capabilityPacks: capabilityPackStatuses(snapshot.abilities, snapshot.artifacts),
       });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/development/engine-updates") {
+      send(res, 200, { ok: true, ...developmentEngineUpdates.snapshot() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/engine-updates/check") {
+      send(res, 200, { ok: true, ...(await developmentEngineUpdates.check()) });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/development/engine-updates/upgrade") {
+      const body = await readBody(req) as { engine?: string; latestVersion?: string; acceptRisk?: boolean };
+      if (!["pi", "dsh", "kilo", "opencode", "codex"].includes(String(body.engine || ""))) {
+        send(res, 400, { error: "未知的开发引擎。" });
+        return;
+      }
+      if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(String(body.latestVersion || ""))) {
+        send(res, 400, { error: "升级版本无效。" });
+        return;
+      }
+      const engine = body.engine as DevelopmentEngine;
+      const action = await agentUserActions.execute({
+        name: "development_engine_upgrade",
+        description: `升级 ${engine} 开发引擎并执行兼容性验证`,
+        arguments: { engine, latestVersion: body.latestVersion, acceptRisk: body.acceptRisk === true },
+        execute: () => developmentEngineUpdates.upgrade(engine, body.latestVersion!, body.acceptRisk === true),
+        summarizeResult: (result) => ({ engine: result.item.engine, version: result.item.currentVersion, restartRequired: true }),
+      });
+      send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/platform/connector/test") {
@@ -5307,7 +5439,20 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/capabilities/task/decision") {
-      const b = (await readBody(req)) as { id?: string; text?: string; note?: string; supersedesId?: string };
+      const b = (await readBody(req)) as {
+        id?: string;
+        text?: string;
+        note?: string;
+        supersedesId?: string;
+        status?: CapabilityTaskDecision["status"];
+        evidenceIds?: string[];
+        confidence?: number;
+        validFrom?: string;
+        validUntil?: string;
+        producedBy?: CapabilityTaskDecision["producedBy"];
+        derivedFrom?: string[];
+        sourceFingerprints?: string[];
+      };
       if (!b.id || !b.text?.trim()) { send(res, 400, { error: "missing task id or decision" }); return; }
       const action = await agentUserActions.execute({
         name: "capability_task_decision_record",
@@ -5323,6 +5468,14 @@ const server = createServer(async (req, res) => {
           text: b.text!,
           note: b.note,
           supersedesId: b.supersedesId,
+          status: b.status,
+          evidenceIds: b.evidenceIds,
+          confidence: b.confidence,
+          validFrom: b.validFrom,
+          validUntil: b.validUntil,
+          producedBy: b.producedBy,
+          derivedFrom: b.derivedFrom,
+          sourceFingerprints: b.sourceFingerprints,
         }),
         summarizeResult: (task) => ({ ok: true, taskId: task.id, decisionCount: task.storyline.decisions.length }),
       });
@@ -6223,6 +6376,7 @@ boot().then(() => {
     resumeInterruptedAgentRuns();
     seedPersonaBiosInBackground(engine);
     startPeriodicDataSync();
+    void developmentEngineUpdates.check();
     const startedAt = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
     console.log("");
     console.log("  陪伴 App 已启动 → http://localhost:" + PORT);

@@ -31,7 +31,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 a { color: inherit; text-decoration: none; }
 svg { display: block; }
-button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-visible {
+button:focus-visible, a:focus-visible {
   outline: 2px solid rgba(179, 63, 114, .7);
   outline-offset: 2px;
 }
@@ -630,3 +630,59 @@ h1, h2 { text-wrap: balance; }
   .quick-speech-input > button { width: 100%; }
   .quick-result-heading { align-items: flex-start; flex-direction: column; }
 }
+
+/* ============================================================
+ * 2026-08 能力页：任务条目内的文件小区域（下载 / 转去文件编辑）
+ * ============================================================ */
+.entry-files {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 9px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper-soft);
+  font-size: 12px;
+}
+.entry-files-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--ink-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entry-files .file-type { flex: 0 0 auto; }
+.entry-files .version-actions a { font-size: 12px; }
+
+/* ---------- 能力归档：条目删除确认对话框 ---------- */
+.job-delete-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 24px 70px rgba(35, 47, 42, .22);
+}
+.job-delete-dialog::backdrop { background: rgba(25, 33, 30, .38); backdrop-filter: blur(3px); }
+.job-delete-dialog form { padding: 22px; display: grid; gap: 10px; }
+.job-delete-dialog small { color: var(--accent); font-size: 12px; font-weight: 650; letter-spacing: .04em; }
+.job-delete-dialog h2 { margin: 2px 0 0; font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+.job-delete-dialog p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
+.job-delete-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.job-delete-actions button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--paper);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.job-delete-actions button:hover { border-color: var(--accent); color: var(--accent-dark); }
+.job-delete-actions button.danger { color: #fff; border-color: var(--accent); background: var(--accent); }
+.job-delete-actions button.danger:hover { border-color: var(--accent-dark); background: var(--accent-dark); color: #fff; }

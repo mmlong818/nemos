@@ -22,7 +22,7 @@
         <button class="is-current" type="button" data-view-target="start" title="能力" aria-label="能力" aria-current="page" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></button>
         <a href="/office" title="办公文件" aria-label="办公文件" data-app-icon="file"><span aria-hidden="true"></span><small>文件</small></a>
         <a href="/develop" title="开发" aria-label="开发" data-app-icon="code"><span aria-hidden="true"></span><small>开发</small></a>
-        <a href="/tasks" title="工作" aria-label="工作" data-app-icon="work"><span aria-hidden="true"></span><small>工作</small></a>
+        <a href="/automations" title="自动化" aria-label="自动化" data-app-icon="work"><span aria-hidden="true"></span><small>自动化</small></a>
       </nav>
       <a class="rail-secondary" href="/settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
     </aside>
@@ -38,9 +38,7 @@
           <strong class="capability-panel-title">能力</strong>
           <nav class="capability-view-nav">
             <button class="is-current" type="button" data-capability-nav data-view-target="start" data-app-icon="spark"><span aria-hidden="true"></span><span>开始</span></button>
-            <button type="button" data-capability-nav data-view-target="runs" data-app-icon="square"><span aria-hidden="true"></span><span>进行中</span><span class="count" id="runningCount" hidden>0</span></button>
-            <button type="button" data-capability-nav data-view-target="history" data-app-icon="bookmark"><span aria-hidden="true"></span><span>已完成</span></button>
-            <button type="button" data-capability-nav data-view-target="files" data-app-icon="file"><span aria-hidden="true"></span><span>文件</span></button>
+            <button type="button" data-capability-nav data-view-target="record" data-app-icon="bookmark"><span aria-hidden="true"></span><span>归档</span><span class="count" id="runningCount" hidden>0</span></button>
           </nav>
         </aside>
 
@@ -180,32 +178,15 @@
           </section>
         </div>
       </section>
-
-      <section class="view" data-view="runs">
+      <section class="view" data-view="record">
         <div class="list-page">
-          <header class="page-heading"><div><p class="eyebrow">后台执行</p><h1>进行中</h1><p>可以离开这里，任务不会消失。</p></div><button class="quiet-button" type="button" data-view-target="start">新建任务</button></header>
+          <header class="page-heading"><div><p class="eyebrow">后台执行</p><h1>归档</h1><p>进度和结果都保留在这里；删除时可选择是否同时删除产出文件。</p></div><button class="quiet-button" type="button" data-view-target="start">新建任务</button></header>
           <aside class="conversation-bridge" id="runConversationBridge" hidden>
             <span><strong>任务已回到对话主线</strong><small id="runConversationText">你可以继续聊天；完成后，结果会由小丑鱼直接送回。</small></span>
             <a id="runConversationLink" href="/">返回对话</a>
           </aside>
-          <div class="empty-state" id="runsEmpty"><span data-empty-icon="clock" aria-hidden="true"></span><h2>暂时没有进行中的任务</h2><p>开始一个任务后，进度会出现在这里。</p></div>
-          <div class="item-list" id="runsList"></div>
-        </div>
-      </section>
-
-      <section class="view" data-view="history">
-        <div class="list-page">
-          <header class="page-heading"><div><p class="eyebrow">任务记录</p><h1>已完成</h1><p>完成结果和状态会保留在这里。</p></div></header>
-          <div class="empty-state" id="historyEmpty"><span data-empty-icon="history" aria-hidden="true"></span><h2>还没有完成记录</h2><p>完成或取消的任务会留在这里。</p></div>
-          <div class="item-list" id="historyList"></div>
-        </div>
-      </section>
-
-      <section class="view" data-view="files">
-        <div class="list-page">
-          <header class="page-heading"><div><p class="eyebrow">任务交付物</p><h1>文件</h1><p>同一目标的多次结果会整理成版本，不会覆盖。</p></div></header>
-          <div class="empty-state" id="filesEmpty"><span data-empty-icon="file" aria-hidden="true"></span><h2>还没有文件</h2><p>任务完成后，交付物会自动保存在这里。</p></div>
-          <div class="file-grid" id="filesList"></div>
+          <div class="empty-state" id="recordEmpty"><span data-empty-icon="history" aria-hidden="true"></span><h2>还没有归档</h2><p>开始一个任务后，进度和结果会出现在这里。</p></div>
+          <div class="item-list" id="recordList"></div>
         </div>
       </section>
         </div>
@@ -223,6 +204,18 @@
       <button class="primary-button full" value="cancel">知道了</button>
     </form>
   </dialog>
+  <dialog class="job-delete-dialog" id="jobDeleteDialog" aria-labelledby="jobDeleteTitle">
+    <form method="dialog">
+      <div><small>从归档移除</small><h2 id="jobDeleteTitle">删除这条任务？</h2></div>
+      <p id="jobDeleteSummary">可以同时删除产出文件，或只删任务记录、把文件保留在本机。</p>
+      <div class="job-delete-actions">
+        <button type="submit" value="cancel">取消</button>
+        <button type="submit" value="keep">仅删记录，保留文件</button>
+        <button class="danger" type="submit" value="all">全部删除</button>
+      </div>
+    </form>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/assets/app-icons.js" defer></script>
   <script src="/assets/capability-center.js" defer></script>
