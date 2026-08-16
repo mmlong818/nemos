@@ -168,4 +168,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Bu
 
 - TypeScript 接入层、Agent 运行时与公开研究资料采用 [PolyForm Noncommercial 1.0.0](LICENSE)；
 - 独立记忆内核 `@nemos/sdk` 以其仓库许可证为准；
-- 小丑鱼应用 `sdk/typescript/examples/companion/` 保留全部权利，见其[单独声明](sdk/typescript/examples/companion/LICENSE)。
+- 小丑鱼应用 `sdk/typescript/examples/companion/` 保留全部权利，见其[单独声明](sdk/typescript/examples/companion/LICENSE)；
+- 随包分发的开源组件、版本与许可证见[第三方软件声明](THIRD_PARTY_NOTICES.md)。
+
+严格来说，本仓库整体不是单一 OSI 开源许可证项目：接入层是非商业源码开放，小丑鱼应用另行授权，第三方组件继续适用各自的开源或软件许可条款。
