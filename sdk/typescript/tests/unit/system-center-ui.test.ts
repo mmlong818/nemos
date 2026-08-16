@@ -106,6 +106,8 @@ test("开发页把运行配置置顶，并把执行设置收进输入框", () =>
   assert.match(script, /api\("\/api\/development\/engine-updates\/upgrade"/);
   assert.match(script, /if \(presence\) presence\.textContent/);
   assert.match(script, /model: developmentModelValue\(\)/);
+  assert.match(script, /\/api\/development\/model-connections/);
+  assert.match(script, /engineProfile\.mode === "inherit"/);
   assert.match(script, /reasoning: developmentReasoningValue\(\)/);
   assert.match(script, /function openDevelopmentJob\(jobId\)/);
   assert.match(script, /requestedJobId !== activeJobId/);
@@ -131,6 +133,12 @@ test("设置中心统一模型、开发、连接与本机数据", () => {
   assert.match(html, /\[hidden\]\{display:none!important\}/);
   assert.match(html, /id="serverStorageFields"/);
   assert.match(script, /\/api\/llm-config/);
+  assert.match(html, /development-models\.css/);
+  assert.match(script, /id=\"developmentModelConnections\"/);
+  assert.match(script, /继承默认模型/);
+  assert.match(script, /\/api\/development\/model-connections/);
+  assert.match(server, /DEVELOPMENT_MODEL_CONNECTIONS_FILE/);
+  assert.match(server, /developmentModelConnection\(developmentEngine\)/);
   assert.match(script, /\/api\/platform\/connector\/test/);
   assert.match(script, /\/api\/agent\/extension\/validate/);
   assert.match(script, /\/api\/runtime/);

@@ -443,13 +443,16 @@
     renderDevelopmentEnginePicker();
   }
 
-  async function loadDevelopmentModels() {
+  async function loadDevelopmentModels(preferredModel = preference.defaultModel || "default") {
     const select = $("#developmentModel");
-    const preferred = preference.defaultModel || "default";
     try {
-      const state = await api("/api/llm");
-      const taskModel = String(state.taskModel || state.model || "").trim();
-      const dailyModel = String(state.dailyChatModel || "").trim();
+      const [state, profiles] = await Promise.all([
+        api("/api/llm"),
+        api("/api/development/model-connections"),
+      ]);
+      const engineProfile = profiles.engines?.[developmentEngineValue()] || {};
+      const taskModel = String(engineProfile.model || "").trim();
+      const dailyModel = engineProfile.mode === "inherit" ? String(state.dailyChatModel || "").trim() : "";
       select.innerHTML = "";
       const addOption = (value, label) => {
         if (!value || [...select.options].some((option) => option.value === value)) return;
@@ -458,8 +461,8 @@
         option.textContent = label;
         select.append(option);
       };
-      if (state.live && taskModel) {
-        addOption("default", `任务模型 · ${taskModel}`);
+      if (engineProfile.effective && taskModel) {
+        addOption("default", `${engineProfile.mode === "independent" ? "独立模型" : "默认模型"} · ${taskModel}`);
         addOption(taskModel, taskModel);
         if (dailyModel && dailyModel !== taskModel) addOption(dailyModel, `${dailyModel} · 轻量`);
         select.disabled = false;
@@ -467,7 +470,7 @@
         addOption("default", "尚未连接模型");
         select.disabled = true;
       }
-      setDevelopmentModel(preferred);
+      setDevelopmentModel(preferredModel);
     } catch {
       select.innerHTML = '<option value="default">模型状态未知</option>';
       select.disabled = true;
@@ -514,6 +517,7 @@
   });
   $("#developmentEngine").addEventListener("change", () => {
     setDevelopmentEngine($("#developmentEngine").value);
+    void loadDevelopmentModels("default");
     persistTaskSettings();
   });
   $("#developmentEngineTrigger").addEventListener("click", () => $("#developmentEngineDialog").showModal());
@@ -521,6 +525,7 @@
     const option = event.target.closest("[data-development-engine-option]");
     if (!option || option.disabled) return;
     setDevelopmentEngine(option.dataset.developmentEngineOption);
+    void loadDevelopmentModels("default");
     persistTaskSettings();
     $("#developmentEngineDialog").close();
     $("#developmentEngineTrigger").focus();
