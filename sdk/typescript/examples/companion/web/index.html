@@ -2479,6 +2479,20 @@
   #topActions button:hover, .top-icon:hover, #vbtn:hover, #imgbtn:hover, #shotbtn:hover, #filebtn:hover { color:#8f2f59; background:#f3e9ed; }
   .row.other .bub { background:#fffcf7; border:1px solid #e2dbd0; }
   .row.me .bub, .msg-avatar.me-avatar { color:#fff; background:#b33f72; }
+  @media (min-width:721px) {
+    .row.other:not(.expert-longform-row) {
+      width:calc(80% + 44px);
+      max-width:calc(80% + 44px);
+    }
+    .row.other:not(.expert-longform-row) .msg-body {
+      width:calc(100% - 44px);
+      max-width:none;
+      align-items:flex-start;
+    }
+    .row.other:not(.expert-longform-row) .bub {
+      max-width:100%;
+    }
+  }
   .expert-longform-row {
     align-self:center;
     width:min(840px,100%);
