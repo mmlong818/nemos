@@ -86,7 +86,9 @@ export async function runExternalDevelopment(
     : { workspace, isolated: false, cleanup: async () => undefined };
   if (input.accessMode === "develop" && !isolation.isolated) {
     await isolation.cleanup();
-    throw new Error(`${engine.name} 为避免覆盖现有修改，只能在干净的 Git 项目中直接开发。当前项目请先提交已有改动，或切换为 Pi Agent。`);
+    throw new Error(isolation.reason === "not-a-repo"
+      ? `${engine.name} 需要在已有的 Git 项目中开发；当前目录还不是 Git 项目，全新项目请切换为 Pi Agent。`
+      : `${engine.name} 为避免覆盖现有修改，只能在干净的 Git 项目中直接开发。当前项目请先提交已有改动，或切换为 Pi Agent。`);
   }
 
   const executionWorkspace = isolation.workspace;

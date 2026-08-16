@@ -1,5 +1,5 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { AgentJobRecord } from "../../src/index.js";
 
@@ -125,10 +125,33 @@ export function managedDevelopmentWorkspace(projectsRoot: string, workspacePath:
   return target;
 }
 
+// rmSync(recursive) 在这台 Windows 上删除部分中文目录名会让进程直接中止；
+// 手动递归（readdir + unlink + rmdir）没有这个问题。
+function removeDirectoryQuietly(target: string): void {
+  if (!existsSync(target)) return;
+  for (const entry of readdirSync(target, { withFileTypes: true })) {
+    const child = join(target, entry.name);
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      removeDirectoryQuietly(child);
+    } else {
+      try {
+        unlinkSync(child);
+      } catch {
+        // 单个文件删除失败不中断整体清理
+      }
+    }
+  }
+  try {
+    rmdirSync(target);
+  } catch {
+    // 目录删除失败按 force 语义忽略
+  }
+}
+
 export function deleteManagedDevelopmentWorkspace(projectsRoot: string, workspacePath: string): boolean {
   const target = managedDevelopmentWorkspace(projectsRoot, workspacePath);
   if (!target) return false;
-  rmSync(target, { recursive: true, force: true });
+  removeDirectoryQuietly(target);
   return !existsSync(target);
 }
 

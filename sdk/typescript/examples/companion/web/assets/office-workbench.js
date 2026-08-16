@@ -338,7 +338,7 @@ function loadState() {
 }
 
 const state = loadState();
-state.view = currentDocument()?.sourceSize ? "source" : "edit";
+state.view = "edit";
 let toastTimer = 0;
 let operationTimer = 0;
 let operationRetry = null;
@@ -498,7 +498,7 @@ async function hydrateWorkbenchState() {
       state.documents = remote.documents.map(safeDocument);
       state.trash = Array.isArray(remote.trash) ? remote.trash.map((item) => ({ ...safeDocument(item), deletedAt: String(item?.deletedAt || item?.updatedAt || now()) })) : [];
       state.selectedId = state.documents.some((item) => item.id === remote.selectedId) ? remote.selectedId : state.documents[0]?.id || null;
-      state.view = requestedView() || (currentDocument()?.sourceSize ? "source" : "edit");
+      state.view = requestedView() || "edit";
       writeStoredState();
       render();
       return;
@@ -562,7 +562,7 @@ function deleteCurrentDocument() {
   const expired = state.trash.splice(MAX_TRASH_DOCUMENTS);
   expired.forEach((item) => void window.ClownfishOfficeSource.remove(item.id).catch(() => {}));
   state.selectedId = state.documents[Math.min(originalIndex, state.documents.length - 1)]?.id || null;
-  state.view = currentDocument()?.sourceSize ? "source" : "edit";
+  state.view = "edit";
   writeStoredState();
   queueRemoteSave("文件已移到垃圾桶");
   render();
@@ -578,7 +578,7 @@ function undoDocumentDeletion() {
   state.trash = state.trash.filter((item) => item.id !== deleted.id);
   state.documents.splice(Math.min(index, state.documents.length), 0, deleted);
   state.selectedId = deleted.id;
-  state.view = deleted.sourceSize ? "source" : "edit";
+  state.view = "edit";
   writeStoredState();
   queueRemoteSave("文件已恢复");
   render();
@@ -594,7 +594,7 @@ function restoreTrashDocument(id) {
   document.updatedAt = now();
   state.documents.unshift(document);
   state.selectedId = document.id;
-  state.view = document.sourceSize ? "source" : "edit";
+  state.view = "edit";
   persistState("文件已从垃圾桶恢复");
   render();
   showToast("文件已恢复");
@@ -665,7 +665,7 @@ function openDocumentFromLibrary(documentId) {
     const current = currentDocument();
     if (current && dirtyWordDocuments.has(current.id) && documentId !== current.id && !window.confirm("当前 Word 工作副本还有未保存修改。放弃修改并打开其他文件吗？")) return;
     state.selectedId = documentId;
-    state.view = currentDocument()?.sourceSize ? "source" : "edit";
+    state.view = "edit";
     activeStructuredSection.delete(state.selectedId);
     persistSelection();
     render();
@@ -1121,8 +1121,8 @@ async function restoreSourceVersion(versionId) {
 function setDocumentView(view) {
   const current = currentDocument();
   const hasResult = Boolean(current?.processing);
-  if (!["source", "edit", "result"].includes(view)) view = current?.sourceSize ? "source" : "edit";
-  if (view === "result" && !hasResult) view = current?.sourceSize ? "source" : "edit";
+  if (!["source", "edit", "result"].includes(view)) view = "edit";
+  if (view === "result" && !hasResult) view = "edit";
   state.view = view;
   document.querySelectorAll("[data-document-view]").forEach((button) => {
     const selected = button.dataset.documentView === view;
@@ -1160,7 +1160,7 @@ function renderProcessingState(current, job = null) {
   if (!processing) {
     startButton.disabled = !current;
     startButton.textContent = "开始处理";
-    if (state.view === "result") setDocumentView(current?.sourceSize ? "source" : "edit");
+    if (state.view === "result") setDocumentView("edit");
     return;
   }
 
@@ -1232,10 +1232,6 @@ function render() {
     : current.sourceSize || current.convertedFrom || (["docx", "pptx", "xlsx", "pdf"].includes(current.kind) && hasWorkingContent)
       ? "原文件未绑定，可重新打开恢复"
       : "新建文件";
-  const desktopEditable = usesDesktopOriginalFormat(current);
-  document.querySelector("#openDesktopEditor").hidden = !desktopEditable;
-  document.querySelector("#openDesktopEditor").textContent = desktopEditLabel(originalKind);
-  document.querySelector("#refreshDesktopFile").hidden = !desktopEditable;
   // 转换过的文档：工作文档是 Markdown，但要按来源格式说明这次转换丢了什么。
   const sourceCapability = current.convertedFrom ? capabilityOf(current.convertedFrom) : null;
   const capability = capabilityOf(current.kind);
@@ -1379,7 +1375,7 @@ async function importFile(file, handle = null) {
     replaced.forEach((item) => void window.ClownfishOfficeSource.remove(item.id).catch(() => {}));
     state.documents.unshift(importedDocument);
     state.selectedId = importedDocument.id;
-    state.view = "source";
+    state.view = "edit";
     await loadSourceHistory(importedDocument);
     persistState(importedDocument.sourceTruncated ? "已读取可处理的前半部分" : "文件已读取");
     render();
@@ -1458,7 +1454,7 @@ async function refreshDesktopFile(forceRebuild = false) {
     });
     current.versions = current.versions.slice(0, MAX_VERSIONS);
     await loadSourceHistory(current);
-    state.view = forceRebuild ? "edit" : "source";
+    state.view = "edit";
     if (forceRebuild) rebuildingWordDocuments.delete(current.id);
     persistState("桌面修改已载入");
     render();
@@ -1509,7 +1505,7 @@ async function openCopiedSession(copy) {
   }
   state.documents.unshift(copiedDocument);
   state.selectedId = copiedDocument.id;
-  state.view = "source";
+  state.view = "edit";
   await loadSourceHistory(copiedDocument);
   persistState("文字副本已生成");
   render();
@@ -1857,13 +1853,15 @@ function openAssistantPanel(mode) {
     quoteNotice.textContent = activeDocumentQuote ? `将重点处理${activeDocumentQuote.location}，同时保留整份文件作为背景。` : "";
   }
   document.querySelector("#assistantCard").hidden = showingVersions;
+  document.querySelector("#toolsCard").hidden = showingVersions;
   document.querySelector("#versionCard").hidden = !showingVersions;
   document.querySelector("#assistantPanelTitle").textContent = showingVersions ? "版本记录" : "小丑鱼处理";
   document.querySelector("#assistantPanel").classList.add("is-open");
   document.querySelector("#assistantPanel").setAttribute("aria-hidden", "false");
   document.querySelector("#assistantPanel").removeAttribute("inert");
   document.querySelector("#assistantPanelBackdrop").classList.add("is-open");
-  document.querySelector("#openAssistantPanel").setAttribute("aria-expanded", String(!showingVersions));
+  if (mode === "tools") document.querySelector("#toolsCard").scrollIntoView({ block: "start" });
+  document.querySelector("#openToolsPanel").setAttribute("aria-expanded", String(mode !== "versions"));
   document.querySelector("#openVersionPanel").setAttribute("aria-expanded", String(showingVersions));
   document.querySelector("#closeAssistantPanel").focus();
 }
@@ -1873,8 +1871,8 @@ function closeAssistantPanel() {
   document.querySelector("#assistantPanel").setAttribute("aria-hidden", "true");
   document.querySelector("#assistantPanel").setAttribute("inert", "");
   document.querySelector("#assistantPanelBackdrop").classList.remove("is-open");
-  document.querySelector("#openAssistantPanel").setAttribute("aria-expanded", "false");
   document.querySelector("#openVersionPanel").setAttribute("aria-expanded", "false");
+  document.querySelector("#openToolsPanel").setAttribute("aria-expanded", "false");
 }
 
 function bindEvents() {
@@ -1986,14 +1984,12 @@ function bindEvents() {
   document.querySelector("#deleteDocument").addEventListener("click", deleteCurrentDocument);
   document.querySelector("#saveVersion").addEventListener("click", saveVersion);
   document.querySelector("#saveWorkingCopy").addEventListener("click", saveWorkingCopy);
-  document.querySelector("#openAssistantPanel").addEventListener("click", () => openAssistantPanel("assistant"));
   document.querySelector("#openVersionPanel").addEventListener("click", () => openAssistantPanel("versions"));
+  document.querySelector("#openToolsPanel").addEventListener("click", () => openAssistantPanel("assistant"));
   document.querySelector("#closeAssistantPanel").addEventListener("click", closeAssistantPanel);
   document.querySelector("#assistantPanelBackdrop").addEventListener("click", closeAssistantPanel);
   document.querySelector("#exportDraft").addEventListener("click", exportDraft);
   document.querySelector("#writeBackSource").addEventListener("click", writeBackSource);
-  document.querySelector("#openDesktopEditor").addEventListener("click", openDesktopEditor);
-  document.querySelector("#refreshDesktopFile").addEventListener("click", () => refreshDesktopFile(true));
   document.querySelector("#startOfficeTask").addEventListener("click", startOfficeTask);
   document.querySelector("#cancelOfficeTask").addEventListener("click", cancelOfficeTask);
   document.querySelectorAll("[data-document-view]").forEach((button) => button.addEventListener("click", () => setDocumentView(button.dataset.documentView)));

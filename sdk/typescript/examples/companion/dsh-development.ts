@@ -69,7 +69,9 @@ export async function runDshDevelopment(input: DshDevelopmentInput): Promise<PiD
     : { workspace, isolated: false, cleanup: async () => undefined };
   if (input.accessMode === "develop" && !isolation.isolated) {
     await isolation.cleanup();
-    throw new Error("隔离开发引擎为避免覆盖现有修改，只能在干净的 Git 项目中直接开发。当前项目请先提交已有改动，或切换为内置引擎。");
+    throw new Error(isolation.reason === "not-a-repo"
+      ? "隔离开发引擎需要在已有的 Git 项目中开发；当前目录还不是 Git 项目，全新项目请切换为内置引擎。"
+      : "隔离开发引擎为避免覆盖现有修改，只能在干净的 Git 项目中直接开发。当前项目请先提交已有改动，或切换为内置引擎。");
   }
 
   const executionWorkspace = isolation.workspace;
@@ -90,6 +92,7 @@ export async function runDshDevelopment(input: DshDevelopmentInput): Promise<PiD
       task: buildDshTask(input.instruction, input.accessMode),
       apiKey: input.connection.apiKey || "local-model",
       baseEnvironment: process.env,
+      accessMode: input.accessMode,
       signal: input.signal,
     });
     const sessionFile = newestSessionFile(resolve(runHome, "sessions"));
@@ -261,6 +264,7 @@ async function runDshProcess(input: {
   task: string;
   apiKey: string;
   baseEnvironment: NodeJS.ProcessEnv;
+  accessMode: DevelopmentAccessMode;
   signal?: AbortSignal;
 }): Promise<string> {
   return new Promise((accept, reject) => {
@@ -274,7 +278,7 @@ async function runDshProcess(input: {
       env: {
         ...input.baseEnvironment,
         DSH_HOME: input.home,
-        DSH_PERMISSION_MODE: "workspace-write",
+        DSH_PERMISSION_MODE: dshPermissionMode(input.accessMode),
         DSH_TELEMETRY_DISABLED: "1",
         CLOWNFISH_DSH_API_KEY: input.apiKey,
       },
@@ -319,6 +323,18 @@ async function runDshProcess(input: {
   });
 }
 
+export function dshPermissionMode(accessMode: DevelopmentAccessMode): "read-only" | "workspace-write" {
+  return accessMode === "inspect" ? "read-only" : "workspace-write";
+}
+
+// 运行产物不进审阅：Python 字节码缓存、依赖目录、构建输出、系统垃圾文件。
+// 与 Pi 引擎的 SKIPPED_DIRECTORIES 约定保持一致。
+const GENERATED_ARTIFACT_PATTERN = /(?:^|\/)(?:__pycache__|node_modules|\.next|dist|build|coverage)(?:\/|$)|\.(?:pyc|pyo)$|(?:^|\/)(?:\.DS_Store|Thumbs\.db)$/;
+
+export function isGeneratedArtifactPath(path: string): boolean {
+  return GENERATED_ARTIFACT_PATTERN.test(path);
+}
+
 export async function collectDshWorkspaceChanges(workspace: string, baseRevision?: string): Promise<DshWorkspaceChange[]> {
   if (!baseRevision) throw new Error("隔离开发引擎直接开发需要可读取的 Git 基线版本。");
   const tracked = await gitOutput(workspace, ["diff", "--name-status", "--no-renames", baseRevision, "--"]);
@@ -329,11 +345,13 @@ export async function collectDshWorkspaceChanges(workspace: string, baseRevision
     if (tab < 1) continue;
     const status = line.slice(0, tab);
     const path = normalizeWorkspacePath(line.slice(tab + 1));
+    if (isGeneratedArtifactPath(path)) continue;
     if (status.startsWith("D")) throw new Error(`隔离开发引擎删除了文件，当前安全提案不接受删除操作：${path}`);
     changes.set(path, { path, operation: status.startsWith("A") ? "create" : "update" });
   }
   for (const item of untracked.split("\0").filter(Boolean)) {
     const path = normalizeWorkspacePath(item);
+    if (isGeneratedArtifactPath(path)) continue;
     changes.set(path, { path, operation: "create" });
   }
   if (changes.size > MAX_CAPTURE_FILES) throw new Error(`隔离开发引擎修改了 ${changes.size} 个文件，超过单次提案上限 ${MAX_CAPTURE_FILES}。`);

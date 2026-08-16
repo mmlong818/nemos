@@ -41,7 +41,7 @@
         <span data-app-icon="boxes" aria-hidden="true"><span></span></span>
         <h2>还没有归档项目</h2>
         <p>在开发页归档的项目会安全地保存在这里。</p>
-        <a href="/develop">返回开发</a>
+        <a class="archive-empty-back" href="/develop">返回开发</a>
       </section>`;
     window.ClownfishIcons?.hydrate({ root: $("#archiveProjectList") });
   }

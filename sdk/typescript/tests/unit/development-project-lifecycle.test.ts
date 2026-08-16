@@ -71,3 +71,18 @@ test("only deletes directories strictly inside the managed projects root", () =>
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("删除中文命名的项目目录（rmSync 在部分 Windows 上会中止进程）", () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-managed-cjk-"));
+  const root = join(dir, "projects");
+  const managed = join(root, "检查我本机的wifi状态-3");
+  try {
+    mkdirSync(join(managed, "src"), { recursive: true });
+    writeFileSync(join(managed, "src", "检查.ts"), "export {};\n");
+    writeFileSync(join(managed, "说明.md"), "# 项目\n");
+    assert.equal(deleteManagedDevelopmentWorkspace(root, managed), true);
+    assert.equal(existsSync(managed), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

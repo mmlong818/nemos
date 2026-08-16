@@ -682,3 +682,49 @@
   letter-spacing: -.01em !important;
   color: #1d1d1f !important;
 }
+
+/* ============================================================
+ * 2026-08 输入框统一：任务/开发页输入区对齐能力页 goal-box 规格
+ * 覆盖全部状态：任务页空态大框（scramble-theme）、任务页对话后底部条、
+ * 开发页底部条。卡片 7px 内边距；正文 16px、13-14px 内边距、82px 档；
+ * 主按钮同 primary-button：40px 高、0 18px、圆角 10px、650 字重、右下。
+ * ============================================================ */
+.task-workbench-composer {
+  height: auto !important;
+  flex: 0 0 auto !important;
+  padding: 7px !important;
+}
+
+.task-workbench-input-wrap,
+#txtWrap.task-workbench-input-wrap {
+  height: 82px !important;
+  min-height: 82px !important;
+  max-height: 82px !important;
+  flex: 0 0 82px !important;
+}
+
+.task-workbench-input {
+  min-height: 82px !important;
+  padding: 13px 14px !important;
+  font-size: 16px !important;
+  line-height: 1.55 !important;
+}
+
+.task-workbench-tools,
+#composerTools.task-workbench-tools {
+  height: 46px !important;
+  min-height: 46px !important;
+  flex: 0 0 46px !important;
+  padding: 3px 0 0 !important;
+}
+
+#send.task-workbench-send,
+#startDevelop.task-workbench-send {
+  width: auto !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 18px !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}

@@ -67,13 +67,13 @@ test("OpenCode 已接入开发页面、任务路由和平台就绪检查", () =>
   const settings = readFileSync(join(companion, "web", "settings.html"), "utf8");
   const script = readFileSync(join(companion, "web", "assets", "develop-center.js"), "utf8");
   const server = readFileSync(join(companion, "server.ts"), "utf8");
-  const plugins = readFileSync(join(companion, "development-engine-plugins.ts"), "utf8");
+  const plugins = readFileSync(join(companion, "development-engine-plugins", "opencode.ts"), "utf8");
   assert.match(html, /<option value="opencode">OpenCode<\/option>/);
   assert.match(settings, /<option value="opencode">OpenCode<\/option>/);
   assert.match(script, /opencode: \{ name: "OpenCode"/);
   assert.match(server, /developmentEnginePlugins\.run\(developmentEngine/);
   assert.match(server, /developmentEnginePlugins\.readiness\(\)/);
-  assert.match(plugins, /manifest\("opencode", "OpenCode", "opencode-ai"\)/);
+  assert.match(plugins, /id: "opencode"[\s\S]*name: "OpenCode"[\s\S]*packageName: "opencode-ai"/);
   assert.match(plugins, /runOpenCodeDevelopment/);
 });
 

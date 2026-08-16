@@ -27,7 +27,7 @@
         <a href="/capabilities" data-app-icon="boxes"><span></span><small>能力</small></a>
         <a href="/office" data-app-icon="file"><span></span><small>文件</small></a>
         <a class="is-current" href="/develop" aria-current="page" data-app-icon="code"><span></span><small>开发</small></a>
-        <a href="/tasks" data-app-icon="work"><span></span><small>工作</small></a>
+        <a href="/automations" data-app-icon="work"><span></span><small>自动化</small></a>
       </nav>
       <a class="rail-secondary" href="/settings" data-app-icon="settings"><span></span><small>设置</small></a>
     </aside>
@@ -42,6 +42,7 @@
           <span id="taskMeta" class="development-task-meta">项目将自动建立</span>
         </div>
         <div class="task-workbench-top-actions">
+          <button id="compareDevelopmentRuns" class="development-compare-trigger" type="button" title="比较开发版本" aria-label="比较开发版本" hidden><span data-app-icon="boxes" aria-hidden="true"><span></span></span><span>比较</span></button>
           <a id="openReview" href="/tasks" title="查看任务详情" aria-label="查看任务详情" hidden><span data-app-icon="message-circle" aria-hidden="true"><span></span></span></a>
         </div>
       </header>
@@ -67,10 +68,18 @@
               <header class="development-control-bar">
                 <span class="development-context" id="activityContext">新任务</span>
                 <div class="development-profile-controls" aria-label="开发运行配置">
-                  <label class="development-profile-field" for="developmentEngine"><span>引擎</span><select id="developmentEngine"><option value="pi">Pi Agent（默认）</option><option value="dsh">DeepSeek Harness</option><option value="kilo">Kilo Code</option><option value="opencode">OpenCode</option><option value="codex">Codex</option></select></label>
+                  <div class="development-profile-field development-engine-field">
+                    <span>引擎</span>
+                    <button id="developmentEngineTrigger" class="development-engine-trigger" type="button" aria-haspopup="dialog" aria-controls="developmentEngineDialog">
+                      <b id="developmentEngineLabel">Pi Agent</b><small id="developmentEngineStatus">已就绪</small><span data-app-icon="chevron-down" aria-hidden="true"><span></span></span>
+                    </button>
+                    <select id="developmentEngine" class="visually-hidden" tabindex="-1" aria-hidden="true"><option value="pi">Pi Agent（默认）</option><option value="dsh">DeepSeek Harness</option><option value="kilo">Kilo Code</option><option value="opencode">OpenCode</option><option value="codex">Codex</option></select>
+                  </div>
                   <label class="development-profile-field development-model-field" for="developmentModel"><span>模型</span><select id="developmentModel"><option value="default">当前任务模型</option></select></label>
                   <label class="development-profile-field" for="developmentReasoning"><span>思考</span><select id="developmentReasoning"><option value="fast">快速</option><option value="balanced" selected>标准</option><option value="deep">深入</option></select></label>
+                  <button class="development-engine-update-notice" id="developmentEngineUpdateNotice" type="button" aria-haspopup="dialog" aria-controls="developmentEngineUpdateDialog" hidden><i></i><span>更新</span><small id="developmentEngineUpdateCount"></small></button>
                 </div>
+                <div class="development-project-chip" role="button" tabindex="0" title="点击复制完整目录地址"><span data-app-icon="file" aria-hidden="true"><span></span></span><span><b id="workspaceLabel">小丑鱼项目</b><small id="workspaceHint">正在读取默认目录…</small></span></div>
                 <span class="development-engine-state" id="developmentEngineHint">内置执行，适合大多数开发任务</span>
               </header>
               <aside class="development-process" id="developmentProcess" aria-live="polite" hidden></aside>
@@ -87,7 +96,7 @@
                   <div class="task-workbench-input-wrap"><textarea id="instruction" class="task-workbench-input" required rows="3" maxlength="16000" placeholder="例如：修复首页按钮没有反应的问题，并检查有没有类似错误"></textarea></div>
                   <div class="composer-context task-workbench-tools">
                     <div class="development-execution-controls" aria-label="执行设置">
-                      <div class="development-project-chip" title="新项目自动建立独立目录；在任务说明中粘贴已有目录可直接关联"><span data-app-icon="file" aria-hidden="true"><span></span></span><span><b id="workspaceLabel">小丑鱼项目</b><small id="workspaceHint">正在读取默认目录…</small></span></div>
+                      <button class="development-context-trigger" id="developmentContextToggle" type="button" aria-haspopup="dialog" aria-controls="developmentContextDialog"><span data-app-icon="boxes" aria-hidden="true"><span></span></span><span>上下文</span><small id="developmentContextCount">自动</small></button>
                       <fieldset class="task-mode-setting" id="taskModeSetting">
                         <legend class="visually-hidden">任务方式</legend>
                         <div class="task-mode-options">
@@ -142,6 +151,37 @@
     </form>
   </dialog>
 
+  <dialog class="development-engine-dialog" id="developmentEngineDialog" aria-labelledby="developmentEngineDialogTitle">
+    <form method="dialog">
+      <header>
+        <div><small>开发引擎</small><h2 id="developmentEngineDialogTitle">选择这次任务的执行方式</h2><p>项目和历史不会改变，只切换负责执行代码的引擎。</p></div>
+        <button class="development-engine-close" value="close" aria-label="关闭引擎选择">×</button>
+      </header>
+      <div class="development-engine-list" id="developmentEngineList" role="listbox" aria-label="可用开发引擎"></div>
+      <footer><span><i></i>已安装可用</span><span>不可用的引擎会保留说明，但不能选择</span></footer>
+    </form>
+  </dialog>
+
+  <dialog class="development-engine-update-dialog" id="developmentEngineUpdateDialog" aria-labelledby="developmentEngineUpdateTitle">
+    <form method="dialog">
+      <header>
+        <div><small>版本维护</small><h2 id="developmentEngineUpdateTitle">开发引擎更新</h2><p>小丑鱼只负责检查和验证；只有你确认后才会安装新版本。</p></div>
+        <button class="development-engine-close" value="close" aria-label="关闭引擎更新">×</button>
+      </header>
+      <div class="development-engine-update-list" id="developmentEngineUpdateList"><p>正在读取版本状态…</p></div>
+      <footer><span id="developmentEngineUpdateStatus" role="status"></span><button id="checkDevelopmentEngineUpdates" type="button">重新检查</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="development-engine-risk-dialog" id="developmentEngineRiskDialog" aria-labelledby="developmentEngineRiskTitle">
+    <form method="dialog">
+      <span data-app-icon="shield" aria-hidden="true"><span></span></span>
+      <h2 id="developmentEngineRiskTitle">这个版本可能不兼容</h2>
+      <p id="developmentEngineRiskText"></p>
+      <div><button value="cancel">返回</button><button class="danger" value="confirm">仍然升级</button></div>
+    </form>
+  </dialog>
+
   <dialog class="full-control-dialog" id="fullControlDialog" aria-labelledby="fullControlTitle">
     <form method="dialog">
       <span class="full-control-mark" data-app-icon="shield" aria-hidden="true"><span></span></span>
@@ -157,6 +197,36 @@
       <h2 id="projectArchiveTitle">归档这个开发项目？</h2>
       <p>项目会移到归档页面，开发目录和历史内容都会保留，之后可以恢复。</p>
       <div><button type="submit" value="cancel">返回</button><button class="primary" type="submit" value="confirm">归档项目</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="development-context-dialog" id="developmentContextDialog" aria-labelledby="developmentContextTitle">
+    <form method="dialog">
+      <header>
+        <div><small>模型将看见什么</small><h2 id="developmentContextTitle">整理本次上下文</h2></div>
+        <button class="development-context-close" value="close" aria-label="关闭上下文">×</button>
+      </header>
+      <p class="development-context-intro">小丑鱼会自动加入任务目标、项目概览和当前修改。需要模型重点阅读的文件，可以在这里明确加入。</p>
+      <label class="development-context-search"><span data-app-icon="search" aria-hidden="true"><span></span></span><input id="developmentContextSearch" type="search" placeholder="查找项目文件…" autocomplete="off"></label>
+      <label class="development-context-auto"><input id="developmentContextAuto" type="checkbox" checked><span data-app-icon="code" aria-hidden="true"><span></span></span><span><b>自动选择相关代码</b><small id="developmentCodeMapState">根据目标、入口、模块和关键符号选择文件</small></span><em>自动加入</em></label>
+      <label class="development-context-diff"><input id="developmentContextDiff" type="checkbox" checked><span><b>加入当前 Git 差异</b><small>让引擎知道尚未提交的修改；没有差异时不会占用上下文。</small></span></label>
+      <div class="development-context-files" id="developmentContextFiles" role="listbox" aria-multiselectable="true"><p>打开一个已有开发项目后，可以选择重点文件。</p></div>
+      <footer>
+        <div><b id="developmentContextUsage">自动整理</b><small id="developmentContextUsageDetail">目标和项目概览始终包含</small></div>
+        <button class="primary" value="done">完成</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="development-compare-dialog" id="developmentCompareDialog" aria-labelledby="developmentCompareTitle">
+    <form method="dialog">
+      <header><div><small>开发历史</small><h2 id="developmentCompareTitle">比较两个版本</h2></div><button value="close" aria-label="关闭版本比较">×</button></header>
+      <div class="development-compare-selectors">
+        <label><span>较早版本</span><select id="developmentCompareBase"></select></label>
+        <label><span>较新版本</span><select id="developmentCompareTarget"></select></label>
+      </div>
+      <div class="development-compare-result" id="developmentCompareResult"></div>
+      <footer><button class="primary" value="done">完成</button></footer>
     </form>
   </dialog>
 
