@@ -260,6 +260,31 @@ test("原生能力最终修复仍不合法时明确失败", async () => {
   }
 });
 
+test("原生能力初稿有效时审查截断不会丢失可交付结果", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-native-audit-fallback-"));
+  const replies = [JSON.stringify(payloads["research-brief"]!), "审查结果被截断", "最终修复仍被截断"];
+  let calls = 0;
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: replies[calls++] || "", facts: [] }),
+    });
+    const result = await runtime.runAdHocTask({
+      title: "研究审查降级",
+      personaId: "clownfish",
+      capabilityId: "research-brief",
+      instruction: "核验资料并给出结论",
+      format: "html",
+    });
+    assert.equal(calls, 3);
+    assert.ok(existsSync(result.artifact.file));
+    assert.match(readFileSync(result.artifact.file, "utf8"), /研究报告/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("研究来源锚点生成稳定哈希，缺少定位的已确认结论自动降级", () => {
   const valid = parseNativeCapabilityPayload("research-brief", JSON.stringify(payloads["research-brief"]));
   const source = (valid.data.sources as Array<Record<string, unknown>>)[0]!;

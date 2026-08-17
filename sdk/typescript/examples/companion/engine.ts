@@ -427,16 +427,18 @@ export class CompanionEngine {
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
-    await this.ensureRecentHistory(userId, personaId);
+    const isolatedSurface = opts.surface === "capability" || opts.surface === "office" || opts.surface === "development";
+    if (!isolatedSurface) await this.ensureRecentHistory(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
+    const recent = isolatedSurface ? [] : (this.recent.get(this.rkey(userId, personaId)) ?? []);
     const reply = await this.chat(
       workMode
         ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), text)
         : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false, text),
       workMode
-        ? this.buildWorkUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text)
-        : this.buildProactiveUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text),
+        ? this.buildWorkUser(recent, text)
+        : this.buildProactiveUser(recent, text),
       workMode ? persona.chatModel : (opts.model || persona.chatModel),
       workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens,
       this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, undefined, opts.surface),
@@ -459,15 +461,17 @@ export class CompanionEngine {
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
-    await this.ensureRecentHistory(userId, personaId);
+    const isolatedSurface = opts.surface === "capability" || opts.surface === "office" || opts.surface === "development";
+    if (!isolatedSurface) await this.ensureRecentHistory(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
+    const recent = isolatedSurface ? [] : (this.recent.get(this.rkey(userId, personaId)) ?? []);
     const system = workMode
       ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), text)
       : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false, text);
     const userMsg = workMode
-      ? this.buildWorkUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text)
-      : this.buildProactiveUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text);
+      ? this.buildWorkUser(recent, text)
+      : this.buildProactiveUser(recent, text);
     const maxTokens = workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens;
     const reply = this.opts.chatStream
       ? await this.opts.chatStream(

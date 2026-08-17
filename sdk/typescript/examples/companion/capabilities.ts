@@ -156,7 +156,7 @@ export interface CapabilityTaskExecution {
   updatedAt: string;
 }
 
-export type CapabilityTaskOriginKind = "chat" | "capability" | "direct" | "orchestration" | "automation";
+export type CapabilityTaskOriginKind = "chat" | "capability" | "office" | "development" | "direct" | "orchestration" | "automation";
 
 export interface CapabilityTaskOrigin {
   kind: CapabilityTaskOriginKind;
@@ -181,6 +181,13 @@ export type DevelopmentReasoning = typeof DEVELOPMENT_REASONING_LEVELS[number];
 
 export function normalizeDevelopmentReasoning(value: unknown): DevelopmentReasoning {
   return DEVELOPMENT_REASONING_LEVELS.includes(value as DevelopmentReasoning) ? value as DevelopmentReasoning : "balanced";
+}
+
+function capabilityAgentSurface(task: Pick<CapabilityTask, "oneOff" | "origin">): CapabilityAgentSurface {
+  if (task.origin?.kind === "office") return "office";
+  if (task.origin?.kind === "development") return "development";
+  if (task.origin?.kind === "capability") return "capability";
+  return "task";
 }
 
 export type CapabilitySpaceStatus = "active" | "archived";
@@ -424,10 +431,12 @@ export interface SkillAudit {
   items: SkillAuditItem[];
 }
 
+type CapabilityAgentSurface = "task" | "capability" | "office" | "development";
+
 export interface CapabilityRuntimeOptions {
   dataDir: string;
-  notify: (personaId: string, text: string, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off") => Promise<{ reply: string; facts: string[] }>;
-  notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off") => Promise<{ reply: string; facts: string[] }>;
+  notify: (personaId: string, text: string, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface) => Promise<{ reply: string; facts: string[] }>;
+  notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface) => Promise<{ reply: string; facts: string[] }>;
   personas: () => CapabilityPersona[];
   toolRegistry?: CapabilityToolRegistry;
   knowledgeContext?: (ids: string[]) => string;
@@ -1378,11 +1387,11 @@ export class CapabilityRuntime {
           }, task, signal)
         : undefined;
       const result = developmentResult
-        ?? await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId);
+        ?? await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task));
       this.markSkillUsed(ability);
       const reply = developmentResult
         ? developmentResult.reply
-        : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId });
+        : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId, surface: capabilityAgentSurface(task) });
       const runtimeMetadata = developmentResult
         ? {
             development: developmentResult,
@@ -1422,14 +1431,14 @@ export class CapabilityRuntime {
         : cb;
       const result = developmentResult
         ?? (this.opts.notifyStream
-          ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), streamCb, signal, limits, runId)
-          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId));
+          ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), streamCb, signal, limits, runId, undefined, capabilityAgentSurface(task))
+          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task)));
       if (developmentResult) cb.onToken(developmentResult.reply);
       else if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
       this.markSkillUsed(ability);
       const reply = developmentResult
         ? developmentResult.reply
-        : await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId });
+        : await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId, surface: capabilityAgentSurface(task) });
       const runtimeMetadata = developmentResult
         ? {
             development: developmentResult,
@@ -1517,11 +1526,11 @@ export class CapabilityRuntime {
         ? await this.runDevelopmentTask(input, task, signal)
         : undefined;
       const result = developmentResult
-        ?? await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode);
+        ?? await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task));
       this.markSkillUsed(ability);
       const reply = developmentResult
         ? developmentResult.reply
-        : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress });
+        : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress, surface: capabilityAgentSurface(task) });
       const runtimeMetadata = developmentResult
         ? {
             development: developmentResult,
@@ -1554,14 +1563,14 @@ export class CapabilityRuntime {
         : cb;
       const result = developmentResult
         ?? (this.opts.notifyStream
-          ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), streamCb, signal, limits, input.runId, input.memoryMode)
-          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode));
+          ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), streamCb, signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task))
+          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task)));
       if (developmentResult) cb.onToken(developmentResult.reply);
       else if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
       this.markSkillUsed(ability);
       const reply = developmentResult
         ? developmentResult.reply
-        : await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode });
+        : await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, surface: capabilityAgentSurface(task) });
       const runtimeMetadata = developmentResult
         ? {
             development: developmentResult,
@@ -1581,7 +1590,7 @@ export class CapabilityRuntime {
     ability: Capability,
     initialReply: string,
     cb?: CapabilityStreamCb,
-    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void } = {},
+    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface } = {},
   ): Promise<string> {
     if (isNativeCapabilityId(ability.id)) {
       return this.completeNativeAbilityReply(task, ability.id, initialReply, execution);
@@ -1602,6 +1611,7 @@ export class CapabilityRuntime {
       execution.limits,
       repairRunId,
       execution.memoryMode,
+      execution.surface,
     );
     const checked = parseImagePromptResult(repaired.reply);
     if (!checked.value) {
@@ -1614,7 +1624,7 @@ export class CapabilityRuntime {
     task: CapabilityTask,
     abilityId: Parameters<typeof nativeCapabilityContract>[0],
     initialReply: string,
-    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void },
+    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface },
   ): Promise<string> {
     execution.onProgress?.("正在校验交付结构", 48);
     let initialError = "";
@@ -1640,6 +1650,7 @@ export class CapabilityRuntime {
       execution.limits,
       auditRunId,
       execution.memoryMode,
+      execution.surface,
     );
     try {
       return JSON.stringify(parseNativeCapabilityPayload(abilityId, audited.reply));
@@ -1654,11 +1665,15 @@ export class CapabilityRuntime {
         execution.limits,
         repairRunId,
         execution.memoryMode,
+        execution.surface,
       );
       try {
         return JSON.stringify(parseNativeCapabilityPayload(abilityId, repaired.reply));
       } catch (repairError) {
         const repairReason = repairError instanceof Error ? repairError.message : String(repairError);
+        // 审查是质量增强，不应在两次审查回复被截断时丢弃已经通过结构校验的初稿。
+        // 初稿本身不合法时仍然明确失败，避免把坏结构写入产物。
+        if (parsed) return JSON.stringify(parsed);
         throw new Error("能力结果未通过结构校验：" + repairReason);
       }
     }
@@ -1669,7 +1684,7 @@ export class CapabilityRuntime {
     ability: Capability,
     initialReply: string,
     cb?: CapabilityStreamCb,
-    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void } = {},
+    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface } = {},
   ): Promise<string> {
     let reply = initialReply.trim();
     const maxOutputChars = execution.limits?.maxOutputChars;
@@ -1679,8 +1694,8 @@ export class CapabilityRuntime {
       const prompt = this.buildContinuationPrompt(task, ability, reply);
       const runId = execution.runId ? `${execution.runId}/continuation-${attempt + 1}` : undefined;
       const more = this.opts.notifyStream && cb
-        ? await this.opts.notifyStream(task.personaId, prompt, cb, execution.signal, execution.limits, runId, execution.memoryMode)
-        : await this.opts.notify(task.personaId, prompt, execution.signal, execution.limits, runId, execution.memoryMode);
+        ? await this.opts.notifyStream(task.personaId, prompt, cb, execution.signal, execution.limits, runId, execution.memoryMode, execution.surface)
+        : await this.opts.notify(task.personaId, prompt, execution.signal, execution.limits, runId, execution.memoryMode, execution.surface);
       if (!this.opts.notifyStream && cb) cb.onToken(more.reply);
       const addition = more.reply.trim();
       if (!addition) break;

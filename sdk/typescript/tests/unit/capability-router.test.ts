@@ -46,3 +46,21 @@ test("falls back to the thinking workbench without pretending certainty", () => 
   assert.equal(result.capabilityId, "thinking-workbench");
   assert.equal(result.confidence, "low");
 });
+
+test("incidental report and test words do not hijack everyday work", () => {
+  assert.equal(routeCapability({
+    goal: "明天要交周报、约牙医，还要准备下午三点的汇报，请按紧急程度整理。",
+  }).capabilityId, "thinking-workbench");
+  assert.equal(routeCapability({
+    goal: "生成项目复盘文档，说明PDF换行问题和后续真实检查。",
+  }).capabilityId, "document-draft");
+});
+
+test("real product and security requests route to their specialist abilities", () => {
+  assert.equal(routeCapability({
+    goal: "为本地AI文件工作台设计最小版本，给出用户路径和验收标准。",
+  }).capabilityId, "product-design");
+  assert.equal(routeCapability({
+    goal: "为本地AI应用做威胁建模，关注提示注入、路径越界和隐私风险。",
+  }).capabilityId, "research-brief");
+});

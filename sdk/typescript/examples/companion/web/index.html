@@ -6436,9 +6436,37 @@ async function pushCapabilityNotifications(items) {
     }
   }
 }
+function purgeDetachedAgentDeliveries(jobIds) {
+  const blocked = new Set((jobIds || []).map((id) => "agent-job:" + String(id || "")).filter((id) => id !== "agent-job:"));
+  if (!blocked.size) return 0;
+  let removed = 0;
+  for (const tree of Object.values(conversationTrees)) {
+    for (const node of Object.values(tree?.nodes || {})) {
+      if (!Array.isArray(node.messages)) continue;
+      const before = node.messages.length;
+      node.messages = node.messages.filter((entry) => !blocked.has(String(entry?.deliveryId || "")));
+      removed += before - node.messages.length;
+    }
+  }
+  if (!removed) return 0;
+  for (const key of Object.keys(chatLogs)) {
+    const active = activeConversation(key);
+    if (active) chatLogs[key] = active.messages;
+  }
+  saveLogs();
+  renderLog();
+  renderContacts();
+  renderConversationHeader();
+  return removed;
+}
 async function deliverCompletedAgentJobs(jobs) {
   const pending = (jobs || []).filter((job) =>
-    job.status === "succeeded" && job.result && job.result.data && job.result.data.personaId);
+    /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(job.payload?.conversationKey || ""))
+      && job.payload?.surface !== "capabilities"
+      && job.status === "succeeded"
+      && job.result
+      && job.result.data
+      && job.result.data.personaId);
   let delivered = 0;
   for (const job of pending) {
     const deliveryId = job.delivery && job.delivery.id;
@@ -6488,7 +6516,12 @@ function deliverAgentRun(run) {
 async function deliverCompletedAgentRuns(runs) {
   const delivered = deliveredAgentRunIds();
   const pending = (runs || []).filter((run) =>
-    run.status === "completed" && run.resumeCount > 0 && !delivered.has(run.runId));
+    run.metadata?.surface !== "capability"
+      && run.metadata?.surface !== "office"
+      && run.metadata?.surface !== "development"
+      && run.status === "completed"
+      && run.resumeCount > 0
+      && !delivered.has(run.runId));
   let count = 0;
   for (const summary of pending) {
     try {
@@ -6995,9 +7028,9 @@ async function refreshAgentOps() {
   const requestedMutationVersion = agentOpsMutationVersion;
   try {
     const [jobs, runs, approvals, extensions, deliveries] = await Promise.all([
-      api("/api/agent/jobs?limit=30"),
-      api("/api/agent/runs?limit=30"),
-      api("/api/agent/approvals?limit=30"),
+      api("/api/agent/jobs?limit=30&surface=task"),
+      api("/api/agent/runs?limit=30&surface=task"),
+      api("/api/agent/approvals?limit=30&surface=task"),
       api("/api/agent/extensions"),
       api("/api/agent/deliveries?limit=100")
     ]);
@@ -7012,6 +7045,7 @@ async function refreshAgentOps() {
       extensions: extensions.extensions || [],
       runtimeSecurity: extensions.runtimeSecurity || null
     };
+    purgeDetachedAgentDeliveries(deliveries.quarantinedJobIds || []);
     const delivered = await deliverCompletedAgentJobs(deliveries.jobs || []);
     await deliverCompletedAgentRuns(agentOpsState.runs);
     if (delivered && $("#capmodal").classList.contains("show")) {
@@ -7038,12 +7072,12 @@ function startAgentEventStream() {
   agentEventSource.addEventListener("run", (event) => {
     let payload = null;
     try { payload = JSON.parse(event.data || "{}"); } catch {}
-    if (payload && payload.action === "delivery") {
+    if (payload && payload.action === "delivery" && payload.surface !== "capability" && payload.surface !== "office" && payload.surface !== "development") {
       deliverAgentRun({
         runId: payload.runId,
         sessionId: payload.sessionId,
         output: payload.output,
-        metadata: { personaId: payload.personaId, scope: payload.scope, mode: payload.mode },
+        metadata: { personaId: payload.personaId, scope: payload.scope, mode: payload.mode, surface: payload.surface },
       });
     }
     if ($("#capmodal").classList.contains("show") || (payload && payload.action === "delivery")) refreshAgentOps();

@@ -269,6 +269,8 @@ function taskOriginLabel(task) {
   return {
     chat: "来自对话",
     capability: "能力接力",
+    office: "来自文件",
+    development: "来自开发",
     orchestration: "专家任务",
     automation: "自动执行",
     direct: "直接任务",

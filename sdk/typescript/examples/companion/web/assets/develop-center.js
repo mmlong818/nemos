@@ -838,7 +838,7 @@
     const requestedJobId = activeJobId;
     try {
       const [result, archive] = await Promise.all([
-        api("/api/agent/jobs?limit=500"),
+        api("/api/agent/jobs?limit=500&surface=development"),
         api("/api/development/project-archive"),
       ]);
       archivedRootJobIds = new Set(archive.archivedRootJobIds || []);
@@ -1063,6 +1063,7 @@
         method: "POST",
         body: JSON.stringify({
           kind: "capability-adhoc",
+          surface: "development",
           title: continuation.title || instruction.slice(0, 42),
           capabilityId: "project-development",
           instruction,

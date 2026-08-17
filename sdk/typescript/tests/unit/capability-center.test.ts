@@ -83,6 +83,41 @@ test("单次能力任务只使用偏好记忆或完全关闭召回", async () =>
   }
 });
 
+test("能力运行把任务、能力、文件和开发上下文传给各自的 Agent 表面", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-capability-surfaces-"));
+  const surfaces: Array<string | undefined> = [];
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async (_personaId, _text, _signal, _limits, _runId, _memoryMode, surface) => {
+        surfaces.push(surface);
+        return { reply: THINKING_RESULT, facts: [] };
+      },
+    });
+    for (const kind of ["chat", "capability", "office", "development"] as const) {
+      await runtime.runAdHocTask({
+        title: `${kind} surface`,
+        personaId: "clownfish",
+        capabilityId: "thinking-workbench",
+        instruction: "整理问题",
+        origin: { kind },
+      });
+    }
+    const reusable = runtime.createTask({
+      title: "能力页常规任务",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "整理问题",
+    });
+    await runtime.runTask(reusable.id, "manual");
+
+    assert.deepEqual(surfaces, ["task", "capability", "office", "development", "task"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("工作空间可持久保存，并以可选方式组织多个任务", () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-work-spaces-"));
   const options = {
@@ -640,14 +675,16 @@ test("能力中心页面包含独立对话、手动归档和受保护删除", ()
   const html = readFileSync(join(webDir, "capabilities.html"), "utf8");
   const script = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
 
-  for (const view of ["start", "record"]) {
-    assert.match(html, new RegExp(`data-view="${view}"`));
-  }
+  assert.match(html, /data-view="start"/);
+  assert.doesNotMatch(html, /data-view="record"/);
   assert.match(html, /class="capability-panel"/);
-  assert.match(html, /class="capability-view-nav"/);
-  assert.equal([...html.matchAll(/data-capability-nav/g)].length, 2);
+  assert.doesNotMatch(html, /capability-panel-heading|capability-panel-title/);
+  assert.match(html, /id="capabilityConversationTitle">最近对话/);
+  assert.doesNotMatch(html, /id="newCapabilityConversation"|＋ 新对话/);
+  assert.doesNotMatch(html, /class="capability-view-nav"|data-capability-nav/);
   assert.doesNotMatch(html, /class="view-tabs"/);
-  assert.match(script, /\$\$\('\[data-capability-nav\]'\)/);
+  assert.match(html, /id="capabilityArchiveList"/);
+  assert.match(html, /id="capabilityArchiveSection"/);
   assert.equal([...script.matchAll(/backendId:/g)].length, 16);
   assert.match(script, /memoryMode:[^\n]+"preferences"/);
   assert.match(script, /\/api\/agent\/job/);
@@ -657,9 +694,14 @@ test("能力中心页面包含独立对话、手动归档和受保护删除", ()
   assert.match(script, /\/api\/capability-conversations\/restore/);
   assert.match(script, /\/api\/capability-conversations\/delete/);
   assert.match(script, /data-delete-capability-task/);
+  assert.match(script, /data-archive-capability-draft/);
+  assert.match(script, /data-open-archived-capability-draft/);
   assert.match(script, /function askDeleteCapabilityConversation/);
   assert.match(html, /id="capabilityThread"/);
   assert.match(html, /id="capabilityConversationList"/);
+  assert.doesNotMatch(script, /在对话中查看/);
+  assert.doesNotMatch(script, /configureReturnLinks\(\);|await applyChatHandoff\(\)|await applyDevelopmentContinuation\(\)/);
+  assert.match(script, /sessionStorage\.removeItem\(HANDOFF_KEY\)/);
   assert.match(html, /id="capabilityPicker"/);
   assert.match(html, /class="task-advanced"/);
   assert.doesNotMatch(html, /id="recentStrip"|id="recentTask"/);
@@ -698,6 +740,9 @@ test("任务页与能力页暂时保持运行记录隔离", () => {
   const chatHtml = readFileSync(join(webDir, "index.html"), "utf8");
   const capabilityHtml = readFileSync(join(webDir, "capabilities.html"), "utf8");
   const capabilityScript = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
+  const officeScript = readFileSync(join(webDir, "assets", "office-workbench.js"), "utf8");
+  const developmentScript = readFileSync(join(webDir, "assets", "develop-center.js"), "utf8");
+  const llmSource = readFileSync(join(process.cwd(), "examples", "companion", "llm.ts"), "utf8");
   const serverSource = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
   assert.match(chatHtml, /id="composerTool"[^>]*hidden/);
   assert.match(chatHtml, /id="sideDesktopTool"[^>]*hidden/);
@@ -710,8 +755,22 @@ test("任务页与能力页暂时保持运行记录隔离", () => {
   assert.match(chatHtml, /\$\("#sideCap"\)\.onclick = \(\) => \{ window\.location\.href = "\/capabilities"; \};/);
   assert.match(capabilityHtml, /id="capabilityThread"/);
   assert.match(capabilityScript, /surface: "capabilities"/);
+  assert.match(capabilityScript, /agent\/jobs\?limit=200&surface=capabilities/);
   assert.match(capabilityScript, /conversationKey: ""/);
-  assert.match(serverSource, /deliveryRequired: body\.surface !== "capabilities"/);
+  assert.match(officeScript, /surface: "office"/);
+  assert.match(developmentScript, /surface: "development"/);
+  assert.match(developmentScript, /agent\/jobs\?limit=500&surface=development/);
+  assert.match(chatHtml, /agent\/jobs\?limit=30&surface=task/);
+  assert.match(chatHtml, /agent\/runs\?limit=30&surface=task/);
+  assert.match(chatHtml, /agent\/approvals\?limit=30&surface=task/);
+  assert.match(serverSource, /body\.kind === "capability-task" \|\| Boolean\(conversationKey\)/);
+  assert.match(serverSource, /removeCrossSurfaceChatDeliveries/);
+  assert.match(serverSource, /removeDetachedChatDeliveries/);
+  assert.match(chatHtml, /purgeDetachedAgentDeliveries/);
+  assert.match(serverSource, /storedJobSurface\(targetJob\) !== "chat"/);
+  assert.match(serverSource, /runVisibleOnSurface/);
+  assert.match(llmSource, /surface: isStoredAgentSurface\(metadata\.surface\)/);
+  assert.match(llmSource, /context\.surface \? \{ surface: context\.surface \}/);
   assert.match(serverSource, /conversationKey: String\(job\.payload\.conversationKey/);
   assert.match(serverSource, /capabilityPersonaId = body\.kind === "capability-adhoc" \? "clownfish"/);
   assert.match(capabilityScript, /function continueCapabilityConversation/);

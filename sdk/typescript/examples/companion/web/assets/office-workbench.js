@@ -1932,6 +1932,7 @@ async function startOfficeTask() {
       method: "POST",
       body: JSON.stringify({
         kind: "capability-adhoc",
+        surface: "office",
         title: request.slice(0, 60),
         personaId: "clownfish",
         capabilityId,
