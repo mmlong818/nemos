@@ -47,6 +47,7 @@ export interface ChatAgentContext {
   scope: string;
   memoryScopes: readonly string[];
   mode: "chat" | "task" | "group";
+  surface?: "task" | "education" | "capability" | "office" | "development" | "automation";
   signal?: AbortSignal;
   toolMode?: "auto" | "read-only" | "off";
   runtimeLimits?: {
@@ -93,6 +94,8 @@ export interface SendOptions {
   sessionId?: string;
   model?: string;
   toolMode?: "auto" | "read-only" | "off";
+  /** 当前产品入口；用于在模型调用前收窄真实工具池。 */
+  surface?: ChatAgentContext["surface"];
   /** 由产品模式追加的系统约束；不改变对话角色和记忆命名空间。 */
   systemAddendum?: string;
   /** 单次任务可关闭用户习惯与事实的召回；角色自身状态仍保留。 */
@@ -338,7 +341,7 @@ export class CompanionEngine {
       this.buildUserTurns(this.recent.get(recentKey) ?? [], text, !!opts.voice),
       opts.model || persona.chatModel,
       persona.maxReplyTokens,
-      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode),
+      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface),
     );
 
     await this.ingestPersonaReply(personaId, scope, reply);
@@ -375,7 +378,7 @@ export class CompanionEngine {
         cb,
         opts.model || persona.chatModel,
         persona.maxReplyTokens,
-        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode),
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface),
       );
     } else {
       reply = await this.chat(
@@ -383,7 +386,7 @@ export class CompanionEngine {
         userMsg,
         opts.model || persona.chatModel,
         persona.maxReplyTokens,
-        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode),
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface),
       );
       cb.onToken(reply);
     }
@@ -420,7 +423,7 @@ export class CompanionEngine {
     userId: string,
     personaId: string,
     text: string,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
@@ -436,7 +439,7 @@ export class CompanionEngine {
         : this.buildProactiveUser(this.recent.get(this.rkey(userId, personaId)) ?? [], text),
       workMode ? persona.chatModel : (opts.model || persona.chatModel),
       workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens,
-      this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+      this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, undefined, opts.surface),
     );
 
     if (!workMode) {
@@ -452,7 +455,7 @@ export class CompanionEngine {
     personaId: string,
     text: string,
     cb: StreamCb,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
@@ -473,14 +476,14 @@ export class CompanionEngine {
           cb,
           workMode ? persona.chatModel : (opts.model || persona.chatModel),
           maxTokens,
-          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, undefined, opts.surface),
         )
       : await this.chat(
           system,
           userMsg,
           workMode ? persona.chatModel : (opts.model || persona.chatModel),
           maxTokens,
-          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId),
+          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, undefined, opts.surface),
         );
     if (!this.opts.chatStream) cb.onToken(reply);
 
@@ -738,6 +741,7 @@ export class CompanionEngine {
     runId?: string,
     sessionId?: string,
     toolMode?: "auto" | "read-only" | "off",
+    surface?: ChatAgentContext["surface"],
   ): ChatAgentContext {
     return {
       userId,
@@ -748,6 +752,7 @@ export class CompanionEngine {
       scope,
       memoryScopes: this.visibleScopes(userId, personaId),
       mode,
+      surface,
       signal,
       toolMode,
       runtimeLimits,

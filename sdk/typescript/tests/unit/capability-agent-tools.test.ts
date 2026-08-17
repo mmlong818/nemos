@@ -81,4 +81,26 @@ test("工具执行返回来源回执，并明确截断超长结果", async () =>
   assert.equal(result.receipt?.source.id, "demo-plugin");
   assert.equal(result.receipt?.truncated, true);
   assert.equal(tools.list().find((item) => item.id === "demo.integrated")?.execution, "runtime-integrated");
+  assert.equal(tools.listExecutionHistory()[0]?.status, "succeeded");
+});
+
+test("直接工具即使不配合取消也会按声明超时并留下失败回执", async () => {
+  const tools = new CapabilityToolRegistry({ dataDir: "." });
+  tools.register({
+    id: "demo.timeout",
+    name: "超时工具",
+    description: "验证执行边界",
+    toolset: "demo",
+    timeoutMs: 10,
+    run: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return { ok: true, text: "不应返回", checkedAt: new Date().toISOString() };
+    },
+  });
+
+  const result = await tools.run("demo.timeout", {});
+  assert.equal(result.ok, false);
+  assert.match(result.text, /timed out/);
+  assert.equal(result.receipt?.status, "timed-out");
+  assert.equal(tools.listExecutionHistory()[0]?.toolId, "demo.timeout");
 });

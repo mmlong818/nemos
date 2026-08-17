@@ -1,4 +1,6 @@
-import type { AgentTool, AgentToolEffect } from "../../src/index.js";
+import type { AgentTool, AgentToolEffect, AgentToolRisk } from "../../src/index.js";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { buildSourceConnectorGuide, listSourceConnectors, matchSourceConnectors } from "./source-connectors.js";
 import { buildSourceVerificationReport, createSourceFreshnessReceipt, sourceVerificationPromptBlock, type SourceFreshnessReceipt } from "./source-verification.js";
 import { buildMarketSnapshotText, createMarketDataAdapter, type MarketDataAdapter } from "./market-data-adapter.js";
@@ -28,6 +30,7 @@ export interface CapabilityToolExecutionReceipt {
   completedAt: string;
   durationMs: number;
   truncated: boolean;
+  status: "succeeded" | "failed" | "cancelled" | "timed-out";
 }
 
 export interface CapabilityTool {
@@ -38,6 +41,7 @@ export interface CapabilityTool {
   requires?: string[];
   inputSchema?: Record<string, unknown>;
   effect?: AgentToolEffect;
+  risk?: AgentToolRisk;
   timeoutMs?: number;
   check?: () => boolean;
   /** 可选的可解释就绪检查；用于告诉界面为什么当前不能使用。 */
@@ -75,6 +79,10 @@ export interface CapabilityToolSummary {
   source: CapabilityToolSource;
   isAsync: boolean;
   execution: "direct" | "runtime-integrated";
+  effect: AgentToolEffect;
+  risk: AgentToolRisk;
+  timeoutMs?: number;
+  permissions: string[];
   maxResultSizeChars?: number;
   /** 声明存在、命中请求后才由扩展运行时加载。 */
   dynamic?: boolean;
@@ -117,11 +125,21 @@ export function isToolAllowedForPersona(
 export class CapabilityToolRegistry {
   private readonly tools = new Map<string, CapabilityTool>();
   private readonly readinessCache = new Map<string, { expiresAt: number; value: CapabilityToolReadiness }>();
+  private readonly executions: CapabilityToolExecutionReceipt[] = [];
 
   constructor(
     private readonly context: CapabilityToolContext,
     private readonly readinessTtlMs = 30_000,
-  ) {}
+    private readonly executionHistoryFile?: string,
+  ) {
+    if (!executionHistoryFile) return;
+    try {
+      const parsed = JSON.parse(readFileSync(executionHistoryFile, "utf8")) as { executions?: CapabilityToolExecutionReceipt[] };
+      if (Array.isArray(parsed.executions)) this.executions.push(...parsed.executions.slice(-500));
+    } catch {
+      // 缺失或损坏的诊断记录不能阻塞能力执行。
+    }
+  }
 
   register(tool: CapabilityTool): void {
     if (this.tools.has(tool.id)) throw new Error(`能力工具重复：${tool.id}`);
@@ -149,6 +167,10 @@ export class CapabilityToolRegistry {
           source: tool.source ?? { kind: "builtin", id: "clownfish" },
           isAsync: tool.isAsync ?? Boolean(tool.run),
           execution: tool.run ? "direct" : "runtime-integrated",
+          effect: tool.effect ?? "read",
+          risk: tool.risk ?? "normal",
+          timeoutMs: tool.timeoutMs,
+          permissions: [...(tool.requires ?? [])],
           maxResultSizeChars: tool.maxResultSizeChars,
           dynamic: false,
         };
@@ -209,6 +231,7 @@ export class CapabilityToolRegistry {
           description: tool.description,
           inputSchema: tool.inputSchema ?? { type: "object", additionalProperties: true },
           effect: tool.effect ?? "read",
+          risk: tool.risk ?? "normal",
           timeoutMs: tool.timeoutMs,
         },
         execute: async (args, context) => {
@@ -276,26 +299,75 @@ export class CapabilityToolRegistry {
     }
     const startedAt = new Date().toISOString();
     const started = Date.now();
-    const result = await tool.run(args, { ...this.context, ...context });
+    const execution = createToolExecutionSignal(context.signal, tool.timeoutMs);
+    let result: CapabilityToolResult;
+    let status: CapabilityToolExecutionReceipt["status"] = "succeeded";
+    try {
+      result = await execution.run(tool.run(args, { ...this.context, ...context, signal: execution.signal }));
+      if (!result.ok) status = "failed";
+    } catch (error) {
+      status = execution.timedOut()
+        ? "timed-out"
+        : context.signal?.aborted
+          ? "cancelled"
+          : "failed";
+      result = {
+        ok: false,
+        text: status === "timed-out"
+          ? `Capability tool timed out after ${tool.timeoutMs}ms: ${id}`
+          : status === "cancelled"
+            ? "Capability tool call was cancelled"
+            : `Capability tool failed: ${error instanceof Error ? error.message : String(error)}`,
+        checkedAt: new Date().toISOString(),
+        needsVerification: true,
+      };
+    } finally {
+      execution.dispose();
+    }
     const maxChars = tool.maxResultSizeChars;
     const truncated = Boolean(maxChars && result.text.length > maxChars);
     const text = truncated
       ? `${result.text.slice(0, maxChars)}\n\n[结果过长，已在 ${maxChars} 个字符处截断；请缩小查询范围后继续。]`
       : result.text;
     const completedAt = new Date().toISOString();
+    const receipt: CapabilityToolExecutionReceipt = {
+      toolId: tool.id,
+      toolset: tool.toolset,
+      source: tool.source ?? { kind: "builtin", id: "clownfish" },
+      startedAt,
+      completedAt,
+      durationMs: Math.max(0, Date.now() - started),
+      truncated,
+      status,
+    };
+    this.executions.push(receipt);
+    if (this.executions.length > 500) this.executions.splice(0, this.executions.length - 500);
+    this.persistExecutionHistory();
     return {
       ...result,
       text,
-      receipt: {
-        toolId: tool.id,
-        toolset: tool.toolset,
-        source: tool.source ?? { kind: "builtin", id: "clownfish" },
-        startedAt,
-        completedAt,
-        durationMs: Math.max(0, Date.now() - started),
-        truncated,
-      },
+      receipt,
     };
+  }
+
+  listExecutionHistory(limit = 100): CapabilityToolExecutionReceipt[] {
+    const bounded = Math.min(500, Math.max(1, Math.trunc(limit)));
+    return this.executions.slice(-bounded).reverse().map((item) => ({
+      ...item,
+      source: { ...item.source },
+    }));
+  }
+
+  private persistExecutionHistory(): void {
+    if (!this.executionHistoryFile) return;
+    try {
+      mkdirSync(dirname(this.executionHistoryFile), { recursive: true });
+      const temp = `${this.executionHistoryFile}.${process.pid}.tmp`;
+      writeFileSync(temp, JSON.stringify({ version: 1, executions: this.executions }, null, 2));
+      renameSync(temp, this.executionHistoryFile);
+    } catch {
+      // 诊断记录失败不能改变工具本身的执行结果。
+    }
   }
 
   private readiness(tool: CapabilityTool): CapabilityToolReadiness {
@@ -327,6 +399,42 @@ export class CapabilityToolRegistry {
   }
 }
 
+function createToolExecutionSignal(parent: AbortSignal | undefined, timeoutMs: number | undefined): {
+  signal: AbortSignal;
+  run: <T>(promise: Promise<T>) => Promise<T>;
+  timedOut: () => boolean;
+  dispose: () => void;
+} {
+  const controller = new AbortController();
+  let timeout: NodeJS.Timeout | undefined;
+  let didTimeOut = false;
+  let rejectDeadline: ((error: Error) => void) | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => { rejectDeadline = reject; });
+  const abortFromParent = () => {
+    controller.abort(parent?.reason);
+    rejectDeadline?.(parent?.reason instanceof Error ? parent.reason : new Error("Tool execution was cancelled"));
+  };
+  if (parent?.aborted) abortFromParent();
+  else parent?.addEventListener("abort", abortFromParent, { once: true });
+  if (timeoutMs && timeoutMs > 0) {
+    timeout = setTimeout(() => {
+      didTimeOut = true;
+      controller.abort(new Error(`Tool execution exceeded ${timeoutMs}ms`));
+      rejectDeadline?.(new Error(`Tool execution exceeded ${timeoutMs}ms`));
+    }, timeoutMs);
+    timeout.unref?.();
+  }
+  return {
+    signal: controller.signal,
+    run: <T>(promise: Promise<T>) => timeout || parent ? Promise.race([promise, deadline]) : promise,
+    timedOut: () => didTimeOut,
+    dispose: () => {
+      if (timeout) clearTimeout(timeout);
+      parent?.removeEventListener("abort", abortFromParent);
+    },
+  };
+}
+
 export function capabilityAgentToolName(id: string): string {
   return `capability_${id.replace(/[^a-zA-Z0-9_-]+/g, "_")}`;
 }
@@ -338,10 +446,11 @@ export function createDefaultCapabilityToolRegistry(
     hasVision: () => boolean;
     hasVoice: () => boolean;
     runLiveSearch?: (query: string, signal?: AbortSignal) => Promise<Array<{ title: string; content: string; url: string }>>;
+    executionHistoryFile?: string;
     marketData?: MarketDataAdapter;
   },
 ): CapabilityToolRegistry {
-  const registry = new CapabilityToolRegistry({ dataDir });
+  const registry = new CapabilityToolRegistry({ dataDir }, 30_000, checks.executionHistoryFile);
   const marketData = checks.marketData ?? createMarketDataAdapter({ dataDir });
 
   registry.register({
@@ -542,7 +651,7 @@ export function createDefaultCapabilityToolRegistry(
     registry.register({
       id: `source.${connector.id}`,
       name: connector.label,
-      description: `${connector.label}: ${connector.realtimeRisk}`,
+      description: `${connector.label}。只返回可靠来源、核验边界和官方入口，不提供实时库存、价格或预订结果。${connector.realtimeRisk}`,
       toolset: "source",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       effect: "read",

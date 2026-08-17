@@ -37,5 +37,11 @@ test("路线图统计只计算经过验收的完成项", () => {
   assert.equal(roadmap.completed, completed);
   assert.equal(roadmap.total, total);
   assert.equal(roadmap.percent, Math.round((completed / total) * 100));
-  assert.equal(roadmap.updatedAt, "2026-08-05T00:00:00.000+08:00");
+  assert.equal(roadmap.updatedAt, "2026-08-17T00:00:00.000+08:00");
+});
+
+test("统一执行闭环中的全部项目都有真实验收结果", () => {
+  const phase = buildCapabilityRoadmap().phases.find((item) => item.id === "runtime-closure");
+  assert.ok(phase);
+  assert.equal(phase.items.every((item) => item.status === "done"), true);
 });

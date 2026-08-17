@@ -78,6 +78,7 @@
   "optionalDependencies": {
     "@kilocode/cli": "7.4.22",
     "@openai/codex": "^0.147.0",
+    "@playwright/mcp": "^0.0.78",
     "opencode-ai": "^1.18.18",
     "sqlite-vec": "^0.1.0"
   },

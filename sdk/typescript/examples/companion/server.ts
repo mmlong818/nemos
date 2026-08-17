@@ -85,10 +85,12 @@ import {
   type CapabilityHandoffEnvelope,
   type CapabilityHandoffInput,
 } from "./capability-handoff.js";
-import { createDefaultCapabilityToolRegistry, type CapabilityToolSummary } from "./capability-tools.js";
+import { createDefaultCapabilityToolRegistry, isToolAllowedForPersona, type CapabilityToolSummary } from "./capability-tools.js";
 import {
   buildCapabilitySystemRegistry,
   capabilityToolFilterForSurface,
+  companionRuntimeToolSummaries,
+  filterCompanionRuntimeToolsForSurface,
   type CapabilityExtensionSummary,
   type CapabilityProviderSummary,
 } from "./capability-system-registry.js";
@@ -115,6 +117,8 @@ import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { validateDevelopmentWorkspace, type DevelopmentAccessMode, type DevelopmentTelemetryEvent } from "./pi-development.js";
 import { createDevelopmentEnginePluginRegistry } from "./development-engine-plugins.js";
 import { DevelopmentEngineUpdateService } from "./development-engine-updates.js";
+import { AgentExtensionUpdateService } from "./agent-extension-updates.js";
+import { bundledCapabilityPluginCatalog, createBundledCapabilityProvider, type BundledCapabilityPluginId } from "./bundled-capability-plugins.js";
 import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
 import { listDevelopmentWorkspace, readDevelopmentWorkspaceFile } from "./development-workspace.js";
 import {
@@ -363,7 +367,7 @@ const agentExtensions = new AgentExtensionRegistry(AGENT_EXTENSIONS_FILE);
 const agentExtensionRuntimeErrors = new Map<string, string>();
 function createExtensionProvider(manifest: AgentExtensionManifest) {
   try {
-    const provider = createMcpProviderFromManifest(manifest);
+    const provider = createBundledCapabilityProvider(manifest, DATA_DIR) ?? createMcpProviderFromManifest(manifest);
     agentExtensionRuntimeErrors.delete(manifest.id);
     return provider;
   } catch (error) {
@@ -387,6 +391,7 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
   hasLiveSearch: () => Boolean(process.env.ZHIPU_API_KEY || (modelConnection?.provider === "zhipu" && modelConnection.apiKey)),
   hasVision: () => !!llm.vision,
   hasVoice: () => !!llm.tts || !!llm.asr,
+  executionHistoryFile: join(DATA_DIR, "capability-tool-executions.json"),
   marketData,
   runLiveSearch: async (query, signal) => {
     const key = process.env.ZHIPU_API_KEY || (modelConnection?.provider === "zhipu" ? modelConnection.apiKey : "");
@@ -404,6 +409,11 @@ const developmentEngineUpdates = new DevelopmentEngineUpdateService({
   registry: developmentEnginePlugins,
   stateFile: join(DATA_DIR, "development-engine-updates.json"),
   packageRoot: resolve(__dirname, "..", ".."),
+});
+const agentExtensionUpdates = new AgentExtensionUpdateService({
+  registry: agentExtensions,
+  stateFile: join(DATA_DIR, "agent-extension-updates.json"),
+  createProvider: (manifest) => createExtensionProvider(manifest),
 });
 const developmentProjectArchive = new DevelopmentProjectArchiveStore(join(DATA_DIR, "development-project-archive.json"));
 const productReviewRuns = new ProductReviewRunStore(DATA_DIR);
@@ -437,11 +447,11 @@ const capabilities = new CapabilityRuntime({
     return { ...result, engine: developmentEngine };
   },
   notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode) => {
-    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode });
+    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, surface: "capability" });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
   notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId, memoryMode) => {
-    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode });
+    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, surface: "capability" });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
 });
@@ -1006,11 +1016,25 @@ function makeEngine(): CompanionEngine {
 }
 
 function wireAgentTools(target: ResolvedLLM): void {
-  target.configureAgentTools(async (instruction, context) => [
-    ...capabilityTools.toAgentTools(instruction, undefined, capabilityToolFilterForSurface("task")),
-    ...await companionAgentTools(instruction, context),
-    ...await agentExtensions.toolsForRequest(instruction, { signal: context?.signal }),
-  ]);
+  target.configureAgentTools(async (instruction, context) => {
+    const surface = context?.surface ?? "task";
+    const filter = capabilityToolFilterForSurface(surface);
+    const productTools = filterCompanionRuntimeToolsForSurface(surface, await companionAgentTools(instruction, context));
+    const extensionTools = filter.toolsets?.includes("extension")
+      ? await agentExtensions.toolsForRequest(instruction, {
+          signal: context?.signal,
+          allow: (descriptor) => isToolAllowedForPersona(
+            { id: `${descriptor.extensionId}.${descriptor.name}`, toolset: "extension" },
+            context?.personaId ? personaToolBindings.get(context.personaId) : undefined,
+          ),
+        })
+      : [];
+    return [
+      ...capabilityTools.toAgentTools(instruction, undefined, filter),
+      ...productTools,
+      ...extensionTools,
+    ];
+  });
   target.configureAgentObserver(agentRunObserver);
   target.configureAgentAuthorizer((input) => agentApprovalStore.authorize(input));
 }
@@ -1329,6 +1353,10 @@ function extensionToolSummaries(): CapabilityToolSummary[] {
       },
       isAsync: true,
       execution: "direct",
+      effect: tool.effect,
+      risk: tool.risk ?? "normal",
+      timeoutMs: extension.manifest.runtime.requestTimeoutMs,
+      permissions: [...extension.manifest.permissions],
       dynamic: true,
     }));
   });
@@ -2702,6 +2730,7 @@ function conversationSendOptions(body: ChatBody): {
   toolMode: "auto" | "read-only" | "off";
   memoryWriteMode: "default" | "archive-only" | "off";
   systemAddendum?: string;
+  surface: "task" | "education";
   runtimeLimits: { maxRounds: number; maxToolRounds: number; maxTotalTokens: number; maxOutputChars: number };
 } {
   const reasoning = body.reasoning === "fast" ? "fast" : body.reasoning === "deep" ? "deep" : "balanced";
@@ -2735,6 +2764,7 @@ function conversationSendOptions(body: ChatBody): {
           teachingMethod,
         ].filter(Boolean).join("\n\n")
       : undefined,
+    surface: body.workMode === "study" ? "education" : "task",
     runtimeLimits,
   };
 }
@@ -4597,7 +4627,39 @@ const server = createServer(async (req, res) => {
           browser: Boolean(supports?.webSearch),
         }),
         capabilityPacks: capabilityPackStatuses(snapshot.abilities, snapshot.artifacts),
+        bundledPlugins: bundledCapabilityPluginCatalog({
+          packageRoot: resolve(__dirname, "..", ".."),
+          installedIds: extensions.map((item) => item.manifest.id),
+        }).map(({ manifest: _manifest, ...item }) => item),
       });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/platform/bundled-plugin/install") {
+      const body = (await readBody(req)) as { id?: BundledCapabilityPluginId; confirmExecutable?: boolean };
+      const catalog = bundledCapabilityPluginCatalog({
+        packageRoot: resolve(__dirname, "..", ".."),
+        installedIds: agentExtensions.list().map((item) => item.manifest.id),
+      });
+      const item = catalog.find((candidate) => candidate.id === body.id);
+      if (!item) { send(res, 400, { error: "未知的内置能力插件。" }); return; }
+      if (item.installed) { send(res, 409, { error: "这个能力插件已经安装。" }); return; }
+      if (!item.installable) { send(res, 409, { error: item.reason || "这个能力插件当前无法安装。" }); return; }
+      if (item.manifest.id === "browser.playwright" && body.confirmExecutable !== true) {
+        send(res, 409, { error: "浏览器操作会启动隔离的 Chrome 进程，需要明确确认。", requiresConfirmation: true });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "bundled_capability_plugin_install",
+        description: `安装小丑鱼内置能力插件：${item.name}`,
+        arguments: { pluginId: item.id, permissions: item.manifest.permissions },
+        execute: () => agentExtensions.install(
+          item.manifest,
+          createExtensionProvider(item.manifest),
+          { allowUnsandboxed: item.manifest.id === "browser.playwright" },
+        ),
+        summarizeResult: (extension) => ({ extensionId: extension.manifest.id, enabled: extension.enabled }),
+      });
+      send(res, 200, { ok: true, extension: action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "GET" && url === "/api/development/engine-updates") {
@@ -4627,6 +4689,39 @@ const server = createServer(async (req, res) => {
         summarizeResult: (result) => ({ engine: result.item.engine, version: result.item.currentVersion, restartRequired: true }),
       });
       send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "GET" && url === "/api/agent/extension-updates") {
+      send(res, 200, agentExtensionUpdates.snapshot());
+      return;
+    }
+    if (req.method === "POST" && url === "/api/agent/extension-updates/check") {
+      send(res, 200, await agentExtensionUpdates.check());
+      return;
+    }
+    if (req.method === "POST" && url === "/api/agent/extension-updates/upgrade") {
+      const body = (await readBody(req)) as {
+        id?: string;
+        latestVersion?: string;
+        acceptRisk?: boolean;
+        confirmPermissionExpansion?: boolean;
+        confirmUnsandboxed?: boolean;
+      };
+      if (!body.id || !body.latestVersion) return send(res, 400, { error: "扩展和版本不能为空。" });
+      const action = await agentUserActions.execute({
+        name: "agent_extension_upgrade",
+        description: `升级能力扩展 ${body.id}`,
+        arguments: { id: body.id, latestVersion: body.latestVersion, acceptRisk: body.acceptRisk === true },
+        execute: () => agentExtensionUpdates.upgrade({
+          id: body.id!,
+          latestVersion: body.latestVersion!,
+          acceptRisk: body.acceptRisk === true,
+          confirmPermissionExpansion: body.confirmPermissionExpansion === true,
+          confirmUnsandboxed: body.confirmUnsandboxed === true,
+        }),
+        summarizeResult: (result) => ({ id: result.item.id, version: result.item.currentVersion }),
+      });
+      send(res, 200, { ...action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/platform/connector/test") {
@@ -5170,12 +5265,17 @@ const server = createServer(async (req, res) => {
       const snap = capabilities.snapshot();
       send(res, 200, buildCapabilitySystemRegistry({
         tools: capabilityTools,
-        additionalTools: extensionToolSummaries(),
+        additionalTools: [...companionRuntimeToolSummaries(), ...extensionToolSummaries()],
         abilities: snap.abilities,
         engines: developmentEnginePlugins,
         providers: capabilityProviderSummaries(),
         extensions: capabilityExtensionSummaries(),
       }));
+      return;
+    }
+    if (req.method === "GET" && url.startsWith("/api/capabilities/executions")) {
+      const requested = Number(new URL(req.url || "/", "http://localhost").searchParams.get("limit") || 100);
+      send(res, 200, { executions: capabilityTools.listExecutionHistory(requested) });
       return;
     }
     if (req.method === "GET" && url === "/api/capabilities/roadmap") {
@@ -6690,6 +6790,7 @@ boot().then(() => {
     seedPersonaBiosInBackground(engine);
     startPeriodicDataSync();
     void developmentEngineUpdates.check();
+    void agentExtensionUpdates.check();
     const startedAt = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
     console.log("");
     console.log("  陪伴 App 已启动 → http://localhost:" + PORT);

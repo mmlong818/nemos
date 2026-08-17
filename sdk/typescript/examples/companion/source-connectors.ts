@@ -27,7 +27,7 @@ export interface SourceConnectorMatch {
 const CONNECTORS: SourceConnector[] = [
   {
     id: "travel-rail",
-    label: "Train and rail queries",
+    label: "动车与列车核验指引（非实时查询）",
     domains: ["rail", "train", "route", "ticket"],
     sourceTypes: ["official-live", "platform-live", "manual-verification"],
     accessNeeds: ["Official railway endpoint or a trusted ticketing provider", "Departure, destination, date, passenger constraints"],
@@ -41,7 +41,7 @@ const CONNECTORS: SourceConnector[] = [
   },
   {
     id: "travel-flight",
-    label: "Flight and airport queries",
+    label: "航班与机场核验指引（非实时查询）",
     domains: ["flight", "airport", "airline", "ticket"],
     sourceTypes: ["official-live", "platform-live", "manual-verification"],
     accessNeeds: ["Airline, airport, OTA, or aviation data API", "Route, date, cabin, baggage, refund/change constraints"],
@@ -55,7 +55,7 @@ const CONNECTORS: SourceConnector[] = [
   },
   {
     id: "hotel-booking",
-    label: "Hotel and stay planning",
+    label: "酒店信息核验指引（非实时房态）",
     domains: ["hotel", "stay", "booking", "location"],
     sourceTypes: ["platform-live", "merchant-page", "community", "manual-verification"],
     accessNeeds: ["Booking platform, hotel official site, map/review service", "City, dates, budget, room type, location constraints"],
@@ -69,7 +69,7 @@ const CONNECTORS: SourceConnector[] = [
   },
   {
     id: "restaurant-booking",
-    label: "Restaurant discovery and booking",
+    label: "餐馆信息核验指引（非实时订座）",
     domains: ["restaurant", "food", "reservation", "local"],
     sourceTypes: ["merchant-page", "platform-live", "community", "manual-verification"],
     accessNeeds: ["Map/review service, restaurant official account/site, reservation platform", "Area, time, party size, cuisine, budget"],
