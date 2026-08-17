@@ -176,7 +176,12 @@ test("product layer can add request-scoped write tools and authorize them in Com
     let receivedPersonaId = "";
     let observedRunId = "";
     let observedSessionId = "";
-    llm.configureAgentObserver({ onStart: (input) => { observedRunId = input.runId ?? ""; observedSessionId = input.sessionId; } });
+    let observedSurface = "";
+    llm.configureAgentObserver({ onStart: (input) => {
+      observedRunId = input.runId ?? "";
+      observedSessionId = input.sessionId;
+      observedSurface = input.metadata?.surface ?? "";
+    } });
     llm.configureAgentAuthorizer(async () => {
       authorizationCalls++;
       return { allowed: true };
@@ -200,6 +205,7 @@ test("product layer can add request-scoped write tools and authorize them in Com
         scope: "conv:user-a:persona-a",
         memoryScopes: ["conv:user-a:persona-a"],
         mode: "chat",
+        surface: "capability",
       },
     );
     assert.equal(result, "工具已执行。");
@@ -209,6 +215,7 @@ test("product layer can add request-scoped write tools and authorize them in Com
     assert.equal(receivedPersonaId, "persona-a");
     assert.equal(observedRunId, "orchestration/task-a/run-1");
     assert.equal(observedSessionId, "conv:user-a:persona-a");
+    assert.equal(observedSurface, "capability");
   } finally {
     if (previousKey === undefined) delete process.env.ZHIPU_API_KEY;
     else process.env.ZHIPU_API_KEY = previousKey;
@@ -263,6 +270,7 @@ test("Companion rebuilds request tools and resumes a persisted Agent checkpoint"
         personaId: "persona-a",
         scope: "conv:1on1:user-a:persona-a",
         mode: "chat",
+        surface: "capability",
         memoryScopes: "[\"conv:1on1:user-a:persona-a\"]",
         model: "test-model",
         maxTokens: "800",
@@ -299,6 +307,7 @@ test("Companion rebuilds request tools and resumes a persisted Agent checkpoint"
     llm.configureAgentTools((_instruction, context) => {
       assert.equal(context?.personaId, "persona-a");
       assert.deepEqual(context?.memoryScopes, ["conv:1on1:user-a:persona-a"]);
+      assert.equal(context?.surface, "capability");
       return [tool];
     });
     llm.configureAgentAuthorizer(async () => ({ allowed: true }));

@@ -58,23 +58,24 @@ function renderStaticIcons() {
 
 const MATCH_RULES = [
   ["ability", /(生成|创建|新增|沉淀|锻造).{0,8}(能力|技能)|做成.{0,6}(能力|技能)/i],
-  ["presentation", /PPT|演示|汇报|路演|幻灯|提案|课件/i],
+  ["thinking", /(?:按|依照).{0,8}(?:紧急程度|优先级).{0,8}(?:整理|安排|排序)|(?:紧急程度|优先级).{0,8}(?:整理|安排|排序)/i],
+  ["presentation", /PPT|演示文稿|路演|幻灯|课件|(?:生成|制作|做成|输出).{0,8}(汇报|提案)|(?:汇报|提案).{0,8}(PPT|演示|大纲|材料)/i],
   ["speech", /语音转写|音频转写|录音转写|视频转写|识别音频|听写/i],
   ["translate", /翻译|中译英|英译中|译成|译文/i],
   ["polish", /轻量润色|文字润色|校对错别字|清理标点/i],
   ["meeting", /会议|纪要|访谈|录音|讨论记录/i],
   ["document", /(?:周报|月报|日报|材料|素材|内容).{0,18}(?:整理|摘要|总结|归纳|提炼)|(?:整理|摘要|总结|归纳|提炼).{0,18}(?:周报|月报|日报|材料|素材|内容)|管理层摘要|正式文档/i],
-  ["product", /产品|界面|交互|原型|用户体验|功能设计/i],
-  ["developer", /开发|写代码|改代码|修复.{0,6}(问题|bug)|项目检查|构建|测试/i],
+  ["product", /产品|界面|交互|原型|用户体验|功能设计|用户路径|操作流程|能力页|文件工作流|工作台设计/i],
+  ["developer", /开发|写代码|改代码|修复.{0,6}(问题|bug)|项目检查|代码库|仓库|(?:构建|测试).{0,12}(代码|项目|仓库|软件|程序|接口)|(?:代码|项目|仓库|软件|程序|接口).{0,12}(构建|测试)/i],
   ["business", /商务|合作|销售|客户|谈判|成交|跟进/i],
   ["marketBrief", /港股|股票|行情|公告|财报|盘前|盘后|自选|持仓|HKEX/i],
   ["market", /市场|赛道|机会|定位|竞品|增长/i],
-  ["research", /研究|调研|资料|调查|行业|搜集|分析报告/i],
+  ["research", /研究|调研|资料|调查|行业|搜集|分析报告|核验|威胁建模|提示注入|安全审计|隐私风险/i],
   ["decision", /决策|比较|选择|取舍|评估|该不该/i],
   ["ability", /流程|自动化|重复工作|SOP|工作流/i],
   ["web", /网页|HTML|页面|网站|可视化/i],
-  ["document", /文档|文章|总结|说明|方案|写作|润色/i],
-  ["thinking", /思考|梳理|头脑风暴|复盘|想法|困惑/i],
+  ["document", /文档|文章|总结|说明|方案|写作|润色|项目复盘/i],
+  ["thinking", /思考|梳理|头脑风暴|复盘|想法|困惑|优先级|紧急程度|时间安排/i],
 ];
 
 const EXAMPLE_PROMPTS = {
@@ -532,13 +533,39 @@ function draftTitle(draft) {
 }
 
 function renderDraftList() {
-  const drafts = loadDrafts().filter(draftHasWork);
+  const drafts = loadDrafts().filter((draft) => draftHasWork(draft) && !draft.archivedAt);
   $("#capabilityDraftSection").hidden = drafts.length === 0;
   $("#capabilityDraftCount").textContent = String(drafts.length);
   $("#capabilityDraftList").innerHTML = drafts.map((draft) => {
     const item = CATALOG.find((entry) => entry.id === draft.selectedId);
-    return `<button type="button" data-capability-draft="${escapeHtml(draft.id)}"><strong>${escapeHtml(draft.title || draftTitle(draft))}</strong><small>${escapeHtml(item?.name || "能力")} · ${escapeHtml(displayDate(draft.updatedAt))}</small></button>`;
+    return `<div class="capability-draft-row"><button type="button" data-capability-draft="${escapeHtml(draft.id)}"><strong>${escapeHtml(draft.title || draftTitle(draft))}</strong><small>${escapeHtml(item?.name || "能力")} · ${escapeHtml(displayDate(draft.updatedAt))}</small></button><button type="button" class="capability-row-action" data-archive-capability-draft="${escapeHtml(draft.id)}" aria-label="归档${escapeHtml(draft.title || draftTitle(draft))}">归档</button></div>`;
   }).join("");
+}
+
+function archiveDraftById(id) {
+  const now = new Date().toISOString();
+  const drafts = loadDrafts().map((draft) => draft.id === id ? { ...draft, archivedAt: now, updatedAt: now } : draft);
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+  if (state.activeDraftId === id) resetDraft({ removeRecord: false });
+  renderDraftList();
+  renderArchiveList();
+  showToast("未完成内容已归档");
+}
+
+function restoreArchivedDraft(id) {
+  const drafts = loadDrafts().map((draft) => draft.id === id ? { ...draft, archivedAt: "", updatedAt: new Date().toISOString() } : draft);
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+  restoreDraftById(id);
+  renderArchiveList();
+  showToast("已打开未完成内容");
+}
+
+function deleteArchivedDraft(id) {
+  const draft = loadDrafts().find((item) => item.id === id && item.archivedAt);
+  if (!draft || !confirm(`彻底删除「${draft.title || draftTitle(draft)}」？`)) return;
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify(loadDrafts().filter((item) => item.id !== id)));
+  renderArchiveList();
+  showToast("归档内容已删除");
 }
 
 function migrateLegacyDraft() {
@@ -554,6 +581,7 @@ function migrateLegacyDraft() {
 function restoreDraftById(id) {
   const draft = loadDrafts().find((item) => item.id === id) || (loadDraft()?.id === id ? loadDraft() : null);
   if (!draft || !draftHasWork(draft)) return showToast("这条未完成记录已经不存在", true);
+  const detachedFromChat = draft.handoffSource === "chat";
   state.activeDraftId = draft.id;
 
   state.selectedId = CATALOG.some((item) => item.id === draft.selectedId) ? draft.selectedId : "document";
@@ -566,15 +594,15 @@ function restoreDraftById(id) {
   $("#memoryToggle").checked = draft.memoryMode !== "off";
   $("#workspaceInput").value = draft.workspacePath || "";
   setDevelopmentMode(draft.accessMode, false);
-  state.parentJobId = String(draft.parentJobId || "");
-  state.continuationTaskId = String(draft.continuationTaskId || "");
+  state.parentJobId = detachedFromChat ? "" : String(draft.parentJobId || "");
+  state.continuationTaskId = detachedFromChat ? "" : String(draft.continuationTaskId || "");
   state.handoffChain = Array.isArray(draft.handoffChain) ? draft.handoffChain.slice(0, 12) : [];
-  state.handoffSummary = String(draft.handoffSummary || "");
-  state.handoffConversation = Array.isArray(draft.handoffConversation) ? draft.handoffConversation.slice(-120) : [];
+  state.handoffSummary = detachedFromChat ? "" : String(draft.handoffSummary || "");
+  state.handoffConversation = detachedFromChat ? [] : Array.isArray(draft.handoffConversation) ? draft.handoffConversation.slice(-120) : [];
   state.handoffMessageCount = state.handoffConversation.length;
-  state.handoffSource = draft.handoffSource === "capability" ? "capability" : draft.handoffSource === "chat" ? "chat" : "";
-  state.handoffSourceCapabilityId = String(draft.handoffSourceCapabilityId || "");
-  state.returnConversationKey = String(draft.returnConversationKey || "");
+  state.handoffSource = draft.handoffSource === "capability" ? "capability" : "";
+  state.handoffSourceCapabilityId = detachedFromChat ? "" : String(draft.handoffSourceCapabilityId || "");
+  state.returnConversationKey = "";
   renderCatalog();
   renderMaterials();
   openCapability();
@@ -815,13 +843,13 @@ async function startTask() {
   const button = $("#startTask");
   button.disabled = true;
   button.textContent = item.id === "developer" ? "正在理解项目…" : "正在加入任务…";
-  const hasHandoff = Boolean(state.handoffSummary || state.handoffConversation.length || state.parentJobId);
+  const hasHandoff = state.handoffSource === "capability" && Boolean(state.handoffSummary || state.handoffConversation.length || state.parentJobId);
   const materials = !hasHandoff && state.materials.length
     ? `\n\n用户提供的材料：\n${state.materials.map((item) => `--- ${item.name} ---\n${item.text}`).join("\n\n")}`
     : "";
   const handoff = hasHandoff ? {
-    source: state.handoffSource || (state.parentJobId ? "capability" : "chat"),
-    sourceConversationKey: state.returnConversationKey,
+    source: "capability",
+    sourceConversationKey: "",
     sourceJobId: state.parentJobId,
     sourceCapabilityId: state.handoffSourceCapabilityId,
     goal,
@@ -926,11 +954,6 @@ function developmentProposalActions(artifact) {
 function artifactProofLabel(artifact) {
   return ({ produced: "已生成", validated: "已校验", verified: "已核验", approved: "已确认" })[artifact?.proof?.level] || "未检查";
 }
-function chatHref() {
-  const url = new URL(state.returnUrl || "/", location.origin);
-  return `${url.pathname}${url.hash}`;
-}
-
 function developmentProgress(job, item, progress) {
   if (item.id !== "developer") return "";
   const labels = job.payload?.accessMode === "inspect"
@@ -978,6 +1001,8 @@ function renderConversationList() {
     ...tasks.map((task) => ({ id: task.id, jobId: "", title: task.title, updatedAt: task.updatedAt, capabilityId: task.capabilityId })),
   ];
   $("#capabilityConversationCount").textContent = rows.length;
+  $("#capabilityConversationCount").hidden = rows.length === 0;
+  $(".capability-conversations").hidden = rows.length === 0;
   $("#capabilityConversationList").innerHTML = rows.map((row) => {
     const item = capabilityForBackend(row.capabilityId);
     const current = row.id ? row.id === state.activeConversationTaskId : row.jobId === state.activeConversationJobId;
@@ -986,24 +1011,27 @@ function renderConversationList() {
   $$('[data-open-capability-task]').forEach((button) => button.addEventListener("click", () => openConversation(button.dataset.openCapabilityTask, button.dataset.openCapabilityJob)));
 }
 
-function renderRecord() {
+function renderArchiveList() {
   const tasks = capabilityConversationTasks(true);
-  $("#recordEmpty").hidden = tasks.length > 0;
-  $("#recordList").innerHTML = tasks.map((task) => {
+  const drafts = loadDrafts().filter((draft) => draftHasWork(draft) && draft.archivedAt);
+  const rows = [
+    ...tasks.map((task) => {
     const item = capabilityForBackend(task.capabilityId);
-    const artifacts = (state.snapshot.artifacts || []).filter((artifact) => artifact.taskId === task.id);
-    const latest = artifacts[artifacts.length - 1];
-    return `<article class="task-row">
-      <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
-      <div><h2>${escapeHtml(task.title)}</h2><p class="status-line">${escapeHtml(item.name)} · 归档于 ${displayDate(task.archivedAt)}</p>${latest ? `<div class="entry-files"><span class="file-type">${escapeHtml(String(latest.format || "file").toUpperCase())}</span><span class="entry-files-name">${escapeHtml(artifactDisplayTitle(latest))}</span><span class="version-actions">${artifactLinks(latest, true)}</span></div>` : ""}</div>
-      <div class="task-actions"><button type="button" data-restore-capability-task="${escapeHtml(task.id)}">恢复</button><button class="danger" type="button" data-delete-capability-task="${escapeHtml(task.id)}">删除</button></div>
-    </article>`;
-  }).join("");
-  $$('[data-restore-capability-task]').forEach((button) => button.addEventListener("click", () => restoreCapabilityConversation(button.dataset.restoreCapabilityTask)));
+      return `<div class="capability-archive-row"><button type="button" data-open-archived-capability-task="${escapeHtml(task.id)}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(item.name)} · ${displayDate(task.archivedAt)}</small></button><button type="button" class="capability-row-action danger" data-delete-capability-task="${escapeHtml(task.id)}" aria-label="删除${escapeHtml(task.title)}">删除</button></div>`;
+    }),
+    ...drafts.map((draft) => {
+      const item = CATALOG.find((entry) => entry.id === draft.selectedId);
+      return `<div class="capability-archive-row"><button type="button" data-open-archived-capability-draft="${escapeHtml(draft.id)}"><strong>${escapeHtml(draft.title || draftTitle(draft))}</strong><small>未完成 · ${escapeHtml(item?.name || "能力")} · ${displayDate(draft.archivedAt)}</small></button><button type="button" class="capability-row-action danger" data-delete-archived-capability-draft="${escapeHtml(draft.id)}" aria-label="删除${escapeHtml(draft.title || draftTitle(draft))}">删除</button></div>`;
+    }),
+  ];
+  $("#capabilityArchiveCount").textContent = String(rows.length);
+  $("#capabilityArchiveCount").hidden = rows.length === 0;
+  $("#capabilityArchiveEmpty").hidden = rows.length > 0;
+  $("#capabilityArchiveList").innerHTML = rows.join("");
+  $$('[data-open-archived-capability-task]').forEach((button) => button.addEventListener("click", () => openConversation(button.dataset.openArchivedCapabilityTask)));
+  $$('[data-open-archived-capability-draft]').forEach((button) => button.addEventListener("click", () => restoreArchivedDraft(button.dataset.openArchivedCapabilityDraft)));
   $$('[data-delete-capability-task]').forEach((button) => button.addEventListener("click", () => askDeleteCapabilityConversation(button.dataset.deleteCapabilityTask)));
-  const badge = $("#runningCount");
-  badge.textContent = tasks.length;
-  badge.hidden = tasks.length === 0;
+  $$('[data-delete-archived-capability-draft]').forEach((button) => button.addEventListener("click", () => deleteArchivedDraft(button.dataset.deleteArchivedCapabilityDraft)));
   renderConversationList();
   renderActiveConversation();
 }
@@ -1052,7 +1080,10 @@ function renderActiveConversation() {
   const item = capabilityForBackend(task?.capabilityId || firstJob?.payload?.capabilityId);
   $("#capabilityThreadTitle").textContent = task?.title || (firstJob ? jobTitle(firstJob) : "能力对话");
   $("#capabilityThreadAbility").textContent = item.name;
-  $("#archiveCapabilityConversation").hidden = !task || Boolean(task.archivedAt);
+  const archived = Boolean(task?.archivedAt);
+  $("#archiveCapabilityConversation").hidden = !task || archived;
+  $("#restoreCapabilityConversation").hidden = !archived;
+  $("#deleteCapabilityConversation").hidden = !archived;
   $("#capabilityThreadMessages").innerHTML = jobs.map((job) => {
     const artifact = artifactFromJob(job);
     const running = job.status === "queued" || job.status === "running";
@@ -1062,9 +1093,10 @@ function renderActiveConversation() {
     return `<div class="capability-message user"><span class="message-author">你</span><div class="message-copy">${escapeHtml(String(job.payload?.instruction || "")).replace(/\n/g, "<br>")}</div></div>${assistant}`;
   }).join("") || '<div class="capability-thread-empty">这条对话还没有内容。</div>';
   const running = jobs.some((job) => job.status === "queued" || job.status === "running");
-  $("#capabilityThreadInput").disabled = running || !task;
-  $("#capabilityThreadForm").querySelector('button[type="submit"]').disabled = running || !task;
-  $("#capabilityThreadStatus").textContent = running ? "小丑鱼正在处理，完成后可以继续追问。" : "对话会保留在能力页，直到你主动归档。";
+  $("#capabilityThreadForm").hidden = archived;
+  $("#capabilityThreadInput").disabled = running || !task || archived;
+  $("#capabilityThreadForm").querySelector('button[type="submit"]').disabled = running || !task || archived;
+  $("#capabilityThreadStatus").textContent = archived ? "这条对话已归档，恢复后可以继续。" : running ? "小丑鱼正在处理，完成后可以继续追问。" : "对话只保留在能力页，直到你主动归档。";
   const messages = $("#capabilityThreadMessages");
   messages.scrollTop = messages.scrollHeight;
 }
@@ -1188,7 +1220,7 @@ function renderHistory() {
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
       <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p>${jobMemoryUsage(job)}</div>
       ${developmentReceipt(artifact)}
-      <div class="task-actions">${job.status === "succeeded" ? `${item.id === "developer" ? `<button type="button" data-revise-job="${escapeHtml(job.id)}">继续调整</button>` : ""}<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button><a href="${escapeHtml(chatHref(job.id))}">在对话中查看</a>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}${open}</div>
+      <div class="task-actions">${job.status === "succeeded" ? `${item.id === "developer" ? `<button type="button" data-revise-job="${escapeHtml(job.id)}">继续调整</button>` : ""}<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}${open}</div>
     </article>`;
   }).join("");
   $('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
@@ -1245,8 +1277,6 @@ async function handoffJob(id) {
     $("#instructionInput").value = "";
     $("#launchPanel").hidden = true;
     $(".start-wrap").classList.remove("is-launching");
-    $("#chatContext").hidden = true;
-
     renderMaterials();
     saveDraft();
     openView("start");
@@ -1258,21 +1288,16 @@ async function handoffJob(id) {
 }
 
 function openView(view, updateUrl = true) {
-  if (["runs", "history", "files"].includes(view)) view = "record";
-  if (!["start", "record"].includes(view)) view = "start";
+  const archiveRequested = ["record", "runs", "history", "files"].includes(view);
+  view = "start";
   state.view = view;
   $$("[data-view]").forEach((node) => node.classList.toggle("is-active", node.dataset.view === view));
-  $$('[data-capability-nav]').forEach((node) => {
-    const current = node.dataset.viewTarget === view;
-    node.classList.toggle("is-current", current);
-    if (current) node.setAttribute("aria-current", "page");
-    else node.removeAttribute("aria-current");
-  });
   const viewTitle = $("#capabilityViewTitle");
-  if (viewTitle) viewTitle.textContent = { start: "开始", record: "归档" }[view];
-  if (updateUrl) history.replaceState(null, "", view === "start" ? location.pathname : `#${view}`);
-  document.title = `${{ start: "能力", record: "归档" }[view]} · 小丑鱼`;
+  if (viewTitle) viewTitle.textContent = "能力";
+  if (updateUrl || archiveRequested) history.replaceState(null, "", location.pathname);
+  document.title = "能力 · 小丑鱼";
   window.scrollTo({ top: 0, behavior: "auto" });
+  if (archiveRequested) $("#capabilityArchiveSection")?.scrollIntoView({ block: "nearest" });
 }
 
 async function refreshData() {
@@ -1280,7 +1305,7 @@ async function refreshData() {
     const [snapshot, registry, jobsResponse, appState, memory, llm, toolStatus] = await Promise.all([
       api("/api/capabilities"),
       api("/api/capabilities/registry"),
-      api("/api/agent/jobs?limit=200"),
+      api("/api/agent/jobs?limit=200&surface=capabilities"),
       api("/api/state"),
       api("/api/memory?who=me"),
       api("/api/llm"),
@@ -1297,7 +1322,7 @@ async function refreshData() {
     $("#memorySummary").textContent = state.memoryCount > 0 ? `可轻量参考 ${state.memoryCount} 条写作、排版或格式习惯` : "会轻量参考文笔、排版和格式偏好";
     renderCatalog();
     renderExecutionState();
-    renderRecord();
+    renderArchiveList();
   } catch (error) {
     showToast(`暂时无法读取能力数据：${error.message}`, true);
   }
@@ -1421,11 +1446,12 @@ async function applyDevelopmentContinuation() {
 
 function bindEvents() {
   $$('[data-view-target]').forEach((button) => button.addEventListener("click", () => {
-    if (button.hasAttribute("data-capability-nav") && button.dataset.viewTarget === "start") newCapabilityConversation();
+    if (button.dataset.viewTarget === "start") newCapabilityConversation();
     else openView(button.dataset.viewTarget);
   }));
-  $("#newCapabilityConversation").addEventListener("click", newCapabilityConversation);
   $("#archiveCapabilityConversation").addEventListener("click", archiveCapabilityConversation);
+  $("#restoreCapabilityConversation").addEventListener("click", () => restoreCapabilityConversation(state.activeConversationTaskId));
+  $("#deleteCapabilityConversation").addEventListener("click", () => askDeleteCapabilityConversation(state.activeConversationTaskId));
   $("#capabilityThreadForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const instruction = $("#capabilityThreadInput").value.trim();
@@ -1469,6 +1495,11 @@ function bindEvents() {
   $("#memoryHelp").addEventListener("click", () => $("#memoryDialog").showModal());
   window.addEventListener("hashchange", () => openView(location.hash.slice(1) || "start", false));
   document.addEventListener("click", (event) => {
+    const archiveDraft = event.target.closest("[data-archive-capability-draft]");
+    if (archiveDraft) {
+      archiveDraftById(archiveDraft.dataset.archiveCapabilityDraft);
+      return;
+    }
     const draft = event.target.closest("[data-capability-draft]");
     if (draft) {
       restoreDraftById(draft.dataset.capabilityDraft);
@@ -1483,7 +1514,7 @@ function bindEvents() {
 
 async function init() {
   renderStaticIcons();
-  configureReturnLinks();
+  sessionStorage.removeItem(HANDOFF_KEY);
   migrateLegacyDraft();
   bindEvents();
   renderRecentWorkspaces();
@@ -1492,7 +1523,6 @@ async function init() {
   renderDraftList();
   openView(location.hash.slice(1) || "start", false);
   await refreshData();
-  await applyDevelopmentContinuation();
   state.pollTimer = window.setInterval(refreshData, 4000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshData();

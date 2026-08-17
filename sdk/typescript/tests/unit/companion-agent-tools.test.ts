@@ -29,6 +29,10 @@ test("product Agent tools are loaded only for a relevant request", async () => {
     ["memory_recall"],
   );
   assert.deepEqual(
+    (await provider("你还记得我之前说过什么吗", { ...context, surface: "capability" })).map((tool) => tool.definition.name),
+    [],
+  );
+  assert.deepEqual(
     (await provider("看看我的任务和最近产物", context)).map((tool) => tool.definition.name),
     ["capability_task_list", "capability_artifact_list"],
   );
@@ -69,12 +73,12 @@ test("task and artifact tools never return another persona's records", async () 
   const capabilities = {
     snapshot: () => ({
       tasks: [
-        { id: "task-a", title: "我的任务", personaId: "persona-a", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-07-30" },
-        { id: "task-b", title: "其他人的任务", personaId: "persona-b", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-07-30" },
+        { id: "task-a", title: "我的任务", personaId: "persona-a", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-07-30", oneOff: true, origin: { kind: "chat" } },
+        { id: "task-b", title: "其他人的任务", personaId: "persona-b", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-07-30", oneOff: true, origin: { kind: "chat" } },
       ],
       artifacts: [
-        { id: "artifact-a", title: "我的报告", personaId: "persona-a", format: "md", createdAt: "2026-07-30", summary: "可见" },
-        { id: "artifact-b", title: "其他人的报告", personaId: "persona-b", format: "md", createdAt: "2026-07-30", summary: "不可见" },
+        { id: "artifact-a", taskId: "task-a", title: "我的报告", personaId: "persona-a", format: "md", createdAt: "2026-07-30", summary: "可见" },
+        { id: "artifact-b", taskId: "task-b", title: "其他人的报告", personaId: "persona-b", format: "md", createdAt: "2026-07-30", summary: "不可见" },
       ],
     }),
   };
@@ -91,6 +95,57 @@ test("task and artifact tools never return another persona's records", async () 
   assert.doesNotMatch(taskResult.content, /其他人的任务/);
   assert.match(artifactResult.content, /我的报告/);
   assert.doesNotMatch(artifactResult.content, /其他人的报告/);
+});
+
+test("task and artifact lookup keep task, capability, office, and development records on their own surfaces", async () => {
+  const capabilities = {
+    snapshot: () => ({
+      tasks: [
+        { id: "task-chat", title: "任务页任务", personaId: "persona-a", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-08-17", origin: { kind: "chat" } },
+        { id: "task-capability", title: "能力页任务", personaId: "persona-a", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-08-17", origin: { kind: "capability" } },
+        { id: "task-office", title: "文件页任务", personaId: "persona-a", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-08-17", origin: { kind: "office" } },
+        { id: "task-development", title: "开发页任务", personaId: "persona-a", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-08-17", origin: { kind: "development" } },
+        { id: "task-detached", title: "真检独立任务", personaId: "persona-a", enabled: true, schedule: { mode: "manual" }, updatedAt: "2026-08-17", origin: { kind: "direct" } },
+      ],
+      artifacts: [
+        { id: "artifact-chat", taskId: "task-chat", title: "任务页结果", personaId: "persona-a", format: "md", createdAt: "2026-08-17", summary: "task" },
+        { id: "artifact-capability", taskId: "task-capability", title: "能力页结果", personaId: "persona-a", format: "md", createdAt: "2026-08-17", summary: "capability" },
+        { id: "artifact-office", taskId: "task-office", title: "文件页结果", personaId: "persona-a", format: "md", createdAt: "2026-08-17", summary: "office" },
+        { id: "artifact-development", taskId: "task-development", title: "开发页结果", personaId: "persona-a", format: "md", createdAt: "2026-08-17", summary: "development" },
+        { id: "artifact-detached", taskId: "task-detached", title: "真检独立产物", personaId: "persona-a", format: "md", createdAt: "2026-08-17", summary: "detached" },
+      ],
+    }),
+  };
+  const provider = createCompanionAgentToolProvider({
+    memory: () => ({} as Nemos),
+    capabilities: () => capabilities as unknown as CapabilityRuntime,
+  });
+  const executeFor = async (surface: ChatAgentContext["surface"], name: string) => {
+    const tools = await provider("查看任务和最近产物", { ...context, surface });
+    const tool = tools.find((item) => item.definition.name === name);
+    assert.ok(tool);
+    return tool.execute({}, { runId: `surface-${surface}`, sessionId: `surface-${surface}`, signal: new AbortController().signal });
+  };
+
+  const taskList = await executeFor("task", "capability_task_list");
+  assert.match(taskList.content, /任务页任务/);
+  assert.doesNotMatch(taskList.content, /能力页任务|文件页任务|开发页任务|真检独立任务/);
+
+  const taskResult = await executeFor("task", "capability_artifact_list");
+  assert.match(taskResult.content, /任务页结果/);
+  assert.doesNotMatch(taskResult.content, /能力页结果|文件页结果|开发页结果|真检独立产物/);
+
+  const capabilityResult = await executeFor("capability", "capability_artifact_list");
+  assert.match(capabilityResult.content, /能力页结果/);
+  assert.doesNotMatch(capabilityResult.content, /任务页结果|文件页结果|开发页结果/);
+
+  const officeResult = await executeFor("office", "capability_artifact_list");
+  assert.match(officeResult.content, /文件页结果/);
+  assert.doesNotMatch(officeResult.content, /任务页结果|能力页结果|开发页结果/);
+
+  const developmentResult = await executeFor("development", "capability_artifact_list");
+  assert.match(developmentResult.content, /开发页结果/);
+  assert.doesNotMatch(developmentResult.content, /任务页结果|能力页结果|文件页结果/);
 });
 
 test("only clownfish receives the approved write tool for saving recurring work", async () => {
@@ -257,7 +312,7 @@ test("Clownfish can delegate bounded expert work and always adds a final review 
       return { id: "job-1", status: "queued" };
     },
   });
-  const appContext = { ...context, personaId: "clownfish" };
+  const appContext = { ...context, personaId: "clownfish", surface: "capability" as const };
   const tools = await provider("让原理工程师和决策分析师分别分析并交叉复核这个方案", appContext);
   const delegationTool = tools.find((tool) => tool.definition.name === "agent_delegation_create");
 
@@ -294,6 +349,7 @@ test("Clownfish can delegate bounded expert work and always adds a final review 
   assert.equal(queued.length, 1);
   assert.equal(queued[0]?.idempotencyKey, "delegation:delegation-session");
   const plan = queued[0]?.input as {
+    surface?: string;
     tasks: Array<{
       id: string;
       dependsOn?: string[];
@@ -301,6 +357,7 @@ test("Clownfish can delegate bounded expert work and always adds a final review 
       budget: { maxRounds: number; maxToolRounds: number; maxTotalTokens: number; maxOutputChars: number };
     }>;
   };
+  assert.equal(plan.surface, "capabilities");
   assert.equal(plan.tasks.length, 3);
   assert.deepEqual(plan.tasks[2]?.dependsOn, ["delegate-1", "delegate-2"]);
   assert.equal(plan.tasks[2]?.metadata.personaId, "clownfish");

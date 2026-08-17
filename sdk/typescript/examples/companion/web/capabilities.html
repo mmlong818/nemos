@@ -29,24 +29,23 @@
 
     <main>
       <header class="topbar">
-        <span class="wordmark" id="capabilityViewTitle">开始</span>
-        <a class="back-chat" href="/">返回任务</a>
+        <span class="wordmark" id="capabilityViewTitle">能力</span>
       </header>
 
       <div class="capability-layout">
-        <aside class="capability-panel" aria-label="能力页面导航">
-          <div class="capability-panel-heading"><strong class="capability-panel-title">能力</strong><button type="button" id="newCapabilityConversation">＋ 新对话</button></div>
-          <nav class="capability-view-nav">
-            <button class="is-current" type="button" data-capability-nav data-view-target="start" data-app-icon="spark"><span aria-hidden="true"></span><span>新对话</span></button>
-            <button type="button" data-capability-nav data-view-target="record" data-app-icon="bookmark"><span aria-hidden="true"></span><span>归档</span><span class="count" id="runningCount" hidden>0</span></button>
-          </nav>
+        <aside class="capability-panel" aria-label="能力对话记录">
           <section class="capability-conversations" aria-labelledby="capabilityConversationTitle">
-            <div class="capability-drafts-heading"><span id="capabilityConversationTitle">最近</span><span id="capabilityConversationCount">0</span></div>
+            <div class="capability-drafts-heading"><span id="capabilityConversationTitle">最近对话</span><span id="capabilityConversationCount" hidden>0</span></div>
             <div class="capability-conversation-list" id="capabilityConversationList"></div>
           </section>
           <section class="capability-drafts" id="capabilityDraftSection" hidden aria-labelledby="capabilityDraftTitle">
             <div class="capability-drafts-heading"><span id="capabilityDraftTitle">未完成</span><span id="capabilityDraftCount">0</span></div>
             <div class="capability-draft-list" id="capabilityDraftList"></div>
+          </section>
+          <section class="capability-archive" id="capabilityArchiveSection" aria-labelledby="capabilityArchiveTitle">
+            <div class="capability-drafts-heading"><span id="capabilityArchiveTitle">归档</span><span id="capabilityArchiveCount" hidden>0</span></div>
+            <p class="capability-archive-empty" id="capabilityArchiveEmpty">还没有归档</p>
+            <div class="capability-archive-list" id="capabilityArchiveList"></div>
           </section>
         </aside>
 
@@ -183,7 +182,11 @@
         <section class="capability-thread" id="capabilityThread" hidden aria-labelledby="capabilityThreadTitle">
           <header class="capability-thread-header">
             <div><small id="capabilityThreadAbility">能力对话</small><h1 id="capabilityThreadTitle">未命名对话</h1></div>
-            <button class="quiet-button" type="button" id="archiveCapabilityConversation">归档</button>
+            <div class="capability-thread-actions">
+              <button class="quiet-button" type="button" id="restoreCapabilityConversation" hidden>恢复</button>
+              <button class="quiet-button danger" type="button" id="deleteCapabilityConversation" hidden>删除</button>
+              <button class="quiet-button" type="button" id="archiveCapabilityConversation">归档</button>
+            </div>
           </header>
           <div class="capability-thread-messages" id="capabilityThreadMessages" aria-live="polite"></div>
           <form class="capability-thread-composer" id="capabilityThreadForm">
@@ -192,13 +195,6 @@
             <div><span id="capabilityThreadStatus">对话会保留在能力页，直到你主动归档。</span><button class="primary-button" type="submit">发送</button></div>
           </form>
         </section>
-      </section>
-      <section class="view" data-view="record">
-        <div class="list-page">
-          <header class="page-heading"><div><p class="eyebrow">收起的对话</p><h1>归档</h1><p>归档相当于放进仓库：不再占用首页，随时可以恢复。只有这里的内容可以删除。</p></div><button class="quiet-button" type="button" data-view-target="start">新对话</button></header>
-          <div class="empty-state" id="recordEmpty"><span data-empty-icon="history" aria-hidden="true"></span><h2>还没有归档</h2><p>主动归档的能力对话会保存在这里。</p></div>
-          <div class="item-list" id="recordList"></div>
-        </div>
       </section>
         </div>
       </div>
