@@ -22,7 +22,10 @@ test("内置能力目录提供浏览器、数据、邮件日历和媒体四类�
     "media.generate",
   ]);
   assert.equal(catalog.every((item) => validateAgentExtensionManifest(item.manifest).length === 0), true);
+  assert.equal(catalog.every((item) => item.dependencySummary.length > 0), true);
   assert.equal(catalog.find((item) => item.id === "browser.playwright")?.installable, true);
+  assert.match(catalog.find((item) => item.id === "analysis.safe-table")!.dependencySummary, /不需要外部服务/);
+  assert.match(catalog.find((item) => item.id === "media.generate")!.dependencySummary, /API/);
 });
 
 test("官方 Playwright MCP 可以真实启动并发现受控浏览器工具", { timeout: 30_000 }, async () => {
