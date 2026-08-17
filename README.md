@@ -3,11 +3,15 @@
 **中文** · [English](README.en.md)
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
-[![版本](https://img.shields.io/badge/版本-v0.2.1-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.1)
+[![版本](https://img.shields.io/badge/版本-v0.2.2-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.2)
 [![License](https://img.shields.io/badge/接入层-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#本地运行)
 
 小丑鱼是一款**本机优先、带长期记忆、能够真实执行任务的 AI 工作应用**。用户只需要描述目标；小丑鱼负责选择能力、调用专业执行单元、处理文件或启动编程引擎，并把过程、修改和结果留在同一个任务中。
+
+## v0.2.2 正式版
+
+本版本完成了能力运行闭环：六个产品入口共享同一工具注册、权限和审计体系；五个开发引擎具备隔离执行、事件显示、会话恢复和取消；设置中心增加预置能力与自定义插件管理。预置插件会直接说明本机依赖或外部 API 要求，不把文件解析误报成在线账号连接。
 
 ![小丑鱼任务界面](docs/assets/readme/clownfish-chat-2026-08-16.png)
 
@@ -52,7 +56,7 @@
 
 工具状态会区分“可直接调用”和“由产品流程承接”，不会把只有提示词的能力冒充成独立工具。直接调用会保存工具来源、开始与完成时间、耗时及结果截断状态，过长结果会明确提示缩小范围。
 
-设置中心还提供四组按需安装的能力插件：微软官方 Playwright MCP 浏览器、安全 CSV/JSON 分析、EML/ICS 文件整理，以及通过用户自有 OpenAI 兼容端点生成图像和视频。安装前会显示权限；浏览器进程必须额外确认，媒体密钥只从本机环境变量读取。EML/ICS 插件只处理用户提供的文件，不会冒充已连接邮箱或在线日历。
+设置中心还提供四组按需安装的能力插件：微软官方 Playwright MCP 浏览器、安全 CSV/JSON 分析、EML/ICS 文件整理，以及通过用户自有 OpenAI 兼容端点生成图像和视频。数据分析与 EML/ICS 整理完全在本机运行；浏览器需要本机 Chrome；图像和视频生成需要用户自己的媒体 API。安装前会显示权限和依赖，媒体密钥只从本机环境变量读取。
 
 实时价格、余票、房态和订座等数据只有在可靠实时来源实际返回时才会标记为已确认；目前不内置动车、航班、酒店和餐馆的实时交易适配器。
 
