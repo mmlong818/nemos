@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { prepareIsolatedDevelopmentWorkspace } from "../../examples/companion/pi-development.js";
+import { prepareIsolatedDevelopmentWorkspace, prepareReadOnlyDevelopmentWorkspace } from "../../examples/companion/pi-development.js";
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync("git", args, {
@@ -85,6 +85,29 @@ test("有内容的非 Git 目录不擅自初始化，报告 not-a-repo", async (
     assert.equal(isolated.reason, "not-a-repo");
     // 目录没有被初始化为 Git 项目
     assert.equal(existsSync(join(workspace, ".git")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("只读检查使用一次性副本并排除依赖、Git 元数据和符号链接", async () => {
+  const root = mkdtempSync(join(tmpdir(), "clownfish-inspect-snapshot-"));
+  const workspace = join(root, "workspace");
+  const agentDir = join(root, "agent");
+  try {
+    mkdirSync(join(workspace, "node_modules", "ignored"), { recursive: true });
+    mkdirSync(join(workspace, ".git"), { recursive: true });
+    writeFileSync(join(workspace, "source.txt"), "original\n", "utf8");
+    writeFileSync(join(workspace, "node_modules", "ignored", "index.js"), "ignored", "utf8");
+    const isolated = await prepareReadOnlyDevelopmentWorkspace(workspace, agentDir);
+    assert.equal(readFileSync(join(isolated.workspace, "source.txt"), "utf8"), "original\n");
+    assert.equal(existsSync(join(isolated.workspace, "node_modules")), false);
+    assert.equal(existsSync(join(isolated.workspace, ".git")), false);
+    writeFileSync(join(isolated.workspace, "source.txt"), "engine edit\n", "utf8");
+    assert.equal(readFileSync(join(workspace, "source.txt"), "utf8"), "original\n");
+    const isolatedPath = isolated.workspace;
+    await isolated.cleanup();
+    assert.equal(existsSync(isolatedPath), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

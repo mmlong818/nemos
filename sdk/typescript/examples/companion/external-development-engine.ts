@@ -1,9 +1,11 @@
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CompanionModelConnection } from "./model-connection.js";
 import type { DevelopmentReasoning } from "./capabilities.js";
+import type { DevelopmentEngine } from "./development-engine-contract.js";
+import type { DevelopmentSessionMode, DevelopmentTelemetryEvent } from "./pi-development.js";
+import { decodeDevelopmentSessionReference, encodeDevelopmentSessionReference } from "./development-session-reference.js";
 import { DevelopmentProposalStore, type DevelopmentProposalSession } from "./development-proposals.js";
 import {
   currentDevelopmentRevision,
@@ -11,7 +13,6 @@ import {
   developmentFileReceipt,
   developmentProposalSummary,
   developmentRisks,
-  prepareIsolatedDevelopmentWorkspace,
   runDevelopmentCheck,
   validateDevelopmentWorkspace,
   type DevelopmentAccessMode,
@@ -20,6 +21,7 @@ import {
   type DevelopmentContextReceipt,
   type PiDevelopmentResult,
 } from "./pi-development.js";
+import { preparePersistentDevelopmentIsolation } from "./development-persistent-isolation.js";
 import {
   detectDevelopmentDependencies,
   installDevelopmentDependencies,
@@ -44,6 +46,9 @@ export interface ExternalDevelopmentInput {
   agentDir: string;
   signal?: AbortSignal;
   onProgress?: (message: string, percent: number) => void;
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+  sessionMode?: DevelopmentSessionMode;
+  sessionFile?: string;
   proposalStore?: DevelopmentProposalStore;
 }
 
@@ -66,6 +71,8 @@ export interface ExternalDevelopmentEngine {
     connection: CompanionModelConnection;
     reasoning: DevelopmentReasoning;
     signal?: AbortSignal;
+    onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+    sessionId?: string;
   }): Promise<ExternalEngineRunOutput>;
 }
 
@@ -78,12 +85,14 @@ export async function runExternalDevelopment(
   const baseRevision = await currentDevelopmentRevision(workspace);
   mkdirSync(input.agentDir, { recursive: true });
   const runId = `${engine.id}-${randomUUID()}`;
-  const runHome = resolve(input.agentDir, "runs", runId);
+  const resume = input.sessionMode === "resume"
+    ? decodeDevelopmentSessionReference(input.sessionFile, engine.id as "pi" | "dsh" | "kilo" | "opencode" | "codex", input.agentDir)
+    : undefined;
+  if (input.sessionMode === "resume" && !resume) throw new Error(`${engine.name} 的会话引用无效或已经不可用。`);
+  const runHome = resume?.runHome ?? resolve(input.agentDir, "runs", runId);
   mkdirSync(runHome, { recursive: true });
 
-  const isolation = input.accessMode === "develop"
-    ? await prepareIsolatedDevelopmentWorkspace(workspace, input.agentDir)
-    : { workspace, isolated: false, cleanup: async () => undefined };
+  const isolation = await preparePersistentDevelopmentIsolation({ workspace, agentDir: input.agentDir, runHome, accessMode: input.accessMode });
   if (input.accessMode === "develop" && !isolation.isolated) {
     await isolation.cleanup();
     throw new Error(isolation.reason === "not-a-repo"
@@ -99,7 +108,6 @@ export async function runExternalDevelopment(
     proposalSession = input.accessMode === "develop"
       ? proposalStore.begin(workspace, baseRevision, executionWorkspace)
       : undefined;
-    const statusBefore = input.accessMode === "inspect" ? await gitStatusSnapshot(workspace) : "";
     const contextReceipts = [workspaceContextReceipt(executionWorkspace)];
     input.onProgress?.(input.accessMode === "inspect" ? `${engine.name} 正在检查项目` : `${engine.name} 正在隔离环境中开发`, 20);
     const output = await engine.run({
@@ -110,15 +118,14 @@ export async function runExternalDevelopment(
       connection: input.connection,
       reasoning: input.reasoning === "fast" ? "fast" : input.reasoning === "deep" ? "deep" : "balanced",
       signal: input.signal,
+      onTelemetry: input.onTelemetry,
+      sessionId: resume?.sessionId,
     });
     if (!output.reply.trim()) throw new Error(`${engine.name} 已结束，但没有返回可交付结果。`);
 
     if (input.accessMode === "inspect") {
-      if (await gitStatusSnapshot(workspace) !== statusBefore) {
-        throw new Error("只检查模式检测到工作区发生变化，已拒绝把本轮当作有效结果。");
-      }
       input.onProgress?.("正在整理检查结果", 90);
-      return baseResult(input, workspace, baseRevision, contextReceipts, dependencyReceipts, output, runId);
+      return { ...baseResult(input, workspace, baseRevision, contextReceipts, dependencyReceipts, output, runId, runHome, engine.id, Boolean(resume)), isolatedWorkspace: true };
     }
 
     input.onProgress?.("正在收集修改并运行项目检查", 82);
@@ -135,7 +142,7 @@ export async function runExternalDevelopment(
       : proposal;
     const changedFiles = proposal.files.map((file) => file.path);
     return {
-      ...baseResult(input, workspace, baseRevision, contextReceipts, dependencyReceipts, output, runId),
+      ...baseResult(input, workspace, baseRevision, contextReceipts, dependencyReceipts, output, runId, runHome, engine.id, Boolean(resume)),
       changedFiles,
       fileReceipts: changedFiles.map((path) => developmentFileReceiptFromProposal(proposal, path)),
       checks,
@@ -168,6 +175,9 @@ function baseResult(
   dependencyReceipts: DevelopmentDependencyReceipt[],
   output: ExternalEngineRunOutput,
   runId: string,
+  runHome: string,
+  engine: string,
+  sessionResumed: boolean,
 ): PiDevelopmentResult {
   return {
     reply: output.reply,
@@ -182,8 +192,8 @@ function baseResult(
     unverifiedRisks: [],
     toolCalls: output.toolCalls,
     sessionId: output.sessionId || runId,
-    sessionFile: output.sessionFile,
-    sessionResumed: false,
+    sessionFile: output.sessionId ? encodeDevelopmentSessionReference(engine as DevelopmentEngine, runHome, output.sessionId) : output.sessionFile,
+    sessionResumed,
     loadedSkills: 0,
     loadedPromptTemplates: 0,
     telemetry: output.telemetry,
@@ -204,21 +214,6 @@ async function installDependenciesIfRequested(
   const failed = receipts.find((receipt) => !receipt.passed);
   if (failed) throw new Error(`${failed.label}失败：${failed.output.slice(0, 800)}`);
   return receipts;
-}
-
-function gitStatusSnapshot(workspace: string): Promise<string> {
-  return new Promise((accept) => {
-    const child = spawn("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
-      cwd: workspace,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    let stdout = "";
-    child.stdout?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => { stdout += chunk; });
-    child.once("error", () => accept(""));
-    child.once("close", (code) => accept(code === 0 ? stdout : ""));
-  });
 }
 
 function workspaceContextReceipt(workspace: string): DevelopmentContextReceipt {

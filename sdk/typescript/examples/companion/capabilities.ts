@@ -1784,7 +1784,7 @@ export class CapabilityRuntime {
       .reverse()
       .find((artifact) => artifact.taskId === task.id && artifact.metadata?.development?.engine === developmentEngine)
       ?.metadata?.development;
-    const canResume = developmentEngine === "pi" && Boolean(previousDevelopment?.sessionFile);
+    const canResume = Boolean(previousDevelopment?.sessionFile);
     const result = await this.opts.runDeveloper({
       workspacePath: String(input.workspacePath || ""),
       instruction: context ? `${task.instruction.trim()}\n\n${context}` : task.instruction,

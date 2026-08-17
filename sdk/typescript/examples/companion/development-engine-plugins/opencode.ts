@@ -10,7 +10,7 @@ export const createOpenCodeDevelopmentEnginePlugin: DevelopmentEnginePluginFacto
     integration: "package-adapter",
     default: false,
     presentation: { tagline: "开放的多模型工作流", bestFor: "需要兼容不同模型与开放工具链的任务" },
-    capabilities: { sessionResume: false, structuredEvents: true, isolatedWorkspace: true, eventDelivery: "after-run", isolation: "develop-only" },
+    capabilities: { sessionResume: true, structuredEvents: true, isolatedWorkspace: true, eventDelivery: "live", isolation: "always" },
   },
   readiness: openCodeDevelopmentEnvironment,
   run: (request) => runOpenCodeDevelopment({

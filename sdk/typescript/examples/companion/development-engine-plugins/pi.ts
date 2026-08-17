@@ -10,7 +10,7 @@ export const createPiDevelopmentEnginePlugin: DevelopmentEnginePluginFactory = (
     integration: "package-adapter",
     default: true,
     presentation: { tagline: "实时过程与连续迭代", bestFor: "日常开发、边做边调和需要继续上次会话的任务" },
-    capabilities: { sessionResume: true, structuredEvents: true, isolatedWorkspace: false, eventDelivery: "live", isolation: "best-effort" },
+    capabilities: { sessionResume: true, structuredEvents: true, isolatedWorkspace: true, eventDelivery: "live", isolation: "always" },
   },
   readiness: piDevelopmentEnvironment,
   run: (request) => runPiDevelopment({

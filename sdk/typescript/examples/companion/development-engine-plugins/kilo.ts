@@ -10,7 +10,7 @@ export const createKiloDevelopmentEnginePlugin: DevelopmentEnginePluginFactory =
     integration: "package-adapter",
     default: false,
     presentation: { tagline: "专注实现的独立引擎", bestFor: "目标明确、希望集中完成代码修改的任务" },
-    capabilities: { sessionResume: false, structuredEvents: true, isolatedWorkspace: true, eventDelivery: "after-run", isolation: "develop-only" },
+    capabilities: { sessionResume: true, structuredEvents: true, isolatedWorkspace: true, eventDelivery: "live", isolation: "always" },
   },
   readiness: kiloDevelopmentEnvironment,
   run: (request) => runKiloDevelopment({
