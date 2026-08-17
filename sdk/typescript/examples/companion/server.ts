@@ -446,12 +446,12 @@ const capabilities = new CapabilityRuntime({
     });
     return { ...result, engine: developmentEngine };
   },
-  notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode) => {
-    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, surface: "capability" });
+  notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode, surface) => {
+    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, surface: surface || "capability" });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
-  notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId, memoryMode) => {
-    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, surface: "capability" });
+  notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId, memoryMode, surface) => {
+    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, surface: surface || "capability" });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
 });
@@ -494,8 +494,59 @@ function developmentProjectArchiveItems() {
 }
 const deliveryOutbox = new FileDeliveryOutbox(DELIVERY_OUTBOX_FILE);
 
+function storedJobSurface(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): "chat" | "capabilities" | "office" | "development" {
+  if (job.payload.surface === "capabilities" || job.payload.surface === "office" || job.payload.surface === "development") {
+    return job.payload.surface;
+  }
+  if (job.payload.handoff && typeof job.payload.handoff === "object" && (job.payload.handoff as { source?: unknown }).source === "office") {
+    return "office";
+  }
+  if (job.payload.capabilityId === "project-development") return "development";
+  const capabilityTask = capabilities.snapshot().tasks.some((task) =>
+    task.oneOff && task.origin?.kind === "capability" && task.origin.jobId === job.id);
+  return capabilityTask ? "capabilities" : "chat";
+}
+
+function runVisibleOnSurface(
+  runSurface: string | undefined,
+  requested: string | null,
+): boolean {
+  if (!requested) return true;
+  if (requested === "capabilities") return runSurface === "capability";
+  if (requested === "office") return runSurface === "office";
+  if (requested === "development") return runSurface === "development";
+  if (requested === "task") return runSurface !== "capability" && runSurface !== "office" && runSurface !== "development";
+  return false;
+}
+
+function removeCrossSurfaceChatDeliveries(): number {
+  const jobIds = agentJobQueue.list({ limit: 500 })
+    .filter((job) => storedJobSurface(job) !== "chat")
+    .map((job) => job.id);
+  return deliveryOutbox.deleteBySources("agent-job", jobIds);
+}
+
+function validChatConversationKey(value: unknown): value is string {
+  return /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(value || ""));
+}
+
+function detachedChatJobIds(): string[] {
+  return agentJobQueue.list({ limit: 500 })
+    .filter((job) => job.type === "capability-adhoc")
+    .filter((job) => storedJobSurface(job) === "chat")
+    .filter((job) => !validChatConversationKey(job.payload.conversationKey))
+    .map((job) => job.id);
+}
+
+function removeDetachedChatDeliveries(): string[] {
+  const jobIds = detachedChatJobIds();
+  deliveryOutbox.deleteBySources("agent-job", jobIds);
+  return jobIds;
+}
+
 function ensureJobDelivery(job: ReturnType<FileAgentJobQueue["get"]>): DeliveryRecord | null {
-  if (!job?.deliveryRequired || job.status !== "succeeded" || !job.result?.data || job.deliveredAt) return null;
+  if (!job?.deliveryRequired || storedJobSurface(job) !== "chat" || job.status !== "succeeded" || !job.result?.data || job.deliveredAt) return null;
+  if (job.type === "capability-adhoc" && !validChatConversationKey(job.payload.conversationKey)) return null;
   return deliveryOutbox.enqueue({
     dedupeKey: `agent-job:${job.id}`,
     sourceType: "agent-job",
@@ -530,6 +581,8 @@ function projectDeliveredJob(jobId: string, delivery: DeliveryRecord): void {
   });
 }
 
+removeCrossSurfaceChatDeliveries();
+removeDetachedChatDeliveries();
 for (const legacyJob of agentJobQueue.listPendingDeliveries({ limit: 500 })) ensureJobDelivery(legacyJob);
 const companionAgentTools = createCompanionAgentToolProvider({
   memory: () => mem,
@@ -538,9 +591,16 @@ const companionAgentTools = createCompanionAgentToolProvider({
   listPersonas: () => engine.listPersonas().map((persona) => ({ id: persona.id, name: persona.name })),
   enqueueOrchestration: (input, idempotencyKey) => agentJobQueue.enqueue({
     type: "orchestration",
-    payload: { objective: input.objective, tasks: input.tasks },
+    payload: {
+      objective: input.objective,
+      tasks: input.tasks.map((task) => ({
+        ...task,
+        metadata: { ...task.metadata, surface: input.surface || "chat" },
+      })),
+      surface: input.surface || "chat",
+    },
     metadata: { userId: USER, requestedBy: APP_PERSONA_ID },
-    deliveryRequired: true,
+    deliveryRequired: !input.surface || input.surface === "chat",
     sideEffectRisk: true,
     maxAttempts: 1,
     timeoutMs: 30 * 60_000,
@@ -579,7 +639,13 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
     runId: input.sessionId,
     memoryMode,
     origin: {
-      kind: "orchestration",
+      kind: input.task.metadata?.surface === "capabilities"
+        ? "capability"
+        : input.task.metadata?.surface === "office"
+          ? "office"
+          : input.task.metadata?.surface === "development"
+            ? "development"
+            : "orchestration",
       conversationId: input.parentSessionId,
     },
   }, input.signal, input.budget);
@@ -682,7 +748,13 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       continuationTaskId: String(job.payload.continuationTaskId || ""),
       contextBundle,
       origin: {
-        kind: job.payload.surface === "capabilities" || handoff?.source === "capability" ? "capability" : job.payload.conversationKey ? "chat" : "direct",
+        kind: job.payload.surface === "capabilities" || handoff?.source === "capability"
+          ? "capability"
+          : job.payload.surface === "office" || handoff?.source === "office"
+            ? "office"
+            : job.payload.surface === "development" || job.payload.capabilityId === "project-development"
+              ? "development"
+              : job.payload.conversationKey ? "chat" : "direct",
         conversationKey: String(job.payload.conversationKey || ""),
         parentJobId: String(job.payload.parentJobId || ""),
         jobId: job.id,
@@ -873,18 +945,21 @@ function startStoredAgentRunResume(runId: string): { scheduled: boolean; reason?
       if (output) {
         const personaId = run.metadata?.personaId || APP_PERSONA_ID;
         const scope = run.metadata?.scope || "conv:1on1:" + USER + ":" + personaId;
-        await engine.recordRecoveredReply(USER, personaId, scope, output);
-        capabilities.recordPersonaTurn(personaId);
-        saveFam();
-        broadcastAgentSse("run", {
-          action: "delivery",
-          runId,
-          sessionId: run.sessionId,
-          output,
-          personaId,
-          scope,
-          mode: run.metadata?.mode || "chat",
-        });
+        if (run.metadata?.surface !== "capability" && run.metadata?.surface !== "office" && run.metadata?.surface !== "development") {
+          await engine.recordRecoveredReply(USER, personaId, scope, output);
+          capabilities.recordPersonaTurn(personaId);
+          saveFam();
+          broadcastAgentSse("run", {
+            action: "delivery",
+            runId,
+            sessionId: run.sessionId,
+            output,
+            personaId,
+            scope,
+            mode: run.metadata?.mode || "chat",
+            surface: run.metadata?.surface || "task",
+          });
+        }
       } else {
         broadcastAgentSse("run", {
           action: "resume_empty",
@@ -4027,7 +4102,9 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/runs") {
       const query = new URLSearchParams(url.split("?")[1] || "");
       const limit = Number(query.get("limit") || 50);
-      send(res, 200, { ok: true, runs: listAgentRuns(limit) });
+      const surface = query.get("surface");
+      const runs = listAgentRuns(limit).filter((run) => runVisibleOnSurface(run.metadata?.surface, surface));
+      send(res, 200, { ok: true, runs });
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/run") {
@@ -4055,9 +4132,12 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/approvals") {
       const query = new URLSearchParams(url.split("?")[1] || "");
       const rawStatus = query.get("status");
+      const surface = query.get("surface");
       const statuses: AgentApprovalStatus[] = ["pending", "approved", "denied", "consumed", "expired", "cancelled"];
       const status = statuses.includes(rawStatus as AgentApprovalStatus) ? rawStatus as AgentApprovalStatus : undefined;
-      send(res, 200, { ok: true, approvals: agentApprovalStore.list({ status, limit: Number(query.get("limit") || 50) }) });
+      const approvals = agentApprovalStore.list({ status, limit: Number(query.get("limit") || 50) })
+        .filter((approval) => runVisibleOnSurface(agentRunStore.get(approval.runId)?.metadata?.surface, surface));
+      send(res, 200, { ok: true, approvals });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/approval/decision") {
@@ -4173,12 +4253,18 @@ const server = createServer(async (req, res) => {
       const allowed = status === "queued" || status === "running" || status === "succeeded" || status === "failed" || status === "cancelled"
         ? status
         : undefined;
-      send(res, 200, { ok: true, jobs: agentJobQueue.list({ status: allowed, limit: Number(query.get("limit") || 100) }).map(jobWithDelivery) });
+      const surface = query.get("surface");
+      const jobs = agentJobQueue.list({ status: allowed, limit: Number(query.get("limit") || 100) })
+        .filter((job) => surface === "task" ? storedJobSurface(job) === "chat" : surface ? storedJobSurface(job) === surface : true)
+        .map(jobWithDelivery);
+      send(res, 200, { ok: true, jobs });
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/deliveries") {
       const query = new URLSearchParams(url.split("?")[1] || "");
       const owner = `browser:${USER}`;
+      removeCrossSurfaceChatDeliveries();
+      const quarantinedJobIds = removeDetachedChatDeliveries();
       for (const job of agentJobQueue.listPendingDeliveries({ limit: 500 })) ensureJobDelivery(job);
       const claims = deliveryOutbox.claimPending(owner, { channel: "chat", limit: Number(query.get("limit") || 100) });
       const jobs = claims.flatMap((delivery) => {
@@ -4188,12 +4274,19 @@ const server = createServer(async (req, res) => {
       send(res, 200, {
         ok: true,
         jobs,
+        quarantinedJobIds,
       });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/delivery/ack") {
       const body = (await readBody(req)) as { id?: string; deliveryId?: string; receiptId?: string };
       if (!body.id) { send(res, 400, { error: "missing job id" }); return; }
+      const targetJob = agentJobQueue.get(body.id);
+      if (targetJob && storedJobSurface(targetJob) !== "chat") {
+        deliveryOutbox.deleteBySources("agent-job", [targetJob.id]);
+        send(res, 409, { error: "独立工作区结果不能投递到任务页" });
+        return;
+      }
       const record = body.deliveryId
         ? deliveryOutbox.get(body.deliveryId)
         : deliveryOutbox.getBySource("agent-job", body.id);
@@ -4207,6 +4300,12 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url === "/api/agent/delivery/fail") {
       const body = (await readBody(req)) as { id?: string; deliveryId?: string; error?: string };
       if (!body.id) { send(res, 400, { error: "missing job id" }); return; }
+      const targetJob = agentJobQueue.get(body.id);
+      if (targetJob && storedJobSurface(targetJob) !== "chat") {
+        deliveryOutbox.deleteBySources("agent-job", [targetJob.id]);
+        send(res, 409, { error: "独立工作区结果不能投递到任务页" });
+        return;
+      }
       const record = body.deliveryId
         ? deliveryOutbox.get(body.deliveryId)
         : deliveryOutbox.getBySource("agent-job", body.id);
@@ -4289,6 +4388,7 @@ const server = createServer(async (req, res) => {
         catch (error) { send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) }); return; }
       }
       const parentJobId = String(body.parentJobId || "").trim();
+      const conversationKey = validChatConversationKey(body.conversationKey) ? String(body.conversationKey) : "";
       const parentJob = parentJobId ? agentJobQueue.get(parentJobId) : null;
       if (parentJobId && (!parentJob || ["queued", "running"].includes(parentJob.status))) {
         send(res, 400, { error: "当前开发任务不存在或尚未结束" });
@@ -4367,7 +4467,7 @@ const server = createServer(async (req, res) => {
                 personaId: capabilityPersonaId,
                 capabilityId: body.capabilityId,
                 instruction: body.instruction,
-                conversationKey: /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(body.conversationKey || "")) ? body.conversationKey : "",
+                conversationKey,
                 surface: body.surface === "capabilities" ? "capabilities" : body.surface || "chat",
                 continuationTaskId,
                 workspacePath: body.capabilityId === "project-development" ? developmentWorkspace : "",
@@ -4391,7 +4491,8 @@ const server = createServer(async (req, res) => {
             userId: USER,
             ...(body.kind === "capability-task" && body.taskId ? { workTaskId: body.taskId } : {}),
           },
-          deliveryRequired: body.surface !== "capabilities",
+          deliveryRequired: (!body.surface || body.surface === "chat")
+            && (body.kind === "capability-task" || Boolean(conversationKey)),
           sideEffectRisk: true,
           maxAttempts: 1,
           timeoutMs: body.timeoutMs,

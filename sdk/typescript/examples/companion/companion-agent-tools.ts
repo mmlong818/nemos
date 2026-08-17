@@ -1,11 +1,12 @@
 import type { AgentTool, Nemos } from "../../src/index.js";
-import type { CapabilityRuntime, CapabilityTaskWorkspace } from "./capabilities.js";
+import type { CapabilityRuntime, CapabilityTask, CapabilityTaskWorkspace } from "./capabilities.js";
 import type { ChatAgentContext } from "./engine.js";
 import type { AgentToolProvider } from "./llm.js";
 import { expertAssignmentPrompt, expertContract, finalDeliveryPrompt } from "./expert-contracts.js";
 
 export interface CompanionDelegationJobInput {
   objective: string;
+  surface?: "chat" | "capabilities" | "office" | "development";
   tasks: Array<{
     id: string;
     title: string;
@@ -42,7 +43,13 @@ export function createCompanionAgentToolProvider(
   return (instruction, context) => {
     if (!context) return [];
     const tools: AgentTool[] = [];
-    if (MEMORY_CUE.test(instruction) && context.memoryScopes.length > 0) {
+    if (
+      MEMORY_CUE.test(instruction)
+      && context.memoryScopes.length > 0
+      && context.surface !== "capability"
+      && context.surface !== "office"
+      && context.surface !== "development"
+    ) {
       tools.push(memoryRecallTool(dependencies, context));
     }
     if (TASK_CUE.test(instruction)) {
@@ -133,6 +140,7 @@ function taskListTool(
       const limit = boundedLimit(input.limit, 10, 20);
       const tasks = dependencies.capabilities().snapshot().tasks
         .filter((task) => task.personaId === context.personaId)
+        .filter((task) => taskVisibleOnSurface(task, context.surface))
         .slice(0, limit)
         .map((task) => ({
           id: task.id,
@@ -433,7 +441,11 @@ function delegationCreateTool(
         budget: { maxRounds: 4, maxToolRounds: 2, maxTotalTokens: 16_000, maxOutputChars: 30_000 },
       });
 
-      const job = dependencies.enqueueOrchestration!({ objective, tasks }, `delegation:${toolContext.runId}`);
+      const job = dependencies.enqueueOrchestration!({
+        objective,
+        surface: companionSurface(context.surface),
+        tasks,
+      }, `delegation:${toolContext.runId}`);
       ensureActive(toolContext.signal);
       return {
         content: JSON.stringify({
@@ -498,8 +510,11 @@ function artifactListTool(
     execute: async (input, toolContext) => {
       ensureActive(toolContext.signal);
       const limit = boundedLimit(input.limit, 8, 20);
-      const artifacts = dependencies.capabilities().snapshot().artifacts
+      const snapshot = dependencies.capabilities().snapshot();
+      const tasks = new Map(snapshot.tasks.map((task) => [task.id, task]));
+      const artifacts = snapshot.artifacts
         .filter((artifact) => artifact.personaId === context.personaId)
+        .filter((artifact) => taskVisibleOnSurface(tasks.get(artifact.taskId), context.surface))
         .slice(0, limit)
         .map((artifact) => ({
           id: artifact.id,
@@ -515,6 +530,25 @@ function artifactListTool(
       };
     },
   };
+}
+
+function taskVisibleOnSurface(
+  task: Pick<CapabilityTask, "origin" | "oneOff"> | undefined,
+  surface: ChatAgentContext["surface"],
+): boolean {
+  if (!task) return false;
+  const origin = task.origin?.kind;
+  if (surface === "capability") return origin === "capability";
+  if (surface === "office") return origin === "office";
+  if (surface === "development") return origin === "development";
+  return origin === "chat" || origin === "orchestration" || origin === "automation";
+}
+
+function companionSurface(surface: ChatAgentContext["surface"]): "chat" | "capabilities" | "office" | "development" {
+  if (surface === "capability") return "capabilities";
+  if (surface === "office") return "office";
+  if (surface === "development") return "development";
+  return "chat";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

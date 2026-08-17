@@ -599,8 +599,18 @@ function storedAgentContext(run: AgentStoredRun): ChatAgentContext | undefined {
     scope: metadata.scope,
     memoryScopes,
     mode,
+    surface: isStoredAgentSurface(metadata.surface) ? metadata.surface : undefined,
     toolMode: metadata.toolMode === "off" ? "off" : metadata.toolMode === "read-only" ? "read-only" : "auto",
   };
+}
+
+function isStoredAgentSurface(value: string | undefined): value is NonNullable<ChatAgentContext["surface"]> {
+  return value === "task"
+    || value === "education"
+    || value === "capability"
+    || value === "office"
+    || value === "development"
+    || value === "automation";
 }
 
 function metadataNumber(
@@ -634,6 +644,7 @@ function agentMetadata(
       personaId: context.personaId,
       scope: context.scope,
       mode: context.mode,
+      ...(context.surface ? { surface: context.surface } : {}),
       memoryScopes: JSON.stringify(context.memoryScopes),
       toolMode: context.toolMode ?? "auto",
       ...(context.mode === "chat" ? { objective: runObjective(context.instruction) } : {}),

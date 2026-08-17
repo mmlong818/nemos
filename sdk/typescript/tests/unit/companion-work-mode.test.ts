@@ -60,6 +60,39 @@ test("English capability prompts use task mode and its long-output budget", asyn
   }
 });
 
+test("能力、文件和开发运行不会把任务页最近对话带入提示词", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-surface-recent-"));
+  const users: string[] = [];
+  const chat: ChatFn = async (_system, user) => {
+    users.push(user);
+    return "done";
+  };
+  const memory = new Nemos({
+    storage: { type: "sqlite", path: join(dir, "memory.db") },
+    llm: makeMockLLMConfig(),
+    features: { doubleCheck: false },
+    worker: { manualWorker: true },
+  });
+  const engine = new CompanionEngine(memory, [{
+    id: "clownfish",
+    name: "小丑鱼",
+    persona: "可靠的个人助理。",
+  }], chat);
+
+  try {
+    await engine.send("me", "clownfish", "TASK_PAGE_PRIVATE_CONTEXT");
+    const workPrompt = "Run a backend capability as 小丑鱼.\nExecution requirements:\nReturn the completed structured result.";
+    await engine.notify("me", "clownfish", workPrompt, { memoryMode: "off", surface: "capability" });
+    await engine.notify("me", "clownfish", workPrompt, { memoryMode: "off", surface: "task" });
+
+    assert.doesNotMatch(users[1] ?? "", /TASK_PAGE_PRIVATE_CONTEXT/);
+    assert.match(users[2] ?? "", /TASK_PAGE_PRIVATE_CONTEXT/);
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
 test("ordinary chat omits the full capability catalog until the user asks for it", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-capability-context-"));
   const systems: string[] = [];
