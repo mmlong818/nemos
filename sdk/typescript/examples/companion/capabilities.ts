@@ -216,6 +216,8 @@ export interface CapabilityTask {
   spaceId?: string;
   knowledgeIds?: string[];
   oneOff?: boolean;
+  /** 用户主动收起后的时间；未设置时继续显示在能力页首页。 */
+  archivedAt?: string;
   storyline: CapabilityTaskStoryline;
 }
 
@@ -1248,6 +1250,22 @@ export class CapabilityRuntime {
     this.saveTasks();
   }
 
+  archiveTask(id: string): CapabilityTask {
+    const task = this.requireTask(id);
+    task.archivedAt = new Date().toISOString();
+    task.updatedAt = task.archivedAt;
+    this.saveTasks();
+    return structuredClone(task);
+  }
+
+  restoreTask(id: string): CapabilityTask {
+    const task = this.requireTask(id);
+    delete task.archivedAt;
+    task.updatedAt = new Date().toISOString();
+    this.saveTasks();
+    return structuredClone(task);
+  }
+
   deleteTaskData(ids: string[], options?: { keepFiles?: boolean }): { tasks: number; artifacts: number } {
     const taskIds = new Set(ids.map((id) => String(id).trim()).filter(Boolean));
     if (!taskIds.size) return { tasks: 0, artifacts: 0 };
@@ -1627,7 +1645,22 @@ export class CapabilityRuntime {
       return JSON.stringify(parseNativeCapabilityPayload(abilityId, audited.reply));
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      throw new Error("能力结果未通过结构校验：" + reason);
+      execution.onProgress?.("正在完成最终结构修复", 76);
+      const repairRunId = execution.runId ? execution.runId + "/native-repair" : undefined;
+      const repaired = await this.opts.notify(
+        task.personaId,
+        nativeCapabilityAuditPrompt(abilityId, task.instruction, audited.reply, reason),
+        execution.signal,
+        execution.limits,
+        repairRunId,
+        execution.memoryMode,
+      );
+      try {
+        return JSON.stringify(parseNativeCapabilityPayload(abilityId, repaired.reply));
+      } catch (repairError) {
+        const repairReason = repairError instanceof Error ? repairError.message : String(repairError);
+        throw new Error("能力结果未通过结构校验：" + repairReason);
+      }
     }
   }
 

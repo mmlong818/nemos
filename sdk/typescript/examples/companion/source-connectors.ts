@@ -93,7 +93,7 @@ const CONNECTORS: SourceConnector[] = [
       "Label quote delay, data provider, timestamp, and whether it is advice or only a briefing.",
     ],
     nextIntegration: "Implemented: local watchlist, HKEX official announcements, timestamped quote snapshots, and briefing templates.",
-    terms: ["stock", "market", "quote", "earnings", "filing", "HKEX", "港股", "股票", "行情", "公告", "财报", "研报", "复盘", "风险"],
+    terms: ["stock", "market", "quote", "earnings", "filing", "HKEX", "港股", "股票", "行情", "公告", "财报", "研报", "市场复盘", "投资风险"],
   },
   {
     id: "ai-private-feed",

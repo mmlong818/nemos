@@ -3,15 +3,15 @@
 **中文** · [English](README.en.md)
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
-[![版本](https://img.shields.io/badge/版本-v0.2.2-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.2)
+[![版本](https://img.shields.io/badge/版本-v0.2.3-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.3)
 [![License](https://img.shields.io/badge/接入层-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#本地运行)
 
 小丑鱼是一款**本机优先、带长期记忆、能够真实执行任务的 AI 工作应用**。用户只需要描述目标；小丑鱼负责选择能力、调用专业执行单元、处理文件或启动编程引擎，并把过程、修改和结果留在同一个任务中。
 
-## v0.2.2 正式版
+## v0.2.3 正式版
 
-本版本完成了能力运行闭环：六个产品入口共享同一工具注册、权限和审计体系；五个开发引擎具备隔离执行、事件显示、会话恢复和取消；设置中心增加预置能力与自定义插件管理。预置插件会直接说明本机依赖或外部 API 要求，不把文件解析误报成在线账号连接。
+本版本完成了能力真实质量验收，并统一应用、桌面壳、清单和文档版本。23 项内置能力均有真实执行路径；复杂能力拥有独立超时和结构修复边界；设置中心提供与当前版本绑定的隐私协议入口。
 
 ![小丑鱼任务界面](docs/assets/readme/clownfish-chat-2026-08-16.png)
 
@@ -174,6 +174,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Bu
 | [Agent 运行架构](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | 任务、工具、权限与恢复 |
 | [文档导航](docs/README.md) | 全部公开文档入口 |
 | [安全策略](SECURITY.md) | 漏洞报告方式 |
+| [隐私协议](PRIVACY.md) | 本机数据、外部服务、同步、导出与删除边界 |
 
 ## 授权
 

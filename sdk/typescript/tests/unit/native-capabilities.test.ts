@@ -208,6 +208,58 @@ test("原生能力流式执行不会把内部 JSON 暴露到聊天气泡", async
   }
 });
 
+test("原生能力审查结果结构损坏时会再修复一次", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-native-repair-"));
+  const replies = ["不是 JSON", "仍然不是 JSON", JSON.stringify(payloads["research-brief"]!)];
+  let calls = 0;
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => ({ reply: replies[calls++] || "", facts: [] }),
+    });
+    const result = await runtime.runAdHocTask({
+      title: "研究修复",
+      personaId: "clownfish",
+      capabilityId: "research-brief",
+      instruction: "核验资料并给出结论",
+      format: "html",
+    });
+    assert.equal(calls, 3);
+    assert.ok(existsSync(result.artifact.file));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("原生能力最终修复仍不合法时明确失败", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-native-repair-fail-"));
+  let calls = 0;
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => {
+        calls += 1;
+        return { reply: "不是 JSON", facts: [] };
+      },
+    });
+    await assert.rejects(
+      runtime.runAdHocTask({
+        title: "研究修复失败",
+        personaId: "clownfish",
+        capabilityId: "research-brief",
+        instruction: "核验资料并给出结论",
+        format: "html",
+      }),
+      /能力结果未通过结构校验/,
+    );
+    assert.equal(calls, 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("研究来源锚点生成稳定哈希，缺少定位的已确认结论自动降级", () => {
   const valid = parseNativeCapabilityPayload("research-brief", JSON.stringify(payloads["research-brief"]));
   const source = (valid.data.sources as Array<Record<string, unknown>>)[0]!;

@@ -88,6 +88,7 @@ test("市场资料工具只在市场任务中暴露并返回可核验结果", as
       marketData,
     });
     assert.equal(buildSourceVerificationReport("查询港股 00700 最新公告和行情").status, "live-adapter-ready");
+    assert.equal(buildSourceVerificationReport("整理会议纪要，列出风险和待定负责人").relevant, false);
     assert.ok(registry.listAvailableForInstruction("查询港股 00700 最新公告和行情").some((tool) => tool.id === "source.market-briefing"));
     assert.ok(!registry.listAvailableForInstruction("整理会议纪要").some((tool) => tool.id === "source.market-briefing"));
     const result = await registry.run("source.market-briefing", { symbols: ["00700"] });

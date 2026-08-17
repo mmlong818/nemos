@@ -145,6 +145,9 @@ test("设置中心统一模型、开发、连接与本机数据", () => {
   assert.match(script, /\/api\/capabilities\/registry/);
   assert.match(script, /由产品流程承接/);
   assert.match(script, /\/api\/runtime/);
+  assert.match(script, /state\.manifest\?\.version/);
+  assert.match(script, /PRIVACY\.md/);
+  assert.match(script, /数据何时离开本机/);
   assert.match(script, /`\/api\/data-sync\/\$\{operation\}`/);
   assert.match(script, /storageOperation\("push"\)/);
   assert.match(script, /id=\"retainedOutputList\"/);

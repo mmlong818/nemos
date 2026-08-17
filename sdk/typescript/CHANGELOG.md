@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3
+
+- Unified the TypeScript package, desktop manifest, runtime fallback, public documentation, and privacy-policy version.
+- Added Chinese and English privacy policies covering local storage, model providers, plugins, coding engines, self-hosted encrypted sync, memory, retention, deletion, and security reporting.
+- Completed real model-backed acceptance for 22 public capabilities plus a 10-project development corpus.
+- Fixed accidental market-source routing, extended explicit capability execution timeouts, and added one bounded final repair for malformed audited capability output.
+
 ## 0.2.2
 
 - Unified core tools, permissions, risk metadata, timeouts, and execution history across tasks, learning, capabilities, files, development, and automations.
