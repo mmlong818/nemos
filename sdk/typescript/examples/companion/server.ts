@@ -274,7 +274,7 @@ function readManifest(): Record<string, unknown> {
   const fallback = {
     appId: "clownfish",
     name: "小丑鱼",
-    version: "0.2.19",
+    version: "0.2.3",
     channel: "local",
     schemaVersion: 1,
   };
@@ -682,7 +682,7 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       continuationTaskId: String(job.payload.continuationTaskId || ""),
       contextBundle,
       origin: {
-        kind: handoff?.source === "capability" ? "capability" : job.payload.conversationKey ? "chat" : "direct",
+        kind: job.payload.surface === "capabilities" || handoff?.source === "capability" ? "capability" : job.payload.conversationKey ? "chat" : "direct",
         conversationKey: String(job.payload.conversationKey || ""),
         parentJobId: String(job.payload.parentJobId || ""),
         jobId: job.id,
@@ -4232,6 +4232,7 @@ const server = createServer(async (req, res) => {
         capabilityId?: string;
         instruction?: string;
         conversationKey?: string;
+        surface?: "chat" | "capabilities" | "office" | "development";
         continuationTaskId?: string;
         workspacePath?: string;
         accessMode?: DevelopmentAccessMode;
@@ -4367,6 +4368,7 @@ const server = createServer(async (req, res) => {
                 capabilityId: body.capabilityId,
                 instruction: body.instruction,
                 conversationKey: /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(body.conversationKey || "")) ? body.conversationKey : "",
+                surface: body.surface === "capabilities" ? "capabilities" : body.surface || "chat",
                 continuationTaskId,
                 workspacePath: body.capabilityId === "project-development" ? developmentWorkspace : "",
                 accessMode: body.accessMode === "inspect" ? "inspect" : "develop",
@@ -4389,7 +4391,7 @@ const server = createServer(async (req, res) => {
             userId: USER,
             ...(body.kind === "capability-task" && body.taskId ? { workTaskId: body.taskId } : {}),
           },
-          deliveryRequired: true,
+          deliveryRequired: body.surface !== "capabilities",
           sideEffectRisk: true,
           maxAttempts: 1,
           timeoutMs: body.timeoutMs,
@@ -4408,6 +4410,66 @@ const server = createServer(async (req, res) => {
         }
       }
       send(res, 202, { ok: true, job: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capability-conversations/archive") {
+      const body = (await readBody(req)) as { taskId?: string };
+      const task = capabilities.snapshot().tasks.find((item) => item.id === body.taskId && item.oneOff);
+      if (!task) { send(res, 404, { error: "找不到这条能力对话" }); return; }
+      const running = agentJobQueue.list({ limit: 500 }).some((job) => {
+        const result = job.result?.data as { artifact?: { taskId?: string } } | undefined;
+        const originTask = capabilities.snapshot().tasks.find((item) => item.origin?.jobId === job.id);
+        const linkedTaskId = String(result?.artifact?.taskId || job.payload.continuationTaskId || originTask?.id || "");
+        return linkedTaskId === task.id && (job.status === "queued" || job.status === "running");
+      });
+      if (running) { send(res, 409, { error: "对话仍在执行，完成或取消后才能归档" }); return; }
+      const action = await agentUserActions.execute({
+        name: "capability_conversation_archive",
+        description: "把用户选中的能力对话移入归档",
+        arguments: { taskId: task.id },
+        execute: () => capabilities.archiveTask(task.id),
+        summarizeResult: (value) => ({ ok: true, taskId: value.id, archived: true }),
+      });
+      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capability-conversations/restore") {
+      const body = (await readBody(req)) as { taskId?: string };
+      const task = capabilities.snapshot().tasks.find((item) => item.id === body.taskId && item.oneOff && item.archivedAt);
+      if (!task) { send(res, 404, { error: "找不到这条已归档对话" }); return; }
+      const action = await agentUserActions.execute({
+        name: "capability_conversation_restore",
+        description: "把用户选中的能力对话恢复到首页",
+        arguments: { taskId: task.id },
+        execute: () => capabilities.restoreTask(task.id),
+        summarizeResult: (value) => ({ ok: true, taskId: value.id, archived: false }),
+      });
+      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capability-conversations/delete") {
+      const body = (await readBody(req)) as { taskId?: string; deleteFiles?: boolean };
+      const task = capabilities.snapshot().tasks.find((item) => item.id === body.taskId && item.oneOff);
+      if (!task) { send(res, 404, { error: "找不到这条能力对话" }); return; }
+      if (!task.archivedAt) { send(res, 409, { error: "只有归档中的对话可以删除" }); return; }
+      const jobIds = agentJobQueue.list({ limit: 500 }).filter((job) => {
+        const result = job.result?.data as { artifact?: { taskId?: string } } | undefined;
+        const originTask = capabilities.snapshot().tasks.find((item) => item.origin?.jobId === job.id);
+        return String(result?.artifact?.taskId || job.payload.continuationTaskId || originTask?.id || "") === task.id;
+      }).map((job) => job.id);
+      const action = await agentUserActions.execute({
+        name: "capability_conversation_delete",
+        description: "删除用户在归档中选中的能力对话，并按选择保留或删除产出文件",
+        arguments: { taskId: task.id, deleteFiles: !!body.deleteFiles },
+        execute: () => {
+          const capabilityData = capabilities.deleteTaskData([task.id], { keepFiles: !body.deleteFiles });
+          const deliveries = deliveryOutbox.deleteBySources("agent-job", jobIds);
+          const jobs = agentJobQueue.deleteMany(jobIds);
+          return { jobs, tasks: capabilityData.tasks, artifacts: capabilityData.artifacts, deliveries };
+        },
+        summarizeResult: (value) => ({ ok: true, ...value }),
+      });
+      send(res, 200, { ok: true, deleted: action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/orchestration") {
@@ -4493,7 +4555,12 @@ const server = createServer(async (req, res) => {
       if (!job) { send(res, 404, { error: "找不到这条任务记录" }); return; }
       if (job.status === "queued" || job.status === "running") { send(res, 409, { error: "任务仍在执行，请先取消" }); return; }
       const resultData = job.result?.data as { artifact?: { taskId?: string } } | undefined;
-      const taskId = String(resultData?.artifact?.taskId || job.payload.continuationTaskId || "").trim();
+      const originTask = capabilities.snapshot().tasks.find((item) => item.origin?.jobId === job.id);
+      const taskId = String(resultData?.artifact?.taskId || job.payload.continuationTaskId || originTask?.id || "").trim();
+      if (job.payload.surface === "capabilities") {
+        const task = capabilities.snapshot().tasks.find((item) => item.id === taskId);
+        if (!task?.archivedAt) { send(res, 409, { error: "只有归档中的能力对话可以删除" }); return; }
+      }
       const action = await agentUserActions.execute({
         name: "agent_job_delete",
         description: "删除用户在能力归档中选中的任务记录，可选择同时删除产出文件",
@@ -5850,6 +5917,11 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url === "/api/capabilities/task/delete") {
       const b = (await readBody(req)) as { id?: string };
       if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
+      const selected = capabilities.snapshot().tasks.find((item) => item.id === b.id);
+      if (selected?.oneOff && selected.origin?.kind === "capability" && !selected.archivedAt) {
+        send(res, 409, { error: "只有归档中的能力对话可以删除" });
+        return;
+      }
       const action = await agentUserActions.execute({
         name: "capability_task_delete",
         description: "删除用户在任务管理页选中的任务",
@@ -5984,6 +6056,7 @@ const server = createServer(async (req, res) => {
       const action = await agentUserActions.execute({
         name: "capability_adhoc_run",
         description: "执行用户在任务工作台提交的临时任务并保存交付物",
+        timeoutMs: 10 * 60_000,
         arguments: {
           title: b.title,
           personaId: b.personaId,

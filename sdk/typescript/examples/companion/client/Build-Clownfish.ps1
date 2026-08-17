@@ -237,7 +237,7 @@ Get-ChildItem -LiteralPath $PackageDir -Recurse -File | Where-Object {
 
 $SdkRoot = Resolve-Path (Join-Path $ClientRoot "..\..\..")
 $RepoRoot = Resolve-Path (Join-Path $SdkRoot "..\..")
-foreach ($PublicDocument in @("README.md", "LICENSE", "LICENSING.md", "THIRD_PARTY_NOTICES.md")) {
+foreach ($PublicDocument in @("README.md", "PRIVACY.md", "PRIVACY.en.md", "LICENSE", "LICENSING.md", "THIRD_PARTY_NOTICES.md")) {
   $PublicDocumentPath = Join-Path $RepoRoot $PublicDocument
   if (Test-Path -LiteralPath $PublicDocumentPath) {
     Copy-Item -LiteralPath $PublicDocumentPath -Destination $PortableRoot -Force

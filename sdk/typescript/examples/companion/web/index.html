@@ -3015,7 +3015,6 @@
       <div id="header" class="task-workbench-title">新的任务</div>
       <div id="relbar"></div>
       <button id="composerTool" type="button" title="翻译、语音转写和文字润色已移至能力页面" aria-label="翻译、语音转写和文字润色已移至能力页面" hidden><span data-icon="wrench" aria-hidden="true"></span><span>小工具</span></button>
-      <button id="composerCapability" type="button" title="把当前目标交给能力" aria-label="把当前目标交给能力"><span data-icon="boxes" aria-hidden="true"></span><span>交给能力</span></button>
     </div>
       <div class="workbench-body">
     <div id="sessionPane" class="task-workbench-sidebar">
@@ -3589,11 +3588,6 @@
     </div>
   </div>
   <div id="main" class="task-workbench-main">
-    <section id="chatCapabilityBridge" aria-live="polite" hidden>
-      <span class="chat-capability-icon" data-icon="boxes" aria-hidden="true"></span>
-      <span class="chat-capability-copy"><strong id="chatCapabilityTitle">能力任务正在执行</strong><small id="chatCapabilityStatus">完成后会回到这段对话</small></span>
-      <button id="chatCapabilityOpen" type="button">查看进度</button>
-    </section>
     <div id="msgs" class="task-workbench-stage"></div>
       <div id="composer" class="task-workbench-composer">
         <div id="txtWrap" class="task-workbench-input-wrap">
@@ -3687,8 +3681,6 @@ function migrateStorageKey(codes, target, storage) {
 }
 migrateStorageKey([110, 101, 109, 111, 115, 95, 99, 111, 109, 112, 97, 110, 105, 111, 110, 95, 100, 101, 118, 101, 108, 111, 112, 101, 114, 95, 109, 111, 100, 101], "clownfish_developer_mode", localStorage);
 migrateStorageKey([110, 101, 109, 111, 115, 45, 97, 103, 101, 110, 116, 45, 100, 101, 108, 105, 118, 101, 114, 101, 100, 45, 114, 117, 110, 115, 45, 118, 49], "clownfish-agent-delivered-runs-v1", localStorage);
-migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 97, 99, 116, 105, 118, 105, 116, 121, 45, 118, 49], "clownfish-capability-activity-v1", localStorage);
-migrateStorageKey([110, 101, 109, 111, 115, 45, 99, 97, 112, 97, 98, 105, 108, 105, 116, 121, 45, 104, 97, 110, 100, 111, 102, 102, 45, 118, 49], "clownfish-capability-handoff-v1", sessionStorage);
 
 console.log("%c[companion] 客户端构建：" + BUILD, "color:#8b5cf6;font-weight:bold");
 const $ = (s) => document.querySelector(s);
@@ -4928,7 +4920,6 @@ function selectTarget(kind, id, name) {
   renderContacts();
   renderRelbar();
   renderLog(); // 恢复该会话已有聊天记录
-  renderChatCapabilityBridge();
   restoreConversationDraft();
 }
 
@@ -6361,36 +6352,10 @@ let agentOpsRefreshQueued = false;
 let agentOpsMutationVersion = 0;
 let agentEventSource = null;
 const AGENT_RUN_DELIVERED_KEY = "clownfish-agent-delivered-runs-v1";
-const CAPABILITY_ACTIVITY_KEY = "clownfish-capability-activity-v1";
 const FORMAT_LABEL = { md: "Markdown", html: "HTML", doc: "可编辑 Word", pdf: "PDF", xlsx: "Excel", txt: "纯文本", json: "JSON" };
 const CAPABILITY_OWNER_ID = APP_PERSONA_ID;
 function currentCapabilityPersonaId() {
   return state.target && state.target.kind === "persona" ? state.target.id : CAPABILITY_OWNER_ID;
-}
-function renderChatCapabilityBridge() {
-  const bridge = $("#chatCapabilityBridge");
-  if (!bridge) return;
-  let requestedId = "";
-  try { requestedId = JSON.parse(localStorage.getItem(CAPABILITY_ACTIVITY_KEY) || "null")?.jobId || ""; } catch {}
-  const personaId = currentCapabilityPersonaId();
-  const activeKey = logKey();
-  const relevant = (agentOpsState.jobs || []).filter((job) => {
-    if (job.type !== "capability-adhoc") return false;
-    const jobKey = String(job.payload && job.payload.conversationKey || "");
-    return jobKey ? jobKey === activeKey : String(job.payload && job.payload.personaId || "") === personaId;
-  });
-  const active = relevant.find((job) => job.status === "running" || job.status === "queued");
-  const requested = requestedId ? relevant.find((job) => job.id === requestedId) : null;
-  const job = active || requested;
-  bridge.hidden = !job;
-  bridge.classList.toggle("show", Boolean(job));
-  if (!job) return;
-  const title = String(job.payload && job.payload.title || "能力任务");
-  const completed = job.status === "succeeded";
-  $("#chatCapabilityTitle").textContent = completed ? `已完成：${title}` : title;
-  $("#chatCapabilityStatus").textContent = completed ? "结果已经送回对话，可以继续查看文件或追问。" : (job.status === "running" ? "正在执行；你可以继续聊天，完成后结果会直接回来。" : "正在排队；你可以继续聊天，任务不会丢失。");
-  $("#chatCapabilityOpen").textContent = completed ? "查看记录" : "查看进度";
-  $("#chatCapabilityOpen").dataset.viewTarget = completed ? "history" : "runs";
 }
 function abilityOptions(selected) {
   return capState.abilities.map((a) => {
@@ -7047,7 +7012,6 @@ async function refreshAgentOps() {
       extensions: extensions.extensions || [],
       runtimeSecurity: extensions.runtimeSecurity || null
     };
-    renderChatCapabilityBridge();
     const delivered = await deliverCompletedAgentJobs(deliveries.jobs || []);
     await deliverCompletedAgentRuns(agentOpsState.runs);
     if (delivered && $("#capmodal").classList.contains("show")) {
@@ -7467,68 +7431,6 @@ async function deleteSkill(id, name) {
   capState = data.snapshot || capState;
   renderCapabilityLists();
 }
-function openCapabilityPanel(options = {}) {
-  const target = state.target || { kind: "persona", id: CAPABILITY_OWNER_ID, name: "小丑鱼" };
-  const personaId = target.kind === "persona" ? target.id : CAPABILITY_OWNER_ID;
-  const chatName = target.name || "小丑鱼";
-  const conversationKey = logKey(target);
-  const sourceMessages = activeConversation(conversationKey)?.messages || chatLogs[conversationKey] || [];
-  const conversation = sourceMessages.map((entry) => {
-    const persona = entry.pid ? state.personas.find((item) => item.id === entry.pid) : null;
-    return {
-      speaker: entry.side === "me" ? "用户" : (entry.who || persona?.name || chatName),
-      side: entry.side === "me" ? "user" : "assistant",
-      text: String(entry.text || ""),
-    };
-  }).filter((entry) => entry.text.trim());
-  const seenMaterials = new Set();
-  const conversationMaterials = sourceMessages.flatMap((entry) => entry.attachment?.text ? [{
-    name: String(entry.attachment.name || "对话附件").slice(0, 160),
-    size: Math.max(0, Number(entry.attachment.size || 0)),
-    text: String(entry.attachment.text).slice(0, 120000),
-    kind: String(entry.attachment.kind || "text").slice(0, 16),
-    fileRecordId: String(entry.attachment.fileRecordId || ""),
-  }] : []).filter((item) => {
-    const key = item.fileRecordId || `${item.name}\n${item.text}`;
-    if (seenMaterials.has(key)) return false;
-    seenMaterials.add(key);
-    return true;
-  }).slice(-8);
-  const draft = options.includeDraft ? $("#txt").value.trim().slice(0, 2000) : "";
-  const latestUserMessage = [...conversation].reverse().find((entry) => entry.side === "user");
-  const goal = draft || String(latestUserMessage?.text || "").slice(0, 2000);
-  const uniqueExcerpts = (side, limit) => [...new Set(conversation
-    .filter((entry) => entry.side === side)
-    .map((entry) => entry.text.replace(/\s+/g, " ").trim().slice(0, 600))
-    .filter(Boolean))].slice(-limit);
-  const userExcerpts = uniqueExcerpts("user", 10);
-  const assistantExcerpts = uniqueExcerpts("assistant", 6);
-  const summary = [
-    "【当前目标】",
-    goal || "请结合完整对话判断当前目标。",
-    "",
-    "【用户已经说明】",
-    ...(userExcerpts.length ? userExcerpts.map((text) => "- " + text) : ["- 暂无明确说明"]),
-    "",
-    "【对话中已有的分析与结论】",
-    ...(assistantExcerpts.length ? assistantExcerpts.map((text) => "- " + text) : ["- 暂无"]),
-  ].join("\n");
-  sessionStorage.setItem("clownfish-capability-handoff-v1", JSON.stringify({
-    source: "chat",
-    returnTo: "/",
-    conversationKey,
-    summary,
-    personaId,
-    chatName: chatName || "小丑鱼",
-    goal,
-    conversation,
-    materials: state.pendingFile && !seenMaterials.has(state.pendingFile.fileRecordId || `${state.pendingFile.name}\n${state.pendingFile.text}`)
-      ? [...conversationMaterials, { name: state.pendingFile.name, size: state.pendingFile.size, text: state.pendingFile.text, kind: state.pendingFile.kind, fileRecordId: state.pendingFile.fileRecordId || "" }].slice(-8)
-      : conversationMaterials,
-    createdAt: Date.now(),
-  }));
-  window.location.href = "/capabilities";
-}
 async function pollCapabilityTasks() {
   if (capPollBusy) return;
   capPollBusy = true;
@@ -7945,12 +7847,6 @@ $("#railOffice").onclick = () => { window.location.href = "/office"; };
 $("#railDev").onclick = () => { window.location.href = "/develop"; };
 $("#railWork").onclick = () => { window.location.href = "/tasks"; };
 $("#composerTool").onclick = openToolModal;
-$("#composerCapability").onclick = () => openCapabilityPanel({ includeDraft: true });
-$("#chatCapabilityOpen").onclick = () => {
-  const target = $("#chatCapabilityOpen").dataset.viewTarget || "runs";
-  if (target === "history") localStorage.removeItem(CAPABILITY_ACTIVITY_KEY);
-  window.location.href = `/capabilities#${target}`;
-};
 $("#railUserAvatar").onclick = () => openAppIfNeeded();
 $("#sm-group").onclick = () => smRun(openGroupModal);
 $("#sm-avatar").onclick = () => smRun(() => openPersonaModal("me"));
@@ -7963,7 +7859,7 @@ $("#sm-chathtml").onclick = () => smRun(exportCurrentChatHtml);
 $("#sm-export").onclick = () => smRun(exportBackup);
 $("#sm-memclear").onclick = () => smRun(() => clearMemory("all"));
 $("#sm-chatclear").onclick = () => smRun(clearChat);
-$("#sideCap").onclick = openCapabilityPanel;
+$("#sideCap").onclick = () => { window.location.href = "/capabilities"; };
 $("#sideDesktopTool").onclick = openToolModal;
 $("#onboardStart").onclick = completeOnboarding;
 $("#onboardName").addEventListener("keydown", (e) => {

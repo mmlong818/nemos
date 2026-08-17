@@ -161,13 +161,12 @@ test("聊天设置统一提供记忆与数据入口，不再显示固定的新�
   assert.doesNotMatch(chatHtml, /function renderStarterPrompts|starter-prompts|starter-help-close/);
 });
 
-test("聊天区可上传文件，并把附件原文传给对话和后续能力", () => {
+test("聊天区可上传文件，附件只留在当前任务对话", () => {
   assert.match(chatHtml, /id="filebtn"/);
   assert.match(chatHtml, /id="chatfile"/);
   assert.match(chatHtml, /function prepareChatFile/);
   assert.match(chatHtml, /attachment, messageId/);
-  assert.match(chatHtml, /conversationMaterials = sourceMessages\.flatMap/);
-  assert.match(chatHtml, /seenMaterials/);
+  assert.doesNotMatch(chatHtml, /conversationMaterials = sourceMessages\.flatMap/);
   assert.match(server, /appendChatAttachmentContext/);
   assert.match(server, /registerChatAttachment/);
   assert.match(server, /TaskFileRegistry/);

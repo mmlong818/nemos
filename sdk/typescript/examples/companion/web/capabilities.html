@@ -35,11 +35,15 @@
 
       <div class="capability-layout">
         <aside class="capability-panel" aria-label="能力页面导航">
-          <strong class="capability-panel-title">能力</strong>
+          <div class="capability-panel-heading"><strong class="capability-panel-title">能力</strong><button type="button" id="newCapabilityConversation">＋ 新对话</button></div>
           <nav class="capability-view-nav">
-            <button class="is-current" type="button" data-capability-nav data-view-target="start" data-app-icon="spark"><span aria-hidden="true"></span><span>开始</span></button>
+            <button class="is-current" type="button" data-capability-nav data-view-target="start" data-app-icon="spark"><span aria-hidden="true"></span><span>新对话</span></button>
             <button type="button" data-capability-nav data-view-target="record" data-app-icon="bookmark"><span aria-hidden="true"></span><span>归档</span><span class="count" id="runningCount" hidden>0</span></button>
           </nav>
+          <section class="capability-conversations" aria-labelledby="capabilityConversationTitle">
+            <div class="capability-drafts-heading"><span id="capabilityConversationTitle">最近</span><span id="capabilityConversationCount">0</span></div>
+            <div class="capability-conversation-list" id="capabilityConversationList"></div>
+          </section>
           <section class="capability-drafts" id="capabilityDraftSection" hidden aria-labelledby="capabilityDraftTitle">
             <div class="capability-drafts-heading"><span id="capabilityDraftTitle">未完成</span><span id="capabilityDraftCount">0</span></div>
             <div class="capability-draft-list" id="capabilityDraftList"></div>
@@ -49,11 +53,6 @@
         <div class="capability-content">
       <section class="view is-active" data-view="start">
         <div class="start-wrap">
-          <aside class="chat-context" id="chatContext" hidden>
-            <span class="chat-context-icon" data-app-icon="message" aria-hidden="true"><span></span></span>
-            <span><strong id="chatContextTitle">从对话继续</strong><small id="chatContextText">目标已经带过来，补充材料后即可开始。</small></span>
-            <a id="chatContextReturn" href="/">回到对话</a>
-          </aside>
           <header class="hero">
             <p class="eyebrow">把事情交给小丑鱼</p>
             <h1>直接说，你想完成什么？</h1>
@@ -181,15 +180,23 @@
             </div>
           </section>
         </div>
+        <section class="capability-thread" id="capabilityThread" hidden aria-labelledby="capabilityThreadTitle">
+          <header class="capability-thread-header">
+            <div><small id="capabilityThreadAbility">能力对话</small><h1 id="capabilityThreadTitle">未命名对话</h1></div>
+            <button class="quiet-button" type="button" id="archiveCapabilityConversation">归档</button>
+          </header>
+          <div class="capability-thread-messages" id="capabilityThreadMessages" aria-live="polite"></div>
+          <form class="capability-thread-composer" id="capabilityThreadForm">
+            <label class="sr-only" for="capabilityThreadInput">继续说明要求</label>
+            <textarea id="capabilityThreadInput" rows="4" maxlength="16000" placeholder="继续说明要修改、补充或核对什么"></textarea>
+            <div><span id="capabilityThreadStatus">对话会保留在能力页，直到你主动归档。</span><button class="primary-button" type="submit">发送</button></div>
+          </form>
+        </section>
       </section>
       <section class="view" data-view="record">
         <div class="list-page">
-          <header class="page-heading"><div><p class="eyebrow">后台执行</p><h1>归档</h1><p>进度和结果都保留在这里；删除时可选择是否同时删除产出文件。</p></div><button class="quiet-button" type="button" data-view-target="start">新建任务</button></header>
-          <aside class="conversation-bridge" id="runConversationBridge" hidden>
-            <span><strong>任务已回到对话主线</strong><small id="runConversationText">你可以继续聊天；完成后，结果会由小丑鱼直接送回。</small></span>
-            <a id="runConversationLink" href="/">返回对话</a>
-          </aside>
-          <div class="empty-state" id="recordEmpty"><span data-empty-icon="history" aria-hidden="true"></span><h2>还没有归档</h2><p>开始一个任务后，进度和结果会出现在这里。</p></div>
+          <header class="page-heading"><div><p class="eyebrow">收起的对话</p><h1>归档</h1><p>归档相当于放进仓库：不再占用首页，随时可以恢复。只有这里的内容可以删除。</p></div><button class="quiet-button" type="button" data-view-target="start">新对话</button></header>
+          <div class="empty-state" id="recordEmpty"><span data-empty-icon="history" aria-hidden="true"></span><h2>还没有归档</h2><p>主动归档的能力对话会保存在这里。</p></div>
           <div class="item-list" id="recordList"></div>
         </div>
       </section>

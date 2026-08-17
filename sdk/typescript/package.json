@@ -1,6 +1,6 @@
 {
   "name": "@nemos/clownfish",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Clownfish local-first AI work application and auditable Agent runtime, using the separately maintained @nemos/sdk memory core.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "nemos founding team",
@@ -46,11 +46,13 @@
     "quality:office-corpus": "tsx scripts/office-corpus.ts",
     "quality:office-word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Verify-OfficeCorpus.ps1",
     "quality:development-corpus": "tsx scripts/development-corpus.ts",
+    "quality:capabilities": "node scripts/capability-real-quality.mjs",
     "vendor:docx-engine": "tsc -p examples/companion/vendor/docx-engine/tsconfig.json",
     "vendor:pptx-engine": "tsc -p examples/companion/vendor/pptx-engine/tsconfig.json",
     "licenses:check": "node scripts/audit-licenses.mjs",
+    "release:check": "node scripts/check-release-metadata.mjs",
     "prepublishOnly": "npm run build",
-    "check": "npm run build && npm run typecheck && npm run licenses:check && npm test"
+    "check": "npm run build && npm run typecheck && npm run licenses:check && npm run release:check && npm test"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",
