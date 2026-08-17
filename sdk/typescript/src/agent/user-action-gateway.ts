@@ -16,6 +16,7 @@ export interface AgentUserActionInput<T> {
   runId?: string;
   sessionId?: string;
   signal?: AbortSignal;
+  timeoutMs?: number;
   execute: (signal: AbortSignal) => Promise<T> | T;
   summarizeResult?: (value: T) => unknown;
 }
@@ -51,7 +52,7 @@ export class AgentUserActionGateway {
         description: input.description,
         inputSchema: { type: "object", additionalProperties: true },
         effect: "write",
-        timeoutMs: 90_000,
+        timeoutMs: Math.max(1, Math.min(30 * 60_000, input.timeoutMs ?? 90_000)),
       },
       execute: async (_arguments, context): Promise<AgentToolResult> => {
         try {

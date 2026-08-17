@@ -3,15 +3,17 @@
 [中文](README.md) · **English**
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-v0.2.2-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.2)
+[![Version](https://img.shields.io/badge/version-v0.2.3-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.3)
 [![License](https://img.shields.io/badge/integration-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#run-locally)
 
 Clownfish is a **local-first AI work application with long-term memory and real task execution**. The user describes an outcome; Clownfish selects capabilities, coordinates internal specialists, works with files, or delegates real project work to a coding engine while retaining the complete task history.
 
-## v0.2.2 release
+See the [Privacy Policy](PRIVACY.en.md) for local storage, external-service, synchronization, export, and deletion boundaries.
 
-This release closes the capability-runtime loop. All six product surfaces share one tool registry, permission policy, and audit model; all five coding engines support isolated execution, normalized events, session continuation, and cancellation; Settings now separates ready-to-install capabilities from custom plugins. Every bundled plugin states whether it runs locally or requires an external API.
+## v0.2.3 release
+
+This release completes real quality acceptance for the capability set and unifies the application, desktop shell, manifest, and documentation version. All 23 built-in capabilities have real execution paths; complex capabilities have explicit timeout and structured-repair boundaries; Settings links the privacy policy to the running product version.
 
 ![Clownfish tasks](docs/assets/readme/clownfish-chat-2026-08-16.png)
 

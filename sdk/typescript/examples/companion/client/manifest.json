@@ -1,7 +1,7 @@
 {
   "appId": "clownfish",
   "name": "小丑鱼",
-  "version": "0.2.19",
+  "version": "0.2.3",
   "channel": "local",
   "schemaVersion": 1,
   "server": {

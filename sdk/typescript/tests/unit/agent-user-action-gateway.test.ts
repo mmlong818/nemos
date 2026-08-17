@@ -66,3 +66,27 @@ test("explicit user action failures become failed runs and preserve the original
   assert.equal(failures.length, 1);
   assert.equal(failures[0]?.message, "skill not found");
 });
+
+test("long user actions can declare an appropriate timeout without changing the default", async () => {
+  const gateway = new AgentUserActionGateway();
+  await assert.rejects(gateway.execute({
+    name: "slow_action",
+    description: "Run a deliberately slow action",
+    timeoutMs: 10,
+    execute: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return { ok: true };
+    },
+  }), /tool timeout after 10ms/);
+
+  const result = await gateway.execute({
+    name: "long_capability_action",
+    description: "Run a capability action with a longer explicit timeout",
+    timeoutMs: 1_000,
+    execute: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return { ok: true };
+    },
+  });
+  assert.equal(result.value.ok, true);
+});

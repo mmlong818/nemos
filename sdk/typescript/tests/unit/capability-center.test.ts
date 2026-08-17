@@ -212,6 +212,34 @@ test("继续处理同一成果会沿用任务并形成可追溯版本", async ()
   }
 });
 
+test("能力对话只有用户主动操作后才进入归档，并可恢复", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-capability-archive-"));
+  const options = {
+    dataDir: dir,
+    personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+    notify: async () => ({ reply: THINKING_RESULT, facts: [] }),
+  };
+  try {
+    const runtime = new CapabilityRuntime(options);
+    const result = await runtime.runAdHocTask({
+      title: "不会自动归档的对话",
+      personaId: "clownfish",
+      capabilityId: "thinking-workbench",
+      instruction: "整理问题",
+      origin: { kind: "capability", jobId: "capability-job-1" },
+    });
+    assert.equal(runtime.snapshot().tasks.find((item) => item.id === result.artifact.taskId)?.archivedAt, undefined);
+
+    runtime.archiveTask(result.artifact.taskId);
+    assert.ok(new CapabilityRuntime(options).snapshot().tasks.find((item) => item.id === result.artifact.taskId)?.archivedAt);
+
+    runtime.restoreTask(result.artifact.taskId);
+    assert.equal(new CapabilityRuntime(options).snapshot().tasks.find((item) => item.id === result.artifact.taskId)?.archivedAt, undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("失败的单次能力执行也会保留原因和重试入口", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-failed-adhoc-task-"));
   try {
@@ -607,7 +635,7 @@ test("长期任务脉络会保存进展、专家职责、决定替代关系和�
   }
 });
 
-test("能力中心页面包含完整任务闭环且没有外部项目痕迹", () => {
+test("能力中心页面包含独立对话、手动归档和受保护删除", () => {
   const webDir = join(process.cwd(), "examples", "companion", "web");
   const html = readFileSync(join(webDir, "capabilities.html"), "utf8");
   const script = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
@@ -625,9 +653,13 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   assert.match(script, /\/api\/agent\/job/);
   assert.match(html, /id="jobDeleteDialog"/);
   assert.match(html, /仅删记录，保留文件/);
-  assert.match(script, /\/api\/agent\/job\/delete/);
-  assert.match(script, /data-delete-job/);
-  assert.match(script, /function askDeleteJob/);
+  assert.match(script, /\/api\/capability-conversations\/archive/);
+  assert.match(script, /\/api\/capability-conversations\/restore/);
+  assert.match(script, /\/api\/capability-conversations\/delete/);
+  assert.match(script, /data-delete-capability-task/);
+  assert.match(script, /function askDeleteCapabilityConversation/);
+  assert.match(html, /id="capabilityThread"/);
+  assert.match(html, /id="capabilityConversationList"/);
   assert.match(html, /id="capabilityPicker"/);
   assert.match(html, /class="task-advanced"/);
   assert.doesNotMatch(html, /id="recentStrip"|id="recentTask"/);
@@ -661,7 +693,7 @@ test("能力中心页面包含完整任务闭环且没有外部项目痕迹", ()
   assert.doesNotMatch(`${html}\n${script}`, /github\.com|plugin:\/\//i);
 });
 
-test("对话和能力页面共享目标、执行状态与返回路径", () => {
+test("任务页与能力页暂时保持运行记录隔离", () => {
   const webDir = join(process.cwd(), "examples", "companion", "web");
   const chatHtml = readFileSync(join(webDir, "index.html"), "utf8");
   const capabilityHtml = readFileSync(join(webDir, "capabilities.html"), "utf8");
@@ -670,41 +702,19 @@ test("对话和能力页面共享目标、执行状态与返回路径", () => {
   assert.match(chatHtml, /id="composerTool"[^>]*hidden/);
   assert.match(chatHtml, /id="sideDesktopTool"[^>]*hidden/);
 
-  assert.match(chatHtml, /id="composerCapability"/);
+  assert.doesNotMatch(chatHtml, /id="composerCapability"/);
   assert.match(chatHtml, /\$\("#railCap"\)\.onclick = \(\) => \{ window\.location\.href = "\/capabilities"; \};/);
-  assert.match(chatHtml, /\$\("#composerCapability"\)\.onclick = \(\) => openCapabilityPanel\(\{ includeDraft: true \}\);/);
+  assert.doesNotMatch(chatHtml, /composerCapability"\)\.onclick/);
   assert.doesNotMatch(chatHtml, /\$\("#railCap"\)\.onclick = openCapabilityPanel/);
-  assert.match(chatHtml, /id="chatCapabilityBridge"/);
-  assert.match(chatHtml, /function renderChatCapabilityBridge/);
-  assert.match(chatHtml, /dataset\.viewTarget = completed \? "history" : "runs"/);
-  assert.match(chatHtml, /value\.trim\(\)\.slice\(0, 2000\)/);
-  assert.match(chatHtml, /sourceMessages/);
-  assert.match(chatHtml, /conversationKey/);
-  assert.match(chatHtml, /【用户已经说明】/);
-  assert.match(chatHtml, /【对话中已有的分析与结论】/);
-  assert.match(capabilityHtml, /id="chatContext"/);
-  assert.match(capabilityHtml, /id="runConversationBridge"/);
-  assert.match(capabilityScript, /function applyChatHandoff/);
-  assert.match(capabilityScript, /fromChat = handoff\.source === "chat"/);
-  assert.match(capabilityScript, /chatContext"\)\.hidden = !fromChat/);
-  assert.match(capabilityScript, /sessionStorage\.removeItem\(HANDOFF_KEY\)/);
-  assert.match(capabilityScript, /handoffContext/);
-  assert.match(capabilityScript, /handoffSummary/);
-  assert.match(capabilityScript, /function loadHandoffConversation/);
-  assert.match(capabilityScript, /clownfish-conversation-trees-v20260813b/);
-  assert.match(capabilityScript, /clownfish-chat-logs-v20260813b/);
-  assert.match(capabilityScript, /handoffConversation/);
-  assert.match(capabilityScript, /sourceMessageId/);
-  assert.match(capabilityScript, /subjectId/);
-  assert.match(serverSource, /renderCapabilityHandoffContext/);
-  assert.match(serverSource, /handoffReceipt/);
-  assert.match(capabilityScript, /conversationKey: state\.returnConversationKey/);
+  assert.doesNotMatch(chatHtml, /id="chatCapabilityBridge"/);
+  assert.match(chatHtml, /\$\("#sideCap"\)\.onclick = \(\) => \{ window\.location\.href = "\/capabilities"; \};/);
+  assert.match(capabilityHtml, /id="capabilityThread"/);
+  assert.match(capabilityScript, /surface: "capabilities"/);
+  assert.match(capabilityScript, /conversationKey: ""/);
+  assert.match(serverSource, /deliveryRequired: body\.surface !== "capabilities"/);
   assert.match(serverSource, /conversationKey: String\(job\.payload\.conversationKey/);
   assert.match(serverSource, /capabilityPersonaId = body\.kind === "capability-adhoc" \? "clownfish"/);
-  assert.match(capabilityScript, /clownfish-capability-activity-v1/);
-  assert.match(capabilityScript, /在对话中查看/);
-  assert.match(capabilityScript, /function handoffJob/);
-  assert.match(capabilityScript, /artifact\/context/);
+  assert.match(capabilityScript, /function continueCapabilityConversation/);
   assert.match(capabilityScript, /parentJobId/);
   assert.match(capabilityScript, /continuationTaskId/);
   assert.match(serverSource, /continuationTaskId/);
