@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2
+
+- Unified core tools, permissions, risk metadata, timeouts, and execution history across tasks, learning, capabilities, files, development, and automations.
+- Completed isolated execution, incremental events, cancellation, and session continuation for Pi Agent, DeepSeek Harness, Kilo Code, OpenCode, and Codex.
+- Added audited extension updates and four optional bundled plugins: Playwright browser control, safe table analysis, EML/ICS file parsing, and image/video generation.
+- Clarified plugin dependencies, online-account boundaries, and non-realtime travel and hospitality source guidance.
+- Verified the release with 483 automated tests: 482 passed and one Blender-only check was skipped because Blender is not installed.
+
 ## 0.7.5-alpha.17
 
 - Kept complete family-relation statements in bounded evidence excerpts for aggregate kinship questions.

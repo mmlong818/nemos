@@ -1,6 +1,6 @@
 {
   "name": "@nemos/clownfish",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Clownfish local-first AI work application and auditable Agent runtime, using the separately maintained @nemos/sdk memory core.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "nemos founding team",

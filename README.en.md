@@ -3,11 +3,15 @@
 [中文](README.md) · **English**
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-v0.2.1-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.1)
+[![Version](https://img.shields.io/badge/version-v0.2.2-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.2)
 [![License](https://img.shields.io/badge/integration-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#run-locally)
 
 Clownfish is a **local-first AI work application with long-term memory and real task execution**. The user describes an outcome; Clownfish selects capabilities, coordinates internal specialists, works with files, or delegates real project work to a coding engine while retaining the complete task history.
+
+## v0.2.2 release
+
+This release closes the capability-runtime loop. All six product surfaces share one tool registry, permission policy, and audit model; all five coding engines support isolated execution, normalized events, session continuation, and cancellation; Settings now separates ready-to-install capabilities from custom plugins. Every bundled plugin states whether it runs locally or requires an external API.
 
 ![Clownfish tasks](docs/assets/readme/clownfish-chat-2026-08-16.png)
 
@@ -41,6 +45,8 @@ Clownfish currently includes 23 built-in capabilities across:
 - real project development and reusable capability creation.
 
 Capabilities can continue one another while keeping the original task context. Volatile prices, ticket inventory, room availability, and reservations are confirmed only when a reliable live source actually returns them. The product does not currently ship transaction adapters for rail, flights, hotels, or restaurants.
+
+Settings offers four optional bundled plugins: official Playwright MCP browser control, safe CSV/JSON analysis, local EML/ICS file parsing, and image/video generation through a user-provided OpenAI-compatible media endpoint. Analysis and file parsing are local; browser control needs local Chrome; media generation needs the user's own API.
 
 ![Clownfish capabilities](docs/assets/readme/clownfish-capabilities-2026-08-16.png)
 
@@ -101,12 +107,13 @@ Local Docker may use `http://127.0.0.1:8799`; remote deployment requires HTTPS.
 
 ## Verified status
 
-As of 2026-08-16:
+As of 2026-08-17:
 
 - build and type checking pass;
-- **453 automated tests: 452 pass and one Blender check is skipped because Blender is not installed**;
+- **483 automated tests: 482 pass and one Blender check is skipped because Blender is not installed**;
 - all five coding engines have real CLI/SDK adapters and readiness checks;
 - Pi Agent is upgraded to **0.84.2**, with the build and engine-specific tests passing;
+- official Playwright MCP tool discovery and the media connector lifecycle are covered by executable tests;
 - document conversion, Office export, development isolation, proposal application, rollback, task recovery, and encrypted sync have automated coverage.
 
 Tests validate specific code paths; they do not imply manual verification of every external model account, live data source, or complex Office layout.
