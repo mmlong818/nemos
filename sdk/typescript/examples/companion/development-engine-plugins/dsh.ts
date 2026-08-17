@@ -10,7 +10,7 @@ export const createDshDevelopmentEnginePlugin: DevelopmentEnginePluginFactory = 
     integration: "package-adapter",
     default: false,
     presentation: { tagline: "隔离执行的完整工具链", bestFor: "复杂修改、需要先在独立目录验证的任务" },
-    capabilities: { sessionResume: false, structuredEvents: false, isolatedWorkspace: true, eventDelivery: "summary-only", isolation: "develop-only" },
+    capabilities: { sessionResume: true, structuredEvents: true, isolatedWorkspace: true, eventDelivery: "live", isolation: "always" },
   },
   readiness: dshDevelopmentEnvironment,
   run: (request) => runDshDevelopment({

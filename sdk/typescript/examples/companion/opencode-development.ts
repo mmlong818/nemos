@@ -8,6 +8,9 @@ import {
   type ExternalEngineRunOutput,
 } from "./external-development-engine.js";
 import type { DevelopmentAccessMode, PiDevelopmentResult } from "./pi-development.js";
+import type { DevelopmentTelemetryEvent } from "./pi-development.js";
+import { DevelopmentJsonlEventStream } from "./development-jsonl-stream.js";
+import { detachedProcessGroup, terminateChildProcessTree } from "./child-process-lifecycle.js";
 
 const MAX_OUTPUT_BYTES = 2_000_000;
 const MAX_RUN_MS = 30 * 60_000;
@@ -20,7 +23,7 @@ export function runOpenCodeDevelopment(input: OpenCodeDevelopmentInput): Promise
   return runExternalDevelopment(input, {
     id: "opencode",
     name: "OpenCode",
-    run: ({ workspace, runHome, instruction, accessMode, connection, signal }) => runOpenCodeProcess({
+    run: ({ workspace, runHome, instruction, accessMode, connection, signal, onTelemetry, sessionId }) => runOpenCodeProcess({
       entrypoint,
       workspace,
       runHome,
@@ -28,6 +31,8 @@ export function runOpenCodeDevelopment(input: OpenCodeDevelopmentInput): Promise
       accessMode,
       connection,
       signal,
+      onTelemetry,
+      sessionId,
     }),
   });
 }
@@ -115,6 +120,8 @@ async function runOpenCodeProcess(input: {
   accessMode: DevelopmentAccessMode;
   connection: CompanionModelConnection;
   signal?: AbortSignal;
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+  sessionId?: string;
 }): Promise<ExternalEngineRunOutput> {
   for (const name of ["data", "config", "cache", "state"]) mkdirSync(resolve(input.runHome, name), { recursive: true });
   const configFile = resolve(input.runHome, "config", "opencode.json");
@@ -123,17 +130,20 @@ async function runOpenCodeProcess(input: {
     let stdout: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let stderr: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let settled = false;
-    const child = spawn(input.entrypoint, [
+    const args = [
       "run",
       "--auto",
       "--format", "json",
       "--dir", input.workspace,
       "--model", `clownfish/${input.connection.model}`,
       "--agent", input.accessMode === "inspect" ? "plan" : "build",
-      input.task,
-    ], {
+    ];
+    if (input.sessionId) args.push("--session", input.sessionId);
+    args.push(input.task);
+    const child = spawn(input.entrypoint, args, {
       cwd: input.workspace,
       windowsHide: true,
+      detached: detachedProcessGroup(),
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
@@ -149,18 +159,20 @@ async function runOpenCodeProcess(input: {
       const next = Buffer.concat([current, chunk]);
       return next.byteLength <= MAX_OUTPUT_BYTES ? next : next.subarray(next.byteLength - MAX_OUTPUT_BYTES);
     };
-    child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
+    const eventStream = new DevelopmentJsonlEventStream(input.onTelemetry);
+    child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); eventStream.push(chunk); });
     child.stderr?.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
+      eventStream.flush();
       clearTimeout(timer);
       input.signal?.removeEventListener("abort", abort);
       if (error) reject(error);
       else accept(parseOpenCodeOutput(redactCredential(stdout.toString("utf8"), input.connection.apiKey)));
     };
-    const abort = () => { child.kill(); finish(new Error("OpenCode 任务已取消。")); };
-    const timer = setTimeout(() => { child.kill(); finish(new Error("OpenCode 运行超过 30 分钟，已停止本轮任务。")); }, MAX_RUN_MS);
+    const abort = () => { terminateChildProcessTree(child); finish(new Error("OpenCode 任务已取消。")); };
+    const timer = setTimeout(() => { terminateChildProcessTree(child); finish(new Error("OpenCode 运行超过 30 分钟，已停止本轮任务。")); }, MAX_RUN_MS);
     input.signal?.addEventListener("abort", abort, { once: true });
     child.once("error", (error) => finish(new Error(`OpenCode 无法启动：${error.message}`)));
     child.once("close", (code) => {

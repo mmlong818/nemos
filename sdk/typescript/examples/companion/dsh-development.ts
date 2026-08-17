@@ -10,15 +10,17 @@ import {
   developmentFileReceipt,
   developmentProposalSummary,
   developmentRisks,
-  prepareIsolatedDevelopmentWorkspace,
   runDevelopmentCheck,
   validateDevelopmentWorkspace,
   type DevelopmentAccessMode,
   type DevelopmentCheck,
   type DevelopmentCheckReceipt,
   type DevelopmentContextReceipt,
+  type DevelopmentSessionMode,
+  type DevelopmentTelemetryEvent,
   type PiDevelopmentResult,
 } from "./pi-development.js";
+import { preparePersistentDevelopmentIsolation } from "./development-persistent-isolation.js";
 import {
   detectDevelopmentDependencies,
   installDevelopmentDependencies,
@@ -28,6 +30,9 @@ import {
   shouldAutoApplyDevelopmentProposal,
   type DevelopmentApprovalPolicy,
 } from "./development-approval.js";
+import { decodeDevelopmentSessionReference, encodeDevelopmentSessionReference } from "./development-session-reference.js";
+import { detachedProcessGroup, terminateChildProcessTree } from "./child-process-lifecycle.js";
+import { DevelopmentJsonlEventStream } from "./development-jsonl-stream.js";
 
 const MAX_OUTPUT_BYTES = 2_000_000;
 const MAX_RUN_MS = 30 * 60_000;
@@ -45,6 +50,9 @@ export interface DshDevelopmentInput {
   agentDir: string;
   signal?: AbortSignal;
   onProgress?: (message: string, percent: number) => void;
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+  sessionMode?: DevelopmentSessionMode;
+  sessionFile?: string;
   proposalStore?: DevelopmentProposalStore;
 }
 
@@ -59,14 +67,15 @@ export async function runDshDevelopment(input: DshDevelopmentInput): Promise<PiD
 
   mkdirSync(input.agentDir, { recursive: true });
   const runId = `dsh-${randomUUID()}`;
-  const runHome = resolve(input.agentDir, "runs", runId);
+  const resume = input.sessionMode === "resume" ? decodeDevelopmentSessionReference(input.sessionFile, "dsh", input.agentDir) : undefined;
+  if (input.sessionMode === "resume" && !resume) throw new Error("DeepSeek Harness 的会话引用无效或已经不可用。");
+  const runHome = resume?.runHome ?? resolve(input.agentDir, "runs", runId);
   mkdirSync(runHome, { recursive: true });
   writeFileSync(resolve(runHome, "settings.yaml"), buildDshSettings(input.connection), "utf8");
+  const continued = readDshContinuation(resume?.sessionId);
 
   const baseRevision = await currentDevelopmentRevision(workspace);
-  const isolation = input.accessMode === "develop"
-    ? await prepareIsolatedDevelopmentWorkspace(workspace, input.agentDir)
-    : { workspace, isolated: false, cleanup: async () => undefined };
+  const isolation = await preparePersistentDevelopmentIsolation({ workspace, agentDir: input.agentDir, runHome, accessMode: input.accessMode });
   if (input.accessMode === "develop" && !isolation.isolated) {
     await isolation.cleanup();
     throw new Error(isolation.reason === "not-a-repo"
@@ -82,28 +91,31 @@ export async function runDshDevelopment(input: DshDevelopmentInput): Promise<PiD
     proposalSession = input.accessMode === "develop"
       ? proposalStore.begin(workspace, baseRevision, executionWorkspace)
       : undefined;
-    const statusBefore = input.accessMode === "inspect" ? await gitStatusSnapshot(workspace) : "";
     const contextReceipts: DevelopmentContextReceipt[] = [workspaceContextReceipt(executionWorkspace)];
     input.onProgress?.(input.accessMode === "inspect" ? "隔离开发引擎正在检查项目" : "正在隔离环境中开发", 20);
     const output = await runDshProcess({
       entrypoint,
       cwd: executionWorkspace,
       home: runHome,
-      task: buildDshTask(input.instruction, input.accessMode),
+      task: buildDshTask(withDshContinuation(input.instruction, continued), input.accessMode),
       apiKey: input.connection.apiKey || "local-model",
       baseEnvironment: process.env,
       accessMode: input.accessMode,
       signal: input.signal,
+      onTelemetry: input.onTelemetry,
+      sessionId: continued ? undefined : resume?.sessionId,
     });
-    const sessionFile = newestSessionFile(resolve(runHome, "sessions"));
-    const telemetry = sessionTelemetry(sessionFile);
+    const nativeSessionFile = newestSessionFile(resolve(runHome, "sessions"));
+    const continuationFile = resolve(runHome, "nemos-continuation.json");
+    writeDshContinuation(continuationFile, continued, input.instruction, output);
+    const sessionId = continuationFile;
+    const sessionReference = encodeDevelopmentSessionReference("dsh", runHome, continuationFile);
+    const telemetry = sessionTelemetry(nativeSessionFile);
     const toolCalls = Object.entries(telemetry)
       .filter(([type]) => type.toLowerCase().includes("tool"))
       .reduce((total, [, count]) => total + count, 0);
 
     if (input.accessMode === "inspect") {
-      const statusAfter = await gitStatusSnapshot(workspace);
-      if (statusAfter !== statusBefore) throw new Error("只检查模式检测到工作区发生变化，已拒绝把本轮当作有效结果。");
       input.onProgress?.("正在整理检查结果", 90);
       return {
         reply: output,
@@ -117,14 +129,14 @@ export async function runDshDevelopment(input: DshDevelopmentInput): Promise<PiD
         contextReceipts,
         unverifiedRisks: [],
         toolCalls,
-        sessionId: runId,
-        sessionFile,
-        sessionResumed: false,
+        sessionId,
+        sessionFile: sessionReference,
+        sessionResumed: Boolean(resume),
         loadedSkills: 0,
         loadedPromptTemplates: 0,
         telemetry: { ...telemetry, "dsh/process/succeeded": 1 },
         dependencyReceipts,
-        isolatedWorkspace: false,
+        isolatedWorkspace: true,
       };
     }
 
@@ -154,9 +166,9 @@ export async function runDshDevelopment(input: DshDevelopmentInput): Promise<PiD
       unverifiedRisks: developmentRisks(input.accessMode, checks),
       proposal: developmentProposalSummary(completedProposal),
       toolCalls,
-      sessionId: runId,
-      sessionFile,
-      sessionResumed: false,
+      sessionId,
+      sessionFile: sessionReference,
+      sessionResumed: Boolean(resume),
       loadedSkills: 0,
       loadedPromptTemplates: 0,
       telemetry: { ...telemetry, "dsh/process/succeeded": 1 },
@@ -169,6 +181,35 @@ export async function runDshDevelopment(input: DshDevelopmentInput): Promise<PiD
   } finally {
     await isolation.cleanup();
   }
+}
+
+interface DshContinuation {
+  version: 1;
+  turns: Array<{ instruction: string; reply: string }>;
+}
+
+function readDshContinuation(file: string | undefined): DshContinuation | undefined {
+  if (!file || !file.endsWith("nemos-continuation.json") || !existsSync(file)) return undefined;
+  try {
+    const value = JSON.parse(readFileSync(file, "utf8")) as DshContinuation;
+    return value.version === 1 && Array.isArray(value.turns) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function withDshContinuation(instruction: string, state: DshContinuation | undefined): string {
+  if (!state?.turns.length) return instruction;
+  const history = state.turns.slice(-6).map((turn, index) => [
+    `上一轮 ${index + 1} 的目标：${turn.instruction.slice(0, 4_000)}`,
+    `上一轮 ${index + 1} 的结果：${turn.reply.slice(0, 8_000)}`,
+  ].join("\n")).join("\n\n");
+  return `${history}\n\n继续处理当前目标：${instruction}`;
+}
+
+function writeDshContinuation(file: string, state: DshContinuation | undefined, instruction: string, reply: string): void {
+  const turns = [...(state?.turns ?? []), { instruction: instruction.slice(0, 8_000), reply: reply.slice(0, 16_000) }].slice(-20);
+  writeFileSync(file, JSON.stringify({ version: 1, turns } satisfies DshContinuation, null, 2), "utf8");
 }
 
 async function installDependenciesIfRequested(
@@ -266,14 +307,22 @@ async function runDshProcess(input: {
   baseEnvironment: NodeJS.ProcessEnv;
   accessMode: DevelopmentAccessMode;
   signal?: AbortSignal;
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+  sessionId?: string;
 }): Promise<string> {
   return new Promise((accept, reject) => {
     let stdout: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let stderr: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let settled = false;
-    const child = spawn(process.execPath, [input.entrypoint, "--profile", "headless", input.task], {
+    const args = [input.entrypoint, "--profile", "headless"];
+    if (input.sessionId) args.push("--resume", input.sessionId);
+    args.push(input.task);
+    input.onTelemetry?.({ type: "dsh/process/start", at: new Date().toISOString() });
+    const sessionEvents = createDshSessionEventTail(input.home, input.sessionId, input.onTelemetry);
+    const child = spawn(process.execPath, args, {
       cwd: input.cwd,
       windowsHide: true,
+      detached: detachedProcessGroup(),
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...input.baseEnvironment,
@@ -293,16 +342,20 @@ async function runDshProcess(input: {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      sessionEvents.stop();
       input.signal?.removeEventListener("abort", abort);
       if (error) reject(error);
-      else accept(redactCredential(stdout.toString("utf8").trim(), input.apiKey));
+      else {
+        input.onTelemetry?.({ type: "dsh/process/end", at: new Date().toISOString() });
+        accept(redactCredential(stdout.toString("utf8").trim(), input.apiKey));
+      }
     };
     const abort = () => {
-      child.kill();
+      terminateChildProcessTree(child);
       finish(new Error("隔离开发引擎任务已取消。"));
     };
     const timer = setTimeout(() => {
-      child.kill();
+      terminateChildProcessTree(child);
       finish(new Error("隔离开发引擎运行超过 30 分钟，已停止本轮任务。"));
     }, MAX_RUN_MS);
     input.signal?.addEventListener("abort", abort, { once: true });
@@ -321,6 +374,35 @@ async function runDshProcess(input: {
       finish();
     });
   });
+}
+
+function createDshSessionEventTail(
+  home: string,
+  resumedFile: string | undefined,
+  emit: ((event: DevelopmentTelemetryEvent) => void) | undefined,
+): { stop: () => void } {
+  if (!emit) return { stop: () => undefined };
+  const stream = new DevelopmentJsonlEventStream(emit);
+  let file = resumedFile && existsSync(resumedFile) ? resumedFile : undefined;
+  let offset = file ? statSync(file).size : 0;
+  const poll = () => {
+    try {
+      const nextFile = newestSessionFile(resolve(home, "sessions"));
+      if (nextFile && nextFile !== file) { file = nextFile; offset = 0; }
+      if (!file || !existsSync(file)) return;
+      const content = readFileSync(file);
+      if (content.byteLength < offset) offset = 0;
+      if (content.byteLength > offset) {
+        stream.push(content.subarray(offset));
+        offset = content.byteLength;
+      }
+    } catch {
+      // 会话文件可能正被原子替换；下一轮轮询会继续读取。
+    }
+  };
+  const timer = setInterval(poll, 100);
+  timer.unref?.();
+  return { stop: () => { clearInterval(timer); poll(); stream.flush(); } };
 }
 
 export function dshPermissionMode(accessMode: DevelopmentAccessMode): "read-only" | "workspace-write" {
@@ -400,14 +482,6 @@ async function gitOutput(workspace: string, args: string[]): Promise<string> {
     child.once("error", reject);
     child.once("close", (code) => code === 0 ? accept(stdout) : reject(new Error(stderr.trim() || `git ${args[0]} 执行失败`)));
   });
-}
-
-async function gitStatusSnapshot(workspace: string): Promise<string> {
-  try {
-    return await gitOutput(workspace, ["status", "--porcelain=v1", "--untracked-files=all"]);
-  } catch {
-    return "";
-  }
 }
 
 function workspaceContextReceipt(workspace: string): DevelopmentContextReceipt {

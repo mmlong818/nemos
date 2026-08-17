@@ -54,39 +54,81 @@ export const DEFAULT_CAPABILITY_SURFACES: readonly CapabilitySurfacePolicy[] = [
     id: "task",
     name: "任务",
     description: "对话、研究、写作、文件与来源核验所需的通用工具。",
-    toolsets: ["web", "source", "vision", "document", "writing", "voice", "extension"],
+    toolsets: ["web", "source", "vision", "document", "writing", "voice", "memory", "task", "skill", "delegation", "artifact", "development", "extension"],
   },
   {
     id: "education",
     name: "学习辅导",
     description: "以讲解、资料核验、图片理解和练习反馈为主。",
-    toolsets: ["web", "source", "vision", "document", "writing", "extension"],
+    toolsets: ["web", "source", "vision", "document", "writing", "memory", "artifact", "extension"],
   },
   {
     id: "capability",
     name: "能力",
     description: "执行专门任务时按目标选择所需工具。",
-    toolsets: ["web", "source", "vision", "document", "writing", "voice", "extension"],
+    toolsets: ["web", "source", "vision", "document", "writing", "voice", "memory", "task", "skill", "delegation", "artifact", "development", "extension"],
   },
   {
     id: "office",
     name: "文件",
     description: "文档转换、识别、整理与润色。",
-    toolsets: ["vision", "document", "writing"],
+    toolsets: ["vision", "document", "writing", "artifact"],
   },
   {
     id: "development",
     name: "开发",
     description: "开发引擎负责改代码，检索工具只用于补充资料和核验来源。",
-    toolsets: ["web", "source"],
+    toolsets: ["web", "source", "memory", "artifact", "development"],
   },
   {
     id: "automation",
     name: "工作",
     description: "定时或重复运行任务，沿用任务所需的受控工具。",
-    toolsets: ["web", "source", "document", "writing", "extension"],
+    toolsets: ["web", "source", "document", "writing", "memory", "task", "delegation", "artifact", "extension"],
   },
 ] as const;
+
+const COMPANION_RUNTIME_TOOLS = [
+  { name: "memory_recall", id: "agent.memory-recall", label: "记忆检索", description: "按当前用户、角色与会话边界找回相关记忆。", toolset: "memory", effect: "read", risk: "normal", permissions: ["memory-read"] },
+  { name: "capability_task_list", id: "agent.task-list", label: "任务列表", description: "查看当前能力任务及其状态。", toolset: "task", effect: "read", risk: "normal", permissions: ["task-read"] },
+  { name: "capability_task_create", id: "agent.task-create", label: "创建任务", description: "把明确目标创建为可继续执行的能力任务。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
+  { name: "skill_install", id: "agent.skill-install", label: "安装技能", description: "将经过确认的可复用流程安装到本机技能库。", toolset: "skill", effect: "write", risk: "normal", permissions: ["skill-write"] },
+  { name: "agent_delegation_create", id: "agent.delegation-create", label: "委派子任务", description: "把研究、整理或复核工作交给受控执行器。", toolset: "delegation", effect: "write", risk: "normal", permissions: ["task-write"] },
+  { name: "capability_artifact_list", id: "agent.artifact-list", label: "产物检索", description: "找回任务和能力此前生成的文件与结果。", toolset: "artifact", effect: "read", risk: "normal", permissions: ["artifact-read"] },
+  { name: "development_task_create", id: "agent.development-create", label: "创建开发任务", description: "将编程目标交给选定开发引擎执行。", toolset: "development", effect: "write", risk: "normal", permissions: ["development-write"] },
+] as const;
+
+export function companionRuntimeToolSummaries(): CapabilityToolSummary[] {
+  const checkedAt = new Date().toISOString();
+  return COMPANION_RUNTIME_TOOLS.map((tool) => ({
+    id: tool.id,
+    name: tool.label,
+    description: tool.description,
+    toolset: tool.toolset,
+    available: true,
+    requires: [...tool.permissions],
+    readiness: { available: true, reason: "ready", message: "由小丑鱼产品运行时提供", checkedAt },
+    source: { kind: "builtin", id: "clownfish-runtime" },
+    isAsync: true,
+    execution: "runtime-integrated",
+    effect: tool.effect,
+    risk: tool.risk,
+    permissions: [...tool.permissions],
+    dynamic: true,
+  }));
+}
+
+export function filterCompanionRuntimeToolsForSurface<T extends { definition: { name: string } }>(
+  surface: CapabilitySurface,
+  tools: readonly T[],
+): T[] {
+  const allowedToolsets = new Set(capabilityToolFilterForSurface(surface).toolsets ?? []);
+  const toolsets = new Map<string, string>(COMPANION_RUNTIME_TOOLS.map((tool) => [tool.name, tool.toolset]));
+  return tools.filter((tool) => {
+    const toolset = toolsets.get(tool.definition.name);
+    return toolset ? allowedToolsets.has(toolset) : false;
+  });
+}
 
 export function capabilityToolFilterForSurface(surface: CapabilitySurface): CapabilityToolFilter {
   const policy = DEFAULT_CAPABILITY_SURFACES.find((item) => item.id === surface);

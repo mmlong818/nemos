@@ -344,7 +344,11 @@ export class AgentExtensionRegistry {
   }
   async toolsForRequest(
     query: string,
-    options: { signal?: AbortSignal; limit?: number } = {},
+    options: {
+      signal?: AbortSignal;
+      limit?: number;
+      allow?: (descriptor: Readonly<AgentExtensionToolDescriptor>) => boolean;
+    } = {},
   ): Promise<AgentTool[]> {
     const controller = linkedController(options.signal);
     const limit = Math.min(this.maxToolsPerRequest, Math.max(1, options.limit ?? this.maxToolsPerRequest));
@@ -355,6 +359,7 @@ export class AgentExtensionRegistry {
         const descriptors = await record.provider.discover(query, controller.signal);
         for (const descriptor of descriptors) {
           if (descriptor.extensionId !== record.manifest.id) continue;
+          if (options.allow && !options.allow(descriptor)) continue;
           const score = toolScore(descriptor, query);
           if (score > 0) candidates.push({ descriptor, score, record });
         }

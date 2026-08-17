@@ -10,15 +10,17 @@ import {
   developmentFileReceipt,
   developmentProposalSummary,
   developmentRisks,
-  prepareIsolatedDevelopmentWorkspace,
   runDevelopmentCheck,
   validateDevelopmentWorkspace,
   type DevelopmentAccessMode,
   type DevelopmentCheck,
   type DevelopmentCheckReceipt,
   type DevelopmentContextReceipt,
+  type DevelopmentSessionMode,
+  type DevelopmentTelemetryEvent,
   type PiDevelopmentResult,
 } from "./pi-development.js";
+import { preparePersistentDevelopmentIsolation } from "./development-persistent-isolation.js";
 import {
   detectDevelopmentDependencies,
   installDevelopmentDependencies,
@@ -32,6 +34,9 @@ import {
   shouldAutoApplyDevelopmentProposal,
   type DevelopmentApprovalPolicy,
 } from "./development-approval.js";
+import { decodeDevelopmentSessionReference, encodeDevelopmentSessionReference } from "./development-session-reference.js";
+import { DevelopmentJsonlEventStream } from "./development-jsonl-stream.js";
+import { detachedProcessGroup, terminateChildProcessTree } from "./child-process-lifecycle.js";
 
 const MAX_OUTPUT_BYTES = 2_000_000;
 const MAX_RUN_MS = 30 * 60_000;
@@ -47,6 +52,9 @@ export interface KiloDevelopmentInput {
   agentDir: string;
   signal?: AbortSignal;
   onProgress?: (message: string, percent: number) => void;
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+  sessionMode?: DevelopmentSessionMode;
+  sessionFile?: string;
   proposalStore?: DevelopmentProposalStore;
 }
 
@@ -65,13 +73,13 @@ export async function runKiloDevelopment(input: KiloDevelopmentInput): Promise<P
 
   mkdirSync(input.agentDir, { recursive: true });
   const runId = `kilo-${randomUUID()}`;
-  const runHome = resolve(input.agentDir, "runs", runId);
+  const resume = input.sessionMode === "resume" ? decodeDevelopmentSessionReference(input.sessionFile, "kilo", input.agentDir) : undefined;
+  if (input.sessionMode === "resume" && !resume) throw new Error("Kilo Code 的会话引用无效或已经不可用。");
+  const runHome = resume?.runHome ?? resolve(input.agentDir, "runs", runId);
   for (const name of ["data", "config", "cache", "state"]) mkdirSync(resolve(runHome, name), { recursive: true });
 
   const baseRevision = await currentDevelopmentRevision(workspace);
-  const isolation = input.accessMode === "develop"
-    ? await prepareIsolatedDevelopmentWorkspace(workspace, input.agentDir)
-    : { workspace, isolated: false, cleanup: async () => undefined };
+  const isolation = await preparePersistentDevelopmentIsolation({ workspace, agentDir: input.agentDir, runHome, accessMode: input.accessMode });
   if (input.accessMode === "develop" && !isolation.isolated) {
     await isolation.cleanup();
     throw new Error(isolation.reason === "not-a-repo"
@@ -87,7 +95,6 @@ export async function runKiloDevelopment(input: KiloDevelopmentInput): Promise<P
     proposalSession = input.accessMode === "develop"
       ? proposalStore.begin(workspace, baseRevision, executionWorkspace)
       : undefined;
-    const statusBefore = input.accessMode === "inspect" ? await gitStatusSnapshot(workspace) : "";
     const contextReceipts: DevelopmentContextReceipt[] = [workspaceContextReceipt(executionWorkspace)];
     input.onProgress?.(input.accessMode === "inspect" ? "Kilo Code 正在检查项目" : "Kilo Code 正在隔离环境中开发", 20);
     const output = await runKiloProcess({
@@ -101,11 +108,11 @@ export async function runKiloDevelopment(input: KiloDevelopmentInput): Promise<P
       apiKey: input.connection.apiKey || "local-model",
       baseEnvironment: process.env,
       signal: input.signal,
+      onTelemetry: input.onTelemetry,
+      sessionId: resume?.sessionId,
     });
 
     if (input.accessMode === "inspect") {
-      const statusAfter = await gitStatusSnapshot(workspace);
-      if (statusAfter !== statusBefore) throw new Error("只检查模式检测到工作区发生变化，已拒绝把本轮当作有效结果。");
       input.onProgress?.("正在整理检查结果", 90);
       return {
         reply: output.reply,
@@ -119,13 +126,14 @@ export async function runKiloDevelopment(input: KiloDevelopmentInput): Promise<P
         contextReceipts,
         unverifiedRisks: [],
         toolCalls: output.toolCalls,
-        sessionId: output.sessionId || runId,
-        sessionResumed: false,
+        sessionId: output.sessionId || resume?.sessionId || runId,
+        sessionFile: output.sessionId ? encodeDevelopmentSessionReference("kilo", runHome, output.sessionId) : input.sessionFile,
+        sessionResumed: Boolean(resume),
         loadedSkills: 0,
         loadedPromptTemplates: 0,
         telemetry: output.telemetry,
         dependencyReceipts,
-        isolatedWorkspace: false,
+        isolatedWorkspace: true,
       };
     }
 
@@ -155,8 +163,9 @@ export async function runKiloDevelopment(input: KiloDevelopmentInput): Promise<P
       unverifiedRisks: developmentRisks(input.accessMode, checks),
       proposal: developmentProposalSummary(completedProposal),
       toolCalls: output.toolCalls,
-      sessionId: output.sessionId || runId,
-      sessionResumed: false,
+      sessionId: output.sessionId || resume?.sessionId || runId,
+      sessionFile: output.sessionId ? encodeDevelopmentSessionReference("kilo", runHome, output.sessionId) : input.sessionFile,
+      sessionResumed: Boolean(resume),
       loadedSkills: 0,
       loadedPromptTemplates: 0,
       telemetry: output.telemetry,
@@ -284,12 +293,14 @@ async function runKiloProcess(input: {
   apiKey: string;
   baseEnvironment: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+  sessionId?: string;
 }): Promise<KiloRunOutput> {
   return new Promise((accept, reject) => {
     let stdout: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let stderr: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let settled = false;
-    const child = spawn(process.execPath, [
+    const args = [
       input.entrypoint,
       "run",
       "--pure",
@@ -298,10 +309,13 @@ async function runKiloProcess(input: {
       "--dir", input.cwd,
       "--model", input.model,
       "--agent", input.agent,
-      input.task,
-    ], {
+    ];
+    if (input.sessionId) args.push("--session", input.sessionId);
+    args.push(input.task);
+    const child = spawn(process.execPath, args, {
       cwd: input.cwd,
       windowsHide: true,
+      detached: detachedProcessGroup(),
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...input.baseEnvironment,
@@ -318,22 +332,24 @@ async function runKiloProcess(input: {
       const next = Buffer.concat([current, chunk]);
       return next.byteLength <= MAX_OUTPUT_BYTES ? next : next.subarray(next.byteLength - MAX_OUTPUT_BYTES);
     };
-    child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
+    const eventStream = new DevelopmentJsonlEventStream(input.onTelemetry);
+    child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); eventStream.push(chunk); });
     child.stderr?.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
+      eventStream.flush();
       clearTimeout(timer);
       input.signal?.removeEventListener("abort", abort);
       if (error) reject(error);
       else accept(parseKiloOutput(redactCredential(stdout.toString("utf8"), input.apiKey)));
     };
     const abort = () => {
-      child.kill();
+      terminateChildProcessTree(child);
       finish(new Error("Kilo Code 任务已取消。"));
     };
     const timer = setTimeout(() => {
-      child.kill();
+      terminateChildProcessTree(child);
       finish(new Error("Kilo Code 运行超过 30 分钟，已停止本轮任务。"));
     }, MAX_RUN_MS);
     input.signal?.addEventListener("abort", abort, { once: true });
@@ -375,21 +391,6 @@ export function parseKiloOutput(raw: string): KiloRunOutput {
     }
   }
   return { reply: replies.join("\n\n").trim(), sessionId, toolCalls, telemetry };
-}
-
-async function gitStatusSnapshot(workspace: string): Promise<string> {
-  return new Promise((accept) => {
-    const child = spawn("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
-      cwd: workspace,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    let stdout = "";
-    child.stdout?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => { stdout += chunk; });
-    child.once("error", () => accept(""));
-    child.once("close", (code) => accept(code === 0 ? stdout : ""));
-  });
 }
 
 function workspaceContextReceipt(workspace: string): DevelopmentContextReceipt {

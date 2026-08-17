@@ -160,6 +160,18 @@ test("DSH headless 进程可通过小丑鱼模型连接完成一次真实运行"
     assert.match(result.reply, /真实适配检查/);
     assert.equal(result.accessMode, "inspect");
     assert.deepEqual(result.changedFiles, []);
+    assert.ok(result.sessionFile);
+    const resumed = await runDshDevelopment({
+      workspacePath: workspace,
+      instruction: "继续上一次检查并确认结论。",
+      accessMode: "inspect",
+      connection: { provider: "custom", protocol: "openai-compatible", baseUrl: `http://127.0.0.1:${address.port}/v1`, model: "mock-model", apiKey: "mock-key" },
+      agentDir: join(root, "agent"),
+      sessionMode: "resume",
+      sessionFile: result.sessionFile,
+    });
+    assert.equal(resumed.sessionResumed, true);
+    assert.ok(resumed.sessionFile);
     assert.ok(requests >= 1);
   } finally {
     await new Promise<void>((accept, reject) => modelServer.close((error) => error ? reject(error) : accept()));

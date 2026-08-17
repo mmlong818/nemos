@@ -107,13 +107,28 @@ const PHASES: RoadmapPhase[] = [
       { id: "multi-agent-observability", title: "多角色质量与消耗", outcome: "协作任务显示完成率、交付检查、复核状态、模型调用、真实 Token、硬预算和费用估算。", status: "done" },
     ],
   },
+  {
+    id: "runtime-closure",
+    title: "统一执行闭环",
+    goal: "把能力目录、六个入口、扩展和开发引擎的声明变成可验证的真实执行能力。",
+    items: [
+      { id: "all-runtime-tools", title: "核心工具统一登记", outcome: "记忆、任务、技能、委派、产物和开发工具与通用工具出现在同一能力目录。", status: "done" },
+      { id: "six-surface-routing", title: "六入口工具路由", outcome: "任务、学习、能力、文件、开发和工作按同一场景规则收窄工具。", status: "done" },
+      { id: "extension-policy-routing", title: "扩展权限路由", outcome: "扩展工具进入场景和角色权限筛选，并保留调用审计。", status: "done" },
+      { id: "tool-runtime-guard", title: "工具运行保护", outcome: "直接工具有超时、取消、风险元数据和持久执行记录。", status: "done" },
+      { id: "extension-update-service", title: "扩展更新检查", outcome: "远端扩展可检查版本、识别权限变化并经确认后升级。", status: "done" },
+      { id: "development-engine-closure", title: "开发引擎完整验收", outcome: "五个引擎完成隔离、实时事件、会话恢复、取消和修改模式端到端验证。", status: "done" },
+      { id: "general-tool-packs", title: "通用工具插件包", outcome: "浏览器、沙箱分析、邮件日历文件、图像和视频能力有可安装实现与真实就绪检查。", status: "done" },
+      { id: "product-real-use-review", title: "完整真实检查", outcome: "构建、全量测试、服务接口、页面路径和安全边界全部复检。", status: "done" },
+    ],
+  },
 ];
 
 export function buildCapabilityRoadmap(): CapabilityRoadmap {
   const total = PHASES.reduce((sum, phase) => sum + phase.items.filter((item) => item.status !== "excluded").length, 0);
   const completed = PHASES.reduce((sum, phase) => sum + phase.items.filter((item) => item.status === "done").length, 0);
   return {
-    updatedAt: "2026-08-05T00:00:00.000+08:00",
+    updatedAt: "2026-08-17T00:00:00.000+08:00",
     completed,
     total,
     percent: total ? Math.round((completed / total) * 100) : 0,

@@ -29,6 +29,10 @@ import {
   type DevelopmentDependencyReceipt,
 } from "./development-dependencies.js";
 import type { DevelopmentApprovalPolicy } from "./development-approval.js";
+import type { DevelopmentTelemetryEvent } from "./pi-development.js";
+import { DevelopmentJsonlEventStream } from "./development-jsonl-stream.js";
+import { decodeDevelopmentSessionReference, encodeDevelopmentSessionReference } from "./development-session-reference.js";
+import { detachedProcessGroup, terminateChildProcessTree } from "./child-process-lifecycle.js";
 
 const MAX_OUTPUT_BYTES = 2_000_000;
 const MAX_RUN_MS = 30 * 60_000;
@@ -47,7 +51,7 @@ export function runCodexDevelopment(input: CodexDevelopmentInput): Promise<PiDev
   return runExternalDevelopment(input, {
     id: "codex",
     name: "Codex",
-    run: ({ workspace, runHome, instruction, accessMode, connection, reasoning, signal }) => runCodexProcess({
+    run: ({ workspace, runHome, instruction, accessMode, connection, reasoning, signal, onTelemetry, sessionId }) => runCodexProcess({
       entrypoint,
       workspace,
       runHome,
@@ -57,6 +61,8 @@ export function runCodexDevelopment(input: CodexDevelopmentInput): Promise<PiDev
       connection,
       reasoning,
       signal,
+      onTelemetry,
+      sessionId,
     }),
   });
 }
@@ -114,8 +120,12 @@ async function runCodexFullControl(input: CodexDevelopmentInput, entrypoint: str
   if (input.accessMode !== "develop") throw new Error("完全控制只适用于修改项目；只读检查不需要更改权限。");
   const workspace = validateDevelopmentWorkspace(input.workspacePath);
   const baseRevision = await requireCleanGitWorkspace(workspace);
+  const resume = input.sessionMode === "resume"
+    ? decodeDevelopmentSessionReference(input.sessionFile, "codex", input.agentDir)
+    : undefined;
+  if (input.sessionMode === "resume" && !resume) throw new Error("Codex 的会话引用无效或已经不可用。");
   const runId = `codex-full-${randomUUID()}`;
-  const runHome = resolve(input.agentDir, "runs", runId);
+  const runHome = resume?.runHome ?? resolve(input.agentDir, "runs", runId);
   mkdirSync(runHome, { recursive: true });
 
   const dependencyReceipts = await installCodexDependenciesIfRequested(input, workspace);
@@ -132,6 +142,8 @@ async function runCodexFullControl(input: CodexDevelopmentInput, entrypoint: str
       connection: input.connection,
       reasoning: input.reasoning === "fast" ? "fast" : input.reasoning === "deep" ? "deep" : "balanced",
       signal: input.signal,
+      onTelemetry: input.onTelemetry,
+      sessionId: resume?.sessionId,
     });
   } catch (error) {
     throw new Error(`Codex 完全控制运行未完成；项目中可能已经存在部分修改，请先查看 Git 差异。${error instanceof Error ? ` ${error.message}` : ""}`);
@@ -156,9 +168,11 @@ async function runCodexFullControl(input: CodexDevelopmentInput, entrypoint: str
     contextReceipts: [workspaceContextReceipt(workspace)],
     unverifiedRisks: developmentRisks("develop", checks),
     toolCalls: output.toolCalls,
-    sessionId: output.sessionId || runId,
-    sessionFile: output.sessionFile,
-    sessionResumed: false,
+    sessionId: output.sessionId || resume?.sessionId || runId,
+    sessionFile: output.sessionId
+      ? encodeDevelopmentSessionReference("codex", runHome, output.sessionId)
+      : input.sessionFile,
+    sessionResumed: Boolean(resume),
     loadedSkills: 0,
     loadedPromptTemplates: 0,
     telemetry: output.telemetry,
@@ -255,6 +269,8 @@ async function runCodexProcess(input: {
   connection: CompanionModelConnection;
   reasoning: DevelopmentReasoning;
   signal?: AbortSignal;
+  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
+  sessionId?: string;
 }): Promise<ExternalEngineRunOutput> {
   mkdirSync(input.runHome, { recursive: true });
   writeFileSync(resolve(input.runHome, "config.toml"), buildCodexConfig(input.connection, input.accessMode, input.approvalPolicy, input.reasoning), "utf8");
@@ -263,19 +279,20 @@ async function runCodexProcess(input: {
     let stdout: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let stderr: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let settled = false;
-    const child = spawn(process.execPath, [
+    const args = [
       input.entrypoint,
       "exec",
-      "--json",
-      "--ephemeral",
       "--sandbox", sandbox,
       "--cd", input.workspace,
       "--skip-git-repo-check",
       "--model", input.connection.model,
-      input.task,
-    ], {
+    ];
+    if (input.sessionId) args.push("resume", "--json", input.sessionId, input.task);
+    else args.push("--json", input.task);
+    const child = spawn(process.execPath, args, {
       cwd: input.workspace,
       windowsHide: true,
+      detached: detachedProcessGroup(),
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
@@ -287,18 +304,20 @@ async function runCodexProcess(input: {
       const next = Buffer.concat([current, chunk]);
       return next.byteLength <= MAX_OUTPUT_BYTES ? next : next.subarray(next.byteLength - MAX_OUTPUT_BYTES);
     };
-    child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
+    const eventStream = new DevelopmentJsonlEventStream(input.onTelemetry);
+    child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); eventStream.push(chunk); });
     child.stderr?.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
+      eventStream.flush();
       clearTimeout(timer);
       input.signal?.removeEventListener("abort", abort);
       if (error) reject(error);
       else accept(parseCodexOutput(redactCredential(stdout.toString("utf8"), input.connection.apiKey)));
     };
-    const abort = () => { child.kill(); finish(new Error("Codex 任务已取消。")); };
-    const timer = setTimeout(() => { child.kill(); finish(new Error("Codex 运行超过 30 分钟，已停止本轮任务。")); }, MAX_RUN_MS);
+    const abort = () => { terminateChildProcessTree(child); finish(new Error("Codex 任务已取消。")); };
+    const timer = setTimeout(() => { terminateChildProcessTree(child); finish(new Error("Codex 运行超过 30 分钟，已停止本轮任务。")); }, MAX_RUN_MS);
     input.signal?.addEventListener("abort", abort, { once: true });
     child.once("error", (error) => finish(new Error(`Codex 无法启动：${error.message}`)));
     child.once("close", (code) => {

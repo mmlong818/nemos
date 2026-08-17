@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -193,8 +193,8 @@ export async function runPiDevelopment(input: PiDevelopmentInput): Promise<PiDev
   const model = modelRuntime.getModel(providerId, input.connection.model);
   if (!model) throw new Error("开发能力无法使用当前模型连接。");
   const isolation = input.accessMode === "develop"
-    ? await prepareIsolatedDevelopmentWorkspace(workspace, input.agentDir)
-    : { workspace, isolated: false, cleanup: async () => undefined };
+    ? await prepareIsolatedPiWorkspace(workspace, input.agentDir)
+    : await prepareReadOnlyDevelopmentWorkspace(workspace, input.agentDir);
   const executionWorkspace = isolation.workspace;
   const proposalSession = input.accessMode === "develop" ? proposalStore.begin(workspace, baseRevision, executionWorkspace) : undefined;
   if (isolation.isolated) input.onProgress?.("已创建隔离项目副本", 8);
@@ -365,6 +365,59 @@ export async function prepareIsolatedDevelopmentWorkspace(
     };
   } catch {
     return fallback("not-a-repo");
+  }
+}
+
+async function prepareIsolatedPiWorkspace(workspace: string, agentDir: string) {
+  const gitIsolation = await prepareIsolatedDevelopmentWorkspace(workspace, agentDir);
+  if (gitIsolation.isolated) return gitIsolation;
+  return prepareReadOnlyDevelopmentWorkspace(workspace, agentDir, "writeable-snapshot");
+}
+
+/**
+ * 给只读检查和 Pi 的非 Git/有未提交修改项目创建一次性文件副本。
+ * 依赖、构建产物、Git 元数据和符号链接不会复制，避免把工作区外内容带进执行范围。
+ */
+export async function prepareReadOnlyDevelopmentWorkspace(
+  workspace: string,
+  agentDir: string,
+  prefix = "inspect-snapshot",
+): Promise<{ workspace: string; isolated: true; cleanup: () => Promise<void> }> {
+  const snapshotsRoot = resolve(agentDir, "snapshots");
+  const snapshot = resolve(snapshotsRoot, `${prefix}-${randomUUID()}`);
+  mkdirSync(snapshot, { recursive: true });
+  let files = 0;
+  let bytes = 0;
+  const copyDirectory = (source: string, target: string) => {
+    for (const entry of readdirSync(source, { withFileTypes: true })) {
+      if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
+      const sourcePath = resolve(source, entry.name);
+      const targetPath = resolve(target, entry.name);
+      const metadata = lstatSync(sourcePath);
+      if (metadata.isSymbolicLink()) continue;
+      if (metadata.isDirectory()) {
+        mkdirSync(targetPath, { recursive: true });
+        copyDirectory(sourcePath, targetPath);
+        continue;
+      }
+      if (!metadata.isFile()) continue;
+      files += 1;
+      bytes += metadata.size;
+      if (files > 50_000 || bytes > 500_000_000) throw new Error("项目副本超过安全上限，请缩小项目范围或先提交 Git 工作区。");
+      mkdirSync(dirname(targetPath), { recursive: true });
+      copyFileSync(sourcePath, targetPath);
+    }
+  };
+  try {
+    copyDirectory(workspace, snapshot);
+    return {
+      workspace: snapshot,
+      isolated: true,
+      cleanup: async () => { if (snapshot.startsWith(snapshotsRoot + sep)) rmSync(snapshot, { recursive: true, force: true }); },
+    };
+  } catch (error) {
+    rmSync(snapshot, { recursive: true, force: true });
+    throw error;
   }
 }
 

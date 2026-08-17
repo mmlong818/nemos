@@ -10,7 +10,7 @@ export const createCodexDevelopmentEnginePlugin: DevelopmentEnginePluginFactory 
     integration: "package-adapter",
     default: false,
     presentation: { tagline: "精确检查与分级控制", bestFor: "代码审查、复杂修改和需要完全控制的任务" },
-    capabilities: { sessionResume: false, structuredEvents: true, isolatedWorkspace: false, eventDelivery: "after-run", isolation: "best-effort" },
+    capabilities: { sessionResume: true, structuredEvents: true, isolatedWorkspace: false, eventDelivery: "live", isolation: "best-effort" },
   },
   readiness: codexDevelopmentEnvironment,
   run: (request) => runCodexDevelopment({

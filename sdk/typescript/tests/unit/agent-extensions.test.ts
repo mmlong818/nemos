@@ -292,8 +292,10 @@ test("discovers and loads MCP tools only after an activation cue matches", async
 
   assert.deepEqual(await registry.toolsForRequest("你好"), []);
   assert.equal(discoveries, 0);
+  assert.deepEqual(await registry.toolsForRequest("上海天气", { allow: () => false }), []);
+  assert.equal(discoveries, 1, "策略应在加载工具前拦截，但允许扩展完成候选发现");
   const tools = await registry.toolsForRequest("上海天气");
-  assert.equal(discoveries, 1);
+  assert.equal(discoveries, 1, "同一 MCP provider 应复用已发现的工具清单");
   assert.equal(tools[0]?.definition.name, "weather_lookup");
   const result = await tools[0]!.execute(
     { city: "上海" },
