@@ -16,6 +16,7 @@ export interface BundledCapabilityPluginStatus {
   description: string;
   installed: boolean;
   installable: boolean;
+  dependencySummary: string;
   reason?: string;
   manifest: AgentExtensionManifest;
 }
@@ -34,12 +35,18 @@ export function bundledCapabilityPluginCatalog(input: {
   ];
   return manifests.map((manifest) => {
     const dependencyReady = manifest.id !== "browser.playwright" || existsSync(playwrightCli);
+    const dependencySummary = manifest.id === "browser.playwright"
+      ? "依赖随应用安装的 Playwright MCP 和本机 Chrome；不需要云端账号。"
+      : manifest.id === "media.generate"
+        ? "需要用户自己的 OpenAI 兼容媒体 API 地址和密钥。"
+        : "完全在本机运行，不需要外部服务或账号。";
     return {
       id: manifest.id as BundledCapabilityPluginId,
       name: manifest.name,
       description: manifest.description,
       installed: installed.has(manifest.id),
       installable: dependencyReady,
+      dependencySummary,
       reason: dependencyReady ? undefined : "缺少官方 @playwright/mcp 依赖",
       manifest,
     };
