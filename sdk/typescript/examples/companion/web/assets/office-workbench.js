@@ -79,7 +79,7 @@ function clampFilePanelWidth(value) {
 
 function setFilePanelWidth(value, persist = false) {
   const width = clampFilePanelWidth(value);
-  const layout = document.querySelector(".office-layout");
+  const layout = document.querySelector(".office-main");
   const separator = document.querySelector("#filePanelResizer");
   layout?.style.setProperty("--office-file-panel-width", `${width}px`);
   separator?.setAttribute("aria-valuenow", String(width));
@@ -88,7 +88,7 @@ function setFilePanelWidth(value, persist = false) {
 }
 
 function bindFilePanelResize() {
-  const layout = document.querySelector(".office-layout");
+  const layout = document.querySelector(".office-main");
   const separator = document.querySelector("#filePanelResizer");
   if (!layout || !separator) return;
   setFilePanelWidth(localStorage.getItem(FILE_PANEL_WIDTH_KEY));
@@ -721,7 +721,7 @@ function textToBlocks(text, kind) {
 function renderRecentFiles() {
   const root = document.querySelector("#recentFiles");
   if (!state.documents.length) {
-    root.innerHTML = '<div class="empty-recent">打开过的文件会出现在这里，关闭页面后也能继续。</div>';
+    root.innerHTML = "";
     return;
   }
   root.innerHTML = state.documents.map((document) => `
@@ -760,7 +760,7 @@ function renderTrashFiles() {
   const root = document.querySelector("#trashFiles");
   document.querySelector("#trashCount").textContent = String(state.trash.length);
   if (!state.trash.length) {
-    root.innerHTML = '<div class="trash-empty">垃圾桶是空的</div>';
+    root.innerHTML = `<div class="trash-empty"><i class="trash-empty-icon" aria-hidden="true">${iconSvg("trash")}</i><p>垃圾桶是空的</p></div>`;
     return;
   }
   root.innerHTML = state.trash.map((document) => `

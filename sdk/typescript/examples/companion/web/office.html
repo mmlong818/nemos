@@ -19,7 +19,7 @@
 <body data-page="office">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
+      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt="" width="36" height="36"></a>
       <nav class="rail-nav">
         <a href="/" title="任务" aria-label="任务" data-app-icon="message"><span aria-hidden="true"></span><small>任务</small></a>
         <a href="/capabilities" title="能力" aria-label="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></a>
@@ -31,16 +31,8 @@
     </aside>
 
     <main class="office-main">
-      <header class="office-topbar">
-        <div class="office-title">
-          <button class="topbar-icon" id="toggleFiles" type="button" aria-label="显示文件列表" data-office-icon="panel"></button>
-          <span>办公文件</span>
-        </div>
-        <div class="topbar-actions">
-          <div class="save-state" id="saveState" role="status" aria-live="polite">本机自动保存</div>
-          <input id="officeFileInput" type="file" hidden accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown">
-        </div>
-      </header>
+      <input id="officeFileInput" type="file" hidden accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown">
+      <button class="topbar-icon office-files-toggle" id="toggleFiles" type="button" aria-label="显示文件列表" data-office-icon="panel"></button>
 
       <div class="operation-banner" id="operationBanner" role="status" aria-live="polite" data-state="busy" hidden>
         <span class="operation-dot" aria-hidden="true"></span>
@@ -48,29 +40,24 @@
         <button id="operationRetry" type="button" hidden>重试</button>
       </div>
 
-      <div class="office-layout">
-        <aside class="file-panel" id="filePanel" aria-label="最近文件">
+      <aside class="file-panel" id="filePanel" aria-label="最近文件">
           <div class="panel-heading file-panel-heading">
             <button class="panel-close" id="closeFiles" type="button" aria-label="关闭文件列表">×</button>
           </div>
-          <div class="file-panel-actions app-create-search">
-            <button class="toolbar-button" id="newDocument" type="button" data-office-icon="plus">新建文件</button>
-            <button class="toolbar-button primary" type="button" data-open-office-file data-office-icon="upload">打开文件</button>
-            <button class="app-search-trigger" id="fileSearchToggle" type="button" title="搜索文件" aria-label="搜索文件" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span></button>
+          <div class="file-panel-actions app-create-search is-search-only">
+            <button class="app-search-trigger" id="fileSearchToggle" type="button" title="搜索文件" aria-label="搜索文件" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span><span class="app-search-label">搜索文件</span></button>
           </div>
           <div class="recent-files" id="recentFiles"></div>
+          <div class="file-panel-footer-actions"><button class="toolbar-button" id="newDocument" type="button" data-office-icon="plus">新建文件</button><button class="toolbar-button primary" type="button" data-open-office-file data-office-icon="upload">打开文件</button></div>
           <details class="trash-panel" id="trashPanel">
             <summary><span class="trash-label"><i data-office-icon="trash" aria-hidden="true"></i>垃圾桶</span><small id="trashCount">0</small></summary>
             <div class="trash-files" id="trashFiles"></div>
           </details>
-          <div class="local-note">
-            <span data-office-icon="shield" aria-hidden="true"></span>
-            <p><strong>内容留在本机</strong><small>TXT 和 Markdown 可以写回原文件；Office 文件生成可编辑副本；PDF 转为 Markdown 编辑，原 PDF 保持不变。</small></p>
-          </div>
         </aside>
         <div class="file-panel-resizer" id="filePanelResizer" role="separator" aria-label="调整文件栏宽度" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="440" aria-valuenow="252" tabindex="0"></div>
         <button class="file-panel-backdrop" id="filePanelBackdrop" type="button" aria-label="关闭文件列表" tabindex="-1"></button>
 
+      <div class="office-layout">
         <section class="editor-pane" aria-label="文件编辑区">
           <div class="editor-empty" id="editorEmpty">
             <div class="empty-mark" data-office-icon="file" aria-hidden="true"></div>
@@ -106,6 +93,7 @@
                 <button id="editViewTab" type="button" role="tab" aria-selected="false" data-document-view="edit">提取文字</button>
                 <button type="button" role="tab" aria-selected="false" data-document-view="result" id="resultViewTab" hidden>处理结果</button>
               </div>
+              <div class="save-state" id="saveState" role="status" aria-live="polite">本机自动保存</div>
               <p class="capability-note" id="capabilityNote" hidden></p>
               <span id="sourceState">原文件保留在本机</span>
             </div>
@@ -142,7 +130,7 @@
           </header>
           <section class="assistant-card" id="assistantCard">
             <div class="assistant-heading">
-              <img src="/assets/brand/clownfish-mark.svg" alt="">
+              <img src="/assets/brand/clownfish-mark.svg" alt="" width="34" height="34">
               <div><p class="section-label">交给小丑鱼</p><h2>下一步怎么处理？</h2></div>
             </div>
             <p class="assistant-copy">小丑鱼会带上当前工作副本，并让你确认结果形式后开始。</p>

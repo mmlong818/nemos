@@ -44,7 +44,7 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
   assert.match(pages[0], /<aside class="rail" aria-label="主导航">/);
   assert.match(navigation, /@media \(min-width: 721px\)/);
   assert.match(navigation, /\.rail nav small,[\s\S]+display: block/);
-  assert.match(navigation, /--app-rail-reserved: 100px/);
+  assert.match(navigation, /--app-rail-reserved: calc\(var\(--app-rail-left\) \+ var\(--app-rail-shell\) \+ 14px\)/);
   assert.match(navigation, /#sidebar \{ width: 352px;/);
   assert.match(navigation, /#sessionPane \{[\s\S]+width: 252px/);
   assert.match(navigation, /--app-nav-width: 60px/);
@@ -89,7 +89,7 @@ test("新对话直接创建并在空白页选择工作方式", () => {
   assert.match(page, /id="quickGroup"[^>]*>[\s\S]*新对话/);
   assert.match(page, /<a class="brand" href="\/" id="railUserAvatar"/);
   assert.match(page, /id="sidebarSearchToggle"[^>]*aria-expanded="false"/);
-  assert.match(page, /id="quickGroup"[\s\S]*id="sidebarSearchToggle"/);
+  assert.match(page, /id="sidebarSearchToggle"[\s\S]*id="quickGroup"/);
   assert.match(page, /id="conversationSearchDialog"[^>]*aria-labelledby="conversationSearchTitle"/);
   assert.match(page, /AppSearchOverlay\.bind\(\{[\s\S]*dialog: "#conversationSearchDialog"/);
   assert.match(page, /data-work-mode=/);

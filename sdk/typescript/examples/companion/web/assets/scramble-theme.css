@@ -20,7 +20,7 @@
   --mac-gray: #8E8E93;
 
   /* 中性色（macOS 风格） */
-  --mac-ink: #1D1D1F;
+  --mac-ink: #211f1c;
   --mac-muted: #6E6E73;
   --mac-bg: #F5F5F7;
 
@@ -28,10 +28,9 @@
   --scramble-hairline: rgba(255, 255, 255, 0.72);
   --scramble-hairline-soft: rgba(255, 255, 255, 0.44);
 
-  /* 字体：macOS 系统字体栈 */
-  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro SC",
-    "PingFang SC", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei",
-    "Noto Sans CJK SC", sans-serif;
+  /* 字体：统一引用 clownfish-theme 的 --cf-font-family；
+     development.html 不加载 clownfish-theme，保留字面量回退 */
+  --font-ui: var(--cf-font-family, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
 
   /* 页面级强调色（默认 = 任务/工作 系统蓝） */
   --page-accent: #007AFF;
@@ -39,10 +38,8 @@
   --page-accent-soft: rgba(0, 122, 255, 0.10);
   --page-accent-grad: linear-gradient(135deg, #007AFF, #30B0C7);
 
-  /* 覆盖小丑鱼原有变量 */
-  --cf-coral: var(--page-accent);
-  --cf-coral-hover: var(--page-accent-dark);
-  --cf-coral-soft: var(--page-accent-soft);
+  /* 页面个性色只走 --page-accent 系列；--cf-coral 保持品牌珊瑚红，不再重定向。
+     （旧版在此把 --cf-coral 重定向为 --page-accent，导致品牌色在 6 个页面全部失效，已移除。） */
   --cf-sea: var(--mac-teal);
   --cf-sea-soft: rgba(48, 176, 199, 0.12);
 
@@ -106,6 +103,9 @@ summary:focus-visible {
 .app-shell > main,
 .topbar,
 #topbar,
+.office-topbar,
+.coding-topbar,
+.task-workbench-topbar,
 #composer,
 .surface,
 .card,
@@ -118,6 +118,7 @@ summary:focus-visible {
 .settings-nav,
 .empty-state,
 .coding-sidebar,
+.capability-panel,
 .file-panel,
 #sessionPane,
 .document-header,
@@ -168,7 +169,7 @@ summary:focus-visible {
   box-shadow: 0 3px 10px rgba(0, 0, 0, .16), 0 0 0 1px rgba(0, 0, 0, .05) !important;
 }
 
-/* macOS 侧栏导航：单色 SF 风格图标，无彩色色块 */
+/* macOS 侧栏导航：SF 风格 glyph 图标，Golden Gate 彩色（见下方 per-app 配色） */
 .rail nav > a,
 .rail nav > button,
 .rail-secondary,
@@ -187,7 +188,7 @@ summary:focus-visible {
 .rail-settings:hover,
 #settingsbtn:hover,
 #wechatRail .rail-main-nav > button:hover {
-  color: #1d1d1f !important;
+  color: #211f1c !important;
   border-color: transparent !important;
   background: rgba(0, 0, 0, .045) !important;
   box-shadow: none !important;
@@ -200,7 +201,7 @@ summary:focus-visible {
 .rail-settings.is-current,
 #settingsbtn.is-current,
 #wechatRail .rail-main-nav > button.active {
-  color: #1d1d1f !important;
+  color: #211f1c !important;
   border-color: transparent !important;
   background: rgba(0, 0, 0, .07) !important;
   box-shadow: none !important;
@@ -216,7 +217,7 @@ summary:focus-visible {
   display: none !important;
 }
 
-/* 图标槽位：无色块单色 glyph（macOS Finder 侧栏形式，选中不出现双层方框） */
+/* 图标槽位：无色块 glyph（基础系统蓝，各入口彩色由下方 per-app 规则覆盖） */
 .rail nav > a > span,
 .rail nav > button > span,
 .rail-secondary > span,
@@ -254,12 +255,32 @@ summary:focus-visible {
   transform: none !important;
 }
 
+/* Golden Gate 彩色侧栏图标：每个入口固定 macOS 系统色，选中态保持同色 */
+.rail nav [data-app-icon="message"] > span,
+#wechatRail [data-app-icon="message"] > span,
+#wechatRail [data-app-icon="message"] > .ui-icon-slot { color: var(--mac-blue) !important; }
+.rail nav [data-app-icon="boxes"] > span,
+#wechatRail [data-app-icon="boxes"] > span,
+#wechatRail [data-app-icon="boxes"] > .ui-icon-slot { color: var(--mac-pink) !important; }
+.rail nav [data-app-icon="file"] > span,
+#wechatRail [data-app-icon="file"] > span,
+#wechatRail [data-app-icon="file"] > .ui-icon-slot { color: var(--mac-orange) !important; }
+.rail nav [data-app-icon="code"] > span,
+#wechatRail [data-app-icon="code"] > span,
+#wechatRail [data-app-icon="code"] > .ui-icon-slot { color: var(--mac-indigo) !important; }
+.rail nav [data-app-icon="work"] > span,
+#wechatRail [data-app-icon="work"] > span,
+#wechatRail [data-app-icon="work"] > .ui-icon-slot { color: var(--mac-green) !important; }
+.rail [data-app-icon="settings"] > span,
+#wechatRail [data-app-icon="settings"] > span,
+#wechatRail [data-app-icon="settings"] > .ui-icon-slot { color: var(--mac-gray) !important; }
+
 .rail nav > a.is-current > small,
 .rail nav > button.is-current > small,
 .rail-secondary.is-current > small,
 .rail-settings.is-current > small,
 #settingsbtn.is-current > small {
-  color: #1d1d1f !important;
+  color: #211f1c !important;
   font-weight: 700 !important;
 }
 
@@ -583,21 +604,22 @@ body[data-page="home"] #main {
   /* 规则：界面文字最小 12px（网页可读性下限），不再新增 11px 及以下字号 */
   --fs-caption: 12px;
   /* 字色阶梯：主文 / 次文 / 弱提示 */
-  --text-1: #1d1d1f;
+  --text-1: #211f1c;
   --text-2: #6e6e73;
   --text-3: #aeaeb2;
 }
 
-/* 页面大标题与导语 */
+/* 页面大标题与导语：衬线编辑排版（杂志编辑部方向） */
 .page-head h1,
 .page h1 {
   margin: 0 !important;
   max-width: none !important;
-  font-family: var(--font-ui) !important;
-  font-size: var(--fs-large-title) !important;
+  font-family: var(--cf-font-display, Georgia, "Songti SC", "STSong", serif) !important;
+  font-size: clamp(30px, 3.4vw, 42px) !important;
   font-weight: 700 !important;
-  line-height: 1.28 !important;
+  line-height: 1.15 !important;
   letter-spacing: -.02em !important;
+  text-wrap: balance;
   color: var(--text-1) !important;
 }
 
@@ -656,10 +678,12 @@ body[data-page="home"] #main {
 }
 
 .task-workbench-stage .role-intro-head h2 {
-  font-family: var(--font-ui) !important;
-  font-size: var(--fs-title-1) !important;
+  font-family: var(--cf-font-display, Georgia, "Songti SC", "STSong", serif) !important;
+  font-size: clamp(30px, 3.4vw, 42px) !important;
   font-weight: 700 !important;
-  letter-spacing: -.01em !important;
+  line-height: 1.15;
+  letter-spacing: -.02em !important;
+  text-wrap: balance;
   color: var(--text-1) !important;
 }
 

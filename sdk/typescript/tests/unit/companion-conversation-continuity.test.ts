@@ -12,8 +12,8 @@ test("每个对话独立保存未发送草稿并在切换后恢复", () => {
   assert.match(chatHtml, /clownfish-conversation-drafts-v20260813b/);
   assert.match(chatHtml, /function saveConversationDraft/);
   assert.match(chatHtml, /function restoreConversationDraft/);
-  assert.match(chatHtml, /saveConversationDraft\(\);[\s\S]{0,100}tree\.activeId = id/);
-  assert.match(chatHtml, /#txt"\)\.addEventListener\("input", saveConversationDraft\)/);
+  assert.match(chatHtml, /flushConversationDraft\(\);[\s\S]{0,100}tree\.activeId = id/);
+  assert.match(chatHtml, /#txt"\)\.addEventListener\("input", scheduleSaveConversationDraft\)/);
 });
 
 test("历史搜索覆盖全部对话分支并跳回准确消息", () => {

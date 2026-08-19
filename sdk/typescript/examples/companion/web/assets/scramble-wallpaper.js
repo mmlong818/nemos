@@ -11,11 +11,11 @@
   var DATABASE_NAME = 'clownfish-wallpaper';
   var STORE_NAME = 'files';
   var FILE_KEY = 'active';
-  var DEFAULT_WALLPAPER = '/assets/wallpapers/wallpaper-anime-teal.png';
+  var DEFAULT_WALLPAPER = '/assets/wallpapers/wallpaper-anime-teal.jpg';
   var activeObjectUrl = '';
 
   var WALLPAPERS = [
-    { id: 'anime-teal', name: '青绿伙伴', url: '/assets/wallpapers/wallpaper-anime-teal.png' },
+    { id: 'anime-teal', name: '青绿伙伴', url: '/assets/wallpapers/wallpaper-anime-teal.jpg' },
     { id: 'ventura',  name: '湖蓝晨光', url: '/assets/wallpapers/wallpaper-ventura.svg' },
     { id: 'sonoma',   name: '索诺玛晚霞', url: '/assets/wallpapers/wallpaper-sonoma.svg' },
     { id: 'monterey', name: '蒙特雷薄暮', url: '/assets/wallpapers/wallpaper-monterey.svg' },

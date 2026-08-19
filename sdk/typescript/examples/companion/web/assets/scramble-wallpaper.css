@@ -9,7 +9,10 @@
 
 /* 壁纸铺在根元素背景上：画布最先绘制，永不被页面背景遮住 */
 html {
-  background: var(--wallpaper-url) center / cover no-repeat fixed !important;
+  /* 壁纸图解码完成前先铺同色系渐变底，避免新文档首帧白闪 */
+  background:
+    var(--wallpaper-url) center / cover no-repeat fixed,
+    linear-gradient(135deg, #8ecfcd 0%, #b8e2dd 52%, #f3dbe6 100%) fixed !important;
 }
 
 /* 遮罩：轻度提亮，壁纸保持可见；可读性由玻璃面板承担 */
@@ -49,8 +52,8 @@ body > #main {
 
 .task-workbench-sidebar {
   background: rgba(245, 245, 247, 0.72) !important;
-  backdrop-filter: blur(22px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(140%) !important;
+  backdrop-filter: blur(26px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(160%) !important;
 }
 
 .task-workbench-topbar,

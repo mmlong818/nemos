@@ -4,11 +4,11 @@
 
 main.task-workbench.work-shell {
   grid-column: 2;
-  display: flex !important;
+  display: grid !important;
+  grid-template-columns: var(--task-shell-sidebar, 252px) minmax(0, 1fr) !important;
   min-width: 0;
-  min-height: 100vh;
+  min-height: calc(100vh - (var(--cf-workspace-gap, 14px) * 2));
   padding-bottom: 0 !important;
-  grid-template-columns: none !important;
   gap: 0 !important;
   align-items: stretch !important;
 }
@@ -94,7 +94,8 @@ main.task-workbench.work-shell {
 /* ---------- 移动端：侧栏视图变横向滚动条 ---------- */
 @media (max-width: 800px) {
   main.task-workbench.work-shell {
-    flex-direction: column !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    min-height: 100vh;
   }
 
   .work-sidebar {

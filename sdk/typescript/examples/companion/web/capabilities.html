@@ -16,7 +16,7 @@
 <body data-page="capabilities">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
+      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt="" width="36" height="36"></a>
       <nav class="rail-nav">
         <a href="/" title="任务" aria-label="任务" data-app-icon="message"><span aria-hidden="true"></span><small>任务</small></a>
         <button class="is-current" type="button" data-view-target="start" title="能力" aria-label="能力" aria-current="page" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></button>
@@ -28,10 +28,6 @@
     </aside>
 
     <main>
-      <header class="topbar">
-        <span class="wordmark" id="capabilityViewTitle">能力</span>
-      </header>
-
       <div class="capability-layout">
         <aside class="capability-panel" aria-label="能力对话记录">
           <section class="capability-conversations" aria-labelledby="capabilityConversationTitle">
@@ -43,9 +39,12 @@
             <div class="capability-draft-list" id="capabilityDraftList"></div>
           </section>
           <section class="capability-archive" id="capabilityArchiveSection" aria-labelledby="capabilityArchiveTitle">
-            <div class="capability-drafts-heading"><span id="capabilityArchiveTitle">归档</span><span id="capabilityArchiveCount" hidden>0</span></div>
-            <p class="capability-archive-empty" id="capabilityArchiveEmpty">还没有归档</p>
-            <div class="capability-archive-list" id="capabilityArchiveList"></div>
+            <button class="capability-archive-toggle" id="capabilityArchiveToggle" type="button" aria-expanded="false" aria-controls="capabilityArchiveList">
+              <span class="capability-archive-icon" data-app-icon="boxes" aria-hidden="true"><span></span></span>
+              <span id="capabilityArchiveTitle">归档</span>
+              <span class="capability-archive-count" id="capabilityArchiveCount" hidden>0</span>
+            </button>
+            <div class="capability-archive-list" id="capabilityArchiveList" hidden></div>
           </section>
         </aside>
 
