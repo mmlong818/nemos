@@ -6,29 +6,6 @@
 <link rel="icon" href="/assets/brand/clownfish-mark.svg" />
 <title>小丑鱼</title>
 <style>
-  :root {
-    --ink:#2a1f4a;
-    --ink-2:#453266;
-    --muted:#8a7ca8;
-    --faint:#b0a4c8;
-    --paper:#fbf7ff;
-    --paper-2:#f5f1ff;
-    --paper-3:#eadfff;
-    --line:rgba(139,92,246,.16);
-    --side:#221833;
-    --side-2:#312348;
-    --accent:#8b5cf6;
-    --accent-2:#ec4899;
-    --rose:#a43f72;
-    --gold:#f5a4c7;
-    --cyan:#06b6d4;
-    --grad:linear-gradient(135deg,#8b5cf6,#ec4899);
-    --radius:14px;
-    --shadow:0 18px 48px rgba(139,92,246,.18);
-    --shadow-sm:0 8px 22px rgba(139,92,246,.1);
-    --ring:0 0 0 1px rgba(139,92,246,.12);
-    --client-top-safe:8px;
-  }
   * { box-sizing:border-box; margin:0; padding:0; }
   html { color-scheme:light; scrollbar-gutter:stable; }
   body {
@@ -38,23 +15,6 @@
     padding-top:var(--client-top-safe);
     display:flex;
     overflow:hidden;
-    background:
-      radial-gradient(circle at 16% 0%,rgba(139,92,246,.18),transparent 34%),
-      radial-gradient(circle at 80% 18%,rgba(236,72,153,.16),transparent 31%),
-      radial-gradient(circle at 48% 100%,rgba(6,182,212,.13),transparent 38%),
-      linear-gradient(140deg,#f5f1ff 0%,#fce8f5 50%,#e8f4ff 100%);
-  }
-  body::before {
-    content:"";
-    position:fixed;
-    inset:0;
-    pointer-events:none;
-    opacity:.08;
-    z-index:100;
-    background-image:
-      repeating-linear-gradient(0deg,rgba(42,31,74,.2) 0 1px,transparent 1px 3px),
-      radial-gradient(circle at 30% 40%,rgba(255,255,255,.5),transparent 1px);
-    mix-blend-mode:multiply;
   }
   ::selection { background:rgba(139,92,246,.22); }
   ::-webkit-scrollbar { width:8px; height:8px; }
@@ -77,16 +37,6 @@
     box-shadow:18px 0 44px rgba(42,31,74,.25);
     position:relative;
   }
-  #sidebar::after {
-    content:"";
-    position:absolute;
-    inset:0;
-    pointer-events:none;
-    background:
-      linear-gradient(90deg,transparent,rgba(255,255,255,.06) 48%,transparent 49%) 0 0/42px 42px,
-      linear-gradient(0deg,transparent,rgba(255,255,255,.04) 48%,transparent 49%) 0 0/42px 42px;
-    opacity:.28;
-  }
   #brand {
     position:relative;
     z-index:1;
@@ -97,16 +47,6 @@
     line-height:1.05;
     letter-spacing:-.02em;
     color:#f8ffff;
-  }
-  #brand::before {
-    content:"";
-    display:block;
-    width:36px;
-    height:7px;
-    margin-bottom:14px;
-    background:linear-gradient(90deg,var(--accent),var(--cyan),var(--accent-2));
-    border-radius:999px;
-    box-shadow:0 0 28px rgba(236,72,153,.34);
   }
   #brand small {
     display:block;
@@ -141,18 +81,6 @@
     background:rgba(248,251,251,.055);
     transition:transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
   }
-  .contact::before {
-    content:"";
-    position:absolute;
-    left:10px;
-    top:14px;
-    bottom:14px;
-    width:2px;
-    border-radius:99px;
-    background:linear-gradient(var(--cyan),var(--accent));
-    opacity:0;
-    transition:opacity .18s ease;
-  }
   .contact:hover {
     transform:translateX(3px);
     background:rgba(248,251,251,.1);
@@ -164,7 +92,6 @@
     border-color:rgba(255,255,255,.48);
     box-shadow:0 18px 44px rgba(7,18,24,.22);
   }
-  .contact.active::before { opacity:1; }
   .avatar {
     width:46px;
     height:46px;
@@ -421,6 +348,8 @@
     gap:9px;
     align-items:flex-start;
     animation:rise .22s cubic-bezier(.2,.8,.2,1);
+    content-visibility:auto;
+    contain-intrinsic-size:auto 72px;
   }
   @keyframes rise { from{ opacity:0; transform:translateY(8px) scale(.99); } to{ opacity:1; transform:none; } }
   .row.me { align-self:flex-end; flex-direction:row-reverse; }
@@ -1718,28 +1647,8 @@
   }
 
   /* WeChat-style shell override */
-  :root {
-    --ink:#1f2329;
-    --ink-2:#3f444d;
-    --muted:#8b9099;
-    --faint:#b8bcc4;
-    --paper:#f5f5f5;
-    --paper-2:#ededed;
-    --paper-3:#ffffff;
-    --line:#e5e6eb;
-    --side:#d7dce8;
-    --side-2:#f7f7f7;
-    --accent:#07c160;
-    --accent-2:#07c160;
-    --grad:#07c160;
-    --shadow:none;
-    --shadow-sm:none;
-    --ring:0 0 0 1px rgba(7,193,96,.22);
-  }
   body {
     padding-top:0;
-    color:#1f2329;
-    background:#f5f5f5;
   }
   body::before { display:none; }
   #sidebar {
@@ -1790,8 +1699,6 @@
     place-items:center;
     transition:background .12s ease,color .12s ease;
   }
-  .rail-icon:hover { background:rgba(255,255,255,.42); color:#1f2329; }
-  .rail-icon.active { color:#07c160; }
   .rail-spacer { flex:1; }
   #settingsbtn {
     position:static;
@@ -2214,6 +2121,10 @@
   .role-intro-head { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
   .role-intro-head .avatar { width:42px; height:42px; flex:0 0 42px; border-radius:11px; overflow:hidden; display:grid; place-items:center; }
   .role-intro-head h2 { margin:0; color:#25231f; font-size:18px; font-weight:760; }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-composer { transition:transform var(--cf-default,200ms) var(--cf-spring,cubic-bezier(.34,1.4,.44,1)), box-shadow var(--cf-default,200ms) ease, border-color var(--cf-fast,120ms) ease; }
+    .hero-composer:hover, .hero-composer:focus-within { transform:translateY(-2px); }
+  }
   .role-intro-card > p { margin:0 0 12px; color:#66625b; font-size:13px; line-height:1.65; }
   .role-intro-card ul { margin:0; padding:0; list-style:none; display:grid; gap:8px; }
   .role-intro-card li { position:relative; padding-left:16px; color:#35322d; font-size:13px; line-height:1.55; }
@@ -2225,23 +2136,6 @@
     color:#636a73;
   }
   /* WeChat structure with Clownfish desktop-tool palette */
-  :root {
-    --ink:#211c2f;
-    --ink-2:#4b435f;
-    --muted:#8a819c;
-    --faint:#b8adca;
-    --paper:#f7f3fb;
-    --paper-2:#efe8f6;
-    --paper-3:#fff;
-    --line:#e3dbea;
-    --side:#d8d0ea;
-    --side-2:#f5f0f8;
-    --accent:#9b5cf6;
-    --accent-2:#e447a2;
-    --grad:linear-gradient(135deg,#9b5cf6 0%,#e447a2 86%);
-    --ring:0 0 0 2px rgba(155,92,246,.18);
-  }
-  body { background:#f7f3fb; }
   #sidebar {
     width:255px;
     background:#f5f0f8;
@@ -2254,11 +2148,6 @@
     background:linear-gradient(180deg,#ded5ef 0%,#cfd9ec 64%,#c9d4e8 100%);
     border-right:1px solid rgba(84,64,116,.12);
   }
-  .rail-avatar { border-radius:8px; box-shadow:0 4px 12px rgba(65,48,93,.16); }
-  .rail-icon { color:#5f6271; border-radius:7px; }
-  .rail-icon:hover { background:rgba(255,255,255,.44); color:#2b243b; }
-  .rail-icon.active { color:#a13df0; background:rgba(255,255,255,.36); }
-  #settingsbtn { color:#5f6271; }
   #sessionPane { width:195px; background:#f5f0f8; }
   #brand { display:none; }
   #wechatSearch { padding:18px 10px 10px; }
@@ -2270,19 +2159,12 @@
     box-shadow:inset 0 0 0 1px rgba(84,64,116,.04);
   }
   #wechatSearch > button { color:#5b5368; }
-  #wechatSearch > button:hover { background:#ece5f4; color:#9b5cf6; }
   #contacts { background:#f5f0f8; }
   .contact {
     position:relative;
     min-height:64px;
     padding:8px 9px 8px 12px;
     border-bottom:1px solid rgba(84,64,116,.08);
-  }
-  .contact:hover { background:#eee7f4; }
-  .contact.active {
-    color:#fff;
-    background:var(--grad);
-    border-color:transparent;
   }
   .contact.active .contact-time,
   .contact.active .meta span { color:rgba(255,255,255,.76); opacity:1; }
@@ -2438,31 +2320,32 @@
   }
   /* Clownfish unified product system: warm paper, berry accent, compact work surfaces. */
   :root {
-    --ink:#20221f;
+    --ink:#211f1c;
     --ink-2:#464942;
     --muted:#686b64;
     --faint:#96998f;
-    --paper:#f4f0e8;
+    --paper:#f4f1eb;
     --paper-2:#ebe6dc;
     --paper-3:#fffcf7;
     --line:#ddd7cd;
     --side:#ddd6cb;
     --side-2:#f1ece3;
-    --accent:#b33f72;
+    --accent:#ad315f;
     --accent-2:#8f2f59;
-    --grad:#b33f72;
+    --grad:#ad315f;
     --shadow:0 18px 48px rgba(48,39,42,.14);
     --shadow-sm:0 8px 24px rgba(48,39,42,.09);
-    --ring:0 0 0 3px rgba(179,63,114,.15);
+    --ring:0 0 0 3px rgba(173,49,95,.15);
+    --client-top-safe:8px;
   }
   * { touch-action:manipulation; }
-  body, #main, #msgs { background:#f4f0e8; color:var(--ink); }
+  body, #main, #msgs { background:#f4f1eb; color:var(--ink); }
   #sidebar { background:#f1ece3; border-right-color:#d8d1c6; }
   #wechatRail { background:#ddd6cb; border-right-color:#cfc7bb; }
   #sessionPane, #contacts { background:#f1ece3; }
-  .rail-avatar { background:#b33f72; box-shadow:none; }
+  .rail-avatar { background:#ad315f; box-shadow:none; }
   .rail-icon, #settingsbtn { color:#676960; }
-  .rail-icon:hover, #settingsbtn:hover { color:#20221f; background:rgba(255,252,247,.72); }
+  .rail-icon:hover, #settingsbtn:hover { color:#211f1c; background:rgba(255,252,247,.72); }
   .rail-icon.active { color:#8f2f59; background:#f8f1f3; }
   .rail-avatar, .rail-icon, #settingsbtn { border-radius:8px; }
   #wechatSearch input { background:#fffcf7; color:#686b64; box-shadow:inset 0 0 0 1px #ded7cd; }
@@ -2470,15 +2353,15 @@
   .contact { border-bottom-color:#ded7cd; }
   .contact { width:100%; color:inherit; font:inherit; text-align:left; }
   .contact:hover { background:#e8e1d7; }
-  .contact.active { color:#20221f; background:#ead3dd; border-color:transparent; }
+  .contact.active { color:#211f1c; background:#ead3dd; border-color:transparent; }
   .contact.active .contact-time, .contact.active .meta span { color:#735a65; }
   .contact-search-empty { padding:28px 14px; color:#777970; font-size:12px; line-height:1.6; text-align:center; }
   #topbar, #composer { background:#fffcf7; border-color:#ddd7cd; }
-  #header .hname, #txt, .row.other .bub { color:#20221f; }
+  #header .hname, #txt, .row.other .bub { color:#211f1c; }
   #topActions button, .top-icon, #vbtn, #imgbtn, #shotbtn, #filebtn { color:#5d6059; }
   #topActions button:hover, .top-icon:hover, #vbtn:hover, #imgbtn:hover, #shotbtn:hover, #filebtn:hover { color:#8f2f59; background:#f3e9ed; }
   .row.other .bub { background:#fffcf7; border:1px solid #e2dbd0; }
-  .row.me .bub, .msg-avatar.me-avatar { color:#fff; background:#b33f72; }
+  .row.me .bub, .msg-avatar.me-avatar { color:#fff; background:#ad315f; }
   @media (min-width:721px) {
     .row.other:not(.expert-longform-row) {
       width:calc(80% + 44px);
@@ -2565,14 +2448,14 @@
   .expert-longform-section p:last-child { margin-bottom:0; }
   .expert-longform-section ul, .expert-longform-section ol { margin:8px 0 14px 22px; padding:0; }
   .expert-longform-section li { margin:4px 0; }
-  .expert-longform-section blockquote { margin:12px 0; padding:8px 12px; border-left:3px solid #b33f72; background:#f8f1f3; color:#555851; }
+  .expert-longform-section blockquote { margin:12px 0; padding:8px 12px; border-left:3px solid #ad315f; background:#f8f1f3; color:#555851; }
   .expert-longform-section pre { max-width:100%; overflow:auto; padding:12px; border-radius:5px; background:#f2eee7; font-size:12px; }
   .expert-longform-section table { width:100%; margin:12px 0; border-collapse:collapse; font-size:13px; }
   .expert-longform-section th, .expert-longform-section td { padding:8px; border:1px solid #ded7cd; text-align:left; vertical-align:top; }
-  .expert-longform-section th { background:#f4f0e8; }
+  .expert-longform-section th { background:#f4f1eb; }
   #txtWrap { background:#fffefa; border-color:#d8d1c6; }
-  #txtWrap:focus-within { border-color:#b33f72; box-shadow:var(--ring); }
-  #send, .btn-primary, .primary { color:#fff; background:#b33f72; box-shadow:none; }
+  #txtWrap:focus-within { border-color:#ad315f; box-shadow:var(--ring); }
+  #send, .btn-primary, .primary { color:#fff; background:#ad315f; box-shadow:none; }
   #send:hover, .btn-primary:hover, .primary:hover { background:#8f2f59; transform:none; }
   #composerTool, #composerCapability {
     min-width:78px;
@@ -2610,23 +2493,23 @@
   .chat-capability-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:7px; color:#8f2f59; background:#f1dde5; }
   .chat-capability-icon .ui-icon { width:19px; height:19px; }
   .chat-capability-copy { min-width:0; display:grid; gap:3px; }
-  .chat-capability-copy strong { overflow:hidden; color:#20221f; font-size:12.5px; font-weight:650; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-capability-copy strong { overflow:hidden; color:#211f1c; font-size:12.5px; font-weight:650; text-overflow:ellipsis; white-space:nowrap; }
   .chat-capability-copy small { color:#5d6059; font-size:11px; letter-spacing:.015em; }
   #chatCapabilityOpen { min-height:34px; padding:0 11px; border:1px solid #d5c5cb; border-radius:6px; color:#8f2f59; background:#fffefa; cursor:pointer; font-size:11.5px; font-weight:600; letter-spacing:.015em; }
   #chatCapabilityOpen:hover { border-color:#c999ad; background:#faf1f4; }
   button:disabled { cursor:not-allowed; opacity:.48; }
   button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
-    outline:2px solid rgba(179,63,114,.72);
+    outline:2px solid rgba(173,49,95,.72);
     outline-offset:2px;
   }
-  .row.history-target .bub, .row.history-target .expert-longform { outline:2px solid rgba(179,63,114,.55); outline-offset:4px; background-color:#fff8fa; transition:outline-color .2s ease, background-color .2s ease; }
+  .row.history-target .bub, .row.history-target .expert-longform { outline:2px solid rgba(173,49,95,.55); outline-offset:4px; background-color:#fff8fa; transition:outline-color .2s ease, background-color .2s ease; }
   #quickCreateMenu {
-    color:#20221f;
+    color:#211f1c;
     background:#fffcf7;
     border:1px solid #d8d1c6;
     box-shadow:var(--shadow-sm);
   }
-  #quickCreateMenu .quick-create-item { color:#20221f; }
+  #quickCreateMenu .quick-create-item { color:#211f1c; }
   #quickCreateMenu .quick-create-item:hover, #quickCreateMenu .quick-create-item:focus-visible { color:#8f2f59; background:#f4e9ed; outline:none; }
 
   #onboardingmodal, #memmodal, #groupmodal, #contactmodal, #personamodal, #avatarcropmodal, #historymodal, #toolmodal, #toolsettingsmodal, #modelmodal, #hkmodal, #capmodal, #approvalmodal, #sourcemodal, #settingsmenu {
@@ -2635,7 +2518,7 @@
     -webkit-backdrop-filter:blur(3px);
   }
   .modal-box, .onboard-box {
-    color:#20221f;
+    color:#211f1c;
     background:#fffcf7;
     border:1px solid #d8d1c6;
     border-radius:10px;
@@ -2645,7 +2528,7 @@
   .modal-head {
     min-height:52px;
     padding:0 18px;
-    color:#20221f;
+    color:#211f1c;
     background:#fffcf7;
     border-bottom-color:#e1dbd1;
     font-size:15px;
@@ -2670,7 +2553,7 @@
     padding:12px;
     border:1px solid #e1dbd1;
     border-radius:7px;
-    color:#20221f;
+    color:#211f1c;
     background:#fffcf7;
     text-align:left;
   }
@@ -2690,11 +2573,11 @@
     padding:12px 14px;
     border:1px dashed #c7bcb0;
     border-radius:7px;
-    color:#20221f;
+    color:#211f1c;
     background:#f8f4ed;
     cursor:pointer;
   }
-  .tool-file-picker:hover { border-color:#b33f72; background:#f7edf1; }
+  .tool-file-picker:hover { border-color:#ad315f; background:#f7edf1; }
   .tool-file-picker span { min-width:0; overflow:hidden; color:#686b64; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
   .sr-only-file { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
   #settingsmenu .modal-box { width:370px !important; }
@@ -2709,7 +2592,7 @@
     padding:9px 10px;
     border:0;
     border-radius:7px;
-    color:#20221f;
+    color:#211f1c;
     background:transparent;
     text-align:left;
   }
@@ -2721,7 +2604,7 @@
   .smitem small { color:#777970; font-size:11.5px; font-weight:400; letter-spacing:.015em; }
   .smitem.danger, .smitem.danger .smitem-icon { color:#a23747; }
   .smkey { border-top-color:#e1dbd1; background:#f8f4ed; }
-  .smkey-label { color:#20221f; letter-spacing:.01em; }
+  .smkey-label { color:#211f1c; letter-spacing:.01em; }
   .smkey-hint { color:#686b64; }
   .model-connect-box { width:560px !important; max-height:min(760px,92vh); }
   .model-connect-body { min-height:0; display:flex; flex-direction:column; gap:16px; padding:18px; overflow-y:auto; }
@@ -2733,7 +2616,7 @@
     padding:13px 14px;
     border:1px solid #ddd7cd;
     border-radius:8px;
-    color:#20221f;
+    color:#211f1c;
     background:#f8f4ed;
   }
   .model-current-dot { width:9px; height:9px; border-radius:50%; background:#898b84; box-shadow:0 0 0 3px rgba(137,139,132,.14); }
@@ -2750,7 +2633,7 @@
     padding:8px 10px;
     border:1px solid #d8d1c6;
     border-radius:6px;
-    color:#20221f;
+    color:#211f1c;
     background:#fffefa;
     font:inherit;
     font-size:13px;
@@ -2791,7 +2674,7 @@
     padding:8px 10px;
     border:1px solid #d8d1c6;
     border-radius:6px;
-    color:#20221f;
+    color:#211f1c;
     background:#fffefa;
   }
   .group-footer { min-height:58px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px; border-top:1px solid #e1dbd1; }
@@ -2949,12 +2832,12 @@
   #wechatRail .rail-avatar { margin-bottom:3px; }
   .rail-brand-label { margin-bottom:13px; color:#4f514c; font-size:10px; font-weight:600; line-height:1.25; letter-spacing:.02em; }
   .sidebar-header-action { width:32px; height:32px; display:grid; place-items:center; padding:0; border:0; border-radius:7px; color:#5f625c; background:transparent; cursor:pointer; }
-  .sidebar-header-action:hover, .sidebar-header-action[aria-expanded="true"] { color:#20221f; background:#e5ded4; }
+  .sidebar-header-action:hover, .sidebar-header-action[aria-expanded="true"] { color:#211f1c; background:#e5ded4; }
   .sidebar-header-action:focus-visible { outline:2px solid #8f2f59; outline-offset:1px; }
   .sidebar-header-action .ui-icon { width:17px; height:17px; }
   #wechatSearch { display:grid; gap:6px; padding:0 9px 10px; }
   #wechatSearch > .search-icon { display:none; }
-  #quickGroup { width:100% !important; height:38px !important; display:flex; align-items:center; gap:9px; padding:0 10px; border-radius:7px !important; color:#20221f !important; background:#e5ded4 !important; font-size:13px !important; font-weight:600; letter-spacing:.01em; text-align:left; }
+  #quickGroup { width:100% !important; height:38px !important; display:flex; align-items:center; gap:9px; padding:0 10px; border-radius:7px !important; color:#211f1c !important; background:#e5ded4 !important; font-size:13px !important; font-weight:600; letter-spacing:.01em; text-align:left; }
   #quickGroup:hover { background:#ddd5ca !important; }
   #quickGroup:focus-visible { outline:2px solid #8f2f59; outline-offset:1px; }
   #quickGroup .ui-icon { width:16px; height:16px; margin:0; }
@@ -2962,7 +2845,7 @@
   .task-list-label { padding:8px 9px 5px; color:#8b8d85; font-size:11px; font-weight:500; letter-spacing:.02em; }
   #contacts .contact { width:100%; min-height:36px; display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:center; margin:1px 0; padding:0 3px 0 0; border:0; border-radius:6px; background:transparent; cursor:pointer; }
   #contacts .contact:hover { background:#e7e0d6; }
-  #contacts .contact.active { color:#20221f; background:#e3dce0; }
+  #contacts .contact.active { color:#211f1c; background:#e3dce0; }
   #contacts .contact-open { min-width:0; min-height:36px; display:block; padding:7px 6px 7px 9px; border:0; color:inherit; background:transparent; text-align:left; cursor:pointer; }
   #contacts .contact-open:focus-visible, #contacts .contact-delete:focus-visible { outline:2px solid #8f2f59; outline-offset:0; }
   #contacts .contact .meta { min-width:0; padding:0; }
@@ -3000,7 +2883,7 @@
 <body data-page="home">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" id="railUserAvatar" aria-label="回到小丑鱼对话"><img class="avatar-img" alt="" src="/assets/brand/clownfish-mark.svg" /></a>
+      <a class="brand" href="/" id="railUserAvatar" aria-label="回到小丑鱼对话"><img class="avatar-img" alt="" width="36" height="36" src="/assets/brand/clownfish-mark.svg" /></a>
       <nav>
         <a class="is-current" href="/" aria-current="page" data-app-icon="message"><span></span><small>任务</small></a>
         <a href="/capabilities" id="railCap" data-app-icon="boxes"><span></span><small>能力</small></a>
@@ -3011,19 +2894,14 @@
       <a class="rail-secondary" href="/settings" id="settingsbtn" data-app-icon="settings"><span></span><small>设置</small></a>
     </aside>
     <main class="task-workbench home-shell">
-    <div id="topbar" class="task-workbench-topbar">
-      <div id="header" class="task-workbench-title">新的任务</div>
-      <div id="relbar"></div>
-      <button id="composerTool" type="button" title="翻译、语音转写和文字润色已移至能力页面" aria-label="翻译、语音转写和文字润色已移至能力页面" hidden><span data-icon="wrench" aria-hidden="true"></span><span>小工具</span></button>
-    </div>
       <div class="workbench-body">
     <div id="sessionPane" class="task-workbench-sidebar">
-      <div id="brand" class="task-sidebar-brand app-search-brand-empty"><small id="llm">…</small></div>
-      <div id="wechatSearch" class="task-sidebar-primary app-create-search">
-        <button id="quickGroup" class="task-workbench-new" type="button" title="新对话" aria-label="新对话"><span data-icon="plus-circle" aria-hidden="true"></span><span>新对话</span></button>
-        <button class="app-search-trigger" id="sidebarSearchToggle" type="button" title="搜索对话" aria-label="搜索对话" aria-haspopup="dialog" aria-expanded="false"><span data-icon="search" aria-hidden="true"></span></button>
+      <div id="brand" class="task-sidebar-brand app-search-brand-empty"><div id="header" class="task-sidebar-current" hidden>新的任务</div><small id="llm">…</small><div id="relbar" hidden></div><button id="composerTool" type="button" hidden aria-hidden="true" tabindex="-1"></button></div>
+      <div id="wechatSearch" class="task-sidebar-primary app-create-search is-search-only">
+        <button class="app-search-trigger" id="sidebarSearchToggle" type="button" title="搜索对话" aria-label="搜索对话" aria-haspopup="dialog" aria-expanded="false"><span data-icon="search" aria-hidden="true"></span><span class="app-search-label">搜索对话</span></button>
       </div>
       <div id="contacts" class="task-sidebar-list"></div>
+      <div class="task-create-footer"><button id="quickGroup" class="task-workbench-new" type="button" title="新对话" aria-label="新对话"><span class="action-plus" aria-hidden="true">＋</span><span>新对话</span></button></div>
       <div id="side-actions">
         <button id="sideDesktopTool" type="button" hidden>小工具</button>
         <button id="sideCap" type="button">能力与任务</button>
@@ -3597,7 +3475,7 @@
             <button id="attachmentClear" type="button" title="移除文件" aria-label="移除文件" data-icon="x"></button>
           </div>
           <div id="imagePreview" class="image-preview" aria-live="polite">
-            <img id="imagePreviewImg" alt="待发送图片" />
+            <img id="imagePreviewImg" alt="待发送图片" width="74" height="54" />
             <button id="imageClear" type="button" title="移除图片" aria-label="移除图片" data-icon="x"></button>
           </div>
           <textarea id="txt" class="task-workbench-input" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）" autocomplete="off" rows="3"></textarea>
@@ -3963,10 +3841,10 @@ function customMeAvatar() {
 function renderRailUserAvatar() {
   const el = $("#railUserAvatar");
   if (!el) return;
-  el.innerHTML = '<img class="avatar-img" alt="" src="/assets/brand/clownfish-mark.svg" />';
+  el.innerHTML = '<img class="avatar-img" alt="" width="36" height="36" src="/assets/brand/clownfish-mark.svg" />';
 }
 function imageHtml(src, cls = "avatar-img") {
-  return '<img class="' + cls + '" alt="" src="' + esc(src) + '" />';
+  return '<img class="' + cls + '" alt="" width="38" height="38" loading="lazy" src="' + esc(src) + '" />';
 }
 function hasCharacterAsset(kind, id) {
   return id === APP_PERSONA_ID || CHARACTER_ASSETS.has(id);
@@ -3982,7 +3860,7 @@ function faceHtml(kind, id) {
     if (custom) return imageHtml(custom);
   }
   if (kind === "persona" && id === APP_PERSONA_ID) {
-    return '<img class="avatar-img" alt="" src="/assets/brand/clownfish-mark.svg" />';
+    return '<img class="avatar-img" alt="" width="38" height="38" loading="lazy" src="/assets/brand/clownfish-mark.svg" />';
   }
   return avatarLetterHtml(kind, id);
 }
@@ -4002,7 +3880,7 @@ function portraitHtml(kind, id, name, tag) {
     + '<div class="character-stage" aria-hidden="true">'
     + '  <div class="character-card"><b>' + esc(name) + '</b><span>' + esc(tag || label) + '</span></div>'
     + (hasCharacterAsset(kind, id)
-      ? '  <img class="character-art" src="' + characterAsset(kind, id, "portrait") + '" alt="" />'
+      ? '  <img class="character-art" src="' + characterAsset(kind, id, "portrait") + '" alt="" width="260" height="390" loading="lazy" />'
       : cssPortraitHtml(kind, id))
     + '</div>';
 }
@@ -4208,6 +4086,15 @@ function saveConversationDraft() {
   else delete conversationDrafts[id];
   try { localStorage.setItem(CONVERSATION_DRAFTS_KEY, JSON.stringify(conversationDrafts)); } catch {}
 }
+let draftSaveTimer = null;
+function scheduleSaveConversationDraft() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => { draftSaveTimer = null; saveConversationDraft(); }, 300);
+}
+function flushConversationDraft() {
+  if (draftSaveTimer !== null) { clearTimeout(draftSaveTimer); draftSaveTimer = null; }
+  saveConversationDraft();
+}
 function restoreConversationDraft() {
   const input = $("#txt");
   if (!input) return;
@@ -4221,7 +4108,7 @@ function switchConversation(id) {
     $("#txt")?.focus();
     return;
   }
-  saveConversationDraft();
+  flushConversationDraft();
   tree.activeId = id;
   chatLogs[key] = tree.nodes[id].messages;
   saveConversationTrees();
@@ -4270,6 +4157,17 @@ function createConversation(mode = "chat") {
   const key = "persona:" + APP_PERSONA_ID;
   const tree = ensureConversationTree(key);
   if (!tree) return;
+  const active = tree.nodes[tree.activeId];
+  if (active && !active.messages?.length && !String(conversationDrafts[active.id] || "").trim()) {
+    active.config = { ...conversationDefaults(mode), ...(active.config || {}), workMode: normalizeWorkMode(mode) };
+    active.title = "";
+    saveConversationTrees();
+    renderLog();
+    renderContacts();
+    renderConversationHeader();
+    $("#txt").focus();
+    return;
+  }
   const node = makeConversationNode(mode);
   tree.nodes[node.id] = node;
   switchConversation(node.id);
@@ -4310,6 +4208,7 @@ function saveLogs() {
   saveConversationTrees();
 }
 function logKey(t) { t = t || state.target; return t ? t.kind + ":" + t.id : ""; }
+const MAX_LOG_MESSAGES = 500;
 function record(key, entry) {
   entry.ts = entry.ts || Date.now();
   entry.id = entry.id || ("message-" + crypto.randomUUID());
@@ -4322,6 +4221,9 @@ function record(key, entry) {
   } else {
     (chatLogs[key] = chatLogs[key] || []).push(entry);
   }
+  // 软上限：单会话消息过多时裁剪最旧的，控制 renderLog 全量重建的成本
+  const recordedLog = chatLogs[key];
+  if (recordedLog.length > MAX_LOG_MESSAGES) recordedLog.splice(0, recordedLog.length - MAX_LOG_MESSAGES);
   saveLogs();
   updateRailStats();
   renderContacts();
@@ -4680,6 +4582,17 @@ async function exportBackup() {
     chatLogs,
   });
 }
+// 合帧滚动：把"写 DOM 后立即读 scrollHeight"收拢到 requestAnimationFrame 回调里，
+// 同一帧内的多次调用只排队一次，避免流式渲染期间的 layout thrashing。
+const pendingScrollContainers = new Set();
+function scheduleScrollToBottom(container) {
+  if (!container || pendingScrollContainers.has(container)) return;
+  pendingScrollContainers.add(container);
+  requestAnimationFrame(() => {
+    pendingScrollContainers.delete(container);
+    container.scrollTop = container.scrollHeight;
+  });
+}
 function renderLog() {
   const m = $("#msgs"); m.innerHTML = "";
   ensureConversationTree(logKey());
@@ -4717,7 +4630,7 @@ function renderLog() {
     }
   }
   const composerAfter = $("#composer"); if (composerAfter) composerAfter.classList.remove("hero-mode");
-  m.scrollTop = m.scrollHeight;
+  scheduleScrollToBottom(m);
 }
 
 async function loadState() {
@@ -4834,19 +4747,20 @@ function renderContacts() {
   const tree = ensureConversationTree("persona:" + APP_PERSONA_ID);
   if (!tree) return;
   const nodes = Object.values(tree.nodes).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
-  if (nodes.length) {
+  const visibleNodes = nodes.filter((node) => (Array.isArray(node.messages) && node.messages.length) || String(conversationDrafts[node.id] || "").trim());
+  if (visibleNodes.length) {
     const label = document.createElement("div");
     label.className = "task-list-label";
     label.textContent = "最近";
     c.appendChild(label);
   }
-  for (const node of nodes) {
+  for (const node of visibleNodes) {
     const title = conversationTitle(node.messages, node.title || "新任务");
     const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
     const preview = threadPreview(node.messages, mode.label);
     c.appendChild(threadEl(node, tree.activeId));
   }
-  if (!nodes.length) c.innerHTML = '<div class="contact-search-empty" role="status">还没有对话</div>';
+  if (!visibleNodes.length) c.innerHTML = '<div class="contact-search-empty" role="status">还没有对话</div>';
 }
 
 function renderConversationSearchResults(queryText) {
@@ -4855,6 +4769,7 @@ function renderConversationSearchResults(queryText) {
   const query = String(queryText || "").trim().toLowerCase();
   const nodes = Object.values(tree?.nodes || {}).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
   const visible = nodes.filter((node) => {
+    if ((!Array.isArray(node.messages) || !node.messages.length) && !String(conversationDrafts[node.id] || "").trim()) return false;
     const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
     const title = conversationTitle(node.messages, node.title || "新任务");
     const preview = threadPreview(node.messages, mode.label);
@@ -4914,7 +4829,7 @@ function renderConversationHeader() {
 }
 
 function selectTarget(kind, id, name) {
-  saveConversationDraft();
+  flushConversationDraft();
   state.target = { kind, id, name };
   renderConversationHeader();
   renderContacts();
@@ -5089,7 +5004,7 @@ function addRow(side, who, text, opts = {}) {
   row.insertAdjacentHTML("beforeend", messageAvatarHtml(side, who, opts));
   row.appendChild(inner);
   msgs.appendChild(row);
-  msgs.scrollTop = msgs.scrollHeight;
+  scheduleScrollToBottom(msgs);
 }
 
 function addExpertLongform(brief, messageId = "") {
@@ -5151,7 +5066,7 @@ function addExpertLongform(brief, messageId = "") {
   article.appendChild(content);
   row.appendChild(article);
   msgs.appendChild(row);
-  msgs.scrollTop = msgs.scrollHeight;
+  scheduleScrollToBottom(msgs);
 }
 
 function addTyping() {
@@ -5163,7 +5078,7 @@ function addTyping() {
   row.insertAdjacentHTML("beforeend", messageAvatarHtml("other", null, { pid: state.target && state.target.id }));
   row.appendChild(inner);
   $("#msgs").appendChild(row);
-  $("#msgs").scrollTop = $("#msgs").scrollHeight;
+  scheduleScrollToBottom($("#msgs"));
   return { row, inner, bub: inner.querySelector(".bub") };
 }
 
@@ -5229,7 +5144,7 @@ async function streamPersona(key, text, voice, image, attachment, messageId, req
         await waitForStreamMessage(STREAM_MESSAGE_REVEAL_DELAY_MS);
         visibleCount += 1;
         syncStreamBubbles(inner, acc, visibleCount);
-        $("#msgs").scrollTop = $("#msgs").scrollHeight;
+        scheduleScrollToBottom($("#msgs"));
       });
     }
   }
@@ -5255,7 +5170,7 @@ async function streamPersona(key, text, voice, image, attachment, messageId, req
           acc += ev.text;
           syncStreamBubbles(inner, acc, visibleCount);
           scheduleNewMessages();
-          $("#msgs").scrollTop = $("#msgs").scrollHeight;
+          scheduleScrollToBottom($("#msgs"));
         }
         else if (ev.type === "done") { facts = ev.facts; artifact = ev.artifact || artifact; }
         else if (ev.type === "tasks") { await pushCapabilityNotifications(ev.notifications || []); }
@@ -5369,7 +5284,7 @@ async function sendMsg(voiceFlag, overrideText) {
   sending = true;
   if (overrideText == null) {
     $("#txt").value = "";
-    saveConversationDraft();
+    flushConversationDraft();
   }
   $("#send").disabled = true;
   document.body.classList.add("is-busy");
@@ -5417,14 +5332,15 @@ document.addEventListener("keydown", (e) => {
     if (heroBtn) heroBtn.click();
   }
 });
-$("#txt").addEventListener("input", saveConversationDraft);
+$("#txt").addEventListener("input", scheduleSaveConversationDraft);
 $("#txt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     sendMsg();
   }
 });
-window.addEventListener("beforeunload", saveConversationDraft);
+window.addEventListener("beforeunload", flushConversationDraft);
+window.addEventListener("pagehide", flushConversationDraft);
 
 // 把录音（webm/ogg/mp4）解码后重编码为 16k 单声道 16bit WAV，ASR 才认
 async function blobToWav(blob) {
@@ -5724,7 +5640,7 @@ async function transcribeToolBlob(blob, statusEl, outputEl) {
   }, undefined, (text, meta) => {
     if (!outputEl) return;
     outputEl.value = text || "";
-    outputEl.scrollTop = outputEl.scrollHeight;
+    scheduleScrollToBottom(outputEl);
     if (meta && meta.corrected) statusEl.textContent = `已修正草稿 · ${meta.provider || "工具服务"}`;
   });
   return text;

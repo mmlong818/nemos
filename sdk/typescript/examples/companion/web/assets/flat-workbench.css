@@ -82,6 +82,32 @@ body[data-page="home"] {
   flex-direction: column !important;
 }
 
+/* ---------- 非通栏：侧栏通高、顶栏只在内容区上方（桌面端，任务/开发页共用） ---------- */
+@media (min-width: 801px) {
+  body[data-page="home"] .home-shell,
+  body[data-page="develop"] .coding-shell.task-workbench {
+    display: grid !important;
+    grid-template-columns: var(--task-shell-sidebar, 252px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  body[data-page="home"] .workbench-body,
+  body[data-page="develop"] .workbench-body {
+    display: contents;
+  }
+  body[data-page="home"] .workbench-body > #sessionPane,
+  body[data-page="develop"] .workbench-body > .coding-sidebar {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  body[data-page="home"] .workbench-body > #main,
+  body[data-page="develop"] .workbench-body > .coding-main {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+  }
+}
+
+
 .workbench-body {
   flex: 1;
   min-height: 0;

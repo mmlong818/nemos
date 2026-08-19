@@ -1,11 +1,11 @@
 /* 小丑鱼统一视觉层：macOS 风格中性灰工作台，页面级系统强调色。 */
 :root {
-  --cf-canvas: #f2f2f5;
-  --cf-canvas-deep: #e8e8ed;
+  --cf-canvas: #f4f1eb;
+  --cf-canvas-deep: #ece9e3;
   --cf-surface: #ffffff;
   --cf-surface-soft: #f5f5f7;
   --cf-surface-glass: rgba(255, 255, 255, .82);
-  --cf-ink: #1d1d1f;
+  --cf-ink: #211f1c;
   --cf-ink-soft: #6e6e73;
   --cf-ink-faint: #8e8e93;
   --cf-line: #d9d9de;
@@ -24,7 +24,11 @@
   --cf-shadow-lg: 0 24px 70px rgba(45, 39, 31, .14);
   --cf-fast: 120ms;
   --cf-default: 200ms;
+  --cf-slow: 320ms;
   --cf-ease: cubic-bezier(.22, 1, .36, 1);
+  --cf-spring: cubic-bezier(.34, 1.4, .44, 1);
+  /* 编辑排版大标题（衬线）唯一来源 */
+  --cf-font-display: Georgia, "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
   --cf-workspace-gap: 14px;
   --cf-workspace-radius: 24px;
   --cf-workspace-shadow: 0 24px 70px rgba(30, 58, 50, .12), 0 2px 10px rgba(30, 58, 50, .06);
@@ -32,6 +36,11 @@
   --cf-control-height: 38px;
   --cf-panel-radius: 16px;
   --cf-content-max: 1120px;
+  /* 全局 UI 字体栈唯一来源；--cf-font-sans 为兼容别名（rail-update-badge 等旧引用） */
+  --cf-font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --cf-font-sans: var(--cf-font-family);
+  /* 左侧导航 rail 宽度唯一来源 */
+  --cf-rail-width: 76px;
 
   --page: var(--cf-canvas);
   --bg: var(--cf-canvas);
@@ -98,17 +107,31 @@
 html {
   background: var(--cf-canvas);
   scrollbar-color: #bdb4a8 transparent;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   color: var(--cf-ink);
   background: var(--cf-canvas);
-  font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--cf-font-family);
   text-rendering: optimizeLegibility;
 }
 
 body::before {
   opacity: 0 !important;
+}
+
+/* 纸张颗粒：全屏静态噪点（feTurbulence data URI），multiply 融进暖纸底。
+   不设置 z-index：层叠在带层级的 rail/topbar/dialog 之下，pointer-events 关闭，不拦截任何交互。 */
+html::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .035;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
 }
 
 ::selection { color: var(--cf-ink); background: rgba(173, 49, 95, .16); }
@@ -142,9 +165,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 /* 表单字段聚焦由各自的 边框+光圈 表达，不再叠加 outline */
 
 /* 公共应用栏：固定尺寸，避免切换页面时跳动。 */
-.app-shell { grid-template-columns: 76px minmax(0, 1fr); }
+.app-shell { grid-template-columns: var(--cf-rail-width) minmax(0, 1fr); }
 .rail {
-  width: 76px;
+  width: var(--cf-rail-width);
   padding: 14px 8px 12px;
   align-items: center;
   gap: 12px;
@@ -229,7 +252,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
   padding-inline: 28px;
   border-bottom-color: var(--cf-line);
   background: var(--cf-surface-glass);
-  backdrop-filter: blur(18px) saturate(115%);
+  backdrop-filter: blur(26px) saturate(160%);
   box-shadow: 0 1px 0 rgba(255, 255, 255, .8), 0 8px 24px rgba(31, 75, 68, .04);
 }
 .topbar { height: 64px; }
@@ -239,7 +262,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
   padding-top: 48px;
 }
 .page-head { margin-bottom: 34px; }
-.page-head h1 { font-size: clamp(32px, 4vw, 46px); line-height: 1.08; }
+.page-head h1 { font-size: clamp(30px, 3.4vw, 42px); line-height: 1.15; }
 .surface, .workspace-dialog, .new-document-dialog > form {
   border-color: var(--cf-line);
   border-radius: var(--cf-radius-lg);
@@ -362,21 +385,49 @@ select {
 }
 .page h1, .coding-empty h1 {
   color: var(--cf-ink);
-  font-family: Georgia, "Songti SC", "STSong", serif;
-  letter-spacing: -.025em;
+  font-family: var(--cf-font-display);
+  letter-spacing: -.02em;
+  line-height: 1.15;
+  text-wrap: balance;
 }
 .page h1 { max-width: 16ch; }
-.eyebrow, .section-label { color: var(--cf-coral); letter-spacing: .08em; }
+.eyebrow, .section-label { color: var(--cf-coral); letter-spacing: .12em; }
 .lede { max-width: 64ch; }
+/* 页面主按钮 = 页面强调色：scramble-theme 定义 --page-accent（按 data-page 着色），
+   未加载 scramble 的环境回退品牌珊瑚红 */
 .primary, .send-development, .send-to-capability {
-  border-color: var(--cf-coral) !important;
+  border-color: var(--page-accent, var(--cf-coral)) !important;
   color: #fff !important;
-  background: var(--cf-coral) !important;
+  background: var(--page-accent, var(--cf-coral)) !important;
   box-shadow: 0 6px 16px rgba(173, 49, 95, .14);
 }
 .primary:hover, .send-development:hover, .send-to-capability:hover {
-  border-color: var(--cf-coral-hover) !important;
-  background: var(--cf-coral-hover) !important;
+  border-color: var(--page-accent-dark, var(--cf-coral-hover)) !important;
+  background: var(--page-accent-dark, var(--cf-coral-hover)) !important;
+}
+
+/* 微交互：主按钮类 hover 轻浮起、active 回弹，统一弹性缓动；reduced-motion 下整体关闭。 */
+@media (prefers-reduced-motion: no-preference) {
+  .primary, .send-development, .send-to-capability, #send,
+  .primary-button, .quiet-button, .toolbar-button {
+    transition: color var(--cf-fast) ease, background-color var(--cf-fast) ease,
+      border-color var(--cf-fast) ease, box-shadow var(--cf-default) var(--cf-ease),
+      transform var(--cf-default) var(--cf-spring);
+  }
+  .primary:hover, .send-development:hover, .send-to-capability:hover, #send:hover,
+  .primary-button:hover, .quiet-button:hover, .toolbar-button:hover {
+    transform: translateY(-1px);
+  }
+  .primary:hover, .send-development:hover, .send-to-capability:hover {
+    box-shadow: 0 10px 24px rgba(173, 49, 95, .22);
+  }
+  .primary-button:hover, .quiet-button:hover, .toolbar-button:hover {
+    box-shadow: 0 8px 20px rgba(45, 39, 31, .12);
+  }
+  .primary:active, .send-development:active, .send-to-capability:active, #send:active,
+  .primary-button:active, .quiet-button:active, .toolbar-button:active {
+    transform: scale(.98);
+  }
 }
 
 /* 开发任务的页面骨架统一由 task-workbench.css 提供。 */
@@ -384,7 +435,6 @@ select {
 .coding-progress { border-color: var(--cf-line); background: rgba(255, 253, 249, .48); }
 
 /* 文件：纸张是唯一高亮主体，工具层保持克制。 */
-.office-main { background: #eaf1ec; }
 .file-panel { background: rgba(224, 235, 227, .92); backdrop-filter: blur(16px); }
 .editor-pane { background-color: var(--cf-canvas); }
 .editor-empty { max-width: 720px; }
@@ -421,7 +471,9 @@ select {
   box-shadow: var(--cf-shadow-sm);
 }
 
-/* 首页保留任务结构，去掉旧紫色主题痕迹。 */
+/* 首页保留任务结构，去掉旧紫色主题痕迹。
+   注意：本段的 !important 不能删——index.html <head> 内联了大量旧样式（含 !important），
+   这里是覆盖它们的最后一道，去掉会导致内联旧值反扑。 */
 #appNav, #wechatRail {
   color: var(--cf-ink-soft) !important;
   border-right-color: rgba(255, 255, 255, .09) !important;
@@ -476,8 +528,8 @@ select {
 .empty-copy h2 { color: var(--cf-ink) !important; font-family: Georgia, "Songti SC", "STSong", serif !important; letter-spacing: -.02em !important; }
 .empty-prompts button { border-color: var(--cf-line) !important; border-radius: 9px !important; background: var(--cf-surface) !important; }
 .empty-prompts button:hover { color: var(--cf-coral) !important; border-color: rgba(173, 49, 95, .28) !important; }
-#send { background: var(--cf-coral) !important; box-shadow: 0 5px 14px rgba(173, 49, 95, .18) !important; }
-#send:hover { background: var(--cf-coral-hover) !important; }
+#send { background: var(--page-accent, var(--cf-coral)) !important; box-shadow: 0 5px 14px rgba(173, 49, 95, .18) !important; }
+#send:hover { background: var(--page-accent-dark, var(--cf-coral-hover)) !important; }
 
 @media (max-width: 800px) {
   .app-shell { grid-template-columns: 1fr; }
@@ -505,4 +557,45 @@ select {
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* 跨页切换不做快照动画：各页背景一致（同一壁纸与窗框），即时替换最干净。
+   曾用 @view-transition 交叉淡化+位移，旧快照消失与新页首帧之间露白、且相邻页面观感相同，
+   任何位移都读作“闪动”，已移除。 */
+
+/* 加载骨架：JS 填充真实内容前的占位，替代纯文本“正在读取…”。
+   颜色只从既有令牌派生；reduced-motion 时保持静态灰块，不闪动。
+   延迟 240ms 淡入：本机数据通常在几十毫秒内就位，骨架尚未露面就已被真实内容替换，
+   避免开发页列表等处“三行灰条一闪而过”。 */
+.cf-skeleton {
+  display: block;
+  width: 100%;
+  height: 14px;
+  border-radius: 8px;
+  background: var(--cf-canvas-deep);
+  animation: cf-skeleton-in .16s ease .24s backwards;
+}
+@keyframes cf-skeleton-in {
+  from { opacity: 0; }
+}
+.cf-skeleton + .cf-skeleton { margin-top: 10px; }
+.cf-skeleton.is-mid { width: 78%; }
+.cf-skeleton.is-short { width: 52%; }
+/* 行内单行占位：放在由 JS 用 textContent 填充的元素内，填充时随子节点一起被替换 */
+.cf-skeleton.is-inline {
+  display: inline-block;
+  width: 7em;
+  height: .85em;
+  border-radius: 6px;
+  vertical-align: -.08em;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cf-skeleton {
+    background: linear-gradient(100deg, var(--cf-canvas-deep) 42%, var(--cf-surface-soft) 50%, var(--cf-canvas-deep) 58%);
+    background-size: 220% 100%;
+    animation: cf-skeleton-shimmer 1.5s linear infinite, cf-skeleton-in .16s ease .24s backwards;
+  }
+  @keyframes cf-skeleton-shimmer {
+    to { background-position: -120% 0; }
+  }
 }

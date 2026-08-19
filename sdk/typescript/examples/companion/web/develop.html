@@ -21,7 +21,7 @@
 <body data-page="develop" class="coding-page">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" aria-label="返回任务"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
+      <a class="brand" href="/" aria-label="返回任务"><img src="/assets/brand/clownfish-mark.svg" alt="" width="36" height="36"></a>
       <nav>
         <a href="/" data-app-icon="message"><span></span><small>任务</small></a>
         <a href="/capabilities" data-app-icon="boxes"><span></span><small>能力</small></a>
@@ -33,33 +33,20 @@
     </aside>
 
     <main class="coding-shell task-workbench task-workbench--development">
-      <header class="coding-topbar task-workbench-topbar">
-        <div id="taskTitle" class="task-workbench-title">
-          <div>
-            <div class="hname">新开发任务</div>
-            <div class="htag">开发</div>
-          </div>
-          <span id="taskMeta" class="development-task-meta">项目将自动建立</span>
-        </div>
-        <div class="task-workbench-top-actions">
-          <button id="compareDevelopmentRuns" class="development-compare-trigger" type="button" title="比较开发版本" aria-label="比较开发版本" hidden><span data-app-icon="boxes" aria-hidden="true"><span></span></span><span>比较</span></button>
-          <a id="openReview" href="/tasks" title="查看任务详情" aria-label="查看任务详情" hidden><span data-app-icon="message-circle" aria-hidden="true"><span></span></span></a>
-        </div>
-      </header>
-
       <div class="workbench-body">
         <aside class="coding-sidebar task-workbench-sidebar">
           <header class="coding-sidebar-head task-sidebar-head">
-            <div class="task-sidebar-brand app-search-brand-empty"></div>
-            <div class="task-sidebar-primary app-create-search" id="developmentSearchPanel">
-              <button id="newDevelopment" class="task-workbench-new" type="button"><span data-app-icon="plus-circle" aria-hidden="true"><span></span></span><span>新任务</span></button>
-              <button class="app-search-trigger" id="developmentSearchToggle" type="button" title="搜索开发任务" aria-label="搜索开发任务" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span></button>
+            <div class="task-sidebar-brand" hidden><div id="taskTitle"><div class="hname">新开发任务</div><span id="taskMeta">项目将自动建立</span></div></div>
+            <div class="task-sidebar-primary app-create-search is-search-only" id="developmentSearchPanel">
+              <button class="app-search-trigger" id="developmentSearchToggle" type="button" title="搜索开发任务" aria-label="搜索开发任务" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span><span class="app-search-label">搜索任务</span></button>
             </div>
+            <div class="task-workbench-top-actions development-sidebar-actions"><button id="compareDevelopmentRuns" class="development-compare-trigger" type="button" title="比较开发版本" aria-label="比较开发版本" hidden><span data-app-icon="boxes" aria-hidden="true"><span></span></span><span>比较</span></button><a id="openReview" href="/tasks" title="查看任务详情" aria-label="查看任务详情" hidden><span data-app-icon="message-circle" aria-hidden="true"><span></span></span></a></div>
           </header>
           <section class="development-history task-sidebar-section task-sidebar-list">
-            <div class="task-list-label development-list-heading"><span>最近</span><a href="/develop/archive">归档项目</a></div>
-            <div id="developmentList" class="development-list"><p>正在读取…</p></div>
+            <div class="task-list-label development-list-heading" hidden><span>最近</span></div>
+            <div id="developmentList" class="development-list" aria-busy="true"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span><span class="cf-skeleton is-short"></span></div>
           </section>
+          <footer class="development-sidebar-foot"><button id="newDevelopment" class="task-workbench-new" type="button" title="新任务" aria-label="新任务"><span class="action-plus" aria-hidden="true">＋</span><span>新任务</span></button><a class="development-archive-link" href="/develop/archive"><span data-app-icon="boxes" aria-hidden="true"><span></span></span><span>归档项目</span><small class="development-archive-count" id="developmentArchiveCount" hidden>0</small></a></footer>
         </aside>
 
         <section class="coding-main task-workbench-main">
@@ -79,7 +66,7 @@
                   <label class="development-profile-field" for="developmentReasoning"><span>思考</span><select id="developmentReasoning"><option value="fast">快速</option><option value="balanced" selected>标准</option><option value="deep">深入</option></select></label>
                   <button class="development-engine-update-notice" id="developmentEngineUpdateNotice" type="button" aria-haspopup="dialog" aria-controls="developmentEngineUpdateDialog" hidden><i></i><span>更新</span><small id="developmentEngineUpdateCount"></small></button>
                 </div>
-                <div class="development-project-chip" role="button" tabindex="0" title="点击复制完整目录地址"><span data-app-icon="file" aria-hidden="true"><span></span></span><span><b id="workspaceLabel">小丑鱼项目</b><small id="workspaceHint">正在读取默认目录…</small></span></div>
+                <div class="development-project-chip" role="button" tabindex="0" title="点击复制完整目录地址"><span data-app-icon="file" aria-hidden="true"><span></span></span><span><b id="workspaceLabel">小丑鱼项目</b><small id="workspaceHint"><span class="cf-skeleton is-inline"></span></small></span></div>
                 <span class="development-engine-state" id="developmentEngineHint">内置执行，适合大多数开发任务</span>
               </header>
               <aside class="development-process" id="developmentProcess" aria-live="polite" hidden></aside>
@@ -168,7 +155,7 @@
         <div><small>版本维护</small><h2 id="developmentEngineUpdateTitle">开发引擎更新</h2><p>小丑鱼只负责检查和验证；只有你确认后才会安装新版本。</p></div>
         <button class="development-engine-close" value="close" aria-label="关闭引擎更新">×</button>
       </header>
-      <div class="development-engine-update-list" id="developmentEngineUpdateList"><p>正在读取版本状态…</p></div>
+      <div class="development-engine-update-list" id="developmentEngineUpdateList"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span></div>
       <footer><span id="developmentEngineUpdateStatus" role="status"></span><button id="checkDevelopmentEngineUpdates" type="button">重新检查</button></footer>
     </form>
   </dialog>

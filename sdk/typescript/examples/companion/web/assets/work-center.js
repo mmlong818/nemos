@@ -53,7 +53,8 @@ const pageCopy = {
 function setPage() {
   const copy = pageCopy[view] || pageCopy.automations;
   $("#pageEyebrow").textContent = copy[0];
-  $("#pageTitle").textContent = copy[1];
+  const pageTitle = $("#pageTitle");
+  if (pageTitle) pageTitle.textContent = copy[1];
   $("#pageDescription").textContent = copy[2];
   $$('.tabs a').forEach((link) => {
     const current = link.dataset.view === view;
@@ -98,7 +99,7 @@ function renderWorkSearchResults(queryText) {
 function showLoading() {
   const content = $("#content");
   content.setAttribute("aria-busy", "true");
-  content.innerHTML = '<div class="loading" role="status">正在读取本机数据…</div>';
+  content.innerHTML = '<div class="loading" role="status" aria-label="正在读取本机数据"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span><span class="cf-skeleton is-short"></span></div>';
 }
 
 async function load() {
