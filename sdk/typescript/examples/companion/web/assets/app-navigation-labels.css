@@ -1,8 +1,9 @@
-/* OS 式纵向 Dock。这里是导航几何与材质的唯一来源。 */
+/* OS 式纵向 Dock。导航几何以 clownfish-theme 的 --cf-rail-width 为准，本文件只管 Dock 材质与标签。 */
 :root {
-  --app-rail-reserved: 100px;
+  /* 预留 = 左偏移 + rail 宽度 + 14px 安全余量（标签展开不顶到内容区） */
+  --app-rail-reserved: calc(var(--app-rail-left) + var(--app-rail-shell) + 14px);
   --app-rail-left: 14px;
-  --app-rail-shell: 72px;
+  --app-rail-shell: var(--cf-rail-width, 76px);
   --app-rail-inner: 6px;
   --app-brand-size: 46px;
   --app-brand-nav-gap: 12px;
@@ -43,7 +44,7 @@ html { scrollbar-gutter: stable; }
       0 24px 70px rgba(27, 65, 59, .18),
       0 2px 10px rgba(27, 65, 59, .09),
       inset 0 1px 0 rgba(255, 255, 255, .92);
-    backdrop-filter: blur(26px) saturate(145%);
+    backdrop-filter: blur(26px) saturate(160%);
   }
 
   #wechatRail {
@@ -78,7 +79,7 @@ html { scrollbar-gutter: stable; }
       0 24px 70px rgba(27, 65, 59, .18),
       0 2px 10px rgba(27, 65, 59, .09),
       inset 0 1px 0 rgba(255, 255, 255, .92);
-    backdrop-filter: blur(26px) saturate(145%);
+    backdrop-filter: blur(26px) saturate(160%);
   }
 
   .rail > .brand,
@@ -192,7 +193,7 @@ html { scrollbar-gutter: stable; }
     width: 4px;
     height: 10px;
     border-radius: 99px;
-    background: #aa315f;
+    background: var(--cf-coral, #ad315f);
     box-shadow: 0 0 0 3px rgba(170, 49, 95, .1);
   }
 
@@ -285,7 +286,7 @@ html { scrollbar-gutter: stable; }
     width: 252px;
     border-right: 1px solid var(--cf-line, #d9d9de) !important;
     background: rgba(245, 245, 247, .78) !important;
-    backdrop-filter: blur(16px) saturate(112%);
+    backdrop-filter: blur(26px) saturate(160%);
   }
 }
 

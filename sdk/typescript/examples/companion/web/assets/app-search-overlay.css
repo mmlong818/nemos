@@ -1,28 +1,63 @@
 :root {
-  --app-search-font: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --app-search-font: var(--cf-font-family, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
   --app-search-ink: #24251f;
   --app-search-muted: #6f716a;
   --app-search-line: #cfd9d2;
   --app-search-panel: #fffdf9;
-  --app-search-accent: #ad315f;
+  --app-search-accent: var(--cf-coral, #ad315f);
 }
 
 .app-create-search {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr) 36px;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+}
+.app-create-search.is-search-only { grid-template-columns: minmax(0, 1fr); }
+
+/* 侧栏首个操作需要有稳定的安全留白，避免搜索框贴住窗口边缘。 */
+.task-sidebar-primary.app-create-search {
+  height: auto !important;
+  min-height: 62px;
+  padding: 14px 12px 12px !important;
 }
 
-.task-sidebar-brand.app-search-brand-empty { display: none !important; }
+.task-sidebar-brand.app-search-brand-empty,
+.task-sidebar-brand[hidden] { display: none !important; }
 
-.app-create-search > .task-workbench-new,
-#quickGroup.task-workbench-new,
-#newDevelopment.task-workbench-new {
+.app-create-search > .task-workbench-new {
+  grid-column: 2;
+  grid-row: 1;
+  width: 36px !important;
+  min-width: 36px !important;
+  padding: 0 !important;
+  justify-content: center !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  background: var(--page-accent, var(--app-search-accent)) !important;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--page-accent, var(--app-search-accent)) 20%, transparent);
+}
+
+.app-create-search > .task-workbench-new > span:last-child { display: none; }
+.app-create-search > .task-workbench-new > .action-plus { display: block; font-size: 20px; font-weight: 400; line-height: 1; transform: translateY(-1px); }
+
+.task-create-footer {
+  margin: auto 12px 0;
+  padding: 10px 0 12px;
+  border-top: 1px solid rgba(104, 112, 105, .16);
+}
+.task-create-footer .task-workbench-new,
+.development-sidebar-foot .task-workbench-new {
   width: 100% !important;
   min-width: 0 !important;
-  flex: 1 1 auto !important;
+  justify-content: center !important;
+  color: var(--app-search-ink) !important;
+  border-color: var(--app-search-line) !important;
+  background: rgba(255, 255, 255, .72) !important;
+  box-shadow: 0 3px 10px rgba(36, 45, 39, .05);
 }
+.task-create-footer .action-plus,
+.development-sidebar-foot .action-plus { font-size: 18px; font-weight: 400; line-height: 1; }
 
 .file-panel-actions.app-create-search > .toolbar-button {
   height: 34px;
@@ -31,18 +66,42 @@
 
 .app-search-trigger {
   box-sizing: border-box;
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  min-height: 34px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  color: #555851;
+  grid-column: 1;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 11px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  color: var(--app-search-muted);
   border: 1px solid var(--app-search-line);
-  border-radius: 7px;
-  background: rgba(255, 253, 249, .8);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .54);
   cursor: pointer;
+}
+
+.app-search-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+
+#wechatSearch > .app-search-trigger {
+  width: 100% !important;
+  height: 36px !important;
+  padding: 0 11px !important;
+  border: 1px solid var(--app-search-line) !important;
+  border-radius: 9px !important;
+  background: rgba(255, 255, 255, .54) !important;
+  color: var(--app-search-muted) !important;
+  font-size: 12px !important;
+}
+
+@media (max-width: 640px) {
+  .task-sidebar-primary.app-create-search {
+    min-height: 56px;
+    padding: 10px 10px 10px !important;
+  }
 }
 
 .app-search-trigger:hover,

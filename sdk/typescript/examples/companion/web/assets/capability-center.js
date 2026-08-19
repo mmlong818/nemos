@@ -1026,8 +1026,8 @@ function renderArchiveList() {
   ];
   $("#capabilityArchiveCount").textContent = String(rows.length);
   $("#capabilityArchiveCount").hidden = rows.length === 0;
-  $("#capabilityArchiveEmpty").hidden = rows.length > 0;
-  $("#capabilityArchiveList").innerHTML = rows.join("");
+  $("#capabilityArchiveList").innerHTML = rows.length ? rows.join("") : '<div class="capability-archive-empty-state"><span data-app-icon="boxes" aria-hidden="true"><span></span></span><p>还没有归档</p></div>';
+  if (!rows.length) renderStaticIcons();
   $$('[data-open-archived-capability-task]').forEach((button) => button.addEventListener("click", () => openConversation(button.dataset.openArchivedCapabilityTask)));
   $$('[data-open-archived-capability-draft]').forEach((button) => button.addEventListener("click", () => restoreArchivedDraft(button.dataset.openArchivedCapabilityDraft)));
   $$('[data-delete-capability-task]').forEach((button) => button.addEventListener("click", () => askDeleteCapabilityConversation(button.dataset.deleteCapabilityTask)));
@@ -1445,6 +1445,12 @@ async function applyDevelopmentContinuation() {
 }
 
 function bindEvents() {
+  $("#capabilityArchiveToggle").addEventListener("click", () => {
+    const list = $("#capabilityArchiveList");
+    const open = list.hidden;
+    list.hidden = !open;
+    $("#capabilityArchiveToggle").setAttribute("aria-expanded", String(open));
+  });
   $$('[data-view-target]').forEach((button) => button.addEventListener("click", () => {
     if (button.dataset.viewTarget === "start") newCapabilityConversation();
     else openView(button.dataset.viewTarget);

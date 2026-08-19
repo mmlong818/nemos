@@ -232,14 +232,16 @@ test("工作台遵守小丑鱼视觉与无障碍基线", () => {
   assert.doesNotMatch(officeCss, /transition:\s*all/i);
 });
 
-test("新建文件和打开文件位于最近文件列表上方", () => {
-  const fileActionsAt = officeHtml.indexOf('class="file-panel-actions app-create-search"');
+test("文件搜索位于列表上方，新建和打开固定在文件栏底部", () => {
+  const fileActionsAt = officeHtml.indexOf('class="file-panel-actions app-create-search');
   const recentFilesAt = officeHtml.indexOf('id="recentFiles"');
+  const footerActionsAt = officeHtml.indexOf('class="file-panel-footer-actions"');
   assert.ok(fileActionsAt >= 0);
-  assert.ok(recentFilesAt > fileActionsAt);
-  assert.match(officeHtml.slice(fileActionsAt, recentFilesAt), /id="newDocument"[\s\S]+data-open-office-file[\s\S]+id="fileSearchToggle"/);
+  assert.ok(fileActionsAt < recentFilesAt && recentFilesAt < footerActionsAt);
+  assert.match(officeHtml.slice(fileActionsAt, recentFilesAt), /id="fileSearchToggle"/);
+  assert.match(officeHtml.slice(footerActionsAt), /id="newDocument"[\s\S]+data-open-office-file/);
   assert.doesNotMatch(officeHtml.slice(officeHtml.indexOf('class="topbar-actions"'), fileActionsAt), /data-open-office-file/);
-  assert.match(officeCss, /file-panel-actions\.app-create-search\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\) 34px/);
+  assert.match(officeCss, /file-panel-footer-actions\s*\{[\s\S]*?grid-template-columns:\s*1fr 1fr/);
   assert.match(officeJs, /const createdDocument = safeDocument/);
   assert.match(officeHtml, /data-new-document-kind="docx"/);
   assert.match(officeHtml, /data-new-document-kind="md"/);
@@ -254,7 +256,7 @@ test("文件栏可调整宽度且编辑区顶部显示完整文件名", () => {
   assert.match(officeJs, /function bindFilePanelResize/);
   assert.match(officeJs, /FILE_PANEL_WIDTH_KEY/);
   assert.match(officeJs, /document\.querySelector\("#documentName"\)\.title = current\.name/);
-  assert.match(officeCss, /grid-template-columns: var\(--office-file-panel-width\) minmax\(0, 1fr\) auto/);
+  assert.match(officeCss, /grid-template-columns: var\(--office-file-panel-width\) minmax\(0, 1fr\)/);
   assert.match(officeCss, /\.document-name \{\s*display: flex !important;/);
   assert.match(officeCss, /\.document-name textarea \{[\s\S]*?max-height: 2\.7em;/);
 });

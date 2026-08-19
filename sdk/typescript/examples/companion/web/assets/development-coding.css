@@ -18,7 +18,7 @@
   text-align: left;
 }
 .development-item:hover { background: #e7e0d6; }
-.development-item.is-current { color: #20221f; background: #e3dce0; }
+.development-item.is-current { color: #211f1c; background: #e3dce0; }
 .development-item b { min-width: 0; flex: 1; overflow: hidden; font-size: 13px; font-weight: 450; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .development-item span { margin-left: auto; display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 9.5px; white-space: nowrap; }
 

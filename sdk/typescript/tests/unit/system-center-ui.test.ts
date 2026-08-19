@@ -179,8 +179,8 @@ test("所有主页面都进入独立设置中心", () => {
 
 test("桌面端所有页面使用同一套左栏起点与按钮尺寸", () => {
   const css = readWeb(join("assets", "app-navigation-labels.css"));
-  assert.match(css, /--app-rail-reserved: 100px/);
-  assert.match(css, /--app-rail-shell: 72px/);
+  assert.match(css, /--app-rail-reserved: calc\(var\(--app-rail-left\) \+ var\(--app-rail-shell\) \+ 14px\)/);
+  assert.match(css, /--app-rail-shell: var\(--cf-rail-width, 76px\)/);
   assert.match(css, /--app-brand-size: 46px/);
   assert.match(css, /--app-nav-width: 60px/);
   assert.match(css, /--app-nav-height: 54px/);

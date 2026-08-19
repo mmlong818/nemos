@@ -11,17 +11,14 @@
 </head>
 <body data-page="develop">
   <div class="app-shell">
-    <header class="topbar">
-      <a class="back-link" href="/capabilities#history" aria-label="返回能力记录">←</a>
-      <div class="brand"><span class="brand-mark" aria-hidden="true">◒</span><span><strong>项目工作台</strong><small>小丑鱼</small></span></div>
-      <div class="status-pill" id="stateBadge">正在载入</div>
-    </header>
     <main class="workbench" id="workbench" aria-busy="true">
       <aside class="file-panel">
         <div class="project-summary">
+          <a class="back-link" href="/capabilities#history" aria-label="返回能力记录">← 返回</a>
           <span class="section-label">本次修改</span>
           <h1 id="projectName">项目</h1>
           <p id="projectPath"></p>
+          <div class="status-pill" id="stateBadge">正在载入</div>
         </div>
         <label class="search-box"><span aria-hidden="true">⌕</span><input id="fileSearch" type="search" placeholder="查找修改的文件" autocomplete="off"></label>
         <div class="file-tabs" role="tablist" aria-label="文件范围">

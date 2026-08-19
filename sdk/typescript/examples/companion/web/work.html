@@ -22,7 +22,7 @@
 <body data-page="tasks">
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt=""></a>
+      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt="" width="36" height="36"></a>
       <nav>
         <a href="/" title="任务" aria-label="任务" data-app-icon="message"><span aria-hidden="true"></span><small>任务</small></a>
         <a href="/capabilities" title="能力" aria-label="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></a>
@@ -35,28 +35,22 @@
     <main class="task-workbench work-shell">
       <aside class="task-workbench-sidebar work-sidebar">
         <header class="task-sidebar-head">
-          <div class="task-sidebar-brand"><strong>自动化</strong></div>
-          <div class="task-sidebar-primary app-create-search">
-            <button id="newTaskSide" class="task-workbench-new" type="button"><span data-app-icon="plus-circle" aria-hidden="true"><span></span></span><span>新建自动化</span></button>
-            <button class="app-search-trigger" id="workSearchToggle" type="button" title="搜索工作内容" aria-label="搜索工作内容" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span></button>
+          <div class="task-sidebar-brand app-search-brand-empty"></div>
+          <div class="task-sidebar-primary app-create-search is-search-only">
+            <button class="app-search-trigger" id="workSearchToggle" type="button" title="搜索工作内容" aria-label="搜索工作内容" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span><span class="app-search-label">搜索自动化</span></button>
           </div>
         </header>
+        <footer class="task-create-footer"><button id="newTaskSide" class="task-workbench-new" type="button" title="新建自动化" aria-label="新建自动化"><span class="action-plus" aria-hidden="true">＋</span><span>新建自动化</span></button></footer>
       </aside>
 
       <section class="task-workbench-main work-main">
-        <header class="task-workbench-topbar">
-          <div class="task-workbench-title"><div><div class="hname" id="pageTitle">任务</div></div></div>
-          <div class="task-workbench-top-actions work-top-actions">
-            <a href="/" title="返回对话" aria-label="返回对话"><span data-app-icon="message-circle" aria-hidden="true"><span></span></span></a>
-          </div>
-        </header>
         <div class="task-workbench-stage work-stage">
           <header class="work-page-head">
             <p class="eyebrow" id="pageEyebrow">持续工作</p>
             <p class="work-page-description" id="pageDescription">把需要重复执行的事情留在这里。</p>
           </header>
           <section class="content" id="content" aria-live="polite">
-            <div class="loading">正在读取本机数据…</div>
+            <div class="loading" role="status" aria-label="正在读取本机数据"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span><span class="cf-skeleton is-short"></span></div>
           </section>
         </div>
       </section>

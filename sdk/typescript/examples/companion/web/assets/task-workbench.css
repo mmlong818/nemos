@@ -7,13 +7,13 @@
   --task-shell-canvas: #f5f8f5;
   --task-shell-side: #f1ece3;
   --task-shell-line: #cfd9d2;
-  --task-shell-radius: 18px;
-  --task-control-radius: 7px;
-  --task-control-height: 34px;
-  --task-font: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --task-shell-radius: var(--cf-panel-radius, 16px);
+  --task-control-radius: 10px;
+  --task-control-height: var(--cf-control-height, 38px);
+  --task-font: var(--cf-font-family, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
   --task-text: #24251f;
   --task-muted: #66625b;
-  --task-accent: #ad315f;
+  --task-accent: var(--cf-coral, #ad315f);
   --task-shell-shadow: 0 20px 58px rgba(31, 75, 68, .09), inset 0 1px 0 #fff;
 }
 
@@ -62,7 +62,7 @@
   align-items: center;
   justify-content: flex-start !important;
   gap: 9px;
-  color: #20221f !important;
+  color: #211f1c !important;
   border: 1px solid var(--task-shell-line) !important;
   border-radius: var(--task-control-radius) !important;
   background: rgba(255, 253, 249, .8) !important;
@@ -136,7 +136,7 @@
   justify-content: space-between;
   gap: 8px;
   color: #282923;
-  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif !important;
+  font-family: var(--cf-font-family, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif) !important;
   font-size: 14px !important;
   font-weight: 600 !important;
   line-height: 1.2;
@@ -176,7 +176,7 @@
 
 .task-sidebar-brand .sidebar-header-action:hover,
 .task-sidebar-brand .sidebar-header-action[aria-expanded="true"] {
-  color: #20221f;
+  color: #211f1c;
   background: #e5ded4;
 }
 
@@ -415,9 +415,12 @@
 .task-workbench-stage .role-intro-head h2 {
   margin: 0;
   color: var(--task-text) !important;
-  font-size: 18px;
+  font-family: var(--cf-font-display, Georgia, "Songti SC", "STSong", serif);
+  font-size: clamp(30px, 3.4vw, 42px);
   font-weight: 760;
-  line-height: 24px;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+  text-wrap: balance;
 }
 
 .task-workbench-stage .role-intro-card > p {
@@ -680,7 +683,7 @@
   font-size: 15px !important;
   font-weight: 700 !important;
   letter-spacing: -.01em !important;
-  color: #1d1d1f !important;
+  color: #211f1c !important;
 }
 
 /* ============================================================

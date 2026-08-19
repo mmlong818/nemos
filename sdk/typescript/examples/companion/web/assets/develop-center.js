@@ -607,6 +607,8 @@
     const jobs = developmentJobs(items);
     developmentHistory = jobs;
     const threads = developmentThreads(jobs);
+    const heading = $(".development-list-heading");
+    if (heading) heading.hidden = threads.length === 0;
     $("#developmentList").innerHTML = threads.length ? threads.map(({ root, latest }) => `
       <div class="development-list-row ${latest.id === activeJobId ? "is-current" : ""}">
         <button type="button" class="development-item" data-job="${escapeHtml(latest.id)}" aria-current="${latest.id === activeJobId ? "true" : "false"}">
@@ -614,7 +616,7 @@
           <span><i class="job-dot ${escapeHtml(latest.status)}"></i>${escapeHtml(statusLabel[latest.status] || latest.status)}</span>
         </button>
         <button type="button" class="development-archive-action" data-archive-project="${escapeHtml(root.id)}" aria-label="归档${escapeHtml(root.payload?.title || "开发项目")}" title="${["queued", "running"].includes(latest.status) ? "任务执行中，暂时不能归档" : "归档项目"}" ${["queued", "running"].includes(latest.status) ? "disabled" : ""}><span data-app-icon="boxes" aria-hidden="true"><span></span></span></button>
-      </div>`).join("") : '<p>还没有开发任务</p><a class="development-empty-archive" href="/develop/archive">查看归档项目</a>';
+      </div>`).join("") : "";
     window.ClownfishIcons?.hydrate({ root: $("#developmentList") });
   }
 
@@ -842,6 +844,11 @@
         api("/api/development/project-archive"),
       ]);
       archivedRootJobIds = new Set(archive.archivedRootJobIds || []);
+      const archiveCount = $("#developmentArchiveCount");
+      if (archiveCount) {
+        archiveCount.textContent = String(archivedRootJobIds.size);
+        archiveCount.hidden = archivedRootJobIds.size === 0;
+      }
       const allJobs = developmentJobs(result.jobs || []);
       const jobs = allJobs.filter((job) => !archivedRootJobIds.has(developmentThread(job, allJobs).root.id));
       renderHistory(jobs);
