@@ -7,28 +7,16 @@ const root = join(__dirname, "..", "..", "examples", "companion");
 const web = join(root, "web");
 const readWeb = (name: string) => readFileSync(join(web, name), "utf8");
 
-test("开发成为一级入口并启动真实开发任务", () => {
+test("开发能力从界面、能力目录和服务端入口移除", () => {
   const server = readFileSync(join(root, "server.ts"), "utf8");
-  const html = readWeb("develop.html");
-  const script = readWeb(join("assets", "develop-center.js"));
+  const catalog = readWeb(join("assets", "capability-center.js"));
   for (const file of ["index.html", "capabilities.html", "office.html", "work.html"]) {
-    assert.match(readWeb(file), /(?:href="\/develop"|id="railDev")/);
+    assert.doesNotMatch(readWeb(file), /(?:href="\/develop"|id="railDev")/);
   }
-  assert.match(server, /pathname === "\/develop"/);
-  assert.match(server, /\/api\/development\/projects/);
-  assert.match(html, /id="approvalPolicyTrigger"/);
-  assert.match(html, /name="accessMode"/);
-  assert.match(html, /name="accessModeChoice"/);
-  assert.match(html, /name="approvalPolicy"/);
-  assert.match(script, /capabilityId: "project-development"/);
-  assert.match(html, /id="installDependencies"/);
-  assert.match(script, /installDependencies:/);
-  assert.match(script, /history\.replaceState\(null, "", `\/develop\?job=/);
-  assert.match(html, /class="coding-sidebar task-workbench-sidebar"/);
-  assert.match(html, /class="coding-transcript task-workbench-stage"/);
-  assert.match(html, /class="coding-composer task-workbench-composer[^"]*"/);
-  assert.match(script, /\/api\/agent\/jobs\?limit=500/);
-  assert.match(script, /setTimeout\(\(\) => loadJobs\(true\), 2200\)/);
+  assert.doesNotMatch(catalog, /project-development/);
+  assert.match(server, /res\.writeHead\(302, \{ Location: "\/"/);
+  assert.match(server, /pathname\.startsWith\("\/api\/development"\)/);
+  assert.match(server, /开发能力已从当前应用移除/);
 });
 
 test("开发项目支持独立归档、恢复和安全删除", () => {
@@ -120,25 +108,20 @@ test("开发页把运行配置置顶，并把执行设置收进输入框", () =>
   assert.doesNotMatch(script, /workspaceDialog|recentPaths/);
 });
 
-test("设置中心统一模型、开发、连接与本机数据", () => {
+test("设置中心仅保留模型、连接与本机数据", () => {
   const server = readFileSync(join(root, "server.ts"), "utf8");
   const html = readWeb("settings.html");
   const script = readWeb(join("assets", "settings-center.js"));
   assert.match(server, /pathname === "\/settings"/);
   assert.match(html, /data-section="models"/);
-  assert.match(html, /data-section="development"/);
+  assert.doesNotMatch(html, /data-section="development"/);
   assert.match(html, /data-section="connections"/);
   assert.match(html, /data-section="privacy"/);
   assert.match(html, /data-section="storage"/);
-  assert.match(html, /\[hidden\]\{display:none!important\}/);
+  assert.match(html, /\[data-panel="development"\]\{display:none!important\}/);
   assert.match(html, /id="serverStorageFields"/);
   assert.match(script, /\/api\/llm-config/);
-  assert.match(html, /development-models\.css/);
-  assert.match(script, /id=\"developmentModelConnections\"/);
-  assert.match(script, /继承默认模型/);
-  assert.match(script, /\/api\/development\/model-connections/);
-  assert.match(server, /DEVELOPMENT_MODEL_CONNECTIONS_FILE/);
-  assert.match(server, /developmentModelConnection\(developmentEngine\)/);
+  assert.doesNotMatch(html, /development-models\.css/);
   assert.match(script, /\/api\/platform\/connector\/test/);
   assert.match(script, /\/api\/agent\/extension\/validate/);
   assert.match(html, /id="capabilityRuntimeList"/);

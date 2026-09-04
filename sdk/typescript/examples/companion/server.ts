@@ -141,7 +141,7 @@ import {
   normalizeDevelopmentApprovalPolicy,
   type DevelopmentApprovalPolicy,
 } from "./development-approval.js";
-import { buildReviewQueue, capabilityPackStatuses, developmentEnvironment, platformConnectorStatuses } from "./product-platform.js";
+import { buildReviewQueue, capabilityPackStatuses, platformConnectorStatuses } from "./product-platform.js";
 import { routeCapability } from "./capability-router.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
 import {
@@ -3688,6 +3688,15 @@ const server = createServer(async (req, res) => {
     }
     const url = req.url || "/";
     const pathname = url.split("?", 1)[0];
+    if (pathname === "/develop" || pathname === "/develop.html" || pathname === "/develop/archive" || pathname === "/develop-archive.html" || pathname === "/development" || pathname === "/development.html") {
+      res.writeHead(302, { Location: "/", "Cache-Control": "no-store" });
+      res.end();
+      return;
+    }
+    if (pathname.startsWith("/api/development")) {
+      send(res, 410, { error: "开发能力已从当前应用移除。" });
+      return;
+    }
     if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
       send(res, 200, readFileSync(join(WEB_DIR, "index.html"), "utf-8"), "text/html");
       return;
@@ -4358,6 +4367,10 @@ const server = createServer(async (req, res) => {
         send(res, 400, { error: "missing capabilityId or instruction" });
         return;
       }
+      if (body.capabilityId === "project-development" || body.surface === "development") {
+        send(res, 410, { error: "开发能力已从当前应用移除。" });
+        return;
+      }
       const capabilityPersonaId = body.kind === "capability-adhoc" ? "clownfish" : body.personaId;
       let developmentWorkspace = "";
       let developmentApprovalPolicy: DevelopmentApprovalPolicy = "request";
@@ -4785,11 +4798,7 @@ const server = createServer(async (req, res) => {
       const supports = modelConnectionStatus().supports as { webSearch?: boolean } | undefined;
       send(res, 200, {
         ok: true,
-        development: {
-          ...developmentEnvironment(),
-          ...developmentEnginePlugins.readiness(),
-          enginePlugins: developmentEnginePlugins.list(),
-        },
+        development: {},
         connectors: platformConnectorStatuses(extensions, {
           files: true,
           browser: Boolean(supports?.webSearch),
@@ -6963,7 +6972,6 @@ boot().then(() => {
     resumeInterruptedAgentRuns();
     seedPersonaBiosInBackground(engine);
     startPeriodicDataSync();
-    void developmentEngineUpdates.check();
     void agentExtensionUpdates.check();
     const startedAt = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
     console.log("");

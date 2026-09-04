@@ -22,7 +22,6 @@ const ROUTES: RouteRule[] = [
   { capabilityId: "ability-builder", catalogId: "ability", patterns: [/(生成|创建|新增|沉淀|锻造).{0,8}(能力|技能)/i, /做成.{0,6}(能力|技能)/i], reason: "目标是沉淀可重复使用的能力" },
   { capabilityId: "meeting-minutes", catalogId: "meeting", patterns: [/(整理|生成|输出|写成|做成).{0,10}(会议纪要|会议记录|行动项)|(?:会议纪要|会议记录).{0,10}(整理|生成|输出)|把.{0,24}(记录|讨论|访谈).{0,12}(整理|提炼).{0,8}(纪要|行动项)/i], reason: "用户明确要求把记录整理成会议纪要" },
   { capabilityId: "thinking-workbench", catalogId: "thinking", patterns: [/(?:按|依照).{0,8}(?:紧急程度|优先级).{0,8}(?:整理|安排|排序)|(?:紧急程度|优先级).{0,8}(?:整理|安排|排序)/i], reason: "目标是先安排优先级和行动顺序" },
-  { capabilityId: "project-development", catalogId: "developer", patterns: [/开发|写代码|改代码|修复.{0,8}(问题|bug)|项目检查|代码库|仓库|(?:构建|测试).{0,12}(代码|项目|仓库|软件|程序|接口)|(?:代码|项目|仓库|软件|程序|接口).{0,12}(构建|测试)/i], reason: "目标需要读取和修改项目文件" },
   { capabilityId: "presentation-builder", catalogId: "presentation", patterns: [/PPT|演示文稿|路演|幻灯|课件|(?:生成|制作|做成|输出).{0,8}(汇报|提案)|(?:汇报|提案).{0,8}(PPT|演示|大纲|材料)/i], reason: "目标交付物是演示文稿" },
   { capabilityId: "quick-speech", catalogId: "speech", patterns: [/语音转写|音频转写|录音转写|视频转写|识别音频|听写/i], reason: "目标是把音频内容快速转成文字" },
   { capabilityId: "quick-translate", catalogId: "translate", patterns: [/翻译|中译英|英译中|译成|译文/i], reason: "目标是快速翻译文字" },
@@ -67,11 +66,6 @@ const EXTENSION_ROUTES: Record<string, Omit<CapabilityRouteResult, "confidence">
 
 export function routeCapability(input: CapabilityRouteInput): CapabilityRouteResult {
   const goal = String(input.goal || "").trim().slice(0, 4000);
-  const workspacePath = String(input.workspacePath || "").trim();
-  if (workspacePath) {
-    return { capabilityId: "project-development", catalogId: "developer", confidence: "high", reason: "已指定项目工作区" };
-  }
-
   const materialNames = (input.materialNames || []).map((name) => String(name || "").toLowerCase());
   const hasReadableDocument = materialNames.some((name) => /\.(?:docx?|docm|odt|rtf|epub|ppt|pps|pot|pptx|pptm|ppsx|ppsm|odp|xls|xlsx|xlsm|xlsb|ods|pdf|txt|md|csv|json)$/.test(name));
   if (hasReadableDocument && /(提取|摘要|总结|整理|归纳|改写|润色|校对|转换|阅读|分析)(?:.{0,12})(?:附件|文件|材料|内容|要点|原文)?/i.test(goal)) {

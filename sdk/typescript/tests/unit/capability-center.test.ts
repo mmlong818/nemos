@@ -15,7 +15,6 @@ const NEW_CAPABILITIES = [
   "business-deal",
   "market-opportunity",
   "ability-builder",
-  "project-development",
 ];
 
 const THINKING_RESULT = JSON.stringify({
@@ -46,6 +45,7 @@ test("能力中心所需的内置能力可直接使用", () => {
     });
     const abilityIds = new Set(runtime.snapshot().abilities.map((ability) => ability.id));
     for (const id of NEW_CAPABILITIES) assert.ok(abilityIds.has(id), `missing ${id}`);
+    assert.equal(abilityIds.has("project-development"), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -347,7 +347,7 @@ test("删除归档任务时可选择保留或一并删除产出文件", async ()
   }
 });
 
-test("开发项目作为独立能力执行，并保存可继续交接的完整结果", async () => {
+test.skip("开发项目作为独立能力执行，并保存可继续交接的完整结果", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-development-capability-"));
   const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-workspace-"));
   let received: { workspacePath: string; instruction: string; accessMode: string } | undefined;
@@ -383,7 +383,7 @@ test("开发项目作为独立能力执行，并保存可继续交接的完整�
   }
 });
 
-test("同一 Pi 开发任务会携带上下文包并精确恢复上一轮会话", async () => {
+test.skip("同一 Pi 开发任务会携带上下文包并精确恢复上一轮会话", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-development-resume-"));
   const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-resume-workspace-"));
   const calls: Array<{ instruction: string; sessionMode?: string; sessionFile?: string }> = [];
@@ -455,7 +455,7 @@ test("同一 Pi 开发任务会携带上下文包并精确恢复上一轮会话"
   }
 });
 
-test("开发能力的计划任务、流式和单次入口全部调用真实开发引擎", async () => {
+test.skip("开发能力的计划任务、流式和单次入口全部调用真实开发引擎", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-development-entrypoints-"));
   const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-entrypoint-workspace-"));
   const calls: Array<{ workspacePath: string; accessMode: string; engine?: string }> = [];
@@ -685,7 +685,8 @@ test("能力中心页面包含独立对话、手动归档和受保护删除", ()
   assert.doesNotMatch(html, /class="view-tabs"/);
   assert.match(html, /id="capabilityArchiveList"/);
   assert.match(html, /id="capabilityArchiveSection"/);
-  assert.equal([...script.matchAll(/backendId:/g)].length, 16);
+  assert.equal([...script.matchAll(/backendId:/g)].length, 15);
+  assert.doesNotMatch(script, /project-development/);
   assert.match(script, /memoryMode:[^\n]+"preferences"/);
   assert.match(script, /\/api\/agent\/job/);
   assert.match(html, /id="jobDeleteDialog"/);
@@ -709,7 +710,7 @@ test("能力中心页面包含独立对话、手动归档和受保护删除", ()
   assert.match(script, /name: "深度研究"/);
   assert.match(script, /name: "查港股资料"/);
   assert.match(script, /name: "生成新能力"/);
-  assert.match(script, /name: "开发项目"/);
+  assert.doesNotMatch(script, /name: "开发项目"/);
   assert.match(script, /name: "翻译文字"/);
   assert.match(script, /name: "语音转写"/);
   assert.match(script, /name: "文字润色"/);
@@ -863,11 +864,7 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.match(script, /data-capability[\s\S]*activateCapability/);
   assert.match(script, /focusInput: true/);
   assert.match(script, /classList\.add\("is-launching"\)/);
-  assert.match(script, /button\.disabled = !status\.ready \|\| !hasInstruction \|\| !hasWorkspace/);
-  assert.match(script, /审阅修改/);
-  assert.match(script, /data-apply-proposal/);
-  assert.match(script, /data-reject-proposal/);
-  assert.match(script, /修改先作为提案保存/);
+  assert.match(script, /button\.disabled = !status\.ready \|\| !hasInstruction/);
   assert.match(script, /const ICON_TONES =/);
   assert.match(script, /function artifactDisplayTitle/);
   assert.match(script, /function updateLaunchState\(\)/);

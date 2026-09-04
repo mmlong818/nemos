@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { routeCapability } from "../../examples/companion/capability-router.js";
 
-test("routes explicit project work ahead of generic document words", () => {
-  assert.equal(routeCapability({ goal: "检查项目文档并修复构建问题" }).capabilityId, "project-development");
+test("开发目标不再路由到已移除的开发能力", () => {
+  assert.equal(routeCapability({ goal: "检查项目文档并修复构建问题" }).capabilityId, "document-draft");
 });
 
 test("explicit meeting-minute deliverables outrank incidental development vocabulary", () => {
@@ -29,10 +29,10 @@ test("routes extraction from an attached Markdown file as document work, not int
   assert.equal(result.confidence, "high");
 });
 
-test("an explicit workspace always uses project development", () => {
+test("工作区路径不再启动开发能力", () => {
   const result = routeCapability({ goal: "看看这个", workspacePath: "C:\\work\\demo" });
-  assert.equal(result.catalogId, "developer");
-  assert.equal(result.confidence, "high");
+  assert.equal(result.catalogId, "thinking");
+  assert.equal(result.confidence, "low");
 });
 
 test("routes former task-page utilities to capability-page abilities", () => {

@@ -24,8 +24,8 @@ test("only marks built-in browser ready when live search is configured", () => {
   assert.equal(browser?.provider, "built-in");
 });
 
-test("provides five domain packs with explicit quality gates", () => {
-  assert.deepEqual(DOMAIN_CAPABILITY_PACKS.map((pack) => pack.id), ["research", "office", "development", "operations", "finance"]);
+test("provides active domain packs with explicit quality gates", () => {
+  assert.deepEqual(DOMAIN_CAPABILITY_PACKS.map((pack) => pack.id), ["research", "office", "operations", "finance"]);
   assert.equal(DOMAIN_CAPABILITY_PACKS.every((pack) => pack.quality.length >= 3), true);
 });
 
