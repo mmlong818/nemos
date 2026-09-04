@@ -56,7 +56,7 @@ test("能力场景按工具集组合工具，不复制执行实现", () => {
   );
   assert.deepEqual(
     surfaces.toolsFor("development", tools).map((item) => item.id),
-    ["web.search"],
+    [],
   );
 });
 
@@ -119,9 +119,9 @@ test("统一快照合并延迟加载的扩展工具并保留来源", () => {
   assert.equal(snapshot.surfaces.find((item) => item.id === "task")?.tools.includes("weather.lookup"), true);
 });
 
-test("产品运行时工具进入统一目录并按六个入口收窄", () => {
+test("产品运行时工具不再暴露开发入口", () => {
   const summaries = companionRuntimeToolSummaries();
-  assert.equal(summaries.length, 7);
+  assert.equal(summaries.length, 6);
   assert.equal(summaries.find((item) => item.id === "agent.task-create")?.effect, "write");
   assert.deepEqual(
     filterCompanionRuntimeToolsForSurface("education", [
@@ -137,7 +137,7 @@ test("产品运行时工具进入统一目录并按六个入口收窄", () => {
       { definition: { name: "development_task_create" } },
       { definition: { name: "capability_task_create" } },
     ]).map((item) => item.definition.name),
-    ["memory_recall", "development_task_create"],
+    [],
   );
 });
 

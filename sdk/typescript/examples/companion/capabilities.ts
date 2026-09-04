@@ -3162,22 +3162,6 @@ const BUILTIN_ABILITIES: Capability[] = [
     createdAt: BUILTIN_CREATED_AT,
   },
   {
-    id: "project-development",
-    name: "开发项目",
-    description: "在明确指定的本地项目文件夹内读取代码、实施修改并交付可运行结果与验证记录。",
-    kind: "builtin",
-    defaultFormat: "md",
-    prompt: [
-      "Use the embedded Pi coding runtime for real project work.",
-      "The selected workspace is the complete access boundary.",
-      "Read project instructions and relevant files before changing anything.",
-      "Keep edits precise, run the most relevant approved checks, and report only verified results.",
-      "The primary deliverable is the changed project and its verified runnable state; the written artifact is only a concise change and verification record.",
-      "Never read secret files, delete files, rewrite Git history, push, publish, deploy, or access paths outside the selected workspace.",
-    ].join("\n"),
-    createdAt: BUILTIN_CREATED_AT,
-  },
-  {
     id: "business-deal",
     name: "商务推进",
     description: "梳理合作价值、关键人、异议、谈判边界和可执行的跟进动作。",

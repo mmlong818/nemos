@@ -82,18 +82,13 @@ test("Codex JSONL 事件可还原回复、线程和工具计数", () => {
   assert.deepEqual(result.telemetry, { "thread.started": 1, "item.completed": 2 });
 });
 
-test("Codex 已接入开发页面、任务路由和平台就绪检查", () => {
+test("Codex 适配器保留但不再从产品入口暴露", () => {
   const companion = join(process.cwd(), "examples", "companion");
-  const html = readFileSync(join(companion, "web", "develop.html"), "utf8");
-  const settings = readFileSync(join(companion, "web", "settings.html"), "utf8");
-  const script = readFileSync(join(companion, "web", "assets", "develop-center.js"), "utf8");
+  const home = readFileSync(join(companion, "web", "index.html"), "utf8");
   const server = readFileSync(join(companion, "server.ts"), "utf8");
   const plugins = readFileSync(join(companion, "development-engine-plugins", "codex.ts"), "utf8");
-  assert.match(html, /<option value="codex">Codex<\/option>/);
-  assert.match(settings, /<option value="codex">Codex<\/option>/);
-  assert.match(script, /codex: \{ name: "Codex"/);
-  assert.match(server, /developmentEnginePlugins\.run\(developmentEngine/);
-  assert.match(server, /developmentEnginePlugins\.readiness\(\)/);
+  assert.doesNotMatch(home, /href="\/develop"/);
+  assert.match(server, /pathname\.startsWith\("\/api\/development"\)/);
   assert.match(plugins, /id: "codex"[\s\S]*name: "Codex"[\s\S]*packageName: "@openai\/codex"/);
   assert.match(plugins, /runCodexDevelopment/);
 });

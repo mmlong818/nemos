@@ -83,7 +83,6 @@ function commandVersion(command: string, args: string[]) {
 export const DOMAIN_CAPABILITY_PACKS = [
   { id: "research", name: "研究", abilities: ["research-brief", "thinking-workbench", "decision-brief"], deliverables: ["html", "doc", "md"], quality: ["来源可追溯", "事实与判断分开", "保留不确定性"] },
   { id: "office", name: "办公", abilities: ["document-draft", "presentation-builder", "meeting-minutes"], deliverables: ["doc", "pptx", "xlsx", "pdf"], quality: ["结构可编辑", "版式可复用", "导出前检查"] },
-  { id: "development", name: "开发", abilities: ["project-development"], deliverables: ["workspace", "patch", "check-report"], quality: ["限定工作区", "真实检查", "可回滚提案"] },
   { id: "operations", name: "运营", abilities: ["html-report", "market-opportunity", "business-deal"], deliverables: ["html", "doc", "xlsx"], quality: ["目标受众明确", "行动项可执行", "指标口径一致"] },
   { id: "finance", name: "财务", abilities: ["market-briefing", "decision-brief"], deliverables: ["html", "xlsx", "pdf"], quality: ["数据注明时间", "不替用户做交易", "风险单独呈现"] },
 ] as const;

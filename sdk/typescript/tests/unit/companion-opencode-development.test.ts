@@ -61,18 +61,13 @@ test("OpenCode JSON 事件可还原回复、会话和工具计数", () => {
   assert.deepEqual(result.telemetry, { tool_use: 1, text: 1 });
 });
 
-test("OpenCode 已接入开发页面、任务路由和平台就绪检查", () => {
+test("OpenCode 适配器保留但不再从产品入口暴露", () => {
   const companion = join(process.cwd(), "examples", "companion");
-  const html = readFileSync(join(companion, "web", "develop.html"), "utf8");
-  const settings = readFileSync(join(companion, "web", "settings.html"), "utf8");
-  const script = readFileSync(join(companion, "web", "assets", "develop-center.js"), "utf8");
+  const home = readFileSync(join(companion, "web", "index.html"), "utf8");
   const server = readFileSync(join(companion, "server.ts"), "utf8");
   const plugins = readFileSync(join(companion, "development-engine-plugins", "opencode.ts"), "utf8");
-  assert.match(html, /<option value="opencode">OpenCode<\/option>/);
-  assert.match(settings, /<option value="opencode">OpenCode<\/option>/);
-  assert.match(script, /opencode: \{ name: "OpenCode"/);
-  assert.match(server, /developmentEnginePlugins\.run\(developmentEngine/);
-  assert.match(server, /developmentEnginePlugins\.readiness\(\)/);
+  assert.doesNotMatch(home, /href="\/develop"/);
+  assert.match(server, /pathname\.startsWith\("\/api\/development"\)/);
   assert.match(plugins, /id: "opencode"[\s\S]*name: "OpenCode"[\s\S]*packageName: "opencode-ai"/);
   assert.match(plugins, /runOpenCodeDevelopment/);
 });

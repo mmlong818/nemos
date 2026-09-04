@@ -104,11 +104,9 @@ test("启动检查保存五个引擎状态，升级必须通过确认、构建�
   }
 });
 
-test("服务启动检查版本，升级接口经过显式用户操作网关", () => {
+test("服务不再自动检查开发引擎版本，且统一禁用开发接口", () => {
   const server = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
-  assert.match(server, /void developmentEngineUpdates\.check\(\)/);
-  assert.match(server, /url === "\/api\/development\/engine-updates"/);
-  assert.match(server, /url === "\/api\/development\/engine-updates\/upgrade"/);
-  assert.match(server, /name: "development_engine_upgrade"/);
-  assert.match(server, /acceptRisk: body\.acceptRisk === true/);
+  assert.doesNotMatch(server, /void developmentEngineUpdates\.check\(\)/);
+  assert.match(server, /pathname\.startsWith\("\/api\/development"\)/);
+  assert.match(server, /开发能力已从当前应用移除/);
 });

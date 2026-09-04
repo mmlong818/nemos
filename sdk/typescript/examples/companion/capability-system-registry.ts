@@ -54,7 +54,7 @@ export const DEFAULT_CAPABILITY_SURFACES: readonly CapabilitySurfacePolicy[] = [
     id: "task",
     name: "任务",
     description: "对话、研究、写作、文件与来源核验所需的通用工具。",
-    toolsets: ["web", "source", "vision", "document", "writing", "voice", "memory", "task", "skill", "delegation", "artifact", "development", "extension"],
+    toolsets: ["web", "source", "vision", "document", "writing", "voice", "memory", "task", "skill", "delegation", "artifact", "extension"],
   },
   {
     id: "education",
@@ -66,19 +66,13 @@ export const DEFAULT_CAPABILITY_SURFACES: readonly CapabilitySurfacePolicy[] = [
     id: "capability",
     name: "能力",
     description: "执行专门任务时按目标选择所需工具。",
-    toolsets: ["web", "source", "vision", "document", "writing", "voice", "memory", "task", "skill", "delegation", "artifact", "development", "extension"],
+    toolsets: ["web", "source", "vision", "document", "writing", "voice", "memory", "task", "skill", "delegation", "artifact", "extension"],
   },
   {
     id: "office",
     name: "文件",
     description: "文档转换、识别、整理与润色。",
     toolsets: ["vision", "document", "writing", "artifact"],
-  },
-  {
-    id: "development",
-    name: "开发",
-    description: "开发引擎负责改代码，检索工具只用于补充资料和核验来源。",
-    toolsets: ["web", "source", "memory", "artifact", "development"],
   },
   {
     id: "automation",
@@ -95,7 +89,6 @@ const COMPANION_RUNTIME_TOOLS = [
   { name: "skill_install", id: "agent.skill-install", label: "安装技能", description: "将经过确认的可复用流程安装到本机技能库。", toolset: "skill", effect: "write", risk: "normal", permissions: ["skill-write"] },
   { name: "agent_delegation_create", id: "agent.delegation-create", label: "委派子任务", description: "把研究、整理或复核工作交给受控执行器。", toolset: "delegation", effect: "write", risk: "normal", permissions: ["task-write"] },
   { name: "capability_artifact_list", id: "agent.artifact-list", label: "产物检索", description: "找回任务和能力此前生成的文件与结果。", toolset: "artifact", effect: "read", risk: "normal", permissions: ["artifact-read"] },
-  { name: "development_task_create", id: "agent.development-create", label: "创建开发任务", description: "将编程目标交给选定开发引擎执行。", toolset: "development", effect: "write", risk: "normal", permissions: ["development-write"] },
 ] as const;
 
 export function companionRuntimeToolSummaries(): CapabilityToolSummary[] {
@@ -187,11 +180,7 @@ export function buildCapabilitySystemRegistry(input: {
   const tools = [...coreTools, ...additionalTools]
     .sort((a, b) => a.toolset.localeCompare(b.toolset) || a.id.localeCompare(b.id));
   const surfaces = input.surfaces ?? new CapabilitySurfaceRegistry();
-  const engineReadiness = input.engines.readiness();
-  const engines = input.engines.list().map((manifest) => ({
-    ...manifest,
-    readiness: engineReadiness[manifest.id],
-  }));
+  const engines: Array<{ id: string; readiness: { available: boolean } }> = [];
   const skills: CapabilitySkillSummary[] = input.abilities.map((ability) => ({
     id: ability.id,
     name: ability.name,
