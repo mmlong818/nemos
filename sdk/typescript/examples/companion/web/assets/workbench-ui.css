@@ -70,6 +70,10 @@ body[data-ui=workbench] .home-shell .workbench-body{width:100%!important;grid-co
 /* Reserve the same viewport gutter on every route, including the short overview. */
 html[data-ui=workbench]{background:#f4f6f5!important;scrollbar-gutter:stable!important;color-scheme:light}
 body[data-ui=workbench]{--cf-canvas:#f4f6f5;--cf-surface:#fff;--cf-surface-soft:#f3f6f5;--cf-ink:#253331;--cf-ink-soft:#66746f;--cf-ink-faint:#66746f;--cf-line:#dfe5e2;--cf-line-strong:#bbc9c3;--cf-coral:#276b5b;--cf-coral-hover:#205749;--cf-coral-soft:#e8f1ed;--cf-font-family:"Segoe UI","Microsoft YaHei",sans-serif;--cf-font-display:"Bahnschrift","Microsoft YaHei",sans-serif;--task-text:#253331;--task-muted:#66746f;--task-border:#dfe5e2;--task-surface:#fff;--task-panel:#f4f6f5;--app-shell-reserved:208px;--cf-workspace-gap:0px;--cf-workspace-radius:0px;--cf-shadow-sm:none;--cf-workspace-shadow:none;background:#f4f6f5!important;color:var(--cf-ink);font:14px/1.6 var(--cf-font-family);padding:0!important;min-width:0}
+body[data-ui=workbench] .page-head{display:none!important}
+body[data-ui=workbench] .work-page-head{display:none!important}
+body[data-ui=workbench] .personal-head{display:none!important}
+body[data-ui=workbench] .page{padding-top:28px!important}
 body[data-ui=workbench]::after{display:none!important}
 body[data-ui=workbench] :is(button,input,textarea,select){font-family:var(--cf-font-family)}
 /* Keyboard navigation keeps a clear indicator; text fields use their existing border. */
@@ -98,6 +102,7 @@ body[data-ui=workbench] .wb-link[aria-current=page]{background:#e8f1ed!important
 .wb-search{display:flex;justify-content:space-between;align-items:center;font-size:11px!important;padding:9px 10px!important;border:1px solid #dfe5e2!important;background:#edf1ef!important;border-radius:6px!important;color:#53655f}.wb-search kbd{font:10px Consolas,monospace}
 .wb-topbar{grid-column:2;grid-row:1;display:flex;align-items:center;gap:16px;min-width:0;padding:8px 30px;background:#fff;z-index:10;font:12px/1.5 var(--cf-font-family)}
 .wb-topbar>div:first-of-type{white-space:nowrap}.wb-topbar a{color:#66746f;text-decoration:none}.wb-topbar strong{font-weight:500}.wb-topbar span{color:#a4b0ab;margin:0 12px}#wbPageActions{margin-left:auto;display:flex;align-items:center;gap:8px;min-width:0}#wbPageActions button{width:auto!important;height:auto!important;min-height:32px;padding:6px 10px!important;border:1px solid #dfe5e2;border-radius:6px;font-size:12px;background:#fff;color:#253331}#wbPageActions .app-search-label{display:inline!important}#wbPageActions button span{margin:0;color:inherit}#wbMenu{display:none}
+.home-utility-strip{display:flex;align-items:center;gap:8px;width:min(736px,100%);margin:0 auto 10px;padding:0 2px;color:var(--cf-ink-soft);font-size:12px}.home-utility-label{margin-right:auto;font-weight:600;color:var(--cf-ink)}.home-utility-strip button{width:auto!important;min-height:30px;padding:5px 9px!important;border:1px solid var(--cf-line)!important;border-radius:7px;background:var(--cf-surface)!important;color:var(--cf-ink)!important;font-size:12px}
 body[data-ui=workbench] .personal-main{padding:34px clamp(24px,4.5vw,70px)!important}.personal-main .wb-muted{color:#66746f}
 body[data-ui=workbench] .personal-head{margin-bottom:26px}.personal-head>.personal-eyebrow{margin-top:0}
 body[data-ui=workbench] .wb-assistant-role-hint{font-size:12px!important;line-height:1.8!important;color:#66746f!important;margin:12px 0!important}

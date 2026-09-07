@@ -5,7 +5,7 @@
 <body><div class="personal-shell">
 <!-- APP_NAVIGATION -->
 <main class="personal-main"><header class="personal-head"><div><p class="personal-eyebrow">你的个人助理</p><h1>进行中的事</h1><p>把在意的事接着往前推，每次只明确下一步。</p></div></header>
-<div class="personal-toolbar"><nav aria-label="事项分类" id="filters"><button data-filter="ongoing" aria-pressed="true">进行中</button><button data-filter="completed" aria-pressed="false">已完成</button><button data-filter="learning" aria-pressed="false">待确认的学习</button></nav><label class="personal-search"><span class="sr-only">搜索事项或学习</span><input id="search" type="search" placeholder="搜索目标、下一步…"></label><button class="primary" id="newMatter">＋ 新建事项</button></div>
+<div class="personal-toolbar"><nav aria-label="事项分类" id="filters"><button data-filter="ongoing" aria-pressed="true">进行中</button><button data-filter="completed" aria-pressed="false">已完成</button><button data-filter="learning" aria-pressed="false">待确认</button><a id="memoryLink" href="/memory">已记住</a></nav><label class="personal-search"><span class="sr-only">搜索事项或待确认内容</span><input id="search" type="search" placeholder="搜索目标、下一步或待确认内容…"></label><button class="primary" id="newMatter">＋ 新建事项</button></div>
 <p id="connection" role="status"></p><section id="reminders" aria-label="到期跟进"></section><section id="records" aria-label="事项列表" aria-live="polite"><p>正在读取本机记录…</p></section>
 <footer class="personal-foot">跟进仅在应用后台运行时触发；关机期间不会执行。事项记录不代表你授权了发送、购买或其它外部操作。</footer></main></div>
 <dialog id="matterDialog" aria-labelledby="matterTitle"><form id="matterForm"><header><h2 id="matterTitle">新建事项</h2><button type="button" data-close="matterDialog" aria-label="关闭事项编辑">×</button></header>

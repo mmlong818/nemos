@@ -51,6 +51,7 @@
   function selectFilter(value,updateUrl=true){
     filter=['ongoing','completed','learning'].includes(value)?value:'ongoing';
     document.querySelectorAll('[data-filter]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.filter===filter)));
+    const memoryLink=$("#memoryLink"); if(memoryLink) memoryLink.setAttribute('aria-current',filter==='learning'?'page':'');
     if(updateUrl){const next=new URL(location.href);next.searchParams.set('view',filter);history.replaceState(null,'',next.pathname+next.search+next.hash);window.ClownfishNavigation?.sync();}
     render();
   }

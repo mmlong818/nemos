@@ -19,6 +19,10 @@ Bot 市场入口：`/bots?view=market`。首批提供项目推进、会前准备
 
 ![小丑鱼任务工作台](docs/assets/readme/clownfish-task-0.5.5.png)
 
+工作台的核心路径是：助理接收目标 → 自动分派到合适的 Bot/能力 → 进入任务队列 → 返回可追溯的结果。页面保持同一套工作区结构，状态切换不会改变用户所在的主上下文。
+
+![小丑鱼助理首页](docs/assets/readme/clownfish-assistant-0.5.5.png)
+
 ## 现在可以做什么
 
 | 入口 | 用户操作 | 交付结果 |
@@ -95,6 +99,10 @@ Bot 市场只包含随应用发布的本地精选模板，不同步 Grok 账号�
 ## 记忆、模型与数据
 
 ![小丑鱼模型设置](docs/assets/readme/clownfish-settings-0.5.5.png)
+
+记忆分为已记住内容和待确认内容。待确认内容必须经过用户明确确认才会进入长期记忆，也可以随时撤回；事项的进行中、已完成和待确认状态共享同一个事项工作区。
+
+![小丑鱼记忆工作区](docs/assets/readme/clownfish-memory-0.5.5.png)
 
 记忆内核来自独立依赖 [`@nemos/sdk`](https://github.com/mmlong818/nemos-memory)，本仓库不保留重复副本。
 

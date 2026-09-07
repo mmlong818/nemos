@@ -82,6 +82,17 @@
   if(body.dataset.wbRoute==='/bots'){
     const intro=$('.market-intro');if(intro){const details=document.createElement('details');details.className='wb-market-notes';const summary=document.createElement('summary');summary.textContent='目录来源与使用边界';details.append(summary);while(intro.firstChild)details.append(intro.firstChild);intro.replaceWith(details);$('#marketPane').append(details);}
   }
+  if(body.dataset.wbRoute==='/' && actions){
+    const composer=document.querySelector('#composer');
+    if(composer){
+      const strip=document.createElement('div');strip.className='home-utility-strip';strip.setAttribute('aria-label','工作区快捷入口');
+      const label=document.createElement('span');label.className='home-utility-label';label.textContent='工作区';strip.append(label);
+      while(actions.firstChild)strip.append(actions.firstChild);
+      const workMain=document.querySelector('#main');
+      workMain?.insertBefore(strip,workMain.firstChild);
+      actions.parentElement?.setAttribute('hidden','');
+    }
+  }
   // Stable page anatomy: heading, section tabs, filters, content. Move nodes, not data.
   for(const id of ['newTask']){
     const button=document.getElementById(id);
