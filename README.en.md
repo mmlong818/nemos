@@ -11,11 +11,11 @@ Clownfish is a **local-first AI work application with long-term memory and real 
 
 See the [Privacy Policy](PRIVACY.en.md) for local storage, external-service, synchronization, export, and deletion boundaries.
 
-## v0.5.5 release
+## Product overview
 
-This release consolidates Tasks, Bots, Capabilities, Files, Memory, and Model Settings into one personal AI assistant workbench. It adds task-level Bot routing, bounded text collaboration, model queue visibility and cancellation, delivery receipts, shared materials, and local-first storage. The legacy development engine has been removed.
+Clownfish consolidates Tasks, Bots, Capabilities, Files, Memory, and Model Settings into one personal AI assistant workbench. It provides a local Bot market, task-level routing, bounded text collaboration, model queue visibility and cancellation, delivery receipts, shared materials, and local-first storage. The legacy development engine is outside the current product scope.
 
-![Clownfish tasks](docs/assets/readme/clownfish-chat-2026-08-16.png)
+![Clownfish task workbench](docs/assets/readme/clownfish-task-0.5.5.png)
 
 ## Main surfaces
 
@@ -58,7 +58,7 @@ Capabilities can continue one another while keeping the original task context. V
 
 Settings offers four optional bundled plugins: official Playwright MCP browser control, safe CSV/JSON analysis, local EML/ICS file parsing, and image/video generation through a user-provided OpenAI-compatible media endpoint. Analysis and file parsing are local; browser control needs local Chrome; media generation needs the user's own API.
 
-![Clownfish capabilities](docs/assets/readme/clownfish-capabilities-2026-08-16.png)
+![Clownfish Bot market](docs/assets/readme/clownfish-bots-0.5.5.png)
 
 ## File workbench
 
@@ -76,9 +76,11 @@ Its boundary is explicit: **keep the original, edit a converted working copy, an
 
 Complex floating objects, comments, cross-section headers and footers, formulas, charts, slide masters, and spreadsheet formulas still rely on the original or desktop Office/WPS for fidelity.
 
-![Clownfish files](docs/assets/readme/clownfish-office-2026-08-16.png)
+![Clownfish tools and connections](docs/assets/readme/clownfish-capabilities-0.5.5.png)
 
 ## Memory, models, and storage
+
+![Clownfish model settings](docs/assets/readme/clownfish-settings-0.5.5.png)
 
 The memory core comes from the independent [`@nemos/sdk`](https://github.com/mmlong818/nemos-memory) dependency. User facts, persona self-memory, task context, and specialist execution remain separated. Capabilities may apply a small number of delivery preferences or disable them for one run; the current request always wins.
 

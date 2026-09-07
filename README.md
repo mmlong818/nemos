@@ -13,11 +13,11 @@
 
 Bot 市场入口：`/bots?view=market`。首批提供项目推进、会前准备、植物养护记录三个原生适配 Bot，可搜索、筛选、查看来源与边界、添加并编辑自己的版本，再发起协作任务。仅借鉴 Grok 公开模板的工作流程，不打包其原提示词、脚本、个人记忆或插件；不是 Grok 市场镜像。详见[市场适配与验证](docs/bot-market-adoption-2026-09-06.md)。
 
-## v0.5.5 正式版
+## 产品概览
 
-本版本完成个人助理工作台重构：统一页面导航，明确助理、Bot、能力和工具的职责边界；加入 Bot 市场与团队任务；支持自主文字协作的预算、规划、执行、核验和重试；模型请求提供排队、等待、取消和恢复状态；外观设置保留配色、密度和动效控制。旧开发引擎已移除。
+小丑鱼将任务、Bot、能力、文件、记忆和模型设置统一到一个个人 AI 助理工作台。它支持 Bot 市场、任务级自动分派、受控文字协作、模型排队与取消、结果回执、附件共享和本机优先的数据保存。旧开发引擎不属于当前产品范围。
 
-![小丑鱼任务界面](docs/assets/readme/clownfish-chat-2026-08-16.png)
+![小丑鱼任务工作台](docs/assets/readme/clownfish-task-0.5.5.png)
 
 ## 现在可以做什么
 
@@ -72,7 +72,7 @@ Bot 市场只包含随应用发布的本地精选模板，不同步 Grok 账号�
 
 实时价格、余票、房态和订座等数据只有在可靠实时来源实际返回时才会标记为已确认；目前不内置动车、航班、酒店和餐馆的实时交易适配器。
 
-![小丑鱼能力页](docs/assets/readme/clownfish-capabilities-2026-08-16.png)
+![小丑鱼 Bot 市场](docs/assets/readme/clownfish-bots-0.5.5.png)
 
 ## 文件工作台
 
@@ -90,9 +90,11 @@ Bot 市场只包含随应用发布的本地精选模板，不同步 Grok 账号�
 
 复杂浮动对象、批注、跨节页眉页脚、公式、图表、演示母版和电子表格公式仍由原文件或桌面 Office/WPS 保真承接。
 
-![小丑鱼文件工作台](docs/assets/readme/clownfish-office-2026-08-16.png)
+![小丑鱼工具与连接](docs/assets/readme/clownfish-capabilities-0.5.5.png)
 
 ## 记忆、模型与数据
+
+![小丑鱼模型设置](docs/assets/readme/clownfish-settings-0.5.5.png)
 
 记忆内核来自独立依赖 [`@nemos/sdk`](https://github.com/mmlong818/nemos-memory)，本仓库不保留重复副本。
 

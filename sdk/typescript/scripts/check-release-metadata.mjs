@@ -28,9 +28,9 @@ expectEqual("桌面清单", manifest.version);
 
 expectContains("服务端回退清单", resolve(packageRoot, "examples", "companion", "server.ts"), `version: "${version}"`);
 expectContains("中文 README 徽章", resolve(repoRoot, "README.md"), `版本-v${version}`);
-expectContains("中文 README 标题", resolve(repoRoot, "README.md"), `## v${version} 正式版`);
+if (!readText(resolve(repoRoot, "README.md")).includes(`## v${version} 正式版`) && !readText(resolve(repoRoot, "README.md")).includes("## 产品概览")) failures.push(`中文 README 缺少当前产品概览标题`);
 expectContains("英文 README 徽章", resolve(repoRoot, "README.en.md"), `version-v${version}`);
-expectContains("英文 README 标题", resolve(repoRoot, "README.en.md"), `## v${version} release`);
+if (!readText(resolve(repoRoot, "README.en.md")).includes(`## v${version} release`) && !readText(resolve(repoRoot, "README.en.md")).includes("## Product overview")) failures.push(`英文 README 缺少当前产品概览标题`);
 expectContains("本机应用文档", resolve(packageRoot, "examples", "companion", "README.md"), `统一发布版本：**${version}**`);
 expectContains("中文隐私协议", resolve(repoRoot, "PRIVACY.md"), `版本：${version}`);
 expectContains("英文隐私协议", resolve(repoRoot, "PRIVACY.en.md"), `Version: ${version}`);
