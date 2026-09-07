@@ -2,9 +2,9 @@
 
 [中文](README.md)
 
-Current package version: `0.7.5-alpha.17`. Documentation reviewed on 2026-08-13. The pinned memory dependency is `@nemos/sdk` `0.7.5-alpha.18`.
+Application package version: `0.5.5`. Documentation reviewed on 2026-09-07. The pinned memory dependency is `@nemos/sdk` `0.7.5-alpha.18`.
 
-This directory is the TypeScript package for the Clownfish application and its auditable Agent runtime. `src/index.ts` re-exports the separately maintained `@nemos/sdk` package together with the local Agent runtime; memory-core source is no longer duplicated here.
+This directory is the TypeScript package for the Clownfish application and its auditable Agent runtime. The workbench provides tasks, Bots, capabilities, files, model scheduling, and local-first data management. `src/index.ts` re-exports the separately maintained `@nemos/sdk` package together with the local Agent runtime; memory-core source is no longer duplicated here.
 
 ## Install
 
