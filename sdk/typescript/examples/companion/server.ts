@@ -8,7 +8,7 @@
 // 无 key 也能开（离线兜底，仍演示拓扑）。记忆持久化到 COMPANION_DB，跨次保留。
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -46,15 +46,20 @@ import {
   finalDeliveryPrompt,
   planExpertTeam,
 } from "./expert-contracts.js";
-import { resolveLLM, searchWeb, validateCompanionModelConnection, type ResolvedLLM } from "./llm.js";
+import { resolveLLM, searchWeb, type ResolvedLLM } from "./llm.js";
+import { checkCompanionModel, selectCheckedCompanionModel } from "./model-readiness.js";
+import { supportedReasoningEfforts, resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
 import {
   COMPANION_MODEL_PROVIDER_PRESETS,
+  CompanionModelHttpError,
   defaultCompanionModelConnection,
+  fetchCompanionModelCatalog,
   normalizeCompanionModelConnection,
   publicModelConnection,
   dailyChatModelForConnection,
   selectCompanionConversationModel,
   type CompanionModelConnection,
+  type CompanionModelInfo,
   type CompanionModelProvider,
   type CompanionModelProtocol,
 } from "./model-connection.js";
@@ -65,16 +70,12 @@ import {
 } from "./model-pricing.js";
 import {
   CapabilityRuntime,
-  normalizeDevelopmentEngine,
-  normalizeDevelopmentReasoning,
   type ArtifactFormat,
   type CapabilityNotification,
   type CapabilityStreamCb,
   type CapabilityTaskExpertAssignment,
   type CapabilityTaskDecision,
   type CapabilityTaskStorylineStatus,
-  type DevelopmentEngine,
-  type DevelopmentReasoning,
 } from "./capabilities.js";
 import {
   createCapabilityHandoffEnvelope,
@@ -101,7 +102,7 @@ import {
   imagePromptVisionPrompt,
 } from "./image-prompt-reconstruction.js";
 import { CONTACTABLE_PERSONA_IDS, normalizeAddedContactIds, visibleContactIds } from "./contact-roster.js";
-import { RelationshipMemory, type CounterpartPatch } from "./relationship-memory.js";
+import { RelationshipMemory, RelationshipMemoryUnavailableError, type CounterpartPatch } from "./relationship-memory.js";
 import { PersonaToolBindings, type PersonaToolBinding } from "./persona-tool-bindings.js";
 import { resolveGroupReplyRoute } from "./group-routing.js";
 import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
@@ -114,34 +115,9 @@ import { OfficeFileSessionStore } from "./office-file-sessions.js";
 import { OfficeWorkbenchRevisionConflict, OfficeWorkbenchStateStore } from "./office-workbench-state.js";
 import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
-import { validateDevelopmentWorkspace, type DevelopmentAccessMode, type DevelopmentTelemetryEvent } from "./pi-development.js";
-import { createDevelopmentEnginePluginRegistry } from "./development-engine-plugins.js";
-import { DevelopmentEngineUpdateService } from "./development-engine-updates.js";
 import { AgentExtensionUpdateService } from "./agent-extension-updates.js";
 import { bundledCapabilityPluginCatalog, createBundledCapabilityProvider, type BundledCapabilityPluginId } from "./bundled-capability-plugins.js";
-import { DevelopmentProposalStore, renderDevelopmentProposalHtml } from "./development-proposals.js";
-import { listDevelopmentWorkspace, readDevelopmentWorkspaceFile } from "./development-workspace.js";
-import {
-  buildDevelopmentContextBundle,
-  developmentContextSummary,
-  normalizeDevelopmentContextSelection,
-  type DevelopmentContextBundle,
-  type DevelopmentContextSelection,
-} from "./development-context.js";
-import { createDevelopmentRunEvent } from "./development-run-events.js";
-import { createManagedDevelopmentProject, ensureDevelopmentProjectsRoot, extractDevelopmentWorkspaceReference } from "./development-projects.js";
-import {
-  DevelopmentProjectArchiveStore,
-  deleteManagedDevelopmentWorkspace,
-  developmentProjectThreads,
-  managedDevelopmentWorkspace,
-} from "./development-project-lifecycle.js";
-import {
-  developmentApprovalPolicies,
-  normalizeDevelopmentApprovalPolicy,
-  type DevelopmentApprovalPolicy,
-} from "./development-approval.js";
-import { buildReviewQueue, capabilityPackStatuses, platformConnectorStatuses } from "./product-platform.js";
+import { buildReviewQueue, groupReviewQueue, capabilityPackStatuses, extensionRuntimeReady, platformConnectorStatuses } from "./product-platform.js";
 import { routeCapability } from "./capability-router.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
 import {
@@ -156,6 +132,11 @@ import { appendCurrentUiEvidence } from "./ui-evidence.js";
 import { ProductReviewRunStore, type ProductReviewIssue } from "./product-review-runs.js";
 import { applyPendingDataRestore, normalizeSyncEndpoint, pullDataSync, pushDataSync, syncSettingsSummary, testDataSync, type DataSyncStoredSettings } from "./data-sync.js";
 import { recoverAgentJobStorage } from "./agent-job-storage-migration.js";
+import { BackgroundScheduler, enqueueScheduledCapabilities } from "./background-scheduler.js";
+import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
+import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery } from "./assistant-team.js";
+import { listBotMarket } from "./bot-market.js";
+import { appRoute, renderAppPage } from "./app-navigation.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const USER = process.env.COMPANION_USER || "me";
@@ -163,7 +144,6 @@ const defaultDataDir = join(homedir(), ".clownfish");
 const legacyDataDir = join(homedir(), String.fromCharCode(46, 110, 101, 109, 111, 115, 45, 99, 111, 109, 112, 97, 110, 105, 111, 110));
 const DATA_DIR = process.env.CLOWNFISH_HOME || process.env[String.fromCharCode(78, 69, 77, 79, 83, 95, 67, 79, 77, 80, 65, 78, 73, 79, 78, 95, 72, 79, 77, 69)] || (existsSync(defaultDataDir) || !existsSync(legacyDataDir) ? defaultDataDir : legacyDataDir);
 mkdirSync(DATA_DIR, { recursive: true });
-const DEVELOPMENT_PROJECTS_ROOT = ensureDevelopmentProjectsRoot(process.env.CLOWNFISH_PROJECTS_DIR || join(homedir(), "Documents", "小丑鱼项目"));
 const pendingSyncRestore = applyPendingDataRestore(DATA_DIR);
 recoverAgentJobStorage(DATA_DIR, DATA_DIR === defaultDataDir ? legacyDataDir : undefined);
 migrateStoredPersonaIdentities(DATA_DIR);
@@ -184,6 +164,9 @@ const preparedOfficeExports = new Map<string, {
 const officeFileSessions = new OfficeFileSessionStore(join(DATA_DIR, "office-file-sessions"));
 const officeWorkbenchState = new OfficeWorkbenchStateStore(join(DATA_DIR, "office-workbench.json"));
 const taskFiles = new TaskFileRegistry(join(DATA_DIR, "task-files.json"));
+const personalWork = new PersonalWorkStore(join(DATA_DIR, "personal-work.db"));
+const assistantBots = new AssistantBotStore(join(DATA_DIR, "assistant-bots.db"));
+assistantBots.seed(USER);
 
 
 function migrateStoredPersonaIdentities(root: string): void {
@@ -214,7 +197,6 @@ function runtimePath(envName: string, fileName: string): string {
 
 const DB = runtimePath("COMPANION_DB", "companion.db");
 const LLM_KEY_FILE = runtimePath("COMPANION_LLM_KEY", "llm-key.dpapi.json");
-const DEVELOPMENT_MODEL_CONNECTIONS_FILE = runtimePath("COMPANION_DEVELOPMENT_MODELS", "development-models.dpapi.json");
 const X_TOKEN_FILE = runtimePath("COMPANION_X_TOKEN", "x-token.dpapi.json");
 const TOOL_SETTINGS_FILE = runtimePath("COMPANION_TOOL_SETTINGS", "tool-settings.dpapi.json");
 const DATA_SYNC_SETTINGS_FILE = runtimePath("COMPANION_DATA_SYNC_SETTINGS", "data-sync.dpapi.json");
@@ -322,6 +304,10 @@ function backupSummary(): { dir: string; count: number; latest: string | null } 
 }
 
 let modelConnection = loadSavedLLMConnection();
+if (modelConnection) modelConnection.modelChecks ??= {};
+let modelConnectionUpdating = false;
+let modelCatalog = loadSavedLLMModelCatalog();
+let modelCatalogFetchedAt = loadSavedLLMModelCatalogFetchedAt();
 loadSavedXToken();
 let userProfile = loadUserProfile();
 
@@ -399,23 +385,11 @@ const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
     return searchWeb(key, query, signal);
   },
 });
-// 服务启动只恢复持久状态，不自动改动用户项目文件；中断提案留在待审状态，由用户明确处理。
-const developmentProposals = new DevelopmentProposalStore(join(DATA_DIR, "development-proposals"), { recoverInterrupted: false });
-const developmentEnginePlugins = createDevelopmentEnginePluginRegistry({
-  dataDir: DATA_DIR,
-  proposalStore: developmentProposals,
-});
-const developmentEngineUpdates = new DevelopmentEngineUpdateService({
-  registry: developmentEnginePlugins,
-  stateFile: join(DATA_DIR, "development-engine-updates.json"),
-  packageRoot: resolve(__dirname, "..", ".."),
-});
 const agentExtensionUpdates = new AgentExtensionUpdateService({
   registry: agentExtensions,
   stateFile: join(DATA_DIR, "agent-extension-updates.json"),
   createProvider: (manifest) => createExtensionProvider(manifest),
 });
-const developmentProjectArchive = new DevelopmentProjectArchiveStore(join(DATA_DIR, "development-project-archive.json"));
 const productReviewRuns = new ProductReviewRunStore(DATA_DIR);
 const knowledgeLibrary = new KnowledgeLibrary(DATA_DIR);
 const relationships = new RelationshipMemory(DATA_DIR);
@@ -432,76 +406,51 @@ const capabilities = new CapabilityRuntime({
   knowledgeContext: (ids) => knowledgeLibrary.buildPromptBlock(ids),
   counterpartContext: (counterpartId) => relationships.buildPromptBlock(counterpartId),
   toolBinding: (personaId) => personaToolBindings.get(personaId),
-  runDeveloper: async (input) => {
-    const developmentEngine = normalizeDevelopmentEngine(input.engine);
-    const baseConnection = developmentModelConnection(developmentEngine);
-    if (!baseConnection) throw new Error(`请先在设置中为 ${developmentEngine} 连接一个可用模型。`);
-    const developmentModel = normalizeDevelopmentModel(input.model) || baseConnection.model;
-    const developmentConnection = developmentModel === baseConnection.model
-      ? baseConnection
-      : { ...baseConnection, model: developmentModel };
-    const result = await developmentEnginePlugins.run(developmentEngine, {
-      ...input,
-      connection: developmentConnection,
-    });
-    return { ...result, engine: developmentEngine };
-  },
   notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode, surface) => {
-    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, surface: surface || "capability" });
+    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, model: runtimeLimits?.model, reasoningEffort: runtimeLimits?.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability" });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
   notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId, memoryMode, surface) => {
-    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, surface: surface || "capability" });
+    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, model: runtimeLimits?.model, reasoningEffort: runtimeLimits?.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability" });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
 });
 const agentJobQueue = new FileAgentJobQueue(AGENT_JOBS_FILE, { onChange: broadcastAgentEvent });
 
-function developmentNativeEvent(
-  event: DevelopmentTelemetryEvent,
-  engine: DevelopmentEngine,
-): { type: "thinking" | "tool_call" | "checking"; label: string; progress?: number; detail: string } | undefined {
-  if (engine !== "pi") return undefined;
-  if (event.type === "tool_execution_start") {
-    const tool = String(event.toolName || "工具").trim() || "工具";
-    return { type: "tool_call", label: `正在执行：${tool}`, detail: event.type };
+function teamConnectionFingerprint(): string {
+  return createHash("sha256").update(JSON.stringify(modelConnection ? {
+    provider: modelConnection.provider, protocol: modelConnection.protocol, baseUrl: modelConnection.baseUrl, apiKey: modelConnection.apiKey,
+  } : null)).digest("hex");
+}
+function enqueueAssistantTeam(raw: Record<string, unknown>) {
+  const request = normalizeTeamRequest(raw);
+  const idempotencyKey = `assistant-team:${USER}:${request.requestId}`;
+  const existing = agentJobQueue.list({ limit: 5000 }).find((job) => job.idempotencyKey === idempotencyKey);
+  if (existing) {
+    if (existing.payload.requestHash !== teamRequestHash(request)) throw new AssistantTeamError("同一请求编号的内容已改变，请创建新任务", 409);
+    return existing;
   }
-  if (event.type === "agent_start") return { type: "thinking", label: "Pi Agent 已开始处理", progress: 20, detail: event.type };
-  if (event.type === "agent_end") return { type: "checking", label: "Pi Agent 已完成执行，正在核对结果", progress: 84, detail: event.type };
-  return undefined;
+  if (!llm.live || !modelConnection) throw new AssistantTeamError("请先在设置中保存可用模型；离线演示不能算协作成功", 409);
+  if (request.model && request.model !== modelConnection.model
+    && (!modelCatalog.some((m) => m.id === request.model) || modelConnection.modelChecks?.[request.model]?.chat !== "passed")) {
+    throw new AssistantTeamError("所选模型尚未通过当前连接检查，请先在设置中检查", 409);
+  }
+  const teamPlan = assistantBots.plan(USER, { ...request, model: request.model || modelConnection.model }, {planning: request.planningConsent === true});
+  return agentJobQueue.enqueue({ type: "assistant-team",
+    payload: { title: request.objective.slice(0, 100), teamPlan, requestHash: teamRequestHash(request), connectionFingerprint: teamConnectionFingerprint() },
+    metadata: { userId: USER, requestedBy: APP_PERSONA_ID }, idempotencyKey,
+    sideEffectRisk: false, deliveryRequired: false, maxAttempts: 1, timeoutMs: 9 * 60_000 });
 }
 
-function developmentProjectThread(rootJobId: string) {
-  return developmentProjectThreads(agentJobQueue.list({ limit: 500 })).find((thread) => thread.root.id === rootJobId);
-}
-
-function developmentProjectArchiveItems() {
-  const threads = new Map(developmentProjectThreads(agentJobQueue.list({ limit: 500 })).map((thread) => [thread.root.id, thread]));
-  return developmentProjectArchive.list().map((record) => {
-    const thread = threads.get(record.rootJobId);
-    const workspacePath = String(thread?.latest.payload.workspacePath || thread?.root.payload.workspacePath || record.workspacePath || "");
-    return {
-      ...record,
-      title: String(thread?.root.payload.title || record.title || "开发项目"),
-      workspacePath,
-      latestJobId: thread?.latest.id || "",
-      latestStatus: thread?.latest.status || "deleted",
-      updatedAt: thread?.latest.updatedAt || record.archivedAt,
-      turnCount: thread?.turns.length || 0,
-      managedWorkspace: Boolean(managedDevelopmentWorkspace(DEVELOPMENT_PROJECTS_ROOT, workspacePath)),
-    };
-  });
-}
 const deliveryOutbox = new FileDeliveryOutbox(DELIVERY_OUTBOX_FILE);
 
-function storedJobSurface(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): "chat" | "capabilities" | "office" | "development" {
-  if (job.payload.surface === "capabilities" || job.payload.surface === "office" || job.payload.surface === "development") {
+function storedJobSurface(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): "chat" | "capabilities" | "office" {
+  if (job.payload.surface === "capabilities" || job.payload.surface === "office") {
     return job.payload.surface;
   }
   if (job.payload.handoff && typeof job.payload.handoff === "object" && (job.payload.handoff as { source?: unknown }).source === "office") {
     return "office";
   }
-  if (job.payload.capabilityId === "project-development") return "development";
   const capabilityTask = capabilities.snapshot().tasks.some((task) =>
     task.oneOff && task.origin?.kind === "capability" && task.origin.jobId === job.id);
   return capabilityTask ? "capabilities" : "chat";
@@ -514,8 +463,7 @@ function runVisibleOnSurface(
   if (!requested) return true;
   if (requested === "capabilities") return runSurface === "capability";
   if (requested === "office") return runSurface === "office";
-  if (requested === "development") return runSurface === "development";
-  if (requested === "task") return runSurface !== "capability" && runSurface !== "office" && runSurface !== "development";
+  if (requested === "task") return runSurface !== "capability" && runSurface !== "office";
   return false;
 }
 
@@ -586,6 +534,8 @@ removeDetachedChatDeliveries();
 for (const legacyJob of agentJobQueue.listPendingDeliveries({ limit: 500 })) ensureJobDelivery(legacyJob);
 const companionAgentTools = createCompanionAgentToolProvider({
   memory: () => mem,
+  assistantTeam: { list: () => assistantBots.list(USER).filter((bot) => bot.placement !== "market"), enqueue: enqueueAssistantTeam },
+  personalWork: () => personalWork,
   capabilities: () => capabilities,
   fetchSkillSource: fetchSkillMarkdownFromUrl,
   listPersonas: () => engine.listPersonas().map((persona) => ({ id: persona.id, name: persona.name })),
@@ -611,8 +561,6 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
   const personaId = input.task.metadata?.personaId || APP_PERSONA_ID;
   const capabilityId = input.task.metadata?.capabilityId || "research-brief";
   const format = normalizeAgentJobFormat(input.task.metadata?.format);
-  const workspacePath = typeof input.task.metadata?.workspacePath === "string" ? input.task.metadata.workspacePath : undefined;
-  const accessMode = input.task.metadata?.accessMode === "inspect" ? "inspect" : "develop";
   const dependencyBlock = dependencyArtifactBlock(input.sharedArtifactRefs, (id) => {
     const handoff = capabilities.artifactHandoff(id);
     return handoff
@@ -633,8 +581,6 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
     capabilityId,
     instruction: `${input.task.instruction}${dependencyBlock}`,
     format,
-    workspacePath,
-    accessMode,
     trigger: `orchestration:${input.parentSessionId}`,
     runId: input.sessionId,
     memoryMode,
@@ -643,9 +589,7 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
         ? "capability"
         : input.task.metadata?.surface === "office"
           ? "office"
-          : input.task.metadata?.surface === "development"
-            ? "development"
-            : "orchestration",
+          : "orchestration",
       conversationId: input.parentSessionId,
     },
   }, input.signal, input.budget);
@@ -658,6 +602,14 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
   };
 }, { maxSubtasks: 8, maxParallel: 3 });
 const agentJobWorker = new AgentJobWorker(agentJobQueue, {
+  "assistant-team": async (job, context) => {
+    if (!llm.live || !modelConnection || job.payload.connectionFingerprint !== teamConnectionFingerprint()) {
+      throw new AssistantTeamError("模型连接已改变或不可用；不会把共享材料发送到另一服务，请新建任务", 409);
+    }
+    // Capture this connection for the whole run. A settings edit must not switch providers mid-task.
+    const chat = llm.chat;
+    return runAssistantTeam(job, context, chat);
+  },
   "hk-reminder": async (job, context) => {
     const raw = job.payload.reminder;
     const fireKey = String(job.payload.fireKey || "").trim();
@@ -709,18 +661,9 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       ? `\n\n## 本次交付习惯\n\n${appliedPreferences.map((item) => `- ${item}`).join("\n")}\n\n具体任务要求优先于这些习惯。`
       : "";
     const handoffReceipt = handoff ? receiveCapabilityHandoff(handoff) : undefined;
-    const developmentEngine = normalizeDevelopmentEngine(job.payload.developmentEngine);
-    const contextBundle = job.payload.contextBundle as DevelopmentContextBundle | undefined;
-    const firstStatus = handoff ? "已接收上一步上下文" : contextBundle ? "已整理本次上下文" : "正在执行临时任务";
+    const firstStatus = handoff ? "已接收上一步上下文" : "正在执行临时任务";
     context.checkpoint(firstStatus, 10, {
       ...(handoffReceipt ? { handoffReceipt } : {}),
-      ...(contextBundle ? { context: developmentContextSummary(contextBundle) } : {}),
-      runEvent: createDevelopmentRunEvent({
-        type: contextBundle ? "context_ready" : "queued",
-        label: firstStatus,
-        progress: 10,
-        engine: developmentEngine,
-      }),
     });
     const notification = await capabilities.runAdHocTask({
       title: String(job.payload.title || "后台任务"),
@@ -734,42 +677,18 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       runId: `agent-job/${job.id}`,
       // 启动时已经固定下来的习惯直接进入任务上下文，不再做第二次可能漂移的召回。
       memoryMode: pinnedPreferenceContext ? "off" : requestedMemoryMode,
-      workspacePath: String(job.payload.workspacePath || ""),
-      accessMode: job.payload.accessMode === "inspect" ? "inspect" : "develop",
-      approvalPolicy: normalizeDevelopmentApprovalPolicy(
-        normalizeDevelopmentEngine(job.payload.developmentEngine),
-        job.payload.approvalPolicy,
-        job.payload.accessMode === "inspect" ? "inspect" : "develop",
-      ),
-      installDependencies: job.payload.installDependencies === true,
-      developmentEngine,
-      model: normalizeDevelopmentModel(job.payload.model),
-      reasoning: normalizeDevelopmentReasoning(job.payload.reasoning),
       continuationTaskId: String(job.payload.continuationTaskId || ""),
-      contextBundle,
       origin: {
         kind: job.payload.surface === "capabilities" || handoff?.source === "capability"
           ? "capability"
           : job.payload.surface === "office" || handoff?.source === "office"
             ? "office"
-            : job.payload.surface === "development" || job.payload.capabilityId === "project-development"
-              ? "development"
-              : job.payload.conversationKey ? "chat" : "direct",
+            : job.payload.conversationKey ? "chat" : "direct",
         conversationKey: String(job.payload.conversationKey || ""),
         parentJobId: String(job.payload.parentJobId || ""),
         jobId: job.id,
       },
-      onProgress: (message, percent) => context.checkpoint(message, percent, {
-        runEvent: createDevelopmentRunEvent({ label: message, progress: percent, engine: developmentEngine }),
-      }),
-      onTelemetry: (event) => {
-        const projected = developmentNativeEvent(event, developmentEngine);
-        if (!projected) return;
-        context.checkpoint(projected.label, projected.progress, {
-          nativeEvent: event,
-          runEvent: createDevelopmentRunEvent({ ...projected, engine: developmentEngine }),
-        });
-      },
+      onProgress: (message, percent) => context.checkpoint(message, percent),
     }, context.signal).catch((error: unknown) => {
       // 交接失败必须有自己的落点。只留在 received 上，中断的交接会一直显示为「进行中」；
       // 作业本身仍然抛出失败，这里只保证回执被持久记录下来。
@@ -782,16 +701,9 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       }
       throw error;
     });
-    const pendingDevelopmentProposal = notification.artifact.metadata?.development?.proposal?.state === "pending";
-    const completionLabel = pendingDevelopmentProposal ? "修改已完成，等待你确认写入" : "产物已保存";
+    const completionLabel = "产物已保存";
     context.checkpoint(completionLabel, 100, {
       artifactId: notification.artifact.id,
-      runEvent: createDevelopmentRunEvent({
-        type: pendingDevelopmentProposal ? "needs_attention" : "completed",
-        label: completionLabel,
-        progress: 100,
-        engine: developmentEngine,
-      }),
     });
     return {
       summary: notification.text,
@@ -866,35 +778,14 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
   },
 });
 function enqueueDueCapabilityTasks(trigger: "time" | "turn") {
-  const existingByKey = new Map(
-    agentJobQueue.list({ limit: 1_000 })
-      .filter((job) => job.idempotencyKey)
-      .map((job) => [job.idempotencyKey!, job]),
-  );
-  return capabilities.dueTaskRuns(trigger).map((due) => {
-    const idempotencyKey = `scheduled-capability:${due.occurrenceKey}`;
-    const existing = existingByKey.get(idempotencyKey);
-    if (existing) return existing;
-    const job = agentJobQueue.enqueue({
-      type: "capability-task",
-      payload: { taskId: due.taskId, trigger },
-      metadata: {
-        userId: USER,
-        workTaskId: due.taskId,
-        personaId: due.personaId,
-        capabilityId: due.capabilityId,
-        scheduled: "true",
-      },
-      deliveryRequired: true,
-      sideEffectRisk: true,
-      maxAttempts: 1,
-      timeoutMs: 30 * 60_000,
-      idempotencyKey,
-    });
-    existingByKey.set(idempotencyKey, job);
-    return job;
-  });
+  return enqueueScheduledCapabilities(capabilities, agentJobQueue, USER, trigger);
 }
+
+const backgroundScheduler = new BackgroundScheduler([
+  { name: "personal-matters", run: () => { personalWork.tick(USER); } },
+  { name: "capabilities", run: () => { enqueueDueCapabilityTasks("time"); } },
+  { name: "hk-reminders", run: () => { enqueueDueHkReminderJobs(); } },
+]);
 
 function enqueueDueHkReminderJobs() {
   const existingByKey = new Map(
@@ -945,8 +836,8 @@ function startStoredAgentRunResume(runId: string): { scheduled: boolean; reason?
       if (output) {
         const personaId = run.metadata?.personaId || APP_PERSONA_ID;
         const scope = run.metadata?.scope || "conv:1on1:" + USER + ":" + personaId;
-        if (run.metadata?.surface !== "capability" && run.metadata?.surface !== "office" && run.metadata?.surface !== "development") {
-          await engine.recordRecoveredReply(USER, personaId, scope, output);
+        if (run.metadata?.surface !== "capability" && run.metadata?.surface !== "office") {
+          await engine.recordRecoveredReply(USER, personaId, scope, output, run.sessionId === scope ? undefined : run.sessionId);
           capabilities.recordPersonaTurn(personaId);
           saveFam();
           broadcastAgentSse("run", {
@@ -1115,16 +1006,27 @@ function wireAgentTools(target: ResolvedLLM): void {
 }
 
 // 运行时切换模型连接：复用同一数据库重建记忆和对话引擎。
-async function rebuildLLM(next: CompanionModelConnection | undefined): Promise<void> {
+async function rebuildLLM(
+  next: CompanionModelConnection | undefined,
+  catalog: readonly CompanionModelInfo[] = modelCatalog,
+  fetchedAt = modelCatalogFetchedAt,
+): Promise<void> {
   if (next) {
-    modelConnection = normalizeCompanionModelConnection(next);
-    saveSavedLLMConnection(modelConnection);
+    const normalized = normalizeCompanionModelConnection(next);
+    normalized.modelChecks ??= {};
+    // Persist successfully before changing the active connection.
+    saveSavedLLMConnection(normalized, catalog, fetchedAt);
+    modelConnection = normalized;
+    modelCatalog = [...catalog];
+    modelCatalogFetchedAt = fetchedAt;
     if (modelConnection.provider === "zhipu") process.env.ZHIPU_API_KEY = modelConnection.apiKey;
     else delete process.env.ZHIPU_API_KEY;
   } else {
     clearSavedLLMKey();
     delete process.env.ZHIPU_API_KEY;
     modelConnection = undefined;
+    modelCatalog = [];
+    modelCatalogFetchedAt = "";
   }
   const old = mem;
   llm = resolveLLM(modelConnection);
@@ -1168,6 +1070,10 @@ type SavedLLMConnectionFile = {
   baseUrl?: string;
   model?: string;
   cipher?: string;
+  models?: CompanionModelInfo[];
+  modelsFetchedAt?: string;
+  selectionMode?: "auto" | "manual";
+  modelChecks?: CompanionModelConnection["modelChecks"];
 };
 
 function loadSavedLLMConnection(): CompanionModelConnection | undefined {
@@ -1180,7 +1086,7 @@ function loadSavedLLMConnection(): CompanionModelConnection | undefined {
   if (!existsSync(LLM_KEY_FILE)) return undefined;
   try {
     const saved = JSON.parse(readFileSync(LLM_KEY_FILE, "utf8")) as SavedLLMConnectionFile;
-    if (saved.version === 2 && saved.provider) {
+    if ((saved.version === 2 || saved.version === 3) && saved.provider) {
       const apiKey = saved.cipher ? unprotectSecret(saved.cipher).trim() : "";
       return normalizeCompanionModelConnection({
         provider: saved.provider as CompanionModelProvider,
@@ -1188,6 +1094,8 @@ function loadSavedLLMConnection(): CompanionModelConnection | undefined {
         baseUrl: saved.baseUrl,
         model: saved.model,
         apiKey,
+        selectionMode: saved.selectionMode === "auto" ? "auto" : "manual",
+        modelChecks: saved.modelChecks,
       });
     }
     // 兼容旧版仅保存智谱 Key 的文件，成功读取后会在下次保存时自动升级结构。
@@ -1199,17 +1107,50 @@ function loadSavedLLMConnection(): CompanionModelConnection | undefined {
   return undefined;
 }
 
-function saveSavedLLMConnection(connection: CompanionModelConnection): void {
-  writeFileSync(LLM_KEY_FILE, JSON.stringify({
-    version: 2,
+function readSavedLLMConnectionFile(): SavedLLMConnectionFile | undefined {
+  if (!existsSync(LLM_KEY_FILE)) return undefined;
+  try { return JSON.parse(readFileSync(LLM_KEY_FILE, "utf8")) as SavedLLMConnectionFile; }
+  catch { return undefined; }
+}
+
+function loadSavedLLMModelCatalog(): CompanionModelInfo[] {
+  if (process.env.ZHIPU_API_KEY?.trim()) return [];
+  const saved = readSavedLLMConnectionFile();
+  return saved?.version === 3 && Array.isArray(saved.models) ? saved.models : [];
+}
+
+function loadSavedLLMModelCatalogFetchedAt(): string {
+  if (process.env.ZHIPU_API_KEY?.trim()) return "";
+  const saved = readSavedLLMConnectionFile();
+  return saved?.version === 3 && typeof saved.modelsFetchedAt === "string" ? saved.modelsFetchedAt : "";
+}
+
+function saveSavedLLMConnection(
+  connection: CompanionModelConnection,
+  catalog: readonly CompanionModelInfo[] = modelCatalog,
+  fetchedAt = modelCatalogFetchedAt,
+): void {
+  const serialized = JSON.stringify({
+    version: 3,
     encryption: "windows-dpapi",
     provider: connection.provider,
     protocol: connection.protocol,
     baseUrl: connection.baseUrl,
     model: connection.model,
+    selectionMode: connection.selectionMode || "manual",
+    modelChecks: connection.modelChecks || {},
+    models: catalog,
+    modelsFetchedAt: fetchedAt,
     savedAt: new Date().toISOString(),
     ...(connection.apiKey ? { cipher: protectSecret(connection.apiKey) } : {}),
-  }, null, 2));
+  }, null, 2);
+  const temporary = `${LLM_KEY_FILE}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, serialized, { mode: 0o600 });
+    renameSync(temporary, LLM_KEY_FILE);
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
 }
 
 function clearSavedLLMKey(): void {
@@ -1231,10 +1172,16 @@ function modelConnectionStatus(): Record<string, unknown> {
     ...connection,
     dailyChatModel: modelConnection ? dailyChatModelForConnection(modelConnection) : "",
     taskModel: connection.model,
+    models: modelCatalog,
+    reasoningEfforts: Object.fromEntries([...new Set([connection.model, ...modelCatalog.map(item => item.id)])].map(id => [id, supportedReasoningEfforts(modelConnection, id)])),
+    modelsFetchedAt: modelCatalogFetchedAt || null,
+    selectionMode: modelConnection?.selectionMode || "manual",
+    modelChecks: modelConnection?.modelChecks || {},
+    check: modelConnection?.modelChecks?.[modelConnection.model] || null,
     savedConnection: savedLLMKeyExists(),
     savedKey: savedLLMKeyExists() && connection.hasKey,
     supports: {
-      tools: llm.live,
+      tools: modelConnection?.modelChecks?.[modelConnection.model]?.tools === "passed",
       vectorMemory: isZhipu || isOpenAI,
       webSearch: isZhipu,
       vision: isZhipu,
@@ -1244,94 +1191,49 @@ function modelConnectionStatus(): Record<string, unknown> {
   };
 }
 
-type DevelopmentModelMode = "inherit" | "independent";
-type SavedDevelopmentModelConnection = {
-  provider?: CompanionModelProvider;
-  protocol?: CompanionModelProtocol;
-  baseUrl?: string;
-  model?: string;
-  cipher?: string;
-  savedAt?: string;
-};
-type SavedDevelopmentModelFile = {
-  version: 1;
-  encryption: "windows-dpapi";
-  engines: Partial<Record<DevelopmentEngine, SavedDevelopmentModelConnection>>;
-};
-
-const DEVELOPMENT_ENGINE_IDS: readonly DevelopmentEngine[] = ["pi", "dsh", "kilo", "opencode", "codex"];
-
-function loadDevelopmentModelConnections(): Partial<Record<DevelopmentEngine, CompanionModelConnection>> {
-  if (!existsSync(DEVELOPMENT_MODEL_CONNECTIONS_FILE)) return {};
+async function discoverCompanionModels(connection: CompanionModelConnection): Promise<CompanionModelInfo[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
-    const saved = JSON.parse(readFileSync(DEVELOPMENT_MODEL_CONNECTIONS_FILE, "utf8")) as SavedDevelopmentModelFile;
-    if (saved.version !== 1 || !saved.engines) return {};
-    const result: Partial<Record<DevelopmentEngine, CompanionModelConnection>> = {};
-    for (const engine of DEVELOPMENT_ENGINE_IDS) {
-      const item = saved.engines[engine];
-      if (!item?.provider) continue;
-      result[engine] = normalizeCompanionModelConnection({
-        provider: item.provider,
-        protocol: item.protocol,
-        baseUrl: item.baseUrl,
-        model: item.model,
-        apiKey: item.cipher ? unprotectSecret(item.cipher).trim() : "",
-      });
-    }
-    return result;
-  } catch {
-    return {};
+    return await fetchCompanionModelCatalog(connection, controller.signal);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("读取模型列表超时，请检查 API 地址、网络和代理设置。");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
-function saveDevelopmentModelConnections(
-  connections: Partial<Record<DevelopmentEngine, CompanionModelConnection>>,
-): void {
-  const engines: SavedDevelopmentModelFile["engines"] = {};
-  for (const engine of DEVELOPMENT_ENGINE_IDS) {
-    const connection = connections[engine];
-    if (!connection) continue;
-    engines[engine] = {
-      provider: connection.provider,
-      protocol: connection.protocol,
-      baseUrl: connection.baseUrl,
-      model: connection.model,
-      ...(connection.apiKey ? { cipher: protectSecret(connection.apiKey) } : {}),
-      savedAt: new Date().toISOString(),
-    };
+function modelConnectionUserMessage(detail: string): string {
+  if (/fetch failed|ECONNRESET|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|CONNECT_TIMEOUT/i.test(detail)) {
+    return "无法连接模型服务。请确认网络或代理已启动后重试。";
   }
-  writeFileSync(DEVELOPMENT_MODEL_CONNECTIONS_FILE, JSON.stringify({
-    version: 1,
-    encryption: "windows-dpapi",
-    engines,
-  } satisfies SavedDevelopmentModelFile, null, 2));
+  if (/连接超时|aborted|timeout/i.test(detail)) {
+    return "连接模型服务超时。请检查 API 地址、网络和代理设置。";
+  }
+  if (/HTTP\s+(401|403)\b/i.test(detail)) {
+    return "API Key 无效，或该 Key 没有访问所选模型的权限。";
+  }
+  if (/HTTP\s+404\b/i.test(detail)) {
+    return "接口地址或模型名称不存在，请检查服务地址和模型名。";
+  }
+  if (/HTTP\s+429\b/i.test(detail)) {
+    return "模型服务额度不足或请求过于频繁，请检查账户额度后重试。";
+  }
+  if (/HTTP\s+400\b/i.test(detail)) {
+    return "模型服务拒绝了连接测试，请检查模型名称和接口参数。";
+  }
+  if (/HTTP\s+5\d\d\b/i.test(detail)) {
+    return "模型服务暂时不可用，请稍后重试。";
+  }
+  return detail.trim().slice(0, 300) || "模型连接验证失败。";
 }
 
-function developmentModelConnection(engine: DevelopmentEngine): CompanionModelConnection | undefined {
-  return loadDevelopmentModelConnections()[engine] ?? modelConnection;
-}
-
-function developmentModelConnectionStatus(): Record<string, unknown> {
-  const independent = loadDevelopmentModelConnections();
-  const engines = Object.fromEntries(DEVELOPMENT_ENGINE_IDS.map((engine) => {
-    const own = independent[engine];
-    const effective = own ?? modelConnection;
-    const publicConnection = publicModelConnection(effective);
-    return [engine, {
-      mode: own ? "independent" : "inherit",
-      ...publicConnection,
-      effective: Boolean(effective),
-      warning: engine === "codex" && effective?.protocol === "anthropic"
-        ? "Codex 不支持 Anthropic 协议，请改用 OpenAI Responses 兼容连接。"
-        : engine === "codex" && effective
-          ? "Codex 需要服务地址同时兼容 Responses API。"
-          : "",
-    }];
-  }));
-  return {
-    engines,
-    providers: COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => ({ ...preset })),
-  };
+function currentPlatformConnectors() {
+  // Search alone is not a connected browser; search stays in the tool registry.
+  return platformConnectorStatuses(agentExtensions.list().map((extension) => ({
+    ...extension, runtimeError: agentExtensionRuntimeErrors.get(extension.manifest.id),
+  })), { files: true });
 }
 
 function capabilityProviderSummaries(): CapabilityProviderSummary[] {
@@ -1370,7 +1272,7 @@ function capabilityProviderSummaries(): CapabilityProviderSummary[] {
   ];
   const extensions: CapabilityProviderSummary[] = agentExtensions.list().map((extension) => {
     const runtimeError = agentExtensionRuntimeErrors.get(extension.manifest.id);
-    const available = extension.enabled && extension.providerAttached && !runtimeError;
+    const available = extensionRuntimeReady({ ...extension, runtimeError });
     return {
       id: extension.manifest.id,
       name: extension.manifest.name,
@@ -1394,7 +1296,7 @@ function capabilityExtensionSummaries(): CapabilityExtensionSummary[] {
       enabled: extension.enabled,
       providerAttached: extension.providerAttached,
       executionSecurity: extension.executionSecurity,
-      available: extension.enabled && extension.providerAttached && !runtimeError,
+      available: extensionRuntimeReady({ ...extension, runtimeError }),
       runtimeError,
       tools: extension.manifest.tools.map((tool) => tool.name),
     };
@@ -1405,7 +1307,7 @@ function extensionToolSummaries(): CapabilityToolSummary[] {
   const checkedAt = new Date().toISOString();
   return agentExtensions.list().flatMap((extension) => {
     const runtimeError = agentExtensionRuntimeErrors.get(extension.manifest.id);
-    const available = extension.enabled && extension.providerAttached && !runtimeError;
+    const available = extensionRuntimeReady({ ...extension, runtimeError });
     const message = runtimeError || (available ? "扩展运行时已就绪，将在请求命中时加载" : "扩展未启用或运行时未就绪");
     return extension.manifest.tools.map((tool) => ({
       id: `${extension.manifest.id}.${tool.name}`,
@@ -1435,41 +1337,6 @@ function extensionToolSummaries(): CapabilityToolSummary[] {
       dynamic: true,
     }));
   });
-}
-
-async function updateDevelopmentModelConnection(input: {
-  engine: DevelopmentEngine;
-  mode: DevelopmentModelMode;
-  provider?: CompanionModelProvider;
-  protocol?: CompanionModelProtocol;
-  baseUrl?: string;
-  model?: string;
-  key?: string;
-}): Promise<Record<string, unknown>> {
-  const connections = loadDevelopmentModelConnections();
-  if (input.mode === "inherit") {
-    delete connections[input.engine];
-    saveDevelopmentModelConnections(connections);
-    return developmentModelConnectionStatus();
-  }
-  const previous = connections[input.engine];
-  const provider = input.provider ?? previous?.provider ?? modelConnection?.provider ?? "zhipu";
-  const apiKey = String(input.key || "").trim()
-    || (previous?.provider === provider ? previous.apiKey : "");
-  const connection = normalizeCompanionModelConnection({
-    provider,
-    protocol: input.protocol,
-    baseUrl: input.baseUrl,
-    model: input.model,
-    apiKey,
-  });
-  if (input.engine === "codex" && connection.protocol !== "openai-compatible") {
-    throw new Error("Codex 只支持 OpenAI Responses 兼容连接，不能使用 Anthropic 协议。");
-  }
-  await validateCompanionModelConnection(connection);
-  connections[input.engine] = connection;
-  saveDevelopmentModelConnections(connections);
-  return developmentModelConnectionStatus();
 }
 
 type ToolSettings = {
@@ -2741,6 +2608,7 @@ interface ChatBody {
   messageId?: string;
   model?: string;
   reasoning?: "fast" | "balanced" | "deep";
+  reasoningEffort?: ReasoningEffort | "auto";
   toolMode?: "auto" | "read-only" | "off";
   workMode?: "chat" | "task" | "study";
 }
@@ -2799,6 +2667,7 @@ async function generateConversationTitle(text: string): Promise<string> {
 }
 
 function conversationSendOptions(body: ChatBody): {
+  reasoningEffort?: ReasoningEffort;
   sessionId?: string;
   sourceMessageId?: string;
   model?: string;
@@ -2815,13 +2684,20 @@ function conversationSendOptions(body: ChatBody): {
       ? { maxRounds: 8, maxToolRounds: 5, maxTotalTokens: 80_000, maxOutputChars: 20_000 }
       : { maxRounds: 4, maxToolRounds: 2, maxTotalTokens: 32_000, maxOutputChars: 10_000 };
   const model = String(body.model || "").trim();
-  const requestedModel = model && model !== "default" && /^[a-z0-9._:/-]{1,120}$/i.test(model)
-    ? model
-    : undefined;
+  const requestedModel = model && model !== "default" ? model : undefined;
+  if (requestedModel) {
+    if (!modelConnection || (requestedModel !== modelConnection.model && !modelCatalog.some((item) => item.id === requestedModel))) {
+      throw new Error("所选模型已不在当前连接中，请重新选择模型；不会自动改用其他型号。");
+    }
+    if (requestedModel !== modelConnection.model && modelConnection.modelChecks?.[requestedModel]?.chat !== "passed") {
+      throw new Error("所选模型尚未通过连接检查，请在任务页面重新选择并检查该模型。");
+    }
+  }
   const teacherCore = PERSONAS.find((persona) => persona.id === "teacher_lin")?.persona || "";
   const teachingMethod = teacherCore.split("\n\n").slice(1).join("\n\n").trim();
   return {
     sessionId: body.sessionId ? String(body.sessionId).slice(0, 120) : undefined,
+    reasoningEffort: resolveReasoningEffort(modelConnection, requestedModel || modelConnection?.model || "", body.reasoningEffort),
     sourceMessageId: body.messageId && /^[a-z0-9:_-]{1,160}$/i.test(body.messageId) ? body.messageId : undefined,
     model: selectCompanionConversationModel({
       connection: modelConnection,
@@ -2842,11 +2718,6 @@ function conversationSendOptions(body: ChatBody): {
     surface: body.workMode === "study" ? "education" : "task",
     runtimeLimits,
   };
-}
-
-function normalizeDevelopmentModel(value: unknown): string | undefined {
-  const model = String(value || "").trim();
-  return model && model !== "default" && /^[a-z0-9._:/-]{1,120}$/i.test(model) ? model : undefined;
 }
 
 function defaultDataSyncSettings(): DataSyncStoredSettings {
@@ -3426,6 +3297,11 @@ async function fetchSkillMarkdownFromUrl(url: string, signal?: AbortSignal): Pro
   }
 }
 
+function capabilityConversationOptions(body: ChatBody) {
+  const opts = conversationSendOptions(body);
+  return { ...opts.runtimeLimits, model: opts.model, toolMode: opts.toolMode, reasoningEffort: opts.reasoningEffort };
+}
+
 async function maybeRunCapabilityTaskFromChat(b: ChatBody, text: string): Promise<ReturnType<typeof capabilityReply> | null> {
   if (!hasRunTaskIntent(b, text)) return null;
   const target = resolveWorkTarget(b);
@@ -3434,7 +3310,7 @@ async function maybeRunCapabilityTaskFromChat(b: ChatBody, text: string): Promis
   if (tasks.length === 0) return null;
   const picked = pickTaskForText(tasks, text);
   if (!picked) return null;
-  const notification = await capabilities.runTask(picked.id, "chat");
+  const notification = await capabilities.runTask(picked.id, "chat", undefined, capabilityConversationOptions(b));
   return capabilityReply(notification);
 }
 
@@ -3450,7 +3326,7 @@ async function maybeRunCapabilityTaskFromChatStream(
   if (tasks.length === 0) return null;
   const picked = pickTaskForText(tasks, text);
   if (!picked) return null;
-  return capabilities.runTaskStream(picked.id, "chat", cb);
+  return capabilities.runTaskStream(picked.id, "chat", cb, undefined, capabilityConversationOptions(b));
 }
 
 async function maybeRunAdHocWorkFromChat(b: ChatBody, text: string, intentText = text): Promise<ReturnType<typeof capabilityReply> | null> {
@@ -3470,7 +3346,7 @@ async function maybeRunAdHocWorkFromChat(b: ChatBody, text: string, intentText =
       conversationKey: `${b.target.kind}:${b.target.id}`,
       conversationId: b.sessionId,
     },
-  });
+  }, undefined, capabilityConversationOptions(b));
   autoLearnFromWork(target.personaId, intentText, capabilityId, inferArtifactFormat(intentText));
   return capabilityReply(notification);
 }
@@ -3497,7 +3373,7 @@ async function maybeRunAdHocWorkFromChatStream(
       conversationKey: `${b.target.kind}:${b.target.id}`,
       conversationId: b.sessionId,
     },
-  }, cb);
+  }, cb, undefined, capabilityConversationOptions(b));
   autoLearnFromWork(target.personaId, intentText, capabilityId, inferArtifactFormat(intentText));
   return notification;
 }
@@ -3688,45 +3564,9 @@ const server = createServer(async (req, res) => {
     }
     const url = req.url || "/";
     const pathname = url.split("?", 1)[0];
-    if (pathname === "/develop" || pathname === "/develop.html" || pathname === "/develop/archive" || pathname === "/develop-archive.html" || pathname === "/development" || pathname === "/development.html") {
-      res.writeHead(302, { Location: "/", "Cache-Control": "no-store" });
-      res.end();
-      return;
-    }
-    if (pathname.startsWith("/api/development")) {
-      send(res, 410, { error: "开发能力已从当前应用移除。" });
-      return;
-    }
-    if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
-      send(res, 200, readFileSync(join(WEB_DIR, "index.html"), "utf-8"), "text/html");
-      return;
-    }
-    if (req.method === "GET" && (pathname === "/capabilities" || pathname === "/capabilities.html")) {
-      send(res, 200, readFileSync(join(WEB_DIR, "capabilities.html"), "utf-8"), "text/html");
-      return;
-    }
-    if (req.method === "GET" && (pathname === "/office" || pathname === "/office.html")) {
-      send(res, 200, readFileSync(join(WEB_DIR, "office.html"), "utf-8"), "text/html");
-      return;
-    }
-    if (req.method === "GET" && (pathname === "/development" || pathname === "/development.html")) {
-      send(res, 200, readFileSync(join(WEB_DIR, "development.html"), "utf-8"), "text/html");
-      return;
-    }
-    if (req.method === "GET" && (pathname === "/develop" || pathname === "/develop.html")) {
-      send(res, 200, readFileSync(join(WEB_DIR, "develop.html"), "utf-8"), "text/html");
-      return;
-    }
-    if (req.method === "GET" && (pathname === "/develop/archive" || pathname === "/develop-archive.html")) {
-      send(res, 200, readFileSync(join(WEB_DIR, "develop-archive.html"), "utf-8"), "text/html");
-      return;
-    }
-    if (req.method === "GET" && (pathname === "/settings" || pathname === "/settings.html")) {
-      send(res, 200, readFileSync(join(WEB_DIR, "settings.html"), "utf-8"), "text/html");
-      return;
-    }
-    if (req.method === "GET" && ["/work", "/work.html", "/tasks", "/spaces", "/automations", "/collaboration", "/resources", "/artifacts", "/runs", "/memory"].includes(pathname)) {
-      send(res, 200, readFileSync(join(WEB_DIR, "work.html"), "utf-8"), "text/html");
+    const pageRoute = appRoute(pathname);
+    if (req.method === "GET" && pageRoute) {
+      send(res, 200, renderAppPage(readFileSync(join(WEB_DIR, pageRoute.file), "utf-8"), pathname), "text/html");
       return;
     }
     if (req.method === "GET" && pathname === "/api/files/export") {
@@ -3974,6 +3814,10 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
+    if (req.method === "GET" && url === "/api/health") {
+      send(res, 200, { ok: true });
+      return;
+    }
     if (req.method === "GET" && url === "/api/state") {
       send(res, 200, {
         live: llm.live,
@@ -4023,10 +3867,6 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url === "/api/llm") {
       send(res, 200, modelConnectionStatus());
-      return;
-    }
-    if (req.method === "GET" && url === "/api/development/model-connections") {
-      send(res, 200, { ok: true, ...developmentModelConnectionStatus() });
       return;
     }
     if (req.method === "GET" && url === "/api/tool-settings") {
@@ -4172,90 +4012,6 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
-    if (req.method === "GET" && url === "/api/development/projects") {
-      send(res, 200, { ok: true, root: DEVELOPMENT_PROJECTS_ROOT });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/development/project-archive") {
-      send(res, 200, {
-        ok: true,
-        archivedRootJobIds: developmentProjectArchive.list().map((record) => record.rootJobId),
-        projects: developmentProjectArchiveItems(),
-      });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/project/archive") {
-      const body = (await readBody(req)) as { rootJobId?: string };
-      const rootJobId = String(body.rootJobId || "").trim();
-      const thread = rootJobId ? developmentProjectThread(rootJobId) : undefined;
-      if (!thread) { send(res, 404, { error: "找不到这个开发项目" }); return; }
-      if (thread.turns.some((job) => job.status === "queued" || job.status === "running")) {
-        send(res, 409, { error: "项目仍有任务在执行，请先停止或等待完成" });
-        return;
-      }
-      const workspacePath = String(thread.latest.payload.workspacePath || thread.root.payload.workspacePath || "");
-      const project = developmentProjectArchive.archive({
-        rootJobId: thread.root.id,
-        title: String(thread.root.payload.title || "开发项目"),
-        workspacePath,
-      });
-      send(res, 200, { ok: true, project });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/project/restore") {
-      const body = (await readBody(req)) as { rootJobId?: string };
-      const rootJobId = String(body.rootJobId || "").trim();
-      if (!rootJobId || !developmentProjectArchive.restore(rootJobId)) {
-        send(res, 404, { error: "找不到这个归档项目" });
-        return;
-      }
-      send(res, 200, { ok: true, rootJobId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/project/delete") {
-      const body = (await readBody(req)) as { rootJobId?: string; deleteWorkspace?: boolean; confirmation?: string };
-      const rootJobId = String(body.rootJobId || "").trim();
-      const archived = rootJobId ? developmentProjectArchive.get(rootJobId) : undefined;
-      if (!archived) { send(res, 404, { error: "项目必须先归档，才能彻底删除" }); return; }
-      if (body.confirmation !== "delete-archived-development-project") {
-        send(res, 400, { error: "请确认彻底删除这个归档项目" });
-        return;
-      }
-      const thread = developmentProjectThread(rootJobId);
-      if (thread?.turns.some((job) => job.status === "queued" || job.status === "running")) {
-        send(res, 409, { error: "项目仍有任务在执行，不能删除" });
-        return;
-      }
-      const workspacePath = String(thread?.latest.payload.workspacePath || thread?.root.payload.workspacePath || archived.workspacePath || "");
-      const managedWorkspace = managedDevelopmentWorkspace(DEVELOPMENT_PROJECTS_ROOT, workspacePath);
-      if (body.deleteWorkspace && !managedWorkspace) {
-        send(res, 400, { error: "这个目录不是由小丑鱼建立的项目目录，只能删除项目记录" });
-        return;
-      }
-      const jobs = thread?.turns ?? [];
-      const jobIds = jobs.map((job) => job.id);
-      const taskIds = new Set<string>();
-      for (const job of jobs) {
-        const resultData = job.result?.data as { artifact?: { taskId?: string } } | undefined;
-        const taskId = String(resultData?.artifact?.taskId || job.payload.continuationTaskId || "").trim();
-        if (taskId) taskIds.add(taskId);
-      }
-      const capabilityData = capabilities.deleteTaskData([...taskIds]);
-      const proposals = workspacePath ? developmentProposals.removeForWorkspace(workspacePath) : 0;
-      const deliveries = deliveryOutbox.deleteBySources("agent-job", jobIds);
-      const deletedJobs = agentJobQueue.deleteMany(jobIds);
-      developmentProjectArchive.remove(rootJobId);
-      const workspaceDeleted = body.deleteWorkspace
-        ? deleteManagedDevelopmentWorkspace(DEVELOPMENT_PROJECTS_ROOT, workspacePath)
-        : false;
-      send(res, 200, {
-        ok: true,
-        deleted: { jobs: deletedJobs, tasks: capabilityData.tasks, artifacts: capabilityData.artifacts, proposals, deliveries },
-        workspaceDeleted,
-        workspacePreserved: !workspaceDeleted,
-      });
-      return;
-    }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/jobs") {
       const query = new URLSearchParams(url.split("?")[1] || "");
       const status = query.get("status") || undefined;
@@ -4340,16 +4096,8 @@ const server = createServer(async (req, res) => {
         capabilityId?: string;
         instruction?: string;
         conversationKey?: string;
-        surface?: "chat" | "capabilities" | "office" | "development";
+        surface?: "chat" | "capabilities" | "office";
         continuationTaskId?: string;
-        workspacePath?: string;
-        accessMode?: DevelopmentAccessMode;
-        installDependencies?: boolean;
-        developmentEngine?: DevelopmentEngine;
-        model?: string;
-        reasoning?: DevelopmentReasoning;
-        approvalPolicy?: DevelopmentApprovalPolicy;
-        fullControlConfirmed?: boolean;
         parentJobId?: string;
         handoffChain?: string[];
         handoff?: CapabilityHandoffInput;
@@ -4357,7 +4105,6 @@ const server = createServer(async (req, res) => {
         idempotencyKey?: string;
         timeoutMs?: number;
         memoryMode?: "default" | "preferences" | "off";
-        contextSelection?: DevelopmentContextSelection;
       };
       if (body.kind === "capability-task" && !body.taskId) {
         send(res, 400, { error: "missing taskId" });
@@ -4367,44 +4114,12 @@ const server = createServer(async (req, res) => {
         send(res, 400, { error: "missing capabilityId or instruction" });
         return;
       }
-      if (body.capabilityId === "project-development" || body.surface === "development") {
-        send(res, 410, { error: "开发能力已从当前应用移除。" });
-        return;
-      }
       const capabilityPersonaId = body.kind === "capability-adhoc" ? "clownfish" : body.personaId;
-      let developmentWorkspace = "";
-      let developmentApprovalPolicy: DevelopmentApprovalPolicy = "request";
-      if (body.kind === "capability-adhoc" && body.capabilityId === "project-development") {
-        try {
-          const developmentEngine = normalizeDevelopmentEngine(body.developmentEngine);
-          const accessMode = body.accessMode === "inspect" ? "inspect" : "develop";
-          const requestedPolicy = String(body.approvalPolicy || "request") as DevelopmentApprovalPolicy;
-          if (!developmentApprovalPolicies(developmentEngine).includes(requestedPolicy)) {
-            throw new Error("当前开发引擎不支持所选执行权限。");
-          }
-          if (requestedPolicy === "full" && accessMode !== "develop") {
-            throw new Error("完全控制只适用于修改项目。");
-          }
-          if (requestedPolicy === "full" && body.fullControlConfirmed !== true) {
-            throw new Error("使用完全控制前需要明确确认本次风险。");
-          }
-          developmentApprovalPolicy = normalizeDevelopmentApprovalPolicy(developmentEngine, requestedPolicy, accessMode);
-          const requestedWorkspace = String(body.workspacePath || "").trim()
-            || extractDevelopmentWorkspaceReference(String(body.instruction || ""));
-          if (!requestedWorkspace && developmentApprovalPolicy === "full") {
-            throw new Error("完全控制需要在任务说明中提供一个已有且干净的 Git 项目目录。");
-          }
-          developmentWorkspace = requestedWorkspace
-            ? validateDevelopmentWorkspace(requestedWorkspace)
-            : createManagedDevelopmentProject(DEVELOPMENT_PROJECTS_ROOT, String(body.title || body.instruction || "新项目")).path;
-        }
-        catch (error) { send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) }); return; }
-      }
       const parentJobId = String(body.parentJobId || "").trim();
       const conversationKey = validChatConversationKey(body.conversationKey) ? String(body.conversationKey) : "";
       const parentJob = parentJobId ? agentJobQueue.get(parentJobId) : null;
       if (parentJobId && (!parentJob || ["queued", "running"].includes(parentJob.status))) {
-        send(res, 400, { error: "当前开发任务不存在或尚未结束" });
+        send(res, 400, { error: "上一步任务不存在或尚未结束" });
         return;
       }
       const parentResult = parentJob?.result?.data as { artifact?: { taskId?: string } } | undefined;
@@ -4412,23 +4127,6 @@ const server = createServer(async (req, res) => {
       if (continuationTaskId && !capabilities.snapshot().tasks.some((item) => item.id === continuationTaskId && item.oneOff)) {
         send(res, 400, { error: "要继续的任务不存在" });
         return;
-      }
-      let developmentContextBundle: DevelopmentContextBundle | undefined;
-      if (body.kind === "capability-adhoc" && body.capabilityId === "project-development") {
-        const continuationTask = capabilities.snapshot().tasks.find((item) => item.id === continuationTaskId);
-        try {
-          developmentContextBundle = buildDevelopmentContextBundle({
-            workspacePath: developmentWorkspace,
-            instruction: String(body.instruction || ""),
-            selection: normalizeDevelopmentContextSelection(body.contextSelection),
-            decisions: continuationTask?.storyline.decisions
-              .filter((decision) => decision.status === "active")
-              .map((decision) => decision.text),
-          });
-        } catch (error) {
-          send(res, 400, { error: error instanceof Error ? error.message : String(error) });
-          return;
-        }
       }
       const handoff = body.kind === "capability-adhoc" && body.handoff
         ? createCapabilityHandoffEnvelope({
@@ -4483,13 +4181,6 @@ const server = createServer(async (req, res) => {
                 conversationKey,
                 surface: body.surface === "capabilities" ? "capabilities" : body.surface || "chat",
                 continuationTaskId,
-                workspacePath: body.capabilityId === "project-development" ? developmentWorkspace : "",
-                accessMode: body.accessMode === "inspect" ? "inspect" : "develop",
-                installDependencies: body.installDependencies === true,
-                developmentEngine: normalizeDevelopmentEngine(body.developmentEngine),
-                model: normalizeDevelopmentModel(body.model),
-                reasoning: normalizeDevelopmentReasoning(body.reasoning),
-                approvalPolicy: developmentApprovalPolicy,
                 parentJobId,
                 handoff,
                 handoffChain: Array.isArray(body.handoffChain)
@@ -4498,7 +4189,6 @@ const server = createServer(async (req, res) => {
                 format: body.format,
                 memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
                 appliedPreferences,
-                contextBundle: developmentContextBundle,
               },
           metadata: {
             userId: USER,
@@ -4795,14 +4485,9 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url === "/api/platform/readiness") {
       const extensions = agentExtensions.list();
       const snapshot = capabilities.snapshot();
-      const supports = modelConnectionStatus().supports as { webSearch?: boolean } | undefined;
       send(res, 200, {
         ok: true,
-        development: {},
-        connectors: platformConnectorStatuses(extensions, {
-          files: true,
-          browser: Boolean(supports?.webSearch),
-        }),
+        connectors: currentPlatformConnectors(),
         capabilityPacks: capabilityPackStatuses(snapshot.abilities, snapshot.artifacts),
         bundledPlugins: bundledCapabilityPluginCatalog({
           packageRoot: resolve(__dirname, "..", ".."),
@@ -4837,35 +4522,6 @@ const server = createServer(async (req, res) => {
         summarizeResult: (extension) => ({ extensionId: extension.manifest.id, enabled: extension.enabled }),
       });
       send(res, 200, { ok: true, extension: action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/development/engine-updates") {
-      send(res, 200, { ok: true, ...developmentEngineUpdates.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/engine-updates/check") {
-      send(res, 200, { ok: true, ...(await developmentEngineUpdates.check()) });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/engine-updates/upgrade") {
-      const body = await readBody(req) as { engine?: string; latestVersion?: string; acceptRisk?: boolean };
-      if (!["pi", "dsh", "kilo", "opencode", "codex"].includes(String(body.engine || ""))) {
-        send(res, 400, { error: "未知的开发引擎。" });
-        return;
-      }
-      if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(String(body.latestVersion || ""))) {
-        send(res, 400, { error: "升级版本无效。" });
-        return;
-      }
-      const engine = body.engine as DevelopmentEngine;
-      const action = await agentUserActions.execute({
-        name: "development_engine_upgrade",
-        description: `升级 ${engine} 开发引擎并执行兼容性验证`,
-        arguments: { engine, latestVersion: body.latestVersion, acceptRisk: body.acceptRisk === true },
-        execute: () => developmentEngineUpdates.upgrade(engine, body.latestVersion!, body.acceptRisk === true),
-        summarizeResult: (result) => ({ engine: result.item.engine, version: result.item.currentVersion, restartRequired: true }),
-      });
-      send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "GET" && url === "/api/agent/extension-updates") {
@@ -4903,10 +4559,9 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url === "/api/platform/connector/test") {
       const body = (await readBody(req)) as { id?: "files" | "browser" | "github" | "email" | "calendar" | "enterprise-docs" };
-      const supports = modelConnectionStatus().supports as { webSearch?: boolean } | undefined;
-      const status = platformConnectorStatuses(agentExtensions.list(), { files: true, browser: Boolean(supports?.webSearch) }).find((item) => item.id === body.id);
+      const status = currentPlatformConnectors().find((item) => item.id === body.id);
       if (!status) { send(res, 400, { error: "未知的数据连接。" }); return; }
-      if (status.state !== "ready") { send(res, 409, { error: `${status.name} 尚未启用。${status.fallback}`, connector: status }); return; }
+      if (status.state !== "ready") { send(res, 409, { error: `${status.name}当前不可用。${status.detail}`, connector: status }); return; }
       try {
         if (status.id === "files" && status.provider === "built-in") {
           const items = knowledgeLibrary.list(true);
@@ -4917,22 +4572,30 @@ const server = createServer(async (req, res) => {
           send(res, 200, { ok: true, connector: status, toolCount: 1, checkedAt: new Date().toISOString() });
           return;
         }
-        const tools = await agentExtensions.toolsForRequest(status.purpose);
+        const extension = status.extensionId ? agentExtensions.get(status.extensionId) : null;
+        const query = [status.purpose, ...(extension?.manifest.activation || [])].join(" ");
+        const tools = await agentExtensions.toolsForRequest(query, {
+          allow: (tool) => tool.extensionId === status.extensionId && tool.effect === "read",
+        });
         if (!tools.length) throw new Error("连接已启用，但没有发现可用的读取工具。");
-        send(res, 200, { ok: true, connector: status, toolCount: tools.length, checkedAt: new Date().toISOString() });
+        send(res, 200, { ok: true, connector: status, toolCount: tools.length, checkedAt: new Date().toISOString(), note: "已发现该连接器的读取工具；账号权限与实际数据访问仍需在使用时验证。" });
       } catch (error) {
         send(res, 502, { error: error instanceof Error ? error.message : String(error), connector: status });
       }
       return;
     }
     if (req.method === "GET" && url === "/api/review-queue") {
+      const items = buildReviewQueue({
+        approvals: agentApprovalStore.list({ status: "pending", limit: 500 }),
+        jobs: agentJobQueue.list({ limit: 500 }).map(jobWithDelivery),
+        runs: listAgentRuns(500),
+      });
       send(res, 200, {
         ok: true,
-        items: buildReviewQueue({
-          approvals: agentApprovalStore.list({ status: "pending", limit: 200 }),
-          jobs: agentJobQueue.list({ limit: 200 }),
-          proposals: developmentProposals.list(),
-        }),
+        items,
+        groups: groupReviewQueue(items),
+        relationshipMemory: relationships.getReadStatus(),
+        personalReminders: personalWork.reminders(USER),
       });
       return;
     }
@@ -5254,7 +4917,9 @@ const server = createServer(async (req, res) => {
         });
         send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       } catch (e) {
-        send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) });
+        const detail = e instanceof Error ? e.message : String(e);
+        console.error(`[companion] 模型连接验证失败：${detail}`);
+        send(res, 400, { ok: false, error: detail, userMessage: modelConnectionUserMessage(detail) });
       }
       return;
     }
@@ -5422,13 +5087,12 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/capabilities/route") {
-      const body = (await readBody(req)) as { goal?: string; materialNames?: string[]; workspacePath?: string };
+      const body = (await readBody(req)) as { goal?: string; materialNames?: string[] };
       send(res, 200, {
         ok: true,
         route: routeCapability({
           goal: String(body.goal || ""),
           materialNames: Array.isArray(body.materialNames) ? body.materialNames.slice(0, 20).map(String) : [],
-          workspacePath: String(body.workspacePath || ""),
         }),
       });
       return;
@@ -5444,7 +5108,6 @@ const server = createServer(async (req, res) => {
         tools: capabilityTools,
         additionalTools: [...companionRuntimeToolSummaries(), ...extensionToolSummaries()],
         abilities: snap.abilities,
-        engines: developmentEnginePlugins,
         providers: capabilityProviderSummaries(),
         extensions: capabilityExtensionSummaries(),
       }));
@@ -5647,13 +5310,6 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, report: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
     }
-    if (req.method === "GET" && url.split("?")[0] === "/api/development/proposal/preview") {
-      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
-      const proposal = id ? developmentProposals.get(id) : undefined;
-      if (!proposal) send(res, 404, { error: "development proposal not found" });
-      else send(res, 200, renderDevelopmentProposalHtml(proposal), "text/html");
-      return;
-    }
     if (req.method === "POST" && url === "/api/capabilities/skill/rollback") {
       const b = (await readBody(req)) as { id?: string };
       if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
@@ -5665,59 +5321,6 @@ const server = createServer(async (req, res) => {
         summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, rolledBack: true }),
       });
       send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/development/proposal") {
-      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
-      const proposal = id ? developmentProposals.get(id) : undefined;
-      if (!proposal) {
-        send(res, 404, { error: "找不到这份开发修改。" });
-      } else {
-        const artifact = capabilities.snapshot().artifacts.find((item) => item.metadata?.development?.proposal?.id === proposal.id);
-        send(res, 200, {
-          ok: true,
-          proposal: {
-            ...proposal,
-            files: proposal.files.map((file) => ({
-              path: file.path,
-              operation: file.operation,
-              byteLength: file.byteLength,
-              before: file.baseContentBase64 ? Buffer.from(file.baseContentBase64, "base64").toString("utf8") : "",
-              after: Buffer.from(file.proposedContentBase64, "base64").toString("utf8"),
-            })),
-          },
-          receipt: artifact?.metadata?.development ?? null,
-        });
-      }
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/development/workspace") {
-      const params = new URLSearchParams(url.split("?")[1] || "");
-      const proposal = developmentProposals.get(params.get("id") || "");
-      const job = params.get("job") ? agentJobQueue.get(params.get("job") || "") : null;
-      const jobWorkspace = job?.payload?.capabilityId === "project-development" ? String(job.payload.workspacePath || "") : "";
-      const workspacePath = proposal?.workspacePath || jobWorkspace;
-      if (!workspacePath) { send(res, 404, { error: "找不到这次项目任务。" }); return; }
-      const file = params.get("path");
-      try {
-        send(res, 200, file
-          ? { ok: true, file: readDevelopmentWorkspaceFile(workspacePath, file) }
-          : { ok: true, ...listDevelopmentWorkspace(workspacePath) });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/proposal/apply") {
-      const body = (await readBody(req)) as { id?: string; selectedPaths?: string[] };
-      if (!body.id) { send(res, 400, { error: "missing proposal id" }); return; }
-      const proposal = developmentProposals.apply(body.id, Array.isArray(body.selectedPaths) ? body.selectedPaths : undefined);
-      const artifact = capabilities.updateDevelopmentProposalState(proposal.id, proposal.state, proposal.conflicts);
-      if (proposal.state === "conflicted") {
-        send(res, 409, { error: "项目文件在提案生成后发生了变化，未自动覆盖。", proposal, artifact });
-      } else {
-        send(res, 200, { ok: true, proposal, artifact, snapshot: capabilities.snapshot() });
-      }
       return;
     }
     if (req.method === "GET" && url === "/api/persona-tools") {
@@ -5757,26 +5360,6 @@ const server = createServer(async (req, res) => {
       const body = (await readBody(req)) as { id?: string };
       if (!body.id) { send(res, 400, { error: "missing counterpart id" }); return; }
       send(res, 200, { ok: relationships.remove(body.id) });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/proposal/rollback") {
-      const body = (await readBody(req)) as { id?: string };
-      if (!body.id) { send(res, 400, { error: "missing proposal id" }); return; }
-      const proposal = developmentProposals.rollback(body.id);
-      const artifact = capabilities.updateDevelopmentProposalState(proposal.id, proposal.state, proposal.conflicts);
-      if (proposal.state === "conflicted") {
-        send(res, 409, { error: "文件在写入之后又被改过，回滚会覆盖这些修改，已停止。", proposal, artifact });
-      } else {
-        send(res, 200, { ok: true, proposal, artifact, snapshot: capabilities.snapshot() });
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/proposal/reject") {
-      const body = (await readBody(req)) as { id?: string };
-      if (!body.id) { send(res, 400, { error: "missing proposal id" }); return; }
-      const proposal = developmentProposals.reject(body.id);
-      const artifact = capabilities.updateDevelopmentProposalState(proposal.id, proposal.state);
-      send(res, 200, { ok: true, proposal, artifact, snapshot: capabilities.snapshot() });
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact/workspace") {
@@ -5819,9 +5402,10 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && url === "/api/capabilities/due") {
-      const jobs = enqueueDueCapabilityTasks("time");
+      const jobs = agentJobQueue.list({ limit: 1_000 }).filter((job) => job.type === "capability-task" && job.metadata?.scheduled === "true");
       send(res, 200, {
         notifications: [],
+        scheduler: backgroundScheduler.status(),
         jobs: jobs.map((job) => ({ id: job.id, status: job.status, taskId: job.payload.taskId })),
       });
       return;
@@ -6071,9 +5655,6 @@ const server = createServer(async (req, res) => {
           format: assignment.format as ArtifactFormat,
           memoryMode: assignment.memoryMode,
           expertContractId: assignment.personaId,
-          ...(task.workspace && assignment.capabilityId === "project-development"
-            ? { workspacePath: task.workspace.path, accessMode: "inspect" }
-            : {}),
         },
       }));
       const finalTask = {
@@ -6086,7 +5667,6 @@ const server = createServer(async (req, res) => {
           capabilityId: task.capabilityId,
           format: task.format,
           memoryMode: teamPlan.finalMemoryMode,
-          ...(task.workspace ? { workspacePath: task.workspace.path, accessMode: task.workspace.accessMode } : {}),
         },
       };
       const action = await agentUserActions.execute({
@@ -6202,10 +5782,11 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && url === "/api/hk-reminders/due") {
-      const jobs = enqueueDueHkReminderJobs();
+      const jobs = agentJobQueue.list({ limit: 1_000 }).filter((job) => job.type === "hk-reminder" && job.metadata?.scheduled === "true");
       send(res, 200, {
         timezone: "Asia/Hong_Kong",
         due: [],
+        scheduler: backgroundScheduler.status(),
         jobs: jobs.map((job) => ({ id: job.id, status: job.status, reminderId: (job.payload.reminder as Partial<HkReminder> | undefined)?.id })),
       });
       return;
@@ -6274,7 +5855,29 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, reminders: action.value.reminders, auditRunId: action.runId });
       return;
     }
+    if (req.method === "POST" && url === "/api/llm-model/check") {
+      if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
+      modelConnectionUpdating = true;
+      try {
+        const b = (await readBody(req)) as { model?: string };
+        const id = String(b.model || "").trim();
+        if (!modelConnection || !modelCatalog.some((item) => item.id === id)) throw new Error("请从当前连接的模型目录中选择型号。");
+        const check = await checkCompanionModel({ ...modelConnection, model: id });
+        const updated = { ...modelConnection, modelChecks: { ...modelConnection.modelChecks, [id]: check } };
+        saveSavedLLMConnection(updated);
+        // The active adapter shares this map; switching a task model need not rebuild memory.
+        Object.assign(modelConnection.modelChecks!, { [id]: check });
+        send(res, 200, { ok: check.chat === "passed", ...modelConnectionStatus(), checkedModel: id, checked: check });
+      } catch (error) {
+        const detail = modelConnectionUserMessage(error instanceof Error ? error.message : String(error));
+        send(res, 400, { error: detail, userMessage: detail });
+      } finally { modelConnectionUpdating = false; }
+      return;
+    }
     if (req.method === "POST" && url === "/api/llm-config") {
+      if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
+      modelConnectionUpdating = true;
+      try {
       const b = (await readBody(req)) as {
         provider?: CompanionModelProvider;
         protocol?: CompanionModelProtocol;
@@ -6282,12 +5885,13 @@ const server = createServer(async (req, res) => {
         model?: string;
         key?: string;
         offline?: boolean;
+        selectionMode?: "auto" | "manual";
       };
-      try {
         const provider = b.provider ?? modelConnection?.provider ?? "zhipu";
-        const key = String(b.key ?? "").trim()
+        const submittedKey = String(b.key ?? "").trim();
+        const key = submittedKey
           || (modelConnection?.provider === provider ? modelConnection.apiKey : "");
-        const next = b.offline
+        let next = b.offline
           ? undefined
           : normalizeCompanionModelConnection({
               provider,
@@ -6296,6 +5900,32 @@ const server = createServer(async (req, res) => {
               model: b.model,
               apiKey: key,
             });
+        let nextCatalog = modelCatalog;
+        let nextCatalogFetchedAt = modelCatalogFetchedAt;
+        let catalogWarning = "";
+        if (next) {
+          const connectionChanged = !modelConnection
+            || modelConnection.provider !== next.provider
+            || modelConnection.protocol !== next.protocol
+            || modelConnection.baseUrl !== next.baseUrl;
+          // Never forward a saved secret to a different endpoint, even for the same provider.
+          if (connectionChanged && !submittedKey) next = normalizeCompanionModelConnection({ ...next, apiKey: "" });
+          const mode = b.selectionMode === "auto" || b.selectionMode === "manual" ? b.selectionMode
+            : !connectionChanged && (modelConnection?.selectionMode === "manual" || next.model !== modelConnection?.model) ? "manual" : "auto";
+          next.modelChecks = !connectionChanged && key === modelConnection?.apiKey ? { ...modelConnection.modelChecks } : {};
+          try {
+            nextCatalog = await discoverCompanionModels(next);
+            nextCatalogFetchedAt = new Date().toISOString();
+          } catch (error) {
+            if (!(error instanceof CompanionModelHttpError) || ![404, 405, 501].includes(error.status)) throw error;
+            if (mode !== "manual" || !String(b.model || "").trim()) throw new Error("该服务不提供模型目录，请选择手动指定并填写模型名称后重试。");
+            nextCatalog = [];
+            nextCatalogFetchedAt = "";
+            catalogWarning = "服务未提供模型目录，仅验证了手动填写的型号。";
+          }
+          if (mode === "manual" && !nextCatalog.some((item) => item.id === next!.model)) nextCatalog = [...nextCatalog, { id: next.model }];
+          next = await selectCheckedCompanionModel(next, nextCatalog, mode);
+        }
         const action = await agentUserActions.execute({
           name: "llm_connection_update",
           description: next ? `验证并保存 ${next.provider} 模型连接` : "切换到离线模式",
@@ -6303,87 +5933,44 @@ const server = createServer(async (req, res) => {
             ? { provider: next.provider, protocol: next.protocol, baseUrl: next.baseUrl, model: next.model, keyUpdated: Boolean(b.key) }
             : { offline: true },
           execute: async () => {
-            if (next) await validateCompanionModelConnection(next);
-            await rebuildLLM(next);
+            await rebuildLLM(next, next ? nextCatalog : [], next ? nextCatalogFetchedAt : "");
             return modelConnectionStatus();
           },
           summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider, model: value.model }),
         });
-        send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
+        send(res, 200, { ok: true, ...action.value, catalogWarning, auditRunId: action.runId });
       } catch (e) {
-        send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) });
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/development/model-connections") {
-      const b = (await readBody(req)) as {
-        engine?: string;
-        mode?: string;
-        provider?: CompanionModelProvider;
-        protocol?: CompanionModelProtocol;
-        baseUrl?: string;
-        model?: string;
-        key?: string;
-      };
-      const engine = DEVELOPMENT_ENGINE_IDS.includes(b.engine as DevelopmentEngine)
-        ? b.engine as DevelopmentEngine
-        : undefined;
-      const mode = b.mode === "inherit" || b.mode === "independent" ? b.mode : undefined;
-      if (!engine || !mode) {
-        send(res, 400, { ok: false, error: "请选择有效的编程引擎和模型使用方式。" });
-        return;
-      }
-      try {
-        const action = await agentUserActions.execute({
-          name: "development_model_connection_update",
-          description: mode === "inherit" ? `${engine} 改为继承默认模型` : `验证并保存 ${engine} 的独立模型连接`,
-          arguments: {
-            engine,
-            mode,
-            provider: b.provider,
-            protocol: b.protocol,
-            baseUrl: b.baseUrl,
-            model: b.model,
-            keyUpdated: Boolean(b.key),
-          },
-          execute: () => updateDevelopmentModelConnection({
-            engine,
-            mode,
-            provider: b.provider,
-            protocol: b.protocol,
-            baseUrl: b.baseUrl,
-            model: b.model,
-            key: b.key,
-          }),
-          summarizeResult: (value) => ({ ok: true, engine, mode, configured: Boolean(value.engines) }),
-        });
-        send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
-      } catch (error) {
-        send(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
-      }
+        const detail = e instanceof Error ? e.message : String(e);
+        console.error(`[companion] 模型连接验证失败：${detail}`);
+        send(res, 400, { ok: false, error: detail, userMessage: modelConnectionUserMessage(detail) });
+      } finally { modelConnectionUpdating = false; }
       return;
     }
     if (req.method === "POST" && url === "/api/llm-key") {
+      if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
+      modelConnectionUpdating = true;
+      try {
       // 兼容旧客户端：该入口仍按智谱连接处理。
       const b = (await readBody(req)) as { key?: string };
       const key = String(b.key ?? "").trim();
-      try {
         const action = await agentUserActions.execute({
           name: "llm_key_update",
           description: key ? "验证并保存用户提交的智谱 Key" : "清除用户保存的模型连接",
           arguments: { configured: Boolean(key) },
           execute: async () => {
             const next = key ? defaultCompanionModelConnection("zhipu", key) : undefined;
-            if (next) await validateCompanionModelConnection(next);
-            await rebuildLLM(next);
+            const catalog = next ? await discoverCompanionModels(next) : [];
+            const selected = next ? await selectCheckedCompanionModel(next, catalog, "auto") : undefined;
+            await rebuildLLM(selected, catalog, selected ? new Date().toISOString() : "");
             return modelConnectionStatus();
           },
           summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider }),
         });
         send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       } catch (e) {
-        send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) });
-      }
+        const detail = modelConnectionUserMessage(e instanceof Error ? e.message : String(e));
+        send(res, 400, { ok: false, error: detail, userMessage: detail });
+      } finally { modelConnectionUpdating = false; }
       return;
     }
     if (req.method === "POST" && url === "/api/relationship") {
@@ -6408,6 +5995,130 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       return;
     }
+    if (pathname === "/api/assistant-team" || pathname.startsWith("/api/assistant-team/")) {
+      try {
+        const ownJobs = () => agentJobQueue.list({ limit: 5000 }).filter((job) => job.type === "assistant-team" && job.metadata?.userId === USER);
+        if (req.method === "GET" && pathname === "/api/assistant-team/market") {
+          send(res, 200, { templates: [], status: "not-launched" }); return;
+        }
+        if (req.method === "GET" && pathname === "/api/assistant-team/templates") {
+          send(res, 200, { templates: listBotMarket() }); return;
+        }
+        if (req.method === "GET" && pathname === "/api/assistant-team") {
+          send(res, 200, { routingVersion: 1, planningVersion: 1, bots: assistantBots.list(USER), jobs: ownJobs().slice(0, 40).map((job) => ({
+            id: job.id, title: job.payload.title, status: job.status, updatedAt: job.updatedAt,
+            checkpoint: job.checkpoints.at(-1)?.status, model: (job.payload.teamPlan as { model?: string })?.model,
+            modelAdmission: job.status === "running" ? (() => {
+              const state = (job.checkpoints.at(-1)?.data as {modelAdmission?: {state?: unknown}} | undefined)?.modelAdmission?.state;
+              return state === "waiting" || state === "active" ? state : undefined;
+            })() : undefined,
+          })), model: modelConnection?.model || "", ready: llm.live && !!modelConnection,
+            models: modelCatalog.filter((m) => m.id === modelConnection?.model || modelConnection?.modelChecks?.[m.id]?.chat === "passed").map((m) => m.id) });
+          return;
+        }
+          if (req.method === "GET" && pathname === "/api/assistant-team/export") {
+            const id = new URLSearchParams(url.split("?")[1]).get("id");
+            const job = ownJobs().find((j) => j.id === id);
+            if (!job) throw new AssistantTeamError("协作任务不存在", 404);
+            const resultData = job.result?.data as { delivery?: unknown } | undefined;
+            if (job.status !== "succeeded" || !resultData?.delivery) throw new AssistantTeamError("本次任务尚无可导出的最终交付", 409);
+            const plan = job.payload.teamPlan as { requiredFields: string[] };
+            const delivery = validateTeamDelivery(JSON.stringify(resultData.delivery), plan.requiredFields);
+            res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store",
+              "X-Content-Type-Options": "nosniff",
+              "Content-Disposition": "attachment; filename=\"clownfish-result.txt\"; filename*=UTF-8''" + encodeURIComponent("小丑鱼-协作结果.txt") });
+            res.end("\uFEFF" + formatTeamDeliveryText(delivery)); return;
+          }
+          if (req.method === "GET" && pathname === "/api/assistant-team/job") {
+          const id = new URLSearchParams(url.split("?")[1]).get("id");
+          const job = ownJobs().find((j) => j.id === id);
+          if (!job) throw new AssistantTeamError("协作任务不存在", 404);
+          const { connectionFingerprint: _fingerprint, ...payload } = job.payload;
+          send(res, 200, { job: { ...job, payload } }); return;
+        }
+        if (req.method === "POST" && pathname === "/api/assistant-team/plan-preview") {
+          const input = await readBody(req) as Record<string, unknown>;
+          if (!input || typeof input !== "object" || Array.isArray(input)) throw new AssistantTeamError("请求必须是对象");
+          const plan = assistantBots.plan(USER, { requestId: "preview", objective: input.objective, assignmentMode: "auto" });
+          send(res, 200, { routing: plan.routing, maxModelCalls: plan.workers.length + (plan.reviewer ? 1 : 0) + 1 }); return;
+        }
+        if (req.method !== "POST" || !["/api/assistant-team/bot", "/api/assistant-team/import", "/api/assistant-team/start", "/api/assistant-team/cancel", "/api/assistant-team/retry"].includes(pathname)) {
+          send(res, 404, { error: "unknown_team_action" }); return;
+        }
+        const body = await readBody(req) as Record<string, unknown>;
+        if (!body || typeof body !== "object" || Array.isArray(body)) throw new AssistantTeamError("请求必须是对象");
+        const action = await agentUserActions.execute({
+          name: "assistant_team_" + pathname.split("/").at(-1), description: "保存专职 Bot 或推进有边界的助理协作",
+          arguments: { action: pathname, id: typeof body.id === "string" ? body.id : undefined },
+          execute: () => {
+            if (pathname.endsWith("/bot")) return assistantBots.save(USER, body);
+            if (pathname.endsWith("/import")) return assistantBots.importTemplate(USER, body);
+            if (pathname.endsWith("/start")) return enqueueAssistantTeam(body);
+            const job = ownJobs().find((j) => j.id === body.id);
+            if (!job) throw new AssistantTeamError("协作任务不存在", 404);
+            if (pathname.endsWith("/cancel")) {
+              if (!["queued", "running"].includes(job.status)) throw new AssistantTeamError("任务已结束，无需取消", 409);
+              return agentJobWorker.cancel(job.id);
+            }
+            if (!["failed", "cancelled"].includes(job.status)) throw new AssistantTeamError("只可恢复失败或取消的协作", 409);
+            return agentJobQueue.retry(job.id);
+          }, summarizeResult: (value) => ({ ok: true, id: value.id }),
+        });
+        send(res, pathname.endsWith("/start") ? 202 : 200, { ok: true, record: action.value });
+      } catch (error) {
+        send(res, error instanceof AssistantTeamError ? error.status : 500, { error: "assistant_team_failed",
+          userMessage: error instanceof AssistantTeamError ? error.message : "助理团队暂时无法处理请求，原有记录保留。" });
+      }
+      return;
+    }
+    if (pathname.startsWith("/api/personal-work")) {
+      try {
+        if (req.method === "GET" && pathname === "/api/personal-work/reminder-summary") {
+          const reminders = personalWork.reminders(USER);
+          send(res, 200, { count: reminders.length, token: createHash("sha256").update(reminders.map((r) => r.id).sort().join("|")).digest("hex") });
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/personal-work") {
+          const snapshot = capabilities.snapshot();
+          send(res, 200, { matters: personalWork.listMatters(USER), proposals: personalWork.proposals(USER), reminders: personalWork.reminders(USER),
+            tasks: snapshot.tasks.map((task) => ({ id: task.id, title: task.title })),
+            artifacts: snapshot.artifacts.map((artifact) => ({ id: artifact.id, title: artifact.title, taskId: artifact.taskId })) });
+          return;
+        }
+        if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }
+        const body = await readBody(req) as Partial<PersonalMatter> & { kind?: unknown; content?: unknown; source?: Partial<LearningProposal["source"]>; action?: string; confirmed?: boolean };
+        const validateLinks = (taskId?: string, artifactId?: string) => {
+          const snapshot = capabilities.snapshot();
+          if (taskId && !snapshot.tasks.some((task) => task.id === taskId)) throw new PersonalWorkError("关联任务不存在");
+          if (artifactId && !snapshot.artifacts.some((artifact) => artifact.id === artifactId && (!taskId || artifact.taskId === taskId))) throw new PersonalWorkError("关联结果不存在或不属于该任务");
+        };
+        const result = await agentUserActions.execute({
+          name: "personal_work_update", description: "用户管理个人事项或明确确认/撤回学习",
+          arguments: { route: pathname, id: body.id, action: body.action },
+          execute: async () => {
+            if (pathname === "/api/personal-work/matters") { validateLinks(body.taskId, body.artifactId); return personalWork.saveMatter(USER, body); }
+            if (pathname === "/api/personal-work/learning") {
+              validateLinks(body.source?.taskId, body.source?.artifactId);
+              return personalWork.propose(USER, body);
+            }
+            if (pathname === "/api/personal-work/decision") {
+              if (body.confirmed !== true || !["confirm", "reject", "revoke"].includes(String(body.action))) throw new PersonalWorkError("需要你明确确认本次操作");
+              return personalWork.decide(USER, String(body.id || ""), body.action as "confirm" | "reject" | "revoke", Number(body.revision), mem);
+            }
+            if (pathname === "/api/personal-work/acknowledge") { personalWork.acknowledge(USER, String(body.id || "")); return { ok: true }; }
+            throw new PersonalWorkError("接口不存在", 404);
+          },
+          summarizeResult: () => ({ ok: true }),
+        });
+        send(res, 200, { ok: true, record: result.value, auditRunId: result.runId });
+      } catch (error) {
+        send(res, error instanceof PersonalWorkError ? error.status : 500, {
+          error: "personal_work_failed",
+          userMessage: error instanceof PersonalWorkError ? error.message : "个人事项暂时无法保存，请重试；原记录不会被清空。",
+        });
+      }
+      return;
+    }
     if (req.method === "GET" && url.split("?")[0] === "/api/memory") {
       // who=me（用户真相库，默认）或 persona:<id>（某角色自己的记忆库）
       const qWho = new URLSearchParams(url.split("?")[1] || "").get("who") || USER;
@@ -6415,6 +6126,9 @@ const server = createServer(async (req, res) => {
       const store = mem.forUser(who);
       const archivalItems = await store.listByLayer("archival", { limit: 500 });
       const archivalById = new Map(archivalItems.map((item) => [item.id, item]));
+      const learningByMemory = new Map((who === USER ? personalWork.proposals(USER) : [])
+        .filter((proposal) => proposal.memoryId && proposal.state === "confirmed")
+        .map((proposal) => [proposal.memoryId, proposal]));
       const facts: Array<{
         id: string;
         layer: string;
@@ -6430,6 +6144,8 @@ const server = createServer(async (req, res) => {
           conversationId?: string;
           archivalId?: string;
           excerpt?: string;
+          kind?: "confirmed-learning";
+          proposalId?: string;
         };
       }> = [];
       // archival=原文/归档；其余为分类后的记忆层
@@ -6447,6 +6163,7 @@ const server = createServer(async (req, res) => {
             ? (userProfile.displayName || "我")
             : (ownerPersona?.name ?? "角色");
           const archival = m.layer === "archival" ? m : (m.archival_ref ? archivalById.get(m.archival_ref) : undefined);
+          const learning = learningByMemory.get(m.id);
           facts.push({
             id: m.id,
             layer,
@@ -6456,12 +6173,13 @@ const server = createServer(async (req, res) => {
             correctable: layer !== "archival" && !!m.claim_key && !!m.predicate && !!m.subject_id,
             source: {
               origin: m.source.origin,
-              sourceMessageId: archival?.source.source_message_id || m.source.source_message_id,
+              sourceMessageId: learning ? undefined : archival?.source.source_message_id || m.source.source_message_id,
               speakerId: archival?.source.speaker_id || m.source.speaker_id,
               subjectId: archival?.source.subject_id || m.source.subject_id,
               conversationId: archival?.source.conversation_id || m.source.conversation_id,
               archivalId: archival?.id,
-              excerpt: archival?.content.slice(0, 500),
+              excerpt: learning ? (learning.source.excerpt || learning.content).slice(0, 1500) : archival?.content.slice(0, 500),
+              ...(learning ? { kind: "confirmed-learning" as const, proposalId: learning.id } : {}),
             },
           });
         }
@@ -6742,6 +6460,12 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url === "/api/chat/stream") {
       const b = (await readBody(req)) as ChatBody;
+      let conversationOptions: ReturnType<typeof conversationSendOptions>;
+      try { conversationOptions = conversationSendOptions(b); }
+      catch (error) {
+        const detail = error instanceof Error ? error.message : "请重新选择模型。";
+        send(res, 400, { error: detail, userMessage: detail }); return;
+      }
       const intentText = String(b.text || "").trim();
       const prepared = await prepareChatTextWithReadableContext(b);
       const text = prepared.text;
@@ -6755,7 +6479,7 @@ const server = createServer(async (req, res) => {
           return;
         }
         const opts = {
-          ...conversationSendOptions(b),
+          ...conversationOptions,
           ...(b.voice ? { voice: { durationSec: Math.max(2, Math.round((b.text || "").length / 4)) } } : {}),
           ...(b.target.kind === "group" ? { groupRoute: groupReplyRoute(b.target.id, intentText) } : {}),
         };
@@ -6830,12 +6554,18 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url === "/api/chat") {
       const b = (await readBody(req)) as ChatBody;
+      let conversationOptions: ReturnType<typeof conversationSendOptions>;
+      try { conversationOptions = conversationSendOptions(b); }
+      catch (error) {
+        const detail = error instanceof Error ? error.message : "请重新选择模型。";
+        send(res, 400, { error: detail, userMessage: detail }); return;
+      }
       const intentText = String(b.text || "").trim();
       const prepared = await prepareChatTextWithReadableContext(b);
       const text = prepared.text;
       await maybeUpdatePersonaNicknameFromText(b.target, intentText);
       const opts = {
-        ...conversationSendOptions(b),
+        ...conversationOptions,
         ...(b.voice ? { voice: { durationSec: Math.max(2, Math.round(b.text.length / 4)) } } : {}),
         ...(b.target.kind === "group" ? { groupRoute: groupReplyRoute(b.target.id, intentText) } : {}),
       };
@@ -6885,6 +6615,10 @@ const server = createServer(async (req, res) => {
     }
     send(res, 404, { error: "not found" });
   } catch (e) {
+    if (e instanceof RelationshipMemoryUnavailableError) {
+      send(res, 503, { error: e.code, code: e.code, userMessage: e.message });
+      return;
+    }
     const message = e instanceof Error ? e.message : String(e);
     // 客户端收到的是脱敏文案，因此内部错误必须在本机日志里留下栈，
     // 否则线上只剩一句"内部处理暂时失败"，无从排查。
@@ -6969,6 +6703,7 @@ function startPeriodicDataSync(): void {
 boot().then(() => {
   agentJobWorker.start();
   server.listen(PORT, "127.0.0.1", () => {
+    backgroundScheduler.start();
     resumeInterruptedAgentRuns();
     seedPersonaBiosInBackground(engine);
     startPeriodicDataSync();
@@ -6981,4 +6716,8 @@ boot().then(() => {
     console.log("  记忆库: " + DB);
     console.log("");
   });
+});
+server.on("close", () => {
+  backgroundScheduler.stop();
+  agentJobWorker.stop();
 });

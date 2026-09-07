@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
 
 import { parseNativeCapabilityPayload } from "../../examples/companion/native-capability-contracts.js";
-import { validateDevelopmentWorkspace } from "../../examples/companion/pi-development.js";
 import { assessProfessionalArtifact } from "../../examples/companion/professional-artifact-gate.js";
 import { admitGeneratedAbilitySpec, admitInstalledSkillContent, CAPABILITY_ADMISSION_MATRIX } from "../../examples/companion/capability-admission.js";
 import { missingAdmissionProbes, runCapabilityAdmissionProbes } from "../../examples/companion/capability-admission-probes.js";
@@ -40,16 +36,6 @@ test("能力准入夹具拒绝空、损坏和不完整的模型输出", () => {
   assert.equal(parseNativeCapabilityPayload("research-brief", validResearch).kind, "research-brief");
 });
 
-test("Windows 工作区路径在准入边界按真实目录校验", () => {
-  const dir = mkdtempSync(join(tmpdir(), "clownfish-admission-"));
-  try {
-    writeFileSync(join(dir, "package.json"), "{}", "utf8");
-    assert.equal(validateDevelopmentWorkspace(dir), dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test("任何必需工具或渲染检查失败都不能被平均成通过", () => {
   const receipt = assessProfessionalArtifact({
     domain: "software", artifactExists: true, structuredInput: true, intermediateArtifact: true,
@@ -80,20 +66,17 @@ const generatedSpec: GeneratedAbilitySpec = {
   ],
 };
 
-test("矩阵声明的八类场景全部有可运行的夹具探针", () => {
+test("矩阵声明的场景全部有可运行的夹具探针", () => {
   const covered = new Set(Object.values(CAPABILITY_ADMISSION_MATRIX).flat());
   assert.deepEqual(covered, new Set([
-    "normal", "empty-result", "malformed-input", "tool-failure", "handoff-recovery",
-    "windows-path", "damaged-format", "model-refusal",
+    "normal", "empty-result", "malformed-input", "damaged-format", "model-refusal",
   ]));
-  // 上面只证明「声明了八个字符串」。真正要守的是每个场景都有代码去评估它——
-  // 此前 tool-failure / handoff-recovery / windows-path / damaged-format 四类
-  // 只存在于矩阵里，零评估点，而当时的测试照样通过。
+  // 上面只证明场景已声明。真正要守的是每个场景都有代码去评估它。
   assert.deepEqual(missingAdmissionProbes(), [], "矩阵声明了场景却没有对应探针");
 });
 
-test("三档准入都真实跑完自己声明的场景并逐条给出回执", () => {
-  for (const profile of ["native", "development", "generated"] as const) {
+test("两档准入都真实跑完自己声明的场景并逐条给出回执", () => {
+  for (const profile of ["native", "generated"] as const) {
     const receipt = runCapabilityAdmissionProbes(profile);
     const scenarios = CAPABILITY_ADMISSION_MATRIX[profile];
     assert.equal(receipt.profile, `admission-probes:${profile}`);
@@ -111,9 +94,9 @@ test("三档准入都真实跑完自己声明的场景并逐条给出回执", ()
 
 test("场景声明变化会改变合同指纹，旧结论不能沿用", () => {
   const native = runCapabilityAdmissionProbes("native");
-  const development = runCapabilityAdmissionProbes("development");
+  const generated = runCapabilityAdmissionProbes("generated");
   assert.match(native.contractHash, /^[a-f0-9]{64}$/);
-  assert.notEqual(native.contractHash, development.contractHash);
+  assert.notEqual(native.contractHash, generated.contractHash);
 });
 
 test("生成能力每次写入前都生成绑定合同指纹的准入回执", () => {

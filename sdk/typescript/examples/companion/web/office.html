@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
+<head><script src="/assets/product-structure.js" defer></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
@@ -18,16 +18,7 @@
 </head>
 <body data-page="office">
   <div class="app-shell">
-    <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt="" width="36" height="36"></a>
-      <nav class="rail-nav">
-        <a href="/" title="任务" aria-label="任务" data-app-icon="message"><span aria-hidden="true"></span><small>任务</small></a>
-        <a href="/capabilities" title="能力" aria-label="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></a>
-        <a class="is-current" href="/office" title="办公文件" aria-label="办公文件" aria-current="page" data-app-icon="file"><span aria-hidden="true"></span><small>文件</small></a>
-        <a href="/automations" title="自动化" aria-label="自动化" data-app-icon="work"><span aria-hidden="true"></span><small>自动化</small></a>
-      </nav>
-      <a class="rail-secondary" href="/settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
-    </aside>
+    <!-- APP_NAVIGATION -->
 
     <main class="office-main">
       <input id="officeFileInput" type="file" hidden accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown">
@@ -62,6 +53,7 @@
             <div class="empty-mark" data-office-icon="file" aria-hidden="true"></div>
             <p class="section-label">从一个文件开始</p>
             <h1>打开文件，直接处理内容</h1>
+            <nav class="section-links" aria-label="文件相关工作"><a href="/artifacts">生成成果</a><a href="/resources">参考资料</a><a href="/capabilities">生成新文档</a></nav>
             <p>TXT 和 Markdown 可以直接编辑并写回原文件。常见文档、演示文稿、表格、PDF 和 EPUB 打开后生成结构化可编辑副本，原文件保留、可下载，不会被改写。</p>
             <div class="empty-actions">
               <button class="toolbar-button primary large" type="button" data-open-office-file>打开办公文件</button>

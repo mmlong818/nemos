@@ -2,6 +2,12 @@
 
 $ClientRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Dist = Join-Path $ClientRoot "dist"
+if ($env:CLOWNFISH_RELEASE_DIRECTORY) {
+  $releaseName = $env:CLOWNFISH_RELEASE_DIRECTORY
+  if ($releaseName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,70}$') { throw "Release directory must be a single directory name under dist" }
+  $Dist = Join-Path $Dist $releaseName
+  if (Test-Path -LiteralPath $Dist) { throw "Release directory already exists; refusing to overwrite" }
+}
 $PortableRoot = Join-Path $Dist "portable\小丑鱼"
 $PortableApp = Join-Path $PortableRoot "app"
 $PortableNode = Join-Path $PortableRoot "node"
@@ -39,6 +45,42 @@ function Get-CscPath {
     if (Test-Path -LiteralPath $candidate) { return $candidate }
   }
   throw "找不到 .NET Framework C# 编译器 csc.exe"
+}
+
+function Copy-DirectoryTree {
+  param(
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][string]$Destination
+  )
+
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  & robocopy $Source $Destination /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /LOG:NUL
+  if ($LASTEXITCODE -ge 8) {
+    throw "复制目录失败（robocopy exit code $LASTEXITCODE）：$Source"
+  }
+}
+
+function Remove-BuildDirectoryTree {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+  $distPrefix = [System.IO.Path]::GetFullPath((Join-Path $ClientRoot "dist")) + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $resolvedPath.StartsWith($distPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "拒绝清理客户端 dist 之外的目录：$resolvedPath"
+  }
+
+  $empty = Join-Path ([System.IO.Path]::GetTempPath()) ("clownfish-empty-" + [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $empty | Out-Null
+  try {
+    & robocopy $empty $resolvedPath /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /LOG:NUL
+    if ($LASTEXITCODE -ge 8) {
+      throw "清理目录失败（robocopy exit code $LASTEXITCODE）：$resolvedPath"
+    }
+  } finally {
+    Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  Remove-Item -LiteralPath $resolvedPath -Recurse -Force
 }
 
 function Ensure-WebView2Sdk {
@@ -168,6 +210,7 @@ $Csc = Get-CscPath
   /reference:System.Core.dll `
   /reference:System.Security.dll `
   $SandboxHostSource
+if ($LASTEXITCODE -ne 0) { throw "Sandbox host compilation failed" }
 
 & $Csc /nologo /target:winexe /platform:x64 /optimize+ `
   "/win32icon:$Icon" `
@@ -180,6 +223,7 @@ $Csc = Get-CscPath
   /reference:$CoreDll `
   /reference:$WinFormsDll `
   $Source
+if ($LASTEXITCODE -ne 0) { throw "Client compilation failed" }
 
 Copy-Item -LiteralPath $CoreDll -Destination $Dist -Force
 Copy-Item -LiteralPath $WinFormsDll -Destination $Dist -Force
@@ -191,7 +235,7 @@ if (Test-Path -LiteralPath (Join-Path $ClientRoot "desktop-helper")) {
 }
 
 if (Test-Path -LiteralPath $PortableRoot) {
-  Remove-Item -LiteralPath $PortableRoot -Recurse -Force
+  Remove-BuildDirectoryTree -Path $PortableRoot
 }
 New-Item -ItemType Directory -Force -Path $PortableRoot, $PortableApp, $PortableNode, $PortableSandboxNode, $PortableLicenses | Out-Null
 
@@ -252,17 +296,21 @@ if (Test-Path -LiteralPath (Join-Path $SdkRoot "tsconfig.json")) {
   Copy-Item -LiteralPath (Join-Path $SdkRoot "tsconfig.json") -Destination $PortableApp -Force
 }
 Copy-Item -LiteralPath (Join-Path $SdkRoot "src") -Destination $PortableApp -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $SdkRoot "node_modules") -Destination $PortableApp -Recurse -Force
+Copy-DirectoryTree `
+  -Source (Join-Path $SdkRoot "node_modules") `
+  -Destination (Join-Path $PortableApp "node_modules")
 
 $PortableCompanion = Join-Path $PortableApp "examples\companion"
 New-Item -ItemType Directory -Force -Path $PortableCompanion | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $SdkRoot "examples\companion") -File | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $PortableCompanion -Force
 }
-Copy-Item -LiteralPath (Join-Path $SdkRoot "examples\companion\web") -Destination $PortableCompanion -Recurse -Force
-$CompanionVendor = Join-Path $SdkRoot "examples\companion\vendor"
-if (Test-Path -LiteralPath $CompanionVendor) {
-  Copy-Item -LiteralPath $CompanionVendor -Destination $PortableCompanion -Recurse -Force
+Get-ChildItem -LiteralPath (Join-Path $SdkRoot "examples\companion") -Directory | Where-Object {
+  $_.Name -notin @("client", "docs")
+} | ForEach-Object {
+  Copy-DirectoryTree `
+    -Source $_.FullName `
+    -Destination (Join-Path $PortableCompanion $_.Name)
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $PortableCompanion "client") | Out-Null
 Copy-Item -LiteralPath $Manifest -Destination (Join-Path $PortableCompanion "client") -Force

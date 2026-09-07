@@ -1,10 +1,9 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const workViews = new Set(["tasks", "spaces", "automations", "collaboration", "resources", "artifacts", "runs", "memory"]);
-// 工作页已精简为自动化单一视图；历史路由一律落到自动化
-const viewFromLocation = () => "automations";
+const viewFromLocation = () => window.ClownfishNavigation.workView();
 let view = viewFromLocation();
-const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [], productReviews: [], productReviewSummary: null };
+const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [], reviewGroups: [], approvals: [], relationshipMemory: null, productReviews: [], productReviewSummary: null };
 const loadedViews = new Set();
 let loadSequence = 0;
 let activeStoryTaskId = "";
@@ -40,13 +39,13 @@ function toast(message, error = false) {
 }
 
 const pageCopy = {
-  tasks: ["持续工作", "任务", "把需要重复执行的事情留在这里，并随时查看进展。"],
+  tasks: ["流程管理", "流程管理", "管理此流程的配置与操作；日常进度、处理过程和成果统一在任务工作区查看。"],
   spaces: ["多个任务，一件事情", "项目", "把相关任务、结果和决定放在一起；工作变复杂时再创建。"],
   automations: ["按计划完成", "自动化", "把固定频率的工作交给小丑鱼；随时暂停，也可以立即运行。"],
-  collaboration: ["需要时再组织", "协作", "小丑鱼会按任务动态调用合适的专家，最后统一完成交付。"],
-  resources: ["任务所需的上下文", "资料", "保存本地笔记、文本和链接，并在执行任务时明确选择。"],
-  artifacts: ["可复用结果", "结果", "所有交付物都保留原版本，可以预览、下载或继续加工。"],
-  runs: ["执行记录", "运行", "查看后台工作、失败原因和中断后可恢复的执行。"],
+  collaboration: ["流程设置", "流程协作设置", "保留原有组织协作操作；处理过程与成果统一在对应任务详情中查看。"],
+  resources: ["任务所需的上下文", "参考资料", "保存本地笔记、文本和链接，并在执行任务时明确选择。"],
+  artifacts: ["文件", "文件", "资料、成果与编辑副本，在这里找回并继续使用。"],
+  runs: ["高级排错", "运行日志", "查看后台工作、失败原因和中断后可恢复的执行。"],
   memory: ["由你控制", "记忆", "这里只显示小丑鱼整理出的事实、经历与习惯，你可以随时修正或忘记。"],
 };
 
@@ -63,9 +62,17 @@ function setPage() {
     else link.removeAttribute("aria-current");
   });
   document.title = `${copy[1]} · 小丑鱼`;
+  const createLabel={spaces:"新建项目",automations:"新建自动化",resources:"添加资料"}[view];
+  const createButton=$("#newTaskSide");createButton.hidden=!createLabel;
+  createButton.querySelector('span:last-child').textContent=createLabel || '新建';
+  createButton.setAttribute('aria-label',createLabel || '新建');createButton.title=createLabel || '新建';
+  $("#workStartTask").hidden=view!=="tasks";
+  $("#workSearchToggle").hidden=view==="memory"||view==="artifacts";
+  window.ClownfishNavigation.sync();
   $("#workSearchEyebrow").textContent = copy[1];
   $("#workSearchTitle").textContent = `搜索${copy[1]}`;
   $("#workSearch").placeholder = `输入${copy[1]}名称或内容`;
+  $("#workSearchToggle .app-search-label").textContent = `搜索${copy[1]}`;
   updatePrimaryWorkNavigation();
 }
 
@@ -115,17 +122,20 @@ async function load() {
     }
     if (requestedView === "spaces") result = await api("/api/capabilities");
     if (requestedView === "automations" || requestedView === "collaboration") {
-      const [snapshot, jobs, knowledge] = await Promise.all([api("/api/capabilities"), api("/api/agent/jobs?limit=100"), api("/api/knowledge")]);
-      result = { snapshot, jobs: jobs.jobs || [], knowledge: knowledge.items || [] };
+      const [snapshot, jobs, knowledge, review] = await Promise.all([api("/api/capabilities"), api("/api/agent/jobs?limit=100"), api("/api/knowledge"), api("/api/review-queue")]);
+      result = { snapshot, jobs: jobs.jobs || [], knowledge: knowledge.items || [], review };
     }
     if (requestedView === "resources") {
       const [snapshot, knowledge, sources, platform, extensions] = await Promise.all([api("/api/capabilities"), api("/api/knowledge?archived=1"), api("/api/sources"), api("/api/platform/readiness"), api("/api/agent/extensions")]);
       result = { snapshot, knowledge: knowledge.items || [], sources, platform, extensions: extensions.extensions || [] };
     }
-    if (requestedView === "artifacts") result = await api("/api/capabilities");
+    if (requestedView === "artifacts") {
+      const reads=await Promise.allSettled([api("/api/capabilities"),api("/api/files/workbench"),api("/api/knowledge")]);
+      result={snapshot:reads[0].status==='fulfilled'?reads[0].value:state.snapshot||{artifacts:[]},documents:reads[1].status==='fulfilled'?reads[1].value.state?.documents||[]:state.documents||[],knowledge:reads[2].status==='fulfilled'?reads[2].value.items||[]:state.knowledge||[],warnings:reads.flatMap((r,i)=>r.status==='rejected'?[[ '成果','本机文件','参考资料'][i]+'暂时无法刷新；如有已加载内容会继续保留，其他来源仍可查看']:[])};
+    }
     if (requestedView === "runs") {
-      const [jobs, runs, reviewQueue, productReviews] = await Promise.all([api("/api/agent/jobs?limit=100"), api("/api/agent/runs?limit=100"), api("/api/review-queue"), api("/api/product-reviews")]);
-      result = { jobs: jobs.jobs || [], runs: runs.runs || [], reviewQueue: reviewQueue.items || [], productReviews: productReviews.runs || [], productReviewSummary: productReviews.summary || null };
+      const [jobs, runs, reviewQueue, productReviews, approvals] = await Promise.all([api("/api/agent/jobs?limit=1000"), api("/api/agent/runs?limit=500"), api("/api/review-queue"), api("/api/product-reviews"), api("/api/agent/approvals?status=pending&limit=500")]);
+      result = { jobs: jobs.jobs || [], runs: runs.runs || [], reviewQueue: reviewQueue.items || [], review: reviewQueue, approvals: approvals.approvals || [], productReviews: productReviews.runs || [], productReviewSummary: productReviews.summary || null };
     }
     if (requestedView === "memory") result = (await api("/api/memory?who=me")).facts || [];
     if (sequence !== loadSequence || requestedView !== view) return;
@@ -140,6 +150,11 @@ async function load() {
       state.jobs = result.jobs;
       state.knowledge = result.knowledge;
     }
+    if (result?.review) {
+      state.reviewQueue = result.review.items || [];
+      state.reviewGroups = result.review.groups || [];
+      state.relationshipMemory = result.review.relationshipMemory;
+    }
     if (requestedView === "resources") {
       state.snapshot = result.snapshot;
       state.knowledge = result.knowledge;
@@ -147,17 +162,24 @@ async function load() {
       state.platform = result.platform;
       state.extensions = result.extensions;
     }
-    if (requestedView === "artifacts") state.snapshot = result;
+    if (requestedView === "artifacts") {state.snapshot=result.snapshot;state.documents=result.documents;state.knowledge=result.knowledge;state.fileWarnings=result.warnings;}
     if (requestedView === "runs") {
       state.jobs = result.jobs;
       state.runs = result.runs;
       state.reviewQueue = result.reviewQueue;
+      state.approvals = result.approvals;
       state.productReviews = result.productReviews;
       state.productReviewSummary = result.productReviewSummary;
     }
     if (requestedView === "memory") state.memories = result;
     loadedViews.add(requestedView);
     render();
+    if(requestedView==='resources'&&new URLSearchParams(location.search).get('create')==='1'){
+      const next=new URL(location.href);next.searchParams.delete('create');history.replaceState(null,'',next.pathname+next.search+next.hash);openKnowledgeDialog();
+    }
+    if (location.hash.startsWith("#review-") || location.hash.startsWith("#record-")) {
+      try { document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView({ block: "nearest" }); } catch { /* Invalid external fragment. */ }
+    }
     if (activeStoryTaskId && $("#storyDialog")?.open) refreshOpenStoryline();
   } catch (error) {
     if (sequence !== loadSequence || requestedView !== view) return;
@@ -180,12 +202,11 @@ function render() {
 }
 
 function activateView(nextView, historyMode = "none") {
-  if (!workViews.has(nextView) || nextView === view) return;
+  if (!workViews.has(nextView)) return;
   view = nextView;
   if (historyMode === "push") history.pushState({ workView: view }, "", `/${view}`);
   setPage();
-  if (loadedViews.has(view)) render();
-  else showLoading();
+  showLoading();
   void load();
 }
 
@@ -202,7 +223,7 @@ function abilityName(id) {
   const labels = {
     "presentation-builder": "做 PPT", "document-draft": "写正式文档", "research-brief": "深度研究",
     "market-briefing": "查港股资料", "thinking-workbench": "梳理复杂问题", "product-design": "设计产品界面",
-    "project-development": "开发项目", "meeting-minutes": "整理会议纪要", "html-report": "做网页报告",
+    "meeting-minutes": "整理会议纪要", "html-report": "做网页报告",
     "decision-brief": "比较方案", "business-deal": "推进商务合作", "market-opportunity": "模拟市场机会",
     "ability-builder": "生成新能力",
   };
@@ -271,7 +292,6 @@ function taskOriginLabel(task) {
     chat: "来自对话",
     capability: "能力接力",
     office: "来自文件",
-    development: "来自开发",
     orchestration: "专家任务",
     automation: "自动执行",
     direct: "直接任务",
@@ -332,7 +352,8 @@ function renderTasks() {
   const tasks = state.snapshot?.tasks || [];
   const selectedSpaceId = new URLSearchParams(location.search).get("space") || "";
   const selectedSpace = selectedSpaceId ? spaceById(selectedSpaceId) : null;
-  const scopedTasks = selectedSpaceId ? tasks.filter((task) => task.spaceId === selectedSpaceId) : tasks;
+  const requestedTask=new URLSearchParams(location.search).get('task');
+  const scopedTasks = tasks.filter(task=>(!selectedSpaceId||task.spaceId===selectedSpaceId)&&(!requestedTask||task.id===requestedTask));
   const activeCount = scopedTasks.filter((task) => storylineOf(task).status !== "completed").length;
   const runningCount = scopedTasks.filter((task) => taskJobs(task.id).some((job) => job.status === "queued" || job.status === "running")).length;
   const priority = scopedTasks.find((task) => storylineOf(task).status === "active") || scopedTasks[0];
@@ -385,11 +406,9 @@ function renderSpaces() {
   const spaces = state.snapshot?.spaces || [];
   const active = spaces.filter((space) => space.status !== "archived");
   const archived = spaces.filter((space) => space.status === "archived");
-  $("#content").innerHTML = `<div class="toolbar space-toolbar"><p>单个任务无需建项目；同一件事出现多个任务时再归档。</p>${active.length ? '<button class="primary" id="newSpace">新建项目</button>' : ""}</div>
-    <div class="space-list" id="spaceList">${active.length ? active.map(renderSpaceRow).join("") : `<div class="space-empty"><span>01</span><h2>先从任务开始</h2><p>当一件工作包含多个任务、结果或决定时，再建立项目把它们放在一起。</p><button class="primary" data-create-first-space>新建第一个项目</button></div>`}</div>
+  $("#content").innerHTML = `<p class="work-list-summary">${active.length} 个项目</p>
+    <div class="space-list" id="spaceList">${active.length ? active.map(renderSpaceRow).join("") : `<div class="space-empty"><h2>还没有项目</h2><p>点击“新建项目”，把同一件事的任务和成果放在一起。单个任务不必建项目。</p></div>`}</div>
     ${archived.length ? `<details class="archived-spaces"><summary>${archived.length} 个已归档项目</summary><div>${archived.map((space) => `<div class="archived-space"><span><strong>${escapeHtml(space.title)}</strong><small>${escapeHtml(space.description || "无说明")}</small></span><button data-restore-space="${space.id}">恢复</button></div>`).join("")}</div></details>` : ""}`;
-  $("#newSpace")?.addEventListener("click", () => openSpaceDialog());
-  $("[data-create-first-space]")?.addEventListener("click", () => openSpaceDialog());
   $("#content").onclick = async (event) => {
     const edit = event.target.closest("[data-edit-space]");
     const archive = event.target.closest("[data-archive-space]");
@@ -514,7 +533,38 @@ function refreshOpenStoryline() {
   if (task) renderStoryline(task, false);
 }
 
+function keepInlineDraft(formId) {
+  const host=$("#workInlineEditor");
+  return !host.hidden && host.contains($("#"+formId));
+}
+
+function showWorkEditor(dialogId) {
+  const forms={taskDialog:"taskForm",spaceDialog:"spaceForm",knowledgeDialog:"knowledgeForm"};
+  const inline={automations:"taskDialog",spaces:"spaceDialog",resources:"knowledgeDialog"}[view]===dialogId;
+  const form=$("#"+forms[dialogId]);
+  form.querySelector('.work-form-error').textContent='';
+  if(inline){const host=$("#workInlineEditor");host.replaceChildren(form);host.hidden=false;form.querySelector('input:not([type=hidden])')?.focus();}
+  else $("#"+dialogId).showModal();
+}
+
+function closeWorkEditor(dialogId) {
+  const host=$("#workInlineEditor");
+  if(!host.hidden){host.hidden=true;$("#newTaskSide").focus();}
+  $("#"+dialogId).close();
+}
+
+async function submitWorkForm(event, save) {
+  event.preventDefault();const form=event.target;
+  if(form.dataset.saving==='true')return;
+  form.dataset.saving='true';form.querySelector('.work-form-error').textContent='';
+  const controls=[...form.querySelectorAll('input,textarea,select,button')].filter(c=>!c.disabled);
+  controls.forEach(c=>c.disabled=true);
+  try{await save();}catch(error){form.querySelector('.work-form-error').textContent=error.message;}
+  finally{controls.forEach(c=>c.disabled=false);form.dataset.saving='';}
+}
+
 function openTaskDialog(task, promote = false) {
+  if(keepInlineDraft('taskForm')){if($('#taskForm').dataset.saving==='true')return;if(!task){$('#taskTitle').focus();return;}if(!confirm('切换编辑会替换当前未保存的内容，继续吗？'))return;}
   const abilities = publicAbilities();
   const spaces = (state.snapshot?.spaces || []).filter((space) => space.status === "active");
   const requestedSpaceId = task?.spaceId || new URLSearchParams(location.search).get("space") || "";
@@ -526,17 +576,16 @@ function openTaskDialog(task, promote = false) {
   $("#taskCapability").value = task?.capabilityId || "";
   $("#taskSpace").value = spaces.some((space) => space.id === requestedSpaceId) ? requestedSpaceId : "";
   $("#taskFormat").value = task?.format || abilities.find((item) => item.id === $("#taskCapability").value)?.defaultFormat || "html";
-  $("#taskSchedule").value = task?.schedule?.mode || "manual";
-  $("#taskTime").value = task?.schedule?.time || "09:00";
+  $("#taskSchedule").value = task?.schedule?.mode || (view==='automations'?'daily':'manual');
   const selectedKnowledge = new Set(task?.knowledgeIds || []);
   $("#taskKnowledge").innerHTML = state.knowledge.filter((item) => !item.archivedAt).length
     ? state.knowledge.filter((item) => !item.archivedAt).map((item) => `<label><input type="checkbox" value="${escapeHtml(item.id)}" ${selectedKnowledge.has(item.id) ? "checked" : ""}><span>${escapeHtml(item.title)}<small>${escapeHtml(item.excerpt || "")}</small></span></label>`).join("")
     : '<span class="resource-empty">资料库还是空的，可先到“资料”页添加。</span>';
   if (promote) $("#taskSchedule").value = "daily";
   $("#taskId").dataset.promote = promote ? "true" : "";
-  $("#taskDialogTitle").textContent = promote ? "设为重复任务" : task ? "编辑任务" : "新建任务";
+  $("#taskDialogTitle").textContent = promote ? "设为重复任务" : view==='automations' ? (task?'编辑自动化':'安排一项重复工作') : task ? "编辑任务" : "新建任务";
   updateScheduleField(task?.schedule?.everyTurns || 10, task?.schedule?.time || "09:00");
-  $("#taskDialog").showModal();
+  showWorkEditor('taskDialog');
 }
 
 function updateScheduleField(turns = 10, time = "09:00") {
@@ -549,6 +598,9 @@ function updateScheduleField(turns = 10, time = "09:00") {
 
 async function saveTask(existing) {
   const mode = existing?.schedule?.mode || $("#taskSchedule")?.value || "manual";
+  const editingId=$("#taskId").value;
+  const editingTask=editingId ? state.snapshot?.tasks?.find(task=>task.id===editingId) : undefined;
+  if(!existing && editingId && !editingTask)throw new Error('这项任务已不可用，请刷新后重新选择。未保存任何更改。');
   const body = existing || {
     id: $("#taskId").value || undefined,
     title: $("#taskTitle").value.trim(),
@@ -556,24 +608,25 @@ async function saveTask(existing) {
     personaId: "clownfish",
     capabilityId: $("#taskCapability").value,
     format: $("#taskFormat").value,
-    enabled: true,
+    enabled: editingTask ? editingTask.enabled : true,
     spaceId: $("#taskSpace").value || null,
     knowledgeIds: $$('#taskKnowledge input:checked').slice(0, 8).map((input) => input.value),
     promote: $("#taskId").dataset.promote === "true",
     schedule: mode === "daily" ? { mode, time: $("#taskTime")?.value || "09:00", timezone: "Asia/Shanghai" } : mode === "turns" ? { mode, everyTurns: Number($("#taskTurns")?.value || 10) } : { mode },
   };
   await api("/api/capabilities/task", { method: "POST", body: JSON.stringify(body) });
-  $("#taskDialog").close();
+  if(!existing)closeWorkEditor('taskDialog');
   toast("任务已保存");
   await load();
 }
 
 function openSpaceDialog(space) {
+  if(keepInlineDraft('spaceForm')){if($('#spaceForm').dataset.saving==='true')return;if(!space){$('#spaceTitle').focus();return;}if(!confirm('切换编辑会替换当前未保存的内容，继续吗？'))return;}
   $("#spaceId").value = space?.id || "";
   $("#spaceTitle").value = space?.title || "";
   $("#spaceDescription").value = space?.description || "";
   $("#spaceDialogTitle").textContent = space ? "编辑项目" : "新建项目";
-  $("#spaceDialog").showModal();
+  showWorkEditor('spaceDialog');
 }
 
 async function saveSpace() {
@@ -586,7 +639,7 @@ async function saveSpace() {
     }),
   });
   state.snapshot = result.snapshot;
-  $("#spaceDialog").close();
+  closeWorkEditor('spaceDialog');
   toast("项目已保存");
   renderSpaces();
 }
@@ -621,13 +674,13 @@ function runDisplayTitle(run) {
 }
 
 function renderAutomations() {
-  const tasks = (state.snapshot?.tasks || []).filter((task) => !task.oneOff && task.schedule?.mode !== "manual");
+  const requestedTask=new URLSearchParams(location.search).get('task');
+  const tasks = (state.snapshot?.tasks || []).filter((task) => !task.oneOff && task.schedule?.mode !== "manual" && (!requestedTask||task.id===requestedTask));
   const rows = tasks.map((task) => `<article class="compact-row">
     <div><h3 class="automation-state ${task.enabled ? "" : "is-paused"}">${escapeHtml(task.title)}</h3><p>${escapeHtml(scheduleLabel(task))} · ${escapeHtml(abilityName(task.capabilityId))}${task.lastRunAt ? ` · 上次 ${date(task.lastRunAt)}` : " · 尚未运行"}</p></div>
-    <div class="actions"><button data-run-automation="${task.id}">立即运行</button><button data-edit-automation="${task.id}">编辑</button><button data-toggle-automation="${task.id}">${task.enabled ? "暂停" : "启用"}</button></div>
+    <div class="actions"><a href="/bots?task=${encodeURIComponent(task.id)}">执行记录</a><button data-run-automation="${task.id}">立即运行</button><button data-edit-automation="${task.id}">编辑</button><button data-toggle-automation="${task.id}">${task.enabled ? "暂停" : "启用"}</button></div>
   </article>`).join("");
-  $("#content").innerHTML = `<section class="platform-panel"><header><div><h2>自动执行的工作</h2><p>只有你明确设置频率的任务会出现在这里。</p></div><button class="primary" id="newAutomation">新建自动化</button></header><div class="compact-list">${rows || '<div class="resource-empty">还没有自动化。适合从日报、定期整理和固定检查开始。</div>'}</div></section>`;
-  $("#newAutomation").onclick = () => { openTaskDialog(); $("#taskSchedule").value = "daily"; updateScheduleField(10, "09:00"); };
+  $("#content").innerHTML = (requestedTask?'<p><a href="/automations">← 全部自动化</a></p>':"") + `<section class="work-primary-list" aria-label="自动化计划"><p class="work-list-summary">${tasks.length} 项计划 · ${tasks.filter(task=>task.enabled).length} 项已启用 · ${tasks.filter(task=>!task.enabled).length} 项已暂停</p><div class="compact-list">${rows || '<div class="resource-empty">还没有自动化。点击“新建自动化”，设置要做的事和执行频率。</div>'}</div><p class="work-list-note">只有明确设置频率的任务会在这里显示；应用后台运行时才会按计划触发。</p></section>` + renderAttentionInbox(false);
   $("#content").onclick = async (event) => {
     const run = event.target.closest("[data-run-automation]");
     const edit = event.target.closest("[data-edit-automation]");
@@ -644,13 +697,14 @@ function collaborationJob(taskId) {
 }
 
 function renderCollaboration() {
-  const tasks = (state.snapshot?.tasks || []).filter((task) => !task.oneOff && storylineOf(task).status !== "completed");
+  const requestedTask=new URLSearchParams(location.search).get('task');
+  const tasks = (state.snapshot?.tasks || []).filter((task) => !task.oneOff && storylineOf(task).status !== "completed" && (!requestedTask||task.id===requestedTask));
   const rows = tasks.map((task) => {
     const job = collaborationJob(task.id);
     const working = job && ["queued", "running"].includes(job.status);
     return `<article class="compact-row"><div><h3>${escapeHtml(task.title)}</h3><p>${job ? `最近协作：${escapeHtml(jobStatusLabel(job.status))} · ${date(job.updatedAt || job.createdAt)}` : `${escapeHtml(abilityName(task.capabilityId))} · 尚未组织专家协作`}</p></div><div class="actions">${working ? '<span class="pill warn">小丑鱼正在组织</span>' : `<button class="primary" data-collaborate="${task.id}">组织协作</button>`}<button data-open-collaboration-story="${task.id}">查看脉络</button></div></article>`;
   }).join("");
-  $("#content").innerHTML = `<section class="collaboration-hero"><div><h2>只在任务需要时调用专家</h2><p>你只需要说明目标。小丑鱼会为每次任务重新挑选专家并行检查，再把意见合并为一个可用结果；专家不会取代小丑鱼成为新的操作入口。</p></div><a class="button" href="/tasks">查看全部任务</a></section><section class="platform-panel"><header><div><h2>可组织的任务</h2><p>简单任务直接运行；涉及多专业判断、开发或重要决策时再使用协作。</p></div></header><div class="compact-list">${rows || '<div class="resource-empty">当前没有需要推进的任务。</div>'}</div></section>`;
+  $("#content").innerHTML = `<details class="work-secondary-details"><summary>流程协作的使用范围</summary><div><h2>只在任务需要时调用专家</h2><p>你只需要说明目标。小丑鱼会为每次任务重新挑选专家并行检查，再把意见合并为一个可用结果；专家不会取代小丑鱼成为新的操作入口。</p></div><a class="button" href="/tasks">查看全部任务</a></details><section class="platform-panel"><header><div><h2>可组织的任务</h2><p>简单任务直接运行；涉及多专业判断、开发或重要决策时再使用协作。</p></div></header><div class="compact-list">${rows || '<div class="resource-empty">当前没有需要推进的任务。</div>'}</div></section>`;
   $("#content").onclick = async (event) => {
     const start = event.target.closest("[data-collaborate]");
     const story = event.target.closest("[data-open-collaboration-story]");
@@ -693,25 +747,20 @@ function capabilityPackRows() {
   return (state.platform?.capabilityPacks || []).map((pack) => `<article class="compact-row"><div><h3>${escapeHtml(pack.name)}</h3><p>${escapeHtml(pack.quality.join(" · "))}</p><p>${pack.verifiedAbilities?.length || 0}/${pack.abilities.length} 项已有真实核验产物 · ${pack.qualitySampleCount || 0} 个固定回归样例</p></div><span class="pill">${escapeHtml(labels[pack.state] || pack.state)}</span></article>`).join("");
 }
 
-function developmentReadiness() {
-  const tools = state.platform?.development || {};
-  const names = { node: "Node.js", git: "Git", python: "Python" };
-  return Object.entries(tools).map(([id, item]) => `<article class="connection-card"><strong>${names[id] || id}</strong><small>${item.available ? escapeHtml(item.version) : "未安装；相关检查会明确跳过"}</small></article>`).join("");
-}
-
 function renderResources() {
   const active = state.knowledge.filter((item) => !item.archivedAt);
   const archived = state.knowledge.filter((item) => item.archivedAt);
   const rows = active.map((item) => `<article class="compact-row"><div><span class="resource-kind">${resourceKindLabel(item.kind)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.excerpt || item.sourceUrl || "无文字摘要")} · ${item.characterCount || 0} 字</p></div><div class="actions"><button data-preview-resource="${item.id}">查看</button><button data-archive-resource="${item.id}">归档</button></div></article>`).join("");
-  $("#content").innerHTML = `<div class="platform-grid"><section class="platform-panel"><header><div><h2>任务资料</h2><p>需要时明确选入任务，不会默认把所有内容都塞给模型。</p></div><button class="primary" id="newKnowledge">添加资料</button></header><div class="compact-list">${rows || '<div class="resource-empty">还没有资料。可以添加笔记、文本文件或网页链接。</div>'}</div>${archived.length ? `<details><summary>${archived.length} 项已归档资料</summary><div class="compact-list">${archived.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.title)}</h3></div><button data-restore-resource="${item.id}">恢复</button></article>`).join("")}</div></details>` : ""}</section><section class="platform-panel"><header><div><h2>数据连接与开发环境</h2><p>模型、连接器和本机开发工具已统一移到设置，不再在资料页重复配置。</p></div><a class="button" href="/settings#connections">打开设置</a></header></section><section class="platform-panel"><header><div><h2>领域能力包</h2><p>按工作类型组合能力、结果形式和交付检查。</p></div></header><div class="compact-list">${capabilityPackRows()}</div></section></div>`;
-  $("#newKnowledge").onclick = openKnowledgeDialog;
+  $("#content").innerHTML = `<section class="work-primary-list" aria-label="参考资料列表"><p class="work-list-summary">${active.length} 份资料 · 仅在任务中明确选择后使用</p><div class="compact-list">${rows || '<div class="resource-empty">还没有资料。点击“添加资料”，保存笔记、文本文件或网页链接。</div>'}</div>${archived.length ? `<details class="work-secondary-details"><summary>${archived.length} 项已归档资料</summary><div class="compact-list">${archived.map((item) => `<article class="compact-row"><div><h3>${escapeHtml(item.title)}</h3></div><button data-restore-resource="${item.id}">恢复</button></article>`).join("")}</div></details>` : ""}</section><details class="work-secondary-details"><summary>相关设置与领域能力包</summary><p>模型与数据连接在 <a href="/settings#connections">设置</a> 中管理。</p><div class="compact-list">${capabilityPackRows()}</div></details>`;
   $("#content").onclick = async (event) => {
     const preview = event.target.closest("[data-preview-resource]");
     const archive = event.target.closest("[data-archive-resource]");
     const restore = event.target.closest("[data-restore-resource]");
     if (preview) {
       const result = await api(`/api/knowledge?id=${encodeURIComponent(preview.dataset.previewResource)}`);
-      alert(`${result.item.title}\n\n${result.item.content || result.item.sourceUrl || ""}`);
+      $("#workResourceTitle").textContent=result.item.title;
+      $("#workResourceBody").textContent=result.item.content || result.item.sourceUrl || "";
+      $("#workResourcePreview").hidden=false;$("#closeResourcePreview").focus();
     }
     if (archive && confirm("归档这份资料？已有任务中的引用会暂时失效，但资料可以恢复。")) {
       await api("/api/knowledge/archive", { method: "POST", body: JSON.stringify({ id: archive.dataset.archiveResource }) });
@@ -725,11 +774,12 @@ function renderResources() {
 }
 
 function openKnowledgeDialog() {
+  if(keepInlineDraft('knowledgeForm')){$('#knowledgeTitle').focus();return;}
   const spaces = (state.snapshot?.spaces || []).filter((space) => space.status === "active");
   $("#knowledgeForm").reset();
   $("#knowledgeSpace").innerHTML = `<option value="">暂不归类</option>${spaces.map((space) => `<option value="${escapeHtml(space.id)}">${escapeHtml(space.title)}</option>`).join("")}`;
   updateKnowledgeFields();
-  $("#knowledgeDialog").showModal();
+  showWorkEditor('knowledgeDialog');
 }
 
 function updateKnowledgeFields() {
@@ -741,13 +791,15 @@ function updateKnowledgeFields() {
 function renderArtifactCard(item) {
   const version = Number(item.metadata?.lineage?.version || 1);
   const previousId = String(item.metadata?.lineage?.previousArtifactId || "");
-  return `<article class="card"><div><h2>${escapeHtml(artifactDisplayTitle(item))}</h2><p>${escapeHtml(item.summary || "已生成结果")}</p><div class="meta"><span class="pill ok">已完成</span><span class="pill">${escapeHtml(abilityName(item.capabilityId))}</span><span class="pill">${escapeHtml(String(item.format).toUpperCase())}</span>${version > 1 ? `<span class="pill">第 ${version} 版</span>` : ""}<span class="pill">${date(item.createdAt)}</span></div></div><div class="actions"><a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.id)}" target="_blank">预览</a>${previousId ? `<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(previousId)}" target="_blank">上一版</a>` : ""}<a href="/api/capabilities/artifact?id=${encodeURIComponent(item.id)}" download>下载</a><button data-feedback-useful="${item.id}">有帮助</button><button data-feedback-improve="${item.id}">需改进</button></div></article>`;
+  return `<article class="card"><div><h2>${escapeHtml(artifactDisplayTitle(item))}</h2><p>${escapeHtml(item.summary || "已生成结果")}</p><div class="meta"><span class="pill ok">已完成</span><span class="pill">${escapeHtml(abilityName(item.capabilityId))}</span><span class="pill">${escapeHtml(String(item.format).toUpperCase())}</span>${version > 1 ? `<span class="pill">第 ${version} 版</span>` : ""}<span class="pill">${date(item.createdAt)}</span></div></div><div class="actions">${item.taskId?`<a href="/bots?task=${encodeURIComponent(item.taskId)}">来源任务</a>`:'<span class="hint">未记录来源任务</span>'}<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.id)}" target="_blank">预览</a>${previousId ? `<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(previousId)}" target="_blank">上一版</a>` : ""}<a href="/api/capabilities/artifact?id=${encodeURIComponent(item.id)}" download>下载</a><button data-feedback-useful="${item.id}">有帮助</button><button data-feedback-improve="${item.id}">需改进</button></div></article>`;
 }
 
 function renderArtifacts() {
   const artifacts = state.snapshot?.artifacts || [];
-  $("#content").innerHTML = `<div class="toolbar"><span></span><a class="button" href="/office">打开办公文件</a></div><div class="list" id="artifactList"></div>`;
-  $("#artifactList").innerHTML = artifacts.length ? artifacts.map(renderArtifactCard).join("") : '<div class="empty">完成能力任务后，结果会自动出现在这里。</div>';
+  $("#content").innerHTML = '<div id="artifactList"></div>';
+  window.ClownfishFileLibrary.mount({root:$("#artifactList"),artifacts,documents:state.documents||[],knowledge:state.knowledge,warnings:state.fileWarnings||[],onPreview:async id=>{
+    try{const result=await api('/api/knowledge?id='+encodeURIComponent(id));$("#workResourceTitle").textContent=result.item.title;$("#workResourceBody").textContent=result.item.content||result.item.sourceUrl||'';$("#workResourcePreview").hidden=false;$("#closeResourcePreview").focus();}catch(error){toast(error.message,true);}
+  }});
   $("#artifactList").onclick = async (event) => {
     const useful = event.target.closest("[data-feedback-useful]");
     const improve = event.target.closest("[data-feedback-improve]");
@@ -791,6 +843,24 @@ function jobStatusLabel(status) {
   }[status] || status;
 }
 
+function renderAttentionInbox(detailed) {
+  if(!detailed){
+    const warning=state.relationshipMemory?.state==="unavailable"?'<p role="alert">关系记忆读取异常，相关读写已停止；请到运行记录查看。</p>':"";
+    return state.reviewQueue.length || warning ? `<aside class="work-attention-summary" aria-label="跨任务待处理提醒"><p>全局有 ${state.reviewQueue.length} 项待处理，包含确认请求、异常或未送达结果。</p><a href="/runs">查看与处理 →</a>${warning}</aside>` : "";
+  }
+  const labels = { approval: "等待确认", job: "需要核对", run: "执行中断", delivery: "等待送达" };
+  const groups = detailed ? state.reviewGroups : state.reviewGroups.slice(0, 5);
+  const rows = groups.map((group) => `<div data-review-group="${escapeHtml(group.id)}">${group.items.map((item) => {
+    const approval = state.approvals.find((entry) => entry.id === item.sourceId && item.kind === "approval");
+    const action = detailed && approval
+      ? `<details><summary>查看具体操作并决定</summary><pre>${escapeHtml(JSON.stringify(approval.call, null, 2))}</pre><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true">允许这次操作</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="false">拒绝</button></details>`
+      : `<a class="button" href="${detailed ? `#record-${encodeURIComponent(item.kind === "delivery" ? "job" : item.kind)}-${encodeURIComponent(item.sourceId)}` : `/runs#review-${encodeURIComponent(item.id)}`}">查看${detailed ? "记录" : "详情"}</a>`;
+    return `<article class="compact-row" id="review-${escapeHtml(item.id)}"><div><span class="resource-kind">${labels[item.kind] || "待处理"}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.nextAction)}</p></div><div class="actions">${action}</div></article>`;
+  }).join("")}</div>`).join("");
+  const warning = state.relationshipMemory?.state === "unavailable" ? '<p role="alert">关系记忆读取异常：已保护原文件并停止相关读写。请恢复 counterparts.json 后重启应用。</p>' : "";
+  return `<section class="platform-panel review-queue" aria-label="待你处理"><header><div><h2>待你处理</h2><p>集中查看待确认、异常和未送达的结果；不会自动重试或替你批准。</p></div><a class="button" href="/runs">${state.reviewGroups.length} 件事 · ${state.reviewQueue.length} 项</a></header>${warning}<div class="compact-list">${rows || '<div class="resource-empty">当前没有需要你处理的事项。</div>'}</div>${!detailed && state.reviewGroups.length > 5 ? '<a href="/runs">查看全部待处理事项</a>' : ""}</section>`;
+}
+
 function renderRuns() {
   const jobs = state.jobs;
   const runs = state.runs;
@@ -800,20 +870,34 @@ function renderRuns() {
       : "";
     return `<article class="card"><div><h2>${escapeHtml(job.payload?.title || job.type || "后台任务")}</h2><p>${escapeHtml(job.result?.summary || job.error || (job.status === "uncertain" ? "执行结果无法自动确认，请先核对，系统不会自动重试。" : "由小丑鱼在后台执行"))}</p>${orchestrationDetail(job)}<div class="meta"><span class="pill ${statusPill(job.status)}">${escapeHtml(jobStatusLabel(job.status))}</span><span class="pill">${date(job.updatedAt || job.createdAt)}</span><span class="pill">尝试 ${job.attempts || 0}/${job.maxAttempts || 1}</span></div></div><div class="actions">${["queued", "running"].includes(job.status) ? `<button data-cancel-job="${job.id}">取消</button>` : ""}${["failed", "cancelled"].includes(job.status) ? `<button data-retry-job="${job.id}">重试</button>` : ""}${uncertainActions}</div></article>`;
   }).join("");
-  const runCards = runs.slice(0, 20).map((run) => `<article class="card"><div><h2>${escapeHtml(runDisplayTitle(run))}</h2><p>${escapeHtml(run.output?.slice(0, 180) || run.error || "已保存执行记录，需要时可以恢复或排查。")}</p><div class="meta"><span class="pill ${statusPill(run.status)}">${escapeHtml(jobStatusLabel(run.status))}</span><span class="pill">${date(run.updatedAt || run.createdAt)}</span></div></div><div class="actions">${["interrupted", "paused", "failed"].includes(run.status) ? `<button data-resume-run="${run.runId}">恢复</button>` : ""}</div></article>`).join("");
-  const reviewCards = state.reviewQueue.map((item) => `<article class="compact-row"><div><span class="resource-kind">${item.kind === "approval" ? "等待确认" : item.kind === "development-proposal" ? "修改待审" : "运行异常"}</span><h3>${escapeHtml(item.title)}</h3><p>${date(item.at)}</p></div><a class="button" href="${item.kind === "development-proposal" ? `/development?id=${encodeURIComponent(item.sourceId)}` : item.kind === "approval" ? "/runs" : `/api/agent/job?id=${encodeURIComponent(item.sourceId)}`}">查看</a></article>`).join("");
+  const runCards = runs.map((run) => `<article class="card" id="record-run-${escapeHtml(run.runId)}"><div><h2>${escapeHtml(runDisplayTitle(run))}</h2><p>${escapeHtml(run.output?.slice(0, 180) || run.error || "已保存执行记录，需要时可以恢复或排查。")}</p><div class="meta"><span class="pill ${statusPill(run.status)}">${escapeHtml(jobStatusLabel(run.status))}</span><span class="pill">${date(run.updatedAt || run.createdAt)}</span></div></div><div class="actions">${run.resumable ? `<button data-resume-run="${escapeHtml(run.runId)}">恢复</button>` : ""}</div></article>`).join("");
   const qaSummary = state.productReviewSummary || { total: 0, openIssues: 0, highIssues: 0 };
   const qaCards = state.productReviews.slice(0, 20).map((item) => `<article class="compact-row"><div><span class="resource-kind">第 ${escapeHtml(item.round)} 轮 · ${escapeHtml(item.persona)}</span><h3>${escapeHtml(item.scenario)}</h3><p>${escapeHtml(item.route)} · ${date(item.createdAt)} · ${escapeHtml((item.observations || []).join("；"))}</p></div><span class="pill ${item.status === "passed" ? "ok" : item.status === "blocked" ? "bad" : "warn"}">${item.status === "passed" ? "通过" : item.status === "blocked" ? "受阻" : "发现问题"}</span></article>`).join("");
-  $("#content").innerHTML = `<section class="platform-panel review-queue"><header><div><h2>待你审阅</h2><p>只集中展示需要决定或人工核对的事项；普通后台任务不会打扰你。</p></div><span class="pill ${state.reviewQueue.length ? "warn" : "ok"}">${state.reviewQueue.length} 项</span></header><div class="compact-list">${reviewCards || '<div class="resource-empty">当前没有需要你处理的事项。</div>'}</div></section><section class="platform-panel"><header><div><h2>产品真实检查</h2><p>保留不同用户从进入、操作到交付的完整检查记录，问题修复后仍可追溯。</p></div><span class="pill ${qaSummary.openIssues ? "warn" : "ok"}">${qaSummary.total} 轮 · ${qaSummary.openIssues} 个待修</span></header><div class="compact-list">${qaCards || '<div class="resource-empty">还没有产品真实检查记录。</div>'}</div></section><div class="toolbar"><span></span><button id="refreshRuns">刷新</button></div><div class="list">${jobCards || runCards ? jobCards + runCards : '<div class="empty">还没有运行记录。</div>'}</div>`;
+  $("#content").innerHTML = renderAttentionInbox(true) + `<details class="work-secondary-details"><summary>产品检查记录 · ${qaSummary.total} 轮 · ${qaSummary.openIssues} 个待修</summary><section class="platform-panel"><header><div><h2>产品真实检查</h2><p>保留不同用户从进入、操作到交付的完整检查记录，问题修复后仍可追溯。</p></div><span class="pill ${qaSummary.openIssues ? "warn" : "ok"}">${qaSummary.total} 轮 · ${qaSummary.openIssues} 个待修</span></header><div class="compact-list">${qaCards || '<div class="resource-empty">还没有产品真实检查记录。</div>'}</div></section></details><div class="toolbar"><span></span><button id="refreshRuns">刷新</button></div><div class="list">${jobCards || runCards ? jobCards + runCards : '<div class="empty">还没有运行记录。</div>'}</div>`;
   $("#refreshRuns").onclick = load;
+  jobs.forEach((job, index) => { $("#content .list")?.children[index]?.setAttribute("id", `record-job-${job.id}`); });
   $("#content").onclick = async (event) => {
+    const decision = event.target.closest("[data-review-approval]");
     const cancel = event.target.closest("[data-cancel-job]");
     const retry = event.target.closest("[data-retry-job]");
     const reconcile = event.target.closest("[data-reconcile-job]");
     const resume = event.target.closest("[data-resume-run]");
     try {
+      if (decision) {
+        decision.disabled = true;
+        try {
+          const result = await api("/api/agent/approval/decision", { method: "POST", body: JSON.stringify({ id: decision.dataset.reviewApproval, allowed: decision.dataset.allowed === "true" }) });
+          if (result.resumeReason) toast(result.resumeReason, true);
+          else toast(decision.dataset.allowed === "true" ? "已允许这次操作" : "已拒绝");
+          await load();
+        } finally { decision.disabled = false; }
+        return;
+      }
       if (cancel) await api("/api/agent/job/cancel", { method: "POST", body: JSON.stringify({ id: cancel.dataset.cancelJob }) });
-      if (retry) await api("/api/agent/job/retry", { method: "POST", body: JSON.stringify({ id: retry.dataset.retryJob }) });
+      if (retry) {
+        if (!confirm("重试可能再次生成文件或调用外部服务。确认继续吗？")) return;
+        await api("/api/agent/job/retry", { method: "POST", body: JSON.stringify({ id: retry.dataset.retryJob, confirmSideEffect: true }) });
+      }
       if (reconcile) {
         const applied = reconcile.dataset.outcome === "succeeded";
         const note = prompt(applied ? "请填写确认依据，例如目标文件或记录已经存在：" : "请填写确认依据，例如目标内容确实未生成：", "")?.trim();
@@ -846,7 +930,9 @@ function openMemoryDetail(item) {
   $("#memoryCorrectionId").value = item.id;
   $("#memoryDetailTitle").textContent = item.correctable ? "查看来源并修正" : "查看来源";
   $("#memorySourceExcerpt").textContent = source.excerpt || "没有找到对应的消息片段";
-  $("#memorySourceMeta").textContent = memorySourceMeta(item);
+  $("#memorySourceMeta").textContent = source.kind === "confirmed-learning"
+    ? "用户明确确认的学习 · 以下来源摘录由用户填写或确认，并非自动核验的原始对话 · 提议 " + source.proposalId
+    : memorySourceMeta(item);
   $("#memoryCorrectionContent").value = item.content;
   $("#memoryCorrectionField").hidden = !item.correctable;
   $("#memoryCorrectionNote").hidden = !item.correctable;
@@ -855,12 +941,15 @@ function openMemoryDetail(item) {
 }
 
 function renderMemory() {
+  if (document.body.dataset.ui === "workbench" && window.ClownfishWorkbenchMemory) {
+    return window.ClownfishWorkbenchMemory.render({ items: state.memories, layers: { ...layerNames, archival: "原始对话片段" }, openDetail: openMemoryDetail, api, reload: load });
+  }
   const groups = Object.entries(layerNames).map(([layer, name]) => {
     const items = state.memories.filter((item) => item.layer === layer);
     if (!items.length) return "";
     const cards = items.map((item) => {
       const actions = `<div class="memory-actions"><button data-memory-detail="${escapeHtml(item.id)}">${item.correctable ? "查看与修正" : "查看来源"}</button><button class="danger" data-forget="${escapeHtml(item.id)}">忘记</button></div>`;
-      return `<article class="memory-item"><div><p>${escapeHtml(item.content)}</p><small>${escapeHtml(item.who)} · ${date(item.created)}${item.source?.sourceMessageId ? " · 有原始来源" : ""}</small></div>${actions}</article>`;
+      return `<article class="memory-item"><div><p>${escapeHtml(item.content)}</p><small>${escapeHtml(item.who)} · ${date(item.created)}${item.source?.kind === "confirmed-learning" ? " · 已确认的学习来源" : item.source?.excerpt ? " · 有原始来源" : ""}</small></div>${actions}</article>`;
     }).join("");
     return `<section class="memory-group"><h2>${name}<span>${items.length} 条</span></h2>${cards}</section>`;
   }).join("");
@@ -910,12 +999,10 @@ $("#taskCapability").addEventListener("change", () => {
   if (ability?.defaultFormat) $("#taskFormat").value = ability.defaultFormat;
 });
 $("#taskForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try { await saveTask(); } catch (error) { toast(error.message, true); }
+  await submitWorkForm(event,()=>saveTask());
 });
 $("#spaceForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try { await saveSpace(); } catch (error) { toast(error.message, true); }
+  await submitWorkForm(event,saveSpace);
 });
 $("#storyForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -971,9 +1058,8 @@ $("#knowledgeFile").addEventListener("change", async () => {
   $("#knowledgeContent").value = await file.text();
 });
 $("#knowledgeForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
+  await submitWorkForm(event,async()=>{
   const file = $("#knowledgeFile").files?.[0];
-  try {
     await api("/api/knowledge", { method: "POST", body: JSON.stringify({
       title: $("#knowledgeTitle").value.trim(),
       kind: $("#knowledgeKind").value,
@@ -983,29 +1069,36 @@ $("#knowledgeForm").addEventListener("submit", async (event) => {
       mimeType: file?.type,
       spaceId: $("#knowledgeSpace").value || undefined,
     }) });
-    $("#knowledgeDialog").close();
+    closeWorkEditor('knowledgeDialog');
     toast("资料已保存");
     await load();
-  } catch (error) { toast(error.message, true); }
+  });
 });
-$$('[data-close-dialog]').forEach((button) => button.onclick = () => $("#taskDialog").close());
-$('[data-close-space]').onclick = () => $("#spaceDialog").close();
-$('[data-close-knowledge]').onclick = () => $("#knowledgeDialog").close();
+$$('[data-close-dialog]').forEach((button) => button.onclick = () => closeWorkEditor('taskDialog'));
+$('[data-close-space]').onclick = () => closeWorkEditor('spaceDialog');
+$('[data-close-knowledge]').onclick = () => closeWorkEditor('knowledgeDialog');
+$('#closeResourcePreview').onclick=()=>{$('#workResourcePreview').hidden=true;};
 $("[data-close-story]").onclick = () => $("#storyDialog").close();
 $("#storyDialog").addEventListener("close", () => { activeStoryTaskId = ""; });
 
-let agentRefreshTimer;
-let agentEventSource;
-function queueAgentRefresh() {
-  if (view !== "tasks" && view !== "runs" && view !== "automations" && view !== "collaboration") return;
-  clearTimeout(agentRefreshTimer);
-  agentRefreshTimer = setTimeout(() => void load(), 500);
-}
-if (window.EventSource) {
-  agentEventSource = new EventSource("/api/agent/events");
-  agentEventSource.addEventListener("job", queueAgentRefresh);
-}
-window.addEventListener("beforeunload", () => agentEventSource?.close());
+const agentEventSource = window.ClownfishAgentEvents?.connect({
+  onSync: () => view === "memory" ? undefined : load(),
+  onStatus: (status) => {
+    const node = $("#eventConnectionStatus");
+    node.hidden = status === "connected";
+    node.textContent = status === "closed" ? "实时连接已停止，请重新连接。" : status === "reconnecting" ? "连接中断，正在重连；恢复后会补读任务状态。" : "";
+    $("#retryEventConnection").hidden = status !== "closed";
+  },
+});
+$("#retryEventConnection").onclick = () => agentEventSource?.retry();
+$("#newTaskSide").onclick = () => {
+  if(!state.snapshot)return toast("正在读取本机数据，请稍后重试");
+  if(view==="spaces")return openSpaceDialog();
+  if(view==="resources")return openKnowledgeDialog();
+  if(view==="tasks" || view==="automations"){
+    openTaskDialog();
+  }
+};
 
 hydrateIcons();
 const workSearchOverlay = window.AppSearchOverlay.bind({

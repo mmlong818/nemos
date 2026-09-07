@@ -11,9 +11,11 @@
 // 依赖注入：engine 不关心用哪个 LLM —— SDK 抽取 LLM 由 Nemos 配置，人格回复由 chat 注入。
 
 import { randomUUID } from "node:crypto";
-import type { Nemos } from "../../src/index.js";
+import type { Memory, Nemos } from "../../src/index.js";
 import { APP_PERSONA_ID, personaIdentityAliases } from "./identity.js";
 import { groupParticipationFor, selectGroupResponderIds, type GroupReplyRoute } from "./group-routing.js";
+import { conversationArchives, eventSequence } from "./conversation-history.js";
+import { isCurrentUserMemory, userMemoryEvidence, userMemoryPrompt, userMemoryText, type UserMemoryEvidence } from "./memory-evidence.js";
 
 export interface Persona {
   id: string;
@@ -39,6 +41,8 @@ export interface Persona {
 export type Verbosity = "terse" | "normal" | "talkative";
 
 export interface ChatAgentContext {
+  onModelAdmission?: (state: import("./model-scheduler.js").ModelAdmissionState) => void;
+  reasoningEffort?: import("./model-reasoning.js").ReasoningEffort;
   runId?: string;
   sessionId: string;
   userId: string;
@@ -47,7 +51,7 @@ export interface ChatAgentContext {
   scope: string;
   memoryScopes: readonly string[];
   mode: "chat" | "task" | "group";
-  surface?: "task" | "education" | "capability" | "office" | "development" | "automation";
+  surface?: "task" | "education" | "capability" | "office" | "automation";
   signal?: AbortSignal;
   toolMode?: "auto" | "read-only" | "off";
   runtimeLimits?: {
@@ -85,6 +89,7 @@ export interface VoiceMeta {
   durationSec: number;
 }
 export interface SendOptions {
+  reasoningEffort?: ChatAgentContext["reasoningEffort"];
   sourceMessageId?: string;
   voice?: VoiceMeta;
   groupRoute?: GroupReplyRoute;
@@ -98,7 +103,7 @@ export interface SendOptions {
   surface?: ChatAgentContext["surface"];
   /** 由产品模式追加的系统约束；不改变对话角色和记忆命名空间。 */
   systemAddendum?: string;
-  /** 单次任务可关闭用户习惯与事实的召回；角色自身状态仍保留。 */
+  /** off 关闭长期事实/角色状态召回；preferences 仅注入交付偏好。二者均禁用通用记忆查询工具。 */
   memoryMode?: "default" | "preferences" | "off";
   /**
    * 控制本轮用户原文如何进入记忆。
@@ -137,6 +142,8 @@ export interface CompanionReply {
 export interface RecallResult {
   /** 块1：关于对方的事实（仅本人格在场的 scope；默认已隐藏失效事实）。 */
   userFacts: string;
+  /** 供模型使用的来源与不确定性；userFacts 只保留兼容的界面摘要。 */
+  memoryEvidence?: UserMemoryEvidence[];
   /** 块2：人格自己的近况（独立 namespace 的最近自述）。 */
   selfState: string;
 }
@@ -323,6 +330,7 @@ export class CompanionEngine {
     text: string,
     opts: SendOptions = {},
   ): Promise<CompanionReply> {
+    opts = { ...opts, sourceMessageId: opts.sourceMessageId || `message-${randomUUID()}` };
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
 
@@ -331,7 +339,7 @@ export class CompanionEngine {
     await this.ingestUtterance(userId, scope, text, opts);
 
     const count = this.bumpTurns(userId, personaId);
-    const context = await this.recall(userId, personaId, text);
+    const context = await this.recall(userId, personaId, text, opts.memoryMode, opts.sessionId);
     const system = [
       this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text),
       opts.systemAddendum,
@@ -341,10 +349,10 @@ export class CompanionEngine {
       this.buildUserTurns(this.recent.get(recentKey) ?? [], text, !!opts.voice),
       opts.model || persona.chatModel,
       persona.maxReplyTokens,
-      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface),
+      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
     );
 
-    await this.ingestPersonaReply(personaId, scope, reply);
+    if (opts.memoryWriteMode !== "off") await this.ingestPersonaReply(personaId, scope, reply, opts);
     this.pushRecent(this.recent, recentKey, "对方", text, !!opts.voice);
     this.pushRecent(this.recent, recentKey, persona.name, reply, false);
     return { personaId, reply, context };
@@ -358,13 +366,14 @@ export class CompanionEngine {
     opts: SendOptions,
     cb: StreamCb,
   ): Promise<CompanionReply> {
+    opts = { ...opts, sourceMessageId: opts.sourceMessageId || `message-${randomUUID()}` };
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
     const recentKey = this.recentKey(userId, personaId, opts.sessionId);
     await this.ensureRecentHistory(userId, personaId, opts.sessionId);
     await this.ingestUtterance(userId, scope, text, opts);
     const count = this.bumpTurns(userId, personaId);
-    const context = await this.recall(userId, personaId, text);
+    const context = await this.recall(userId, personaId, text, opts.memoryMode, opts.sessionId);
     const system = [
       this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text),
       opts.systemAddendum,
@@ -378,7 +387,7 @@ export class CompanionEngine {
         cb,
         opts.model || persona.chatModel,
         persona.maxReplyTokens,
-        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface),
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
       );
     } else {
       reply = await this.chat(
@@ -386,11 +395,11 @@ export class CompanionEngine {
         userMsg,
         opts.model || persona.chatModel,
         persona.maxReplyTokens,
-        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface),
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
       );
       cb.onToken(reply);
     }
-    await this.ingestPersonaReply(personaId, scope, reply);
+    if (opts.memoryWriteMode !== "off") await this.ingestPersonaReply(personaId, scope, reply, opts);
     this.pushRecent(this.recent, recentKey, "对方", text, !!opts.voice);
     this.pushRecent(this.recent, recentKey, persona.name, reply, false);
     return { personaId, reply, context };
@@ -402,20 +411,21 @@ export class CompanionEngine {
     personaId: string,
     scope: string,
     reply: string,
+    sessionId?: string,
   ): Promise<void> {
     const persona = this.requirePersona(personaId);
     const targetScope = this.visibleScopes(userId, personaId).includes(scope)
       ? scope
       : convScope(userId, personaId);
     if (!targetScope.startsWith("conv:group:")) {
-      await this.ensureRecentHistory(userId, personaId);
+      await this.ensureRecentHistory(userId, personaId, sessionId);
     }
-    await this.ingestPersonaReply(personaId, targetScope, reply);
+    await this.ingestPersonaReply(personaId, targetScope, reply, { sessionId });
     if (targetScope.startsWith("conv:group:")) {
       const groupId = targetScope.slice("conv:group:".length);
       this.pushRecent(this.groupRecent, groupId, persona.name, reply, false);
     } else {
-      this.pushRecent(this.recent, this.rkey(userId, personaId), persona.name, reply, false);
+      this.pushRecent(this.recent, this.recentKey(userId, personaId, sessionId), persona.name, reply, false);
     }
   }
   /** 人格主动开口：用于定时提醒等场景。不会把提醒触发文本写入用户记忆库。 */
@@ -423,11 +433,11 @@ export class CompanionEngine {
     userId: string,
     personaId: string,
     text: string,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface" | "toolMode" | "reasoningEffort"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
-    const isolatedSurface = opts.surface === "capability" || opts.surface === "office" || opts.surface === "development";
+    const isolatedSurface = opts.surface === "capability" || opts.surface === "office";
     if (!isolatedSurface) await this.ensureRecentHistory(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
@@ -439,9 +449,9 @@ export class CompanionEngine {
       workMode
         ? this.buildWorkUser(recent, text)
         : this.buildProactiveUser(recent, text),
-      workMode ? persona.chatModel : (opts.model || persona.chatModel),
+      opts.model || persona.chatModel,
       workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens,
-      this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, undefined, opts.surface),
+      this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
     );
 
     if (!workMode) {
@@ -457,11 +467,11 @@ export class CompanionEngine {
     personaId: string,
     text: string,
     cb: StreamCb,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface" | "toolMode" | "reasoningEffort"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
-    const isolatedSurface = opts.surface === "capability" || opts.surface === "office" || opts.surface === "development";
+    const isolatedSurface = opts.surface === "capability" || opts.surface === "office";
     if (!isolatedSurface) await this.ensureRecentHistory(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
@@ -478,16 +488,16 @@ export class CompanionEngine {
           system,
           userMsg,
           cb,
-          workMode ? persona.chatModel : (opts.model || persona.chatModel),
+          opts.model || persona.chatModel,
           maxTokens,
-          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, undefined, opts.surface),
+          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
         )
       : await this.chat(
           system,
           userMsg,
-          workMode ? persona.chatModel : (opts.model || persona.chatModel),
+          opts.model || persona.chatModel,
           maxTokens,
-          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, undefined, opts.surface),
+          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
         );
     if (!this.opts.chatStream) cb.onToken(reply);
 
@@ -532,7 +542,7 @@ export class CompanionEngine {
         ),
         p.chatModel,
         p.maxReplyTokens,
-        this.agentContext(userId, p.id, text, scope, "group", opts.signal, opts.runtimeLimits, opts.runId ? opts.runId + "/" + p.id : undefined, opts.sessionId),
+        this.agentContext(userId, p.id, text, scope, "group", opts.signal, opts.runtimeLimits, opts.runId ? opts.runId + "/" + p.id : undefined, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
       );
       // 群里模型有时会把自己名字写进开头（"团子：…"）；气泡已显示名字，去掉这层重复前缀。
       const reply = raw.replace(new RegExp(`^\\s*${p.name}\\s*[:：]\\s*`), "");
@@ -545,7 +555,7 @@ export class CompanionEngine {
 
   /**
    * 双块召回：
-   * - 块1：对方事实 —— 本人格在场的全部 scope（1-on-1 + 所在群）；默认隐藏失效（从不踩雷）。
+   * - 块1：用户记忆线索 —— 本人格在场的 scope；过滤失效记录并保留来源与不确定性。
    * - 块2：人格自我 —— 独立 namespace 的最近近况。
    */
   async recall(
@@ -553,9 +563,11 @@ export class CompanionEngine {
     personaId: string,
     query: string,
     memoryMode: "default" | "preferences" | "off" = "default",
+    sessionId?: string,
   ): Promise<RecallResult> {
+    const cachedSessionTurns = sessionId ? this.recent.get(this.recentKey(userId, personaId, sessionId)) : undefined;
     const userFactsPromise = memoryMode === "off"
-      ? Promise.resolve("")
+      ? Promise.resolve([] as UserMemoryEvidence[])
       : memoryMode === "preferences"
         ? this.recallPreferences(userId, personaId, query)
         : this.recallUserFacts(userId, personaId, query);
@@ -571,45 +583,45 @@ export class CompanionEngine {
         const [bio, seeded, said] = await Promise.all([
           self.listByLayer("personal_semantic", { scope: BIO_SCOPE, limit: 50 }),
           self.listByLayer(SELF_LAYER, { scope: SELF_SCOPE, limit: 3 }),
-          self.listByLayer("archival", { scope, limit: 12 }),
+          cachedSessionTurns
+            ? Promise.resolve(id === personaId
+              ? cachedSessionTurns.filter((turn) => turn.speaker !== "对方").slice(-12).map((turn) => ({ content: turn.text }))
+              : [])
+            : conversationArchives(this.nemos, personaNamespace(id), scope, sessionId, 12),
         ]);
         return { bio, seeded, said };
       }));
-    const [rawUserFacts, selfSnapshots] = await Promise.all([userFactsPromise, selfSnapshotsPromise]);
-    const userFacts = this.normalizePersonaReferences(rawUserFacts);
+    const [memoryEvidence, selfSnapshots] = await Promise.all([userFactsPromise, selfSnapshotsPromise]);
+    const summary = userMemoryText(memoryEvidence);
+    const userFacts = memoryMode === "preferences" && summary ? `## User delivery preferences\n\n${summary}` : summary;
     const selfLines = [
       ...selfSnapshots.flatMap((snapshot) => snapshot.bio.map((m) => m.content.trim())),
       ...selfSnapshots.flatMap((snapshot) => snapshot.seeded.map((m) => m.content.trim())),
       ...selfSnapshots.flatMap((snapshot) => snapshot.said.map((m) => `（我曾说过）${m.content.trim().slice(0, 140)}`)),
     ].filter(Boolean);
     const selfState = this.normalizePersonaReferences([...new Set(selfLines)].join("\n"));
-    return { userFacts, selfState };
+    return { userFacts, selfState, memoryEvidence };
   }
 
-  private async recallUserFacts(userId: string, personaId: string, query: string): Promise<string> {
+  private async recallUserFacts(userId: string, personaId: string, query: string): Promise<UserMemoryEvidence[]> {
     const packet = await this.nemos.forUser(userId).recall(query, {
       scopes: this.visibleScopes(userId, personaId),
       maxResults: 12,
+      includeHistorical: false,
     });
     const persona = this.requirePersona(personaId);
     const legacyNames = [persona.id, persona.name, ...(persona.id === "feifei" ? ["飞飞"] : [])];
-    const contents = packet.items
+    return packet.items
       .filter(({ memory }) => {
         // 原始归档用于恢复对话，不等于已经确认的长期事实；这里只向角色提供分类后的记忆。
-        if (memory.layer === "archival") return false;
+        if (!isCurrentUserMemory(memory)) return false;
         const origin = memory.source.origin_agent;
         if (!origin || !personaIdentityAliases(personaId).includes(origin)) return true;
         return !legacyNames.some((name) => memory.content.toLocaleLowerCase().includes(name.toLocaleLowerCase()));
       })
-      .map(({ memory, excerpt }) => this.normalizePersonaReferences((excerpt || memory.content).trim()))
-      .filter(Boolean);
-    return [...new Set(contents)].map((content) => `- ${content}`).join("\n");
-  }
-
-  private async recallPreferences(userId: string, personaId: string, query: string): Promise<string> {
-    const selected = await this.previewDeliveryPreferences(userId, personaId, query);
-    if (selected.length === 0) return "";
-    return ["## User delivery preferences", "", ...selected.map((content) => `- ${content}`)].join("\n");
+      .slice(0, 12)
+      .map(({ memory, excerpt }) => userMemoryEvidence(memory, this.normalizePersonaReferences(excerpt || memory.content), !!excerpt && excerpt !== memory.content))
+      .filter((item) => item.content.length > 0);
   }
 
   /**
@@ -617,17 +629,38 @@ export class CompanionEngine {
    * 与 recallPreferences 共用同一选择逻辑，避免界面声明和实际提示不一致。
    */
   async previewDeliveryPreferences(userId: string, personaId: string, query: string): Promise<string[]> {
-    const candidates = await this.nemos.forUser(userId).search(query, {
-      layers: ["procedural", "personal_semantic"],
-      scopes: this.visibleScopes(userId, personaId),
-      topK: 12,
-    });
-    const selected = candidates
+    return [...new Set((await this.recallPreferences(userId, personaId, query)).map((item) => item.content))];
+  }
+
+  private async recallPreferences(userId: string, personaId: string, query: string): Promise<UserMemoryEvidence[]> {
+    const store = this.nemos.forUser(userId);
+    const layers = ["procedural", "personal_semantic"] as const;
+    const scopes = this.visibleScopes(userId, personaId);
+    const eligible = (memory: Memory) => isCurrentUserMemory(memory)
       // “提到了格式”不等于“这是用户的格式习惯”。只允许明确归属于用户的交付偏好进入任务，
       // 避免把测试材料、第三方描述或当前任务正文误当成长期习惯。
-      .filter((memory) => isDeliveryPreferenceMemory(memory.content))
-      .slice(0, 4);
-    return [...new Set(selected.map((memory) => memory.content.trim()).filter(Boolean))];
+      && (memory.type === "user" || memory.type === "feedback")
+      && isDeliveryPreferenceMemory(memory.content);
+    const recall = async (text: string) => (await store.recall(text, {
+      layers: [...layers], scopes, maxResults: 12, includeEvidence: false,
+    })).items.map((item) => item.memory).filter(eligible);
+    let candidates = await recall(query);
+    if (candidates.length === 0 && query.trim()) {
+      // Without embeddings, SQLite's phrase-based Chinese FTS can miss a saved
+      // preference inside a longer task instruction. Inspect a bounded, visible
+      // preference pool, then pass it through SDK recall again: do not bypass its
+      // promotion, salience, visibility, correction or dispute admission rules.
+      const pool = (await Promise.all(scopes.slice(0, 8).flatMap((scope) => layers.map((layer) =>
+        store.listByLayer(layer, { scope, limit: 50 }),
+      )))).flat()
+        .filter((memory) => !memory.sensitive && !memory.cold && eligible(memory))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
+      const queries = [...new Set(pool.map((memory) => memory.content.trim()))].slice(0, 12);
+      if (queries.length) candidates = await recall(queries.map((content) => content.slice(0, 1600)).join("\n"));
+    }
+    const selected = candidates.slice(0, 4);
+    return selected.map((memory) => userMemoryEvidence(memory, this.normalizePersonaReferences(memory.content)))
+      .filter((item) => item.content.length > 0);
   }
 
   /** 离线整合：沉淀事实 + 矛盾失效（需 SDK features.reflect / invalidation 开）。 */
@@ -640,36 +673,41 @@ export class CompanionEngine {
   private async ensureRecentHistory(userId: string, personaId: string, sessionId?: string): Promise<void> {
     const key = this.recentKey(userId, personaId, sessionId);
     if (this.recent.has(key)) return;
-    // 网页中的每个对话都有独立 session。新对话不能把同一角色在其他对话中的
-    // 原始消息当作“刚才聊过的内容”恢复，否则学习目标和答题表现会串线。
-    if (sessionId) {
-      this.recent.set(key, []);
-      return;
-    }
+    // Only restore explicitly attributed turns. Legacy unlabelled transcripts
+    // remain available to legacy callers, never guessed into a web session.
     const scope = convScope(userId, personaId);
     const persona = this.requirePersona(personaId);
     const [userTurns, personaTurns] = await Promise.all([
-      this.nemos.forUser(userId).listByLayer("archival", { scope, limit: RECENT_MAX }),
-      this.nemos.forUser(personaNamespace(personaId)).listByLayer("archival", { scope, limit: RECENT_MAX }),
+      conversationArchives(this.nemos, userId, scope, sessionId, RECENT_MAX),
+      conversationArchives(this.nemos, personaNamespace(personaId), scope, sessionId, RECENT_MAX),
     ]);
+    const userById = new Map(userTurns.map((entry) => [entry.source.source_message_id, entry]));
     const restored = [
       ...userTurns.map((memory) => ({
         speaker: "对方",
         text: memory.content,
         voice: memory.scenario === "voice-transcript",
         createdAt: memory.created_at,
+        sequence: eventSequence(this.nemos, memory),
+        roleOrder: 0,
       })),
-      ...personaTurns.map((memory) => ({
-        speaker: persona.name,
-        text: this.normalizePersonaReferences(memory.content),
-        voice: false,
-        createdAt: memory.created_at,
-      })),
+      ...personaTurns.map((memory) => {
+        const sourceId = memory.source.source_message_id || "";
+        const parent = sourceId.startsWith("reply:") ? userById.get(sourceId.slice(6)) : undefined;
+        return {
+          speaker: persona.name,
+          text: this.normalizePersonaReferences(memory.content),
+          voice: false,
+          createdAt: parent?.created_at || memory.created_at,
+          sequence: eventSequence(this.nemos, parent || memory),
+          roleOrder: 1,
+        };
+      }),
     ]
       .filter((turn) => turn.text.trim())
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.sequence - b.sequence || a.roleOrder - b.roleOrder)
       .slice(-RECENT_MAX)
-      .map(({ createdAt: _createdAt, ...turn }) => turn);
+      .map(({ createdAt: _createdAt, sequence: _sequence, roleOrder: _roleOrder, ...turn }) => turn);
     this.recent.set(key, restored);
   }
 
@@ -694,7 +732,7 @@ export class CompanionEngine {
       identity: {
         speakerId: `user:${userId}`,
         subjectId: `user:${userId}`,
-        conversationId: scope,
+        conversationId: opts.sessionId || scope,
         sourceMessageId: opts.sourceMessageId || `message-${randomUUID()}`,
       },
       // 语音条走 SDK voice-transcript profile（异步语音的文本侧）；该 profile 不标 sensitive。
@@ -710,7 +748,7 @@ export class CompanionEngine {
    * 这样它能记得自己说过/承诺过什么，下一轮召回回来保持前后一致（不再自相矛盾）。
    * 写进角色独立命名空间，永不污染用户真相库。
    */
-  private async ingestPersonaReply(personaId: string, scope: string, reply: string): Promise<void> {
+  private async ingestPersonaReply(personaId: string, scope: string, reply: string, opts: Pick<SendOptions, "sessionId" | "sourceMessageId"> = {}): Promise<void> {
     if (!reply || !reply.trim()) return;
     await this.nemos.forUser(personaNamespace(personaId)).ingest(reply, {
       scope,
@@ -718,8 +756,8 @@ export class CompanionEngine {
       identity: {
         speakerId: `agent:${personaId}`,
         subjectId: `agent:${personaId}`,
-        conversationId: scope,
-        sourceMessageId: `message-${randomUUID()}`,
+        conversationId: opts.sessionId || scope,
+        sourceMessageId: opts.sourceMessageId ? `reply:${opts.sourceMessageId}` : `message-${randomUUID()}`,
       },
       skipAnalysis: true,
     });
@@ -746,6 +784,8 @@ export class CompanionEngine {
     sessionId?: string,
     toolMode?: "auto" | "read-only" | "off",
     surface?: ChatAgentContext["surface"],
+    memoryMode?: SendOptions["memoryMode"],
+    reasoningEffort?: ChatAgentContext["reasoningEffort"],
   ): ChatAgentContext {
     return {
       userId,
@@ -754,12 +794,13 @@ export class CompanionEngine {
       personaId,
       instruction,
       scope,
-      memoryScopes: this.visibleScopes(userId, personaId),
+      memoryScopes: memoryMode === "off" || memoryMode === "preferences" ? [] : this.visibleScopes(userId, personaId),
       mode,
       surface,
       signal,
       toolMode,
       runtimeLimits,
+      reasoningEffort,
     };
   }
 
@@ -836,9 +877,7 @@ export class CompanionEngine {
       `下面两类信息规则不同，别混用：`,
       `记忆归属是硬边界："对方 / 用户 / ta"始终指正在聊天的用户；「${persona.name}」始终指你自己。不要把用户经历说成你的，也不要把你的经历安到用户身上。`,
       ``,
-      `【关于对方的事实】你确实知道的、关于对方的真相。只用这里有的，不要编造；`,
-      `这里不会出现已被纠正 / 失效的旧事实，可放心引用。`,
-      ctx.userFacts.trim() || `（暂无——你还不太了解 ta，别假装认识）`,
+      userMemoryPrompt(ctx),
       ``,
       `【你自己（近况 + 你之前说过的话）】你自己的生活与你先前对 ta 说过的内容。`,
       `可主动分享一点自己的事，但不要索取、不要表现得"离不开"对方。`,
@@ -868,8 +907,7 @@ export class CompanionEngine {
       ...this.capabilityContextBlock(persona, instruction),
       ...(relSetting ? [``, `Relationship context: ${relSetting}`] : []),
       ``,
-      `Known facts about the user. Use only if helpful:`,
-      ctx.userFacts.trim() || `(none)`,
+      userMemoryPrompt(ctx),
     ].join("\n");
   }
 

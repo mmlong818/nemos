@@ -15,6 +15,13 @@ export interface AgentMessage {
   name?: string;
   toolCallId?: string;
   toolCalls?: AgentToolCall[];
+  /** Opaque provider continuation items; never render as assistant text. */
+  providerState?: {
+    format: "openai-responses";
+    model: string;
+    endpoint: string;
+    output: Record<string, unknown>[];
+  };
 }
 
 export interface AgentToolDefinition {
@@ -79,6 +86,7 @@ export interface AgentModelResponse {
   stopReason?: string;
   inputTokens?: number;
   outputTokens?: number;
+  providerState?: AgentMessage["providerState"];
 }
 
 export interface AgentTokenUsage {

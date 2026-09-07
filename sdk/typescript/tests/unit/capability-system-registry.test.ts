@@ -8,7 +8,6 @@ import {
   filterCompanionRuntimeToolsForSurface,
 } from "../../examples/companion/capability-system-registry.js";
 import { CapabilityToolRegistry } from "../../examples/companion/capability-tools.js";
-import type { DevelopmentEnginePluginRegistry } from "../../examples/companion/development-engine-plugins.js";
 
 test("能力工具注册表拒绝重复 id，并返回可解释的就绪状态", () => {
   let checks = 0;
@@ -54,10 +53,6 @@ test("能力场景按工具集组合工具，不复制执行实现", () => {
     surfaces.toolsFor("office", tools).map((item) => item.id),
     ["document.read", "writing.polish"],
   );
-  assert.deepEqual(
-    surfaces.toolsFor("development", tools).map((item) => item.id),
-    [],
-  );
 });
 
 test("真实执行入口会按场景收窄工具，再应用角色绑定", () => {
@@ -84,10 +79,6 @@ test("真实执行入口会按场景收窄工具，再应用角色绑定", () =>
 test("统一快照合并延迟加载的扩展工具并保留来源", () => {
   const registry = new CapabilityToolRegistry({ dataDir: "." });
   registry.register({ id: "web.search", name: "搜索", description: "搜索", toolset: "web" });
-  const engines = {
-    list: () => [],
-    readiness: () => ({}),
-  } as unknown as DevelopmentEnginePluginRegistry;
   const extensionTool = {
     ...tool("weather.lookup", "extension"),
     dynamic: true,
@@ -97,7 +88,6 @@ test("统一快照合并延迟加载的扩展工具并保留来源", () => {
     tools: registry,
     additionalTools: [extensionTool],
     abilities: [],
-    engines,
     providers: [],
     extensions: [{
       id: "weather",
@@ -121,7 +111,9 @@ test("统一快照合并延迟加载的扩展工具并保留来源", () => {
 
 test("产品运行时工具不再暴露开发入口", () => {
   const summaries = companionRuntimeToolSummaries();
-  assert.equal(summaries.length, 6);
+  assert.equal(summaries.length, 7);
+  assert.equal(summaries.find((item) => item.id === "agent.assistant-team-start")?.effect, "write");
+  assert.ok(summaries.every((item) => !item.id.includes("development")));
   assert.equal(summaries.find((item) => item.id === "agent.task-create")?.effect, "write");
   assert.deepEqual(
     filterCompanionRuntimeToolsForSurface("education", [
@@ -130,14 +122,6 @@ test("产品运行时工具不再暴露开发入口", () => {
       { definition: { name: "capability_artifact_list" } },
     ]).map((item) => item.definition.name),
     ["memory_recall", "capability_artifact_list"],
-  );
-  assert.deepEqual(
-    filterCompanionRuntimeToolsForSurface("development", [
-      { definition: { name: "memory_recall" } },
-      { definition: { name: "development_task_create" } },
-      { definition: { name: "capability_task_create" } },
-    ]).map((item) => item.definition.name),
-    [],
   );
 });
 

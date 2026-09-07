@@ -5,7 +5,6 @@ import type {
   CapabilityToolRegistry,
   CapabilityToolSummary,
 } from "./capability-tools.js";
-import type { DevelopmentEnginePluginRegistry } from "./development-engine-plugins.js";
 
 export interface CapabilitySurfacePolicy {
   id: CapabilitySurface;
@@ -88,6 +87,7 @@ const COMPANION_RUNTIME_TOOLS = [
   { name: "capability_task_create", id: "agent.task-create", label: "创建任务", description: "把明确目标创建为可继续执行的能力任务。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
   { name: "skill_install", id: "agent.skill-install", label: "安装技能", description: "将经过确认的可复用流程安装到本机技能库。", toolset: "skill", effect: "write", risk: "normal", permissions: ["skill-write"] },
   { name: "agent_delegation_create", id: "agent.delegation-create", label: "委派子任务", description: "把研究、整理或复核工作交给受控执行器。", toolset: "delegation", effect: "write", risk: "normal", permissions: ["task-write"] },
+  { name: "assistant_team_start", id: "agent.assistant-team-start", label: "专职 Bot 协作", description: "只共享当前请求，经专职整理、独立核验后由主助理自动汇总。", toolset: "delegation", effect: "write", risk: "normal", permissions: ["task-write"] },
   { name: "capability_artifact_list", id: "agent.artifact-list", label: "产物检索", description: "找回任务和能力此前生成的文件与结果。", toolset: "artifact", effect: "read", risk: "normal", permissions: ["artifact-read"] },
 ] as const;
 
@@ -165,7 +165,6 @@ export function buildCapabilitySystemRegistry(input: {
   tools: CapabilityToolRegistry;
   additionalTools?: readonly CapabilityToolSummary[];
   abilities: readonly Capability[];
-  engines: DevelopmentEnginePluginRegistry;
   providers: readonly CapabilityProviderSummary[];
   extensions?: readonly CapabilityExtensionSummary[];
   surfaces?: CapabilitySurfaceRegistry;
@@ -180,7 +179,6 @@ export function buildCapabilitySystemRegistry(input: {
   const tools = [...coreTools, ...additionalTools]
     .sort((a, b) => a.toolset.localeCompare(b.toolset) || a.id.localeCompare(b.id));
   const surfaces = input.surfaces ?? new CapabilitySurfaceRegistry();
-  const engines: Array<{ id: string; readiness: { available: boolean } }> = [];
   const skills: CapabilitySkillSummary[] = input.abilities.map((ability) => ({
     id: ability.id,
     name: ability.name,
@@ -208,8 +206,6 @@ export function buildCapabilitySystemRegistry(input: {
       tools: tools.length,
       readyTools: tools.filter((tool) => tool.available && tool.execution === "direct").length,
       integratedTools: tools.filter((tool) => tool.available && tool.execution === "runtime-integrated").length,
-      engines: engines.length,
-      readyEngines: engines.filter((engine) => engine.readiness.available).length,
       providers: input.providers.length,
       readyProviders: input.providers.filter((provider) => provider.available).length,
       extensions: input.extensions?.length ?? 0,
@@ -224,7 +220,6 @@ export function buildCapabilitySystemRegistry(input: {
       integratedTools: tools.filter((tool) => tool.toolset === id && tool.available && tool.execution === "runtime-integrated").length,
     })),
     surfaces: surfaceList,
-    engines,
     providers: input.providers.map((provider) => ({ ...provider })),
     extensions: (input.extensions ?? []).map((extension) => ({ ...extension, tools: [...extension.tools] })),
   };

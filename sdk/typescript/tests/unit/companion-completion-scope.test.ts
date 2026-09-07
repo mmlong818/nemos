@@ -1,3 +1,4 @@
+import { readAppHtml } from "../fixtures/render-app-page.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,26 +6,37 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { CapabilityRuntime } from "../../examples/companion/capabilities.js";
+import { appRoute } from "../../examples/companion/app-navigation.js";
 
-test("工作页精简为自动化单一视图", () => {
+test("工作分区恢复各自入口，自动化、项目、资料、成果和记忆深链接可用", () => {
   const root = join(process.cwd(), "examples", "companion", "web");
-  const html = readFileSync(join(root, "work.html"), "utf8");
+  const html = readAppHtml("work.html");
   const script = readFileSync(join(root, "assets", "work-center.js"), "utf8");
   const stability = readFileSync(join(root, "assets", "work-stability.css"), "utf8");
-  const chat = readFileSync(join(root, "index.html"), "utf8");
+  const chat = readAppHtml("index.html");
   const server = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
-  const capabilityHtml = readFileSync(join(root, "capabilities.html"), "utf8");
+  const capabilityHtml = readAppHtml("capabilities.html");
   const capabilityScript = readFileSync(join(root, "assets", "capability-center.js"), "utf8");
 
   assert.match(html, /href="\/automations"/);
-  assert.doesNotMatch(html, /href="\/tasks"/);
+  assert.match(html, /href="\/tasks"/);
   assert.match(script, /function renderArtifacts/);
   assert.match(script, /function renderRuns/);
   assert.match(script, /function renderMemory/);
-  assert.match(script, /const viewFromLocation = \(\) => "automations"/);
-  assert.doesNotMatch(html, /data-view="tasks">任务/);
+  const routing = script.match(/const viewFromLocation = \(\) => (.+);/);
+  assert.ok(routing);
+  const route = new Function("window", `return (${routing[1]});`);
+  for (const name of ["tasks","spaces","automations","collaboration","resources","artifacts","runs","memory"]) {
+    const resolved = appRoute("/"+name);
+    assert.ok(resolved && "workView" in resolved);
+    assert.equal(route({ClownfishNavigation:{workView:()=>resolved.workView}}), name);
+  }
+  assert.equal(appRoute("/develop"), undefined);
+  assert.match(html, /\/assets\/agent-events\.js/);
+  assert.match(script, /renderAttentionInbox\(false\)/);
+  assert.match(html, /data-view="tasks">任务记录/);
   assert.doesNotMatch(html, /id="projectsViewLink"/);
-  assert.doesNotMatch(html, /data-view="(?:collaboration|resources|artifacts|runs|memory)"/);
+  assert.match(html, /data-view="(?:collaboration|resources|artifacts|runs|memory)"/);
   assert.match(script, /\/api\/memory\/preference/);
   assert.match(script, /\/api\/memory\/forget/);
   assert.match(script, /\/api\/memory\/correct/);
@@ -59,11 +71,7 @@ test("工作页精简为自动化单一视图", () => {
   assert.match(chat, /run\.length > 1 && isSubstantialAssistantLongform\(combined\)/);
   assert.match(chat, /STREAM_MESSAGE_REVEAL_DELAY_MS = 180/);
   assert.match(chat, /await revealChain/);
-  assert.match(capabilityHtml, /像和开发同事交代事情一样描述即可/);
-  assert.match(capabilityHtml, /data-access-mode="develop"[\s\S]*data-access-mode="inspect"/);
-  assert.match(capabilityScript, /function developmentProgress/);
-  assert.match(capabilityScript, /function developmentReceipt/);
-  assert.match(capabilityScript, /继续调整/);
+  assert.doesNotMatch(`${capabilityHtml}\n${capabilityScript}`, /project-development|developmentProgress|developmentReceipt|data-access-mode/);
 });
 
 test("技能支持固定、停用、陈旧与证据写回", async () => {

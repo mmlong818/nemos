@@ -15,6 +15,30 @@ export interface CompanionModelConnection {
   baseUrl: string;
   model: string;
   apiKey: string;
+  selectionMode?: "auto" | "manual";
+  /** Only checks made with this exact connection and credential belong here. */
+  modelChecks?: Record<string, CompanionModelCheck>;
+}
+
+export interface CompanionModelCheck {
+  checkedAt: string;
+  chat: "passed" | "failed";
+  streaming: "passed" | "failed" | "buffered" | "not-tested";
+  tools: "passed" | "failed" | "not-tested";
+  detail: string;
+}
+
+export class CompanionModelHttpError extends Error {
+  constructor(readonly status: number, operation = "模型请求") {
+    // Never persist or expose a provider's raw response: gateways can echo keys.
+    super(`${operation}失败 HTTP ${status}。`);
+  }
+}
+
+export interface CompanionModelInfo {
+  id: string;
+  created?: number;
+  displayName?: string;
 }
 
 export interface CompanionModelProviderPreset {
@@ -47,7 +71,7 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     model: "gpt-5.6-terra",
     dailyChatModel: "gpt-5.6-luna",
     keyRequired: true,
-    note: "日常对话自动使用 gpt-5.6-luna；这里设置的模型用于专家、能力和复杂任务。",
+    note: "日常对话与任务使用已选择的模型，不会自动切到未经检查的预设型号。",
   },
   {
     id: "anthropic",
@@ -57,7 +81,7 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     model: "claude-sonnet-5",
     dailyChatModel: "claude-haiku-4-5",
     keyRequired: true,
-    note: "日常对话自动使用 Claude Haiku 4.5；这里设置的模型用于专家、能力和复杂任务。",
+    note: "使用已选择的模型；当前适配器以完整回复输出，不代表已验证原生流式。",
   },
   {
     id: "deepseek",
@@ -67,7 +91,7 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     model: "deepseek-v4-pro",
     dailyChatModel: "deepseek-v4-flash",
     keyRequired: true,
-    note: "日常对话自动使用 DeepSeek V4 Flash；这里设置的模型用于专家、能力和复杂任务。",
+    note: "日常对话与任务使用已选择的模型，不会自动切到未经检查的预设型号。",
   },
   {
     id: "qwen",
@@ -77,7 +101,7 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     model: "qwen3.7-max",
     dailyChatModel: "qwen3.6-flash",
     keyRequired: true,
-    note: "日常对话自动使用 qwen3.6-flash；这里设置的模型用于专家、能力和复杂任务。",
+    note: "日常对话与任务使用已选择的模型，不会自动切到未经检查的预设型号。",
   },
   {
     id: "minimax",
@@ -87,7 +111,7 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     model: "MiniMax-M3",
     dailyChatModel: "MiniMax-M2.7-highspeed",
     keyRequired: true,
-    note: "日常对话自动使用 MiniMax-M2.7-highspeed；这里设置的模型用于专家、能力和复杂任务。",
+    note: "日常对话与任务使用已选择的模型，不会自动切到未经检查的预设型号。",
   },
   {
     id: "custom",
@@ -134,7 +158,10 @@ export function normalizeCompanionModelConnection(
   if (model.length > 160 || /[\r\n]/.test(model)) throw new Error("模型名称格式不正确。");
   if (preset.keyRequired && !apiKey) throw new Error(`请填写 ${preset.name} 的 API Key。`);
 
-  return { provider: preset.id, protocol, baseUrl, model, apiKey };
+  return { provider: preset.id, protocol, baseUrl, model, apiKey,
+    ...(input.selectionMode ? { selectionMode: input.selectionMode } : {}),
+    ...(input.modelChecks ? { modelChecks: input.modelChecks } : {}),
+  };
 }
 
 export function modelConnectionEndpoint(connection: CompanionModelConnection): string {
@@ -143,11 +170,75 @@ export function modelConnectionEndpoint(connection: CompanionModelConnection): s
   return `${connection.baseUrl}${suffix}`;
 }
 
+/** Astra's tools require Responses, including the result-only continuation round. */
+export function usesOpenAIResponses(connection: Pick<CompanionModelConnection, "provider" | "protocol" | "model">): boolean {
+  return connection.provider === "openai" && connection.protocol === "openai-compatible"
+    && /^gpt-6-astra(?:-|$)/i.test(connection.model);
+}
+
+const NON_CHAT_MODEL = /(?:embedding|moderation|whisper|transcri|speech|tts|dall-e|sora|image|realtime|audio)/i;
+
+export function sortCompanionModels(models: readonly CompanionModelInfo[]): CompanionModelInfo[] {
+  const unique = new Map<string, CompanionModelInfo>();
+  for (const item of models) {
+    const id = String(item?.id || "").trim();
+    if (!id || id.length > 160 || /[\r\n]/.test(id) || NON_CHAT_MODEL.test(id)) continue;
+    const created = Number(item.created);
+    unique.set(id, {
+      id,
+      ...(Number.isFinite(created) && created > 0 ? { created } : {}),
+      ...(item.displayName ? { displayName: String(item.displayName).trim().slice(0, 160) } : {}),
+    });
+  }
+  return [...unique.values()].sort((left, right) => {
+    if (left.created && right.created) return right.created - left.created;
+    if (left.created) return -1;
+    if (right.created) return 1;
+    return 0; // 没有时间信息时保留服务商返回顺序。
+  });
+}
+
+export async function fetchCompanionModelCatalog(
+  input: CompanionModelConnection,
+  signal?: AbortSignal,
+): Promise<CompanionModelInfo[]> {
+  const connection = normalizeCompanionModelConnection(input);
+  const endpoint = `${connection.baseUrl}/models${connection.protocol === "anthropic" ? "?limit=1000" : ""}`;
+  const headers: Record<string, string> = connection.protocol === "anthropic"
+    ? { "anthropic-version": "2023-06-01", ...(connection.apiKey ? { "x-api-key": connection.apiKey } : {}) }
+    : connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
+  const response = await fetch(endpoint, { headers, signal });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new CompanionModelHttpError(response.status, "读取模型列表");
+  }
+  const payload = await response.json().catch(() => { throw new Error("模型目录不是有效的 JSON，请检查服务地址和接口兼容性。"); }) as {
+    data?: Array<{ id?: unknown; created?: unknown; created_at?: unknown; display_name?: unknown }>;
+    models?: Array<{ id?: unknown; name?: unknown; created?: unknown; created_at?: unknown; display_name?: unknown }>;
+  };
+  if (!payload || typeof payload !== "object") throw new Error("模型服务没有返回有效的模型目录。");
+  const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : [];
+  const models = sortCompanionModels(rows.map((item) => ({
+    id: String(item.id || ("name" in item ? item.name : "") || ""),
+    created: modelCreatedAt(item.created ?? item.created_at),
+    displayName: item.display_name ? String(item.display_name) : undefined,
+  })));
+  if (!models.length) throw new Error("模型服务没有返回可用于对话的模型。");
+  return models;
+}
+
+function modelCreatedAt(value: unknown): number | undefined {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  if (typeof value !== "string") return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : undefined;
+}
+
 export function dailyChatModelForConnection(
   connection: Pick<CompanionModelConnection, "provider" | "model">,
 ): string {
-  const preset = companionModelProviderPreset(connection.provider);
-  return preset.dailyChatModel || connection.model;
+  return connection.model;
 }
 
 const COMPANION_TASK_CUE = /帮我|请你|给我(?:写|做|生成|制作|整理|分析|设计|规划|总结|翻译|修改|查找|搜索)|写一|生成|制作|调研|分析|整理|总结|翻译|设计|规划|创建|编辑|修改|修复|实现|开发|导出|保存|上传|下载|联网|搜索|能力|工具|代码|项目|文档|表格|演示|PPT|PDF|Word|Excel|任务/i;
@@ -209,12 +300,14 @@ function normalizeBaseUrl(value: string): string {
   } catch {
     throw new Error("API 地址格式不正确，请填写完整的 http:// 或 https:// 地址。");
   }
-  const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1";
+  const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]";
   if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
     throw new Error("远程 API 必须使用 HTTPS；本机服务可以使用 localhost 或 127.0.0.1。");
   }
   if (url.username || url.password || url.search || url.hash) {
     throw new Error("API 地址不能包含账号、密码、查询参数或锚点。");
   }
-  return trimmed;
+  // Accept a pasted completion endpoint, but keep one canonical API root.
+  url.pathname = url.pathname.replace(/\/(?:chat\/completions|messages|responses)\/?$/, "");
+  return url.toString().replace(/\/+$/, "");
 }

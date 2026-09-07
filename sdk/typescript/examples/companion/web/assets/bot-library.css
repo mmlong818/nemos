@@ -1,0 +1,156 @@
+/* Skills and rule templates share the existing shell, IDs and execution routes. */
+/* Details read as a deliverable, with diagnostics available below rather than above it. */
+#jobDetail{min-width:0;max-width:760px;margin:0 auto}
+#jobDetail .team-detail-head{align-items:baseline;gap:12px}
+#jobDetail .team-detail-head h2{font-size:24px;line-height:1.4;letter-spacing:-.025em;overflow-wrap:anywhere;margin:0}
+#jobDetail .personal-state{font-size:12px;color:var(--cf-ink-soft);width:fit-content}
+.task-status-note{font-size:13px;line-height:1.75;color:var(--cf-ink-soft);margin:12px 0 20px}
+.task-detail-error{white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--cf-danger);padding:10px 14px;color:var(--cf-danger);font-size:13px;line-height:1.7}
+#jobDetail .task-next-actions:empty{display:none}
+#jobDetail .team-result{border:0;border-top:1px solid var(--cf-line);border-radius:0;background:transparent;padding:26px 0 8px;margin-top:24px}
+#jobDetail .team-result h3{font-size:17px;font-weight:600;margin:0 0 12px}
+#jobDetail .team-result :is(p,dd){font-size:14px;line-height:1.85}
+#jobDetail .team-result dt{border-top:1px solid var(--cf-line);padding-top:20px;margin-top:24px;font-size:15px}
+#jobDetail .team-result dd{margin:8px 0 0}
+#jobDetail .team-result dd small{font-size:11px;color:var(--cf-ink-soft);line-height:1.7;margin-top:12px}
+#jobDetail .team-result p.hint{font-size:11px;margin-top:24px}
+#jobDetail .team-detail-actions{align-items:center;gap:10px 16px}
+#jobDetail .team-detail-actions :is(a,button){font-size:12px}
+#jobDetail .team-detail-actions a{text-underline-offset:4px}
+#jobDetail :is(.task-detail-disclosure,.unified-process){border-top:1px solid var(--cf-line);margin:22px 0 0;padding-top:18px;font-size:13px;line-height:1.8}
+#jobDetail :is(.task-detail-disclosure,.unified-process)>summary{cursor:pointer;color:var(--cf-ink-soft);width:fit-content}
+#jobDetail .task-detail-disclosure>summary span{font-size:11px;margin-left:12px}
+#jobDetail summary:focus-visible{outline:2px solid var(--cf-coral);outline-offset:4px;border-radius:2px}
+#jobDetail .team-ledger{margin:20px 0 0}
+@media(max-width:850px){#jobDetail .team-detail-head h2{font-size:21px}#jobDetail .team-detail-head{display:block}#jobDetail .personal-state{display:block;margin-top:8px}#jobDetail .team-result{padding-top:20px}}
+.team-material-upload { display:grid; gap:8px; padding:14px; border:1px solid var(--cf-line); border-radius:8px; background:var(--cf-surface-soft); }
+.team-material-upload>button { justify-self:start; font-size:13px; }
+.team-material-upload p { line-height:1.65; overflow-wrap:anywhere; }
+#teamMaterialStatus:empty { display:none; }
+#teamMaterialNotes { white-space:pre-wrap; max-height:160px; overflow:auto; }
+#teamAttachmentList { list-style:none; padding:0; margin:4px 0; display:grid; gap:6px; }
+#teamAttachmentList li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 10px; border:1px solid var(--cf-line); border-radius:6px; background:var(--cf-surface); font-size:12px; }
+#teamAttachmentList li span { overflow-wrap:anywhere; min-width:0; }
+#teamAttachmentList button { flex-shrink:0; border:0; background:transparent; padding:4px; font-size:12px; }
+#manualBotAssignment fieldset { margin-top:12px; }
+.team-task-content { min-width:0; }
+.unified-history-search { display:block; margin-bottom:10px; }
+.unified-history-search :is(input,select) { width:100%; min-width:0; padding:9px 10px; font-size:12px; border:1px solid var(--cf-line); border-radius:7px; background:var(--cf-surface); }
+.unified-process { margin:24px 0; font-size:13px; }.unified-process summary { cursor:pointer; }.unified-process p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.unified-artifact { padding:14px 0; border-bottom:1px solid var(--cf-line); }.unified-artifact:last-child { border-bottom:0; }
+#historyLoadStatus:empty { display:none; }
+.team-task-list-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.team-task-list-head h2 { margin:0; font-size:14px; font-weight:600; }
+.team-task-list-head #newTask { padding:4px 10px; font-size:22px; line-height:1.3; border:0; background:transparent; }
+.team-list-note { margin:24px 0 0; font-size:11px; line-height:1.6; color:var(--cf-ink-soft); }
+body[data-ui=workbench] .team-main > .personal-head { display:block; min-height:70px; }
+body[data-ui=workbench] .team-main:has(#tasksPane:not([hidden])) :is(#modelStatus,.bot-help,.personal-foot) { display:none; }
+body[data-ui=workbench] .team-desk-navigation nav { width:100%; }
+body[data-ui=workbench] .team-desk-navigation #showTasks { margin-right:0; }
+#taskContextLinks{display:flex;gap:24px;align-items:center}#taskContextLinks a{font-size:14px;text-decoration:none;color:var(--cf-ink-soft)}
+#modelStatus{display:none!important}
+#toggleTaskHistory{display:none}
+.team-task-desk .team-workspace { grid-template-columns:210px minmax(0,1fr); gap:36px; margin-top:28px; min-height:60dvh; }
+#taskComposer { max-width:720px; margin:0 auto; }
+#taskForm { display:grid; gap:18px; min-width:0; }
+#taskForm .team-compose-heading h2 { font-size:26px; letter-spacing:-.025em; margin:0 0 10px; line-height:1.3; }
+#taskForm .team-compose-heading p { font-size:13px; color:var(--cf-ink-soft); margin:0 0 10px; line-height:1.7; }
+#taskForm label { display:grid; gap:8px; font-size:12px; color:var(--cf-ink-soft); }
+#taskForm :is(textarea,select) { width:100%; min-width:0; box-sizing:border-box; font:14px/1.7 var(--cf-font-family); color:var(--cf-ink); padding:12px; border:1px solid var(--cf-line); border-radius:8px; background:var(--cf-surface); }
+#taskForm textarea { resize:vertical; }
+#taskForm [name=objective] { min-height:128px; }
+#taskForm .team-material-upload { border:0; background:transparent; padding:0; gap:8px; }
+#taskForm .team-material-upload p { margin:0; }
+#taskForm details { font-size:12px; color:var(--cf-ink-soft); }
+#taskForm details>summary { cursor:pointer; width:fit-content; }
+#taskForm details>label { margin-top:16px; }
+#taskForm .team-compose-actions { display:flex; align-items:end; gap:16px; justify-content:space-between; border-top:1px solid var(--cf-line); padding-top:18px; }
+#taskForm .team-compose-actions label { max-width:70%; width:260px; }
+#taskForm .team-compose-actions button { flex-shrink:0; padding:12px 20px; }
+#taskForm .team-compose-note { margin:0; font-size:11px; line-height:1.7; color:var(--cf-ink-soft); }
+#taskForm :is(.form-error,#taskModelHint):empty,#teamError:empty { display:none; }
+#taskForm .team-check { display:flex; }
+#taskForm .team-check input { width:auto; }
+@media(max-width:850px) {
+  .team-task-desk .team-workspace{grid-template-columns:minmax(0,1fr);gap:20px;margin-top:18px}
+  #toggleTaskHistory{display:block;margin:18px 0 0;padding:6px 0;background:none;border:0;color:var(--cf-coral);font-size:13px}
+  #taskHistoryPanel{display:none}.history-expanded #taskHistoryPanel{display:block}
+  .team-task-list-head{margin-bottom:8px}.team-task-desk .team-list-note{display:none}.team-task-desk #jobList{max-height:220px;overflow:auto}
+  #taskForm{gap:12px}#taskForm .team-compose-heading h2{font-size:23px}
+}
+.team-job-group { margin:18px 0 24px; }
+.team-job-group h3 { font-size:12px; color:var(--cf-ink-soft); font-weight:500; display:flex; justify-content:space-between; margin:0 0 8px; }
+.team-job-group h3 span { font-variant-numeric:tabular-nums; }
+#taskForm button:disabled { opacity:.6; cursor:wait; }
+@media(max-width:700px) { #taskForm .team-compose-actions { flex-wrap:wrap; }#taskForm .team-compose-actions label { width:100%; max-width:none; }#taskForm .team-compose-actions button { width:100%; }body[data-ui=workbench] .team-main .personal-toolbar { flex-direction:column; align-items:stretch; gap:10px; }body[data-ui=workbench] .team-main .personal-toolbar nav { flex-wrap:nowrap!important; width:100%; } }
+body[data-ui=workbench] .team-main .personal-head { margin-bottom: 18px; }
+.bot-library-toolbar { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:26px 0 16px; }
+.bot-search { display:flex; align-items:center; gap:10px; width:min(480px,100%); border:1px solid var(--cf-line); border-radius:10px; padding:0 13px; background:var(--cf-surface); }
+.bot-search:focus-within { border-color:var(--cf-coral); }
+.bot-search>[data-app-icon] { display:flex; width:17px; height:17px; color:var(--cf-ink-soft); flex-shrink:0; }
+.bot-search svg { width:17px; height:17px; }
+.bot-search input { border:0; outline:0; background:transparent; padding:12px 0; font-size:13px; min-width:0; }
+#newBot { white-space:nowrap; font-size:12px; }
+.bot-filterbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:26px; }
+.bot-filters { display:flex; flex-wrap:wrap; gap:5px; }
+body[data-ui] .bot-filters button { border:0; padding:7px 11px; font-size:12px; background:transparent; border-radius:7px; color:var(--cf-ink-soft); }
+body[data-ui] .bot-filters button[aria-pressed=true] { background:var(--cf-coral-soft); color:var(--cf-coral); }
+.bot-filters span { font-variant-numeric:tabular-nums; font-size:11px; margin-left:5px; opacity:.8; }
+.bot-section-heading { display:flex; justify-content:space-between; align-items:center; gap:20px; margin:24px 0 15px; }
+.bot-section-heading h2 { font-size:16px; font-weight:600; margin:0 0 4px; }
+.bot-section-heading p { margin:0; color:var(--cf-ink-soft); font-size:12px; }
+.bot-section-note { color:var(--cf-ink-soft); font-size:11px; white-space:nowrap; }
+body[data-ui=workbench] .bot-library-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:0 0 32px; }
+body[data-ui=workbench] .bot-library-card { display:flex; flex-direction:column; min-width:0; padding:20px 22px 14px; border:1px solid var(--cf-line); border-radius:12px; background:var(--cf-surface); transition:border-color 150ms; }
+body[data-ui=workbench] .bot-library-card:hover { border-color:var(--cf-line-strong); }
+.bot-library-card>header { display:flex; align-items:center; gap:12px; }
+.bot-library-card>header>div { flex:1; min-width:0; }
+.bot-mark { display:grid; place-items:center; width:38px; height:38px; flex:0 0 38px; border-radius:10px; background:var(--cf-surface-soft); color:var(--cf-coral); }
+.bot-mark.app-icon { padding:9px; }
+.bot-mark svg { width:20px; height:20px; }
+.bot-card-kind { display:block; font-size:11px; color:var(--cf-ink-soft); }
+.bot-library-card h3 { font-size:16px; font-weight:600; margin:2px 0 0; line-height:1.4; }
+body[data-ui] .bot-library-card h3 button { padding:0; border:0; background:transparent; border-radius:2px; font:inherit; color:var(--cf-ink); text-align:left; overflow-wrap:anywhere; }
+body[data-ui] .bot-library-card h3 button:hover { color:var(--cf-coral); }
+.bot-card-summary { margin:12px 0; color:var(--cf-ink-soft); font-size:14px; line-height:1.65; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.bot-library-card footer { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:auto; padding-top:10px; border-top:1px solid var(--cf-line); }
+body[data-ui] .bot-library-card footer button { border:0; padding:6px 0; font-size:12px; background:transparent; white-space:nowrap; }
+body[data-ui] .bot-library-card .bot-secondary-action { color:var(--cf-ink-soft); }
+body[data-ui] .bot-library-card .bot-use-action, .bot-library-card footer a { color:var(--cf-coral); font-weight:500; font-size:12px; white-space:nowrap; text-decoration:none; }
+.bot-card-output { color:var(--cf-ink-soft); font-size:11px; min-width:0; overflow-wrap:anywhere; }
+.bot-disabled-label { color:var(--cf-ink-soft); font-size:11px; white-space:nowrap; }
+.bot-library-card.is-disabled { background:var(--cf-surface-soft); }
+body[data-ui] .bot-library-card button:disabled { cursor:not-allowed; }
+.bot-help { border-top:1px solid var(--cf-line); padding-top:18px; font-size:12px; }
+.bot-help>summary { width:fit-content; }
+.bot-help .team-role-guide { border:0; margin-bottom:0; padding-bottom:0; }
+.team-main .personal-foot { margin-top:18px; font-size:11px; max-width:90ch; }
+body[data-ui] #botInfoDialog { position:fixed; inset:0 0 0 auto; margin:0; width:min(460px,100%); max-width:100%; height:100dvh; max-height:100dvh; border-radius:16px 0 0 16px; border:0; border-left:1px solid var(--cf-line); padding:28px; overflow:auto; }
+#botInfoDialog::backdrop { background:rgba(37,51,49,.18); }
+#botInfoDialog>header { margin-bottom:28px; }
+#botInfoTitle { font-size:25px; line-height:1.4; margin:10px 0 16px; overflow-wrap:anywhere; }
+#botInfoContent>p { color:var(--cf-ink-soft); font-size:13px; line-height:1.8; }
+#botInfoContent h3 { font-size:14px; margin-top:28px; }
+#botInfoContent h3 small { color:var(--cf-ink-soft); font-size:11px; font-weight:400; }
+.bot-full-rules { white-space:pre-wrap; overflow-wrap:anywhere; padding:16px; background:var(--cf-surface-soft); border-radius:10px; }
+.bot-info-boundary { margin:22px 0; padding-top:18px; border-top:1px solid var(--cf-line); font-size:12px; line-height:1.8; color:var(--cf-ink-soft); }
+.bot-info-facts { display:grid; gap:8px; margin:26px 0; font-size:13px; }
+.bot-info-facts dt { margin-top:12px; color:var(--cf-ink-soft); font-size:11px; }
+.bot-info-facts dd { margin:0; line-height:1.8; }
+.bot-info-start { display:inline-block; margin-top:20px; }
+.task-skill-suggestions { border-left:2px solid var(--cf-coral);padding:4px 0 4px 14px;font-size:13px; }
+.task-skill-suggestions[hidden] { display:none; }
+.task-skill-suggestions .team-detail-actions { margin:10px 0; }
+.task-skill-suggestions p { line-height:1.7;margin:8px 0 0; }
+.task-skill-suggestions p:empty { display:none; }
+#skillRecipeFields { display:grid; gap:16px; }
+#skillRecipeFields>p { margin:0; line-height:1.7; }
+#skillRecipeFields textarea { width:100%; resize:vertical; }
+#skillRawRules[hidden],#skillRecipeFields[hidden] { display:none!important; }
+.skill-original-rules { margin:20px 0; font-size:13px; line-height:1.8; }
+.skill-original-rules summary { cursor:pointer; color:var(--cf-ink-soft); }
+.bot-info-facts dd { white-space:pre-wrap; overflow-wrap:anywhere; }
+.team-main :is(button,a,summary):focus-visible,#botInfoDialog :is(button,a):focus-visible { outline:2px solid var(--cf-coral); outline-offset:4px; }
+@media(max-width:900px) { .bot-section-note { display:none; } }
+@media(max-width:700px) { body[data-ui=workbench] .bot-library-grid { grid-template-columns:minmax(0,1fr); gap:12px; }.bot-library-toolbar { flex-wrap:wrap; gap:12px; }.bot-search { width:100%; }.bot-filterbar { align-items:flex-start; gap:10px; }.bot-filters { gap:2px; }body[data-ui] .bot-filters button { padding:7px 8px; }body[data-ui=workbench] .bot-library-card { padding:18px 16px 12px; }body[data-ui] #botInfoDialog { padding:22px; border-radius:0; }.bot-section-heading { margin-top:20px; }.bot-card-summary { min-height:0; } }
+@media(prefers-reduced-motion:reduce) { body[data-ui=workbench] .bot-library-card { transition:none; } }

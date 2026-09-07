@@ -1,126 +1,42 @@
+import { readAppHtml } from "../fixtures/render-app-page.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { appRoute } from "../../examples/companion/app-navigation.js";
 
 const root = join(__dirname, "..", "..", "examples", "companion");
 const web = join(root, "web");
-const readWeb = (name: string) => readFileSync(join(web, name), "utf8");
+const readWeb = (name: string) => name.endsWith(".html") ? readAppHtml(name) : readFileSync(join(web, name), "utf8");
 
-test("开发能力从界面、能力目录和服务端入口移除", () => {
+test("应用不再包含项目开发入口或开发引擎接口", () => {
   const server = readFileSync(join(root, "server.ts"), "utf8");
   const catalog = readWeb(join("assets", "capability-center.js"));
-  for (const file of ["index.html", "capabilities.html", "office.html", "work.html"]) {
-    assert.doesNotMatch(readWeb(file), /(?:href="\/develop"|id="railDev")/);
+  for (const file of ["index.html", "capabilities.html", "office.html", "work.html", "settings.html"]) {
+    assert.doesNotMatch(readWeb(file), /href="\/develop"|project-development|\/api\/development/);
   }
-  assert.doesNotMatch(catalog, /project-development/);
-  assert.match(server, /res\.writeHead\(302, \{ Location: "\/"/);
-  assert.match(server, /pathname\.startsWith\("\/api\/development"\)/);
-  assert.match(server, /开发能力已从当前应用移除/);
-});
-
-test("开发项目支持独立归档、恢复和安全删除", () => {
-  const server = readFileSync(join(root, "server.ts"), "utf8");
-  const develop = readWeb("develop.html");
-  const archive = readWeb("develop-archive.html");
-  const archiveScript = readWeb(join("assets", "develop-archive.js"));
-  assert.match(server, /pathname === "\/develop\/archive"/);
-  assert.match(server, /\/api\/development\/project\/archive/);
-  assert.match(server, /\/api\/development\/project\/restore/);
-  assert.match(server, /\/api\/development\/project\/delete/);
-  assert.match(develop, /href="\/develop\/archive"/);
-  assert.match(archive, /id="archiveProjectList"/);
-  assert.match(archive, /id="deleteWorkspace"/);
-  assert.match(archiveScript, /delete-archived-development-project/);
-  assert.match(archiveScript, /只删除记录/);
-  assert.match(archiveScript, /删除记录和目录/);
-});
-
-test("开发页把运行配置置顶，并把执行设置收进输入框", () => {
-  const html = readWeb("develop.html");
-  const script = readWeb(join("assets", "develop-center.js"));
-  const server = readFileSync(join(root, "server.ts"), "utf8");
-  assert.equal((html.match(/id="developForm"/g) || []).length, 1);
-  assert.doesNotMatch(html, /class="topbar-capabilities"/);
-  assert.match(html, /id="workspaceLabel"/);
-  assert.doesNotMatch(html, /id="executionSettingsToggle"/);
-  assert.doesNotMatch(html, /id="executionSettingsPanel"/);
-  assert.doesNotMatch(html, /class="development-starters"/);
-  assert.match(html, /class="development-studio"/);
-  assert.match(html, /class="development-activity"/);
-  assert.doesNotMatch(html, /class="development-inspector"/);
-  assert.match(html, /class="development-control-bar"/);
-  assert.match(html, /class="development-execution-controls"/);
-  assert.doesNotMatch(html, /data-development-intent=/);
-  assert.match(html, /id="developmentModel"/);
-  assert.match(html, /id="developmentReasoning"/);
-  assert.match(html, /请求批准/);
-  assert.match(html, /帮我批准/);
-  assert.match(html, /完全控制/);
-  assert.match(html, /选择更改权限/);
-  assert.match(html, />只读</);
-  assert.match(html, /role="listbox"/);
-  assert.match(html, /role="option" data-approval-policy="request" aria-selected="true"/);
-  assert.match(html, /role="option" data-approval-policy="auto" aria-selected="false"/);
-  assert.match(html, /role="option" data-approval-policy="full" aria-selected="false" hidden/);
-  assert.match(script, /function openApprovalPolicyMenu/);
-  assert.match(script, /engineApprovalPolicies/);
-  assert.match(script, /fullControlConfirmed/);
-  assert.match(script, /event\.key === "Escape"/);
-  assert.match(html, /id="developmentEngine"/);
-  assert.match(html, /id="developmentEngineTrigger"/);
-  assert.match(html, /id="developmentEngineDialog"/);
-  assert.match(html, /id="developmentEngineList"/);
-  assert.match(html, /id="developmentEngineUpdateNotice"/);
-  assert.match(html, /id="developmentEngineUpdateDialog"/);
-  assert.match(html, /id="developmentEngineRiskDialog"/);
-  assert.match(html, /Pi Agent（默认）/);
-  assert.match(html, /DeepSeek Harness/);
-  assert.match(html, /Kilo Code/);
-  assert.match(html, /OpenCode/);
-  assert.match(html, /Codex/);
-  assert.match(html, /自动装依赖/);
-  assert.match(html, />开始任务</);
-  assert.match(script, /api\("\/api\/development\/projects"\)/);
-  assert.match(script, /api\("\/api\/agent\/job\/cancel"/);
-  assert.match(html, /id="developmentProcess"/);
-  assert.match(script, /function renderProcessPanel\(job\)/);
-  assert.match(script, /job\.checkpoints/);
-  assert.match(script, /document\.body\.dataset\.developmentEngine = value/);
-  assert.match(script, /result\.development\?\.enginePlugins/);
-  assert.match(script, /function renderDevelopmentEnginePicker/);
-  assert.match(script, /data-development-engine-option/);
-  assert.match(script, /function renderDevelopmentEngineUpdates/);
-  assert.match(script, /api\("\/api\/development\/engine-updates\/upgrade"/);
-  assert.match(script, /if \(presence\) presence\.textContent/);
-  assert.match(script, /model: developmentModelValue\(\)/);
-  assert.match(script, /\/api\/development\/model-connections/);
-  assert.match(script, /engineProfile\.mode === "inherit"/);
-  assert.match(script, /reasoning: developmentReasoningValue\(\)/);
-  assert.match(script, /function openDevelopmentJob\(jobId\)/);
-  assert.match(script, /requestedJobId !== activeJobId/);
-  assert.match(script, /projectName\(workspace\).*statusLabel/);
-  assert.match(script, /function developmentThreads\(jobs = developmentHistory\)/);
-  assert.match(script, /parentJobId: continuation\.parentJobId/);
-  assert.match(script, /continuationTaskId: continuation\.continuationTaskId/);
-  assert.match(script, /正在继续当前项目/);
-  assert.match(server, /\["queued", "running"\]\.includes\(parentJob\.status\)/);
-  assert.doesNotMatch(script, /workspaceDialog|recentPaths/);
+  assert.doesNotMatch(catalog, /project-development|\/api\/development/);
+  assert.doesNotMatch(server, /project-development|\/api\/development/);
 });
 
 test("设置中心仅保留模型、连接与本机数据", () => {
   const server = readFileSync(join(root, "server.ts"), "utf8");
+  const client = readFileSync(join(root, "client", "src", "ClownfishClient.cs"), "utf8");
   const html = readWeb("settings.html");
   const script = readWeb(join("assets", "settings-center.js"));
-  assert.match(server, /pathname === "\/settings"/);
+  assert.equal(appRoute("/settings")?.file, "settings.html");
+  assert.match(server, /renderAppPage/);
   assert.match(html, /data-section="models"/);
   assert.doesNotMatch(html, /data-section="development"/);
   assert.match(html, /data-section="connections"/);
   assert.match(html, /data-section="privacy"/);
   assert.match(html, /data-section="storage"/);
-  assert.match(html, /\[data-panel="development"\]\{display:none!important\}/);
+  assert.doesNotMatch(html, /data-panel="development"|开发引擎|\/api\/development/);
   assert.match(html, /id="serverStorageFields"/);
   assert.match(script, /\/api\/llm-config/);
+  assert.match(client, /EnvironmentVariables\["NODE_USE_ENV_PROXY"\] = "1"/);
+  assert.match(server, /无法连接模型服务。请确认网络或代理已启动后重试。/);
+  assert.match(server, /API Key 无效，或该 Key 没有访问所选模型的权限。/);
   assert.doesNotMatch(html, /development-models\.css/);
   assert.match(script, /\/api\/platform\/connector\/test/);
   assert.match(script, /\/api\/agent\/extension\/validate/);
@@ -141,6 +57,25 @@ test("设置中心仅保留模型、连接与本机数据", () => {
 test("任务页不再展示任务记录与分支弹窗", () => {
   const chat = readWeb("index.html");
   assert.doesNotMatch(chat, /id="topChat"|id="topDrop"|id="conversationmodal"|>任务与分支</);
+  assert.match(chat, /id="taskModelSelect"/);
+  assert.match(chat, /id="heroModelSelect"/);
+  assert.doesNotMatch(chat, /select.hidden = !taskMode/);
+  assert.match(chat, /node\.config = \{ \.\.\.\(node\.config \|\| \{\}\), model: requested \}/);
+  assert.match(chat, /\/api\/llm-model\/check/);
+  assert.match(chat, /\.\.\.conversationRequestOptions\(key\)/);
+});
+
+test("模型设置会获取并展示多个可选模型", () => {
+  const html = readWeb("settings.html");
+  const script = readWeb(join("assets", "settings-center.js"));
+  const server = readFileSync(join(root, "server.ts"), "utf8");
+  assert.match(html, /id="modelCatalog"/);
+  assert.match(html, /id="modelSelectionMode"/);
+  assert.match(html, /不读取聊天记录/);
+  assert.match(script, /state\.models/);
+  assert.match(server, /fetchCompanionModelCatalog/);
+  assert.match(server, /selectCheckedCompanionModel\(next, nextCatalog, mode\)/);
+  assert.doesNotMatch(server, /model: nextCatalog\[0\]!\.id/);
 });
 
 test("窄屏任务页收起会话列表并保留一级导航", () => {
@@ -151,12 +86,12 @@ test("窄屏任务页收起会话列表并保留一级导航", () => {
 });
 
 test("所有主页面都进入独立设置中心", () => {
-  for (const file of ["capabilities.html", "office.html", "work.html", "develop.html"]) {
+  for (const file of ["capabilities.html", "office.html", "work.html"]) {
     assert.match(readWeb(file), /href="\/settings"/);
     assert.doesNotMatch(readWeb(file), /href="\/#settings"/);
   }
   const chat = readWeb("index.html");
-  assert.match(chat, /id="settingsbtn"[^>]*data-app-icon="settings"/);
+  assert.match(chat, /id="settingsbtn"[^>]*data-wb-path="\/settings"/);
   assert.match(chat, /window\.location\.href = "\/settings"/);
 });
 

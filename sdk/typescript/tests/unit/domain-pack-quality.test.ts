@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { assessDomainPackOutput, DOMAIN_PACK_QUALITY_CASES } from "../../examples/companion/domain-pack-quality.js";
 
-test("五类领域能力包都有正反边界明确的固定回归样例", () => {
+test("四类领域能力包都有正反边界明确的固定回归样例", () => {
   const counts = new Map<string, number>();
   for (const item of DOMAIN_PACK_QUALITY_CASES) counts.set(item.packId, (counts.get(item.packId) || 0) + 1);
-  assert.deepEqual([...counts.keys()].sort(), ["development", "finance", "office", "operations", "research"]);
+  assert.deepEqual([...counts.keys()].sort(), ["finance", "office", "operations", "research"]);
   assert.equal([...counts.values()].every((count) => count >= 2), true);
   assert.equal(DOMAIN_PACK_QUALITY_CASES.every((item) => item.requiredSignals.length >= 3), true);
 });

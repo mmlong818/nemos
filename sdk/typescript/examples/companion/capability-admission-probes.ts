@@ -9,9 +9,6 @@
 // 这正是 M13 验收门写的「测试缺失本身就是准入失败」。
 
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import {
   CAPABILITY_ADMISSION_MATRIX,
@@ -28,7 +25,6 @@ import {
 } from "./capability-handoff.js";
 import { parseNativeCapabilityPayload } from "./native-capability-contracts.js";
 import { assessProfessionalArtifact } from "./professional-artifact-gate.js";
-import { validateDevelopmentWorkspace } from "./pi-development.js";
 
 export type CapabilityAdmissionProfile = keyof typeof CAPABILITY_ADMISSION_MATRIX;
 
@@ -129,23 +125,6 @@ const PROBES: Partial<Record<CapabilityAdmissionScenario, AdmissionProbe>> = {
     };
   },
 
-  "windows-path": () => {
-    const dir = mkdtempSync(join(tmpdir(), "clownfish-admission-probe-"));
-    try {
-      writeFileSync(join(dir, "package.json"), "{}", "utf8");
-      const resolved = validateDevelopmentWorkspace(dir);
-      let rootRejected = false;
-      try {
-        // 盘根必须被拒：Windows 上这是最容易误放行的路径形态。
-        validateDevelopmentWorkspace(dir.slice(0, 3));
-      } catch {
-        rootRejected = true;
-      }
-      return { passed: resolved === dir && rootRejected, detail: "真实目录通过、盘根被拒" };
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  },
 };
 
 /** 矩阵里声明但没有注册探针的场景。非空即表示准入体系本身不完整。 */

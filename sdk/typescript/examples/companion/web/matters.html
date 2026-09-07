@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN"><head><script src="/assets/product-structure.js" defer></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>进行中的事 · 小丑鱼</title>
+<link rel="stylesheet" href="/assets/clownfish-theme.css"><link rel="stylesheet" href="/assets/app-navigation-labels.css"><link rel="stylesheet" href="/assets/personal-work.css">
+<script src="/assets/app-icons.js" defer></script><script src="/assets/agent-events.js" defer></script><script src="/assets/personal-work.js" defer></script></head>
+<body><div class="personal-shell">
+<!-- APP_NAVIGATION -->
+<main class="personal-main"><header class="personal-head"><div><p class="personal-eyebrow">你的个人助理</p><h1>进行中的事</h1><p>把在意的事接着往前推，每次只明确下一步。</p></div></header>
+<div class="personal-toolbar"><nav aria-label="事项分类" id="filters"><button data-filter="ongoing" aria-pressed="true">进行中</button><button data-filter="completed" aria-pressed="false">已完成</button><button data-filter="learning" aria-pressed="false">待确认的学习</button></nav><label class="personal-search"><span class="sr-only">搜索事项或学习</span><input id="search" type="search" placeholder="搜索目标、下一步…"></label><button class="primary" id="newMatter">＋ 新建事项</button></div>
+<p id="connection" role="status"></p><section id="reminders" aria-label="到期跟进"></section><section id="records" aria-label="事项列表" aria-live="polite"><p>正在读取本机记录…</p></section>
+<footer class="personal-foot">跟进仅在应用后台运行时触发；关机期间不会执行。事项记录不代表你授权了发送、购买或其它外部操作。</footer></main></div>
+<dialog id="matterDialog" aria-labelledby="matterTitle"><form id="matterForm"><header><h2 id="matterTitle">新建事项</h2><button type="button" data-close="matterDialog" aria-label="关闭事项编辑">×</button></header>
+<input name="id" type="hidden"><input name="revision" type="hidden">
+<label>事项名称<input name="title" required maxlength="100" placeholder="例如：准备十月的家庭旅行"></label>
+<label>希望达成什么<textarea name="goal" required maxlength="1000" rows="2" placeholder="写清结果，以及你在意的限制"></textarea></label>
+<div class="personal-form-row"><label>当前状态<select name="status"><option value="active">推进中</option><option value="waiting">等待中</option><option value="paused">已暂停</option><option value="completed">已完成</option></select></label><label>下一步<input name="nextAction" maxlength="500" placeholder="一个具体、可完成的动作"></label></div>
+<label>正在等什么<input name="waitingFor" maxlength="500" placeholder="例如：等家人确认可休假的日期"></label>
+<div class="personal-form-row"><label>截止时间（可选）<input name="dueAt" type="datetime-local"></label><label>下次跟进（可选）<input name="remindAt" type="datetime-local"></label></div>
+<p class="hint">未单独设置跟进时间时，按截止时间提醒。只提醒，不自动执行。</p>
+<details><summary>关联已有任务与交付结果</summary><label>关联任务<select name="taskId"><option value="">不关联</option></select></label><label>关联结果<select name="artifactId"><option value="">不关联</option></select></label></details>
+<label>已完成的结果<textarea name="result" maxlength="2000" rows="3" placeholder="完成时填写做成了什么，以及结果在哪里"></textarea></label>
+<p class="form-error" role="alert"></p><button class="primary" type="submit">保存事项</button></form></dialog>
+<dialog id="learningDialog" aria-labelledby="learningTitle"><form id="learningForm"><header><h2 id="learningTitle">提议记住</h2><button type="button" data-close="learningDialog" aria-label="关闭学习提议">×</button></header>
+<input name="matterId" type="hidden"><label>内容类型<select name="kind"><option value="preference">稳定偏好</option><option value="decision">已确认的决定</option><option value="constraint">长期约束</option></select></label>
+<label>希望小丑鱼记住什么<textarea name="content" required maxlength="1000" rows="4" placeholder="例如：用户偏好先看结论，再看简短依据"></textarea></label>
+<label>来源说明<textarea name="excerpt" maxlength="1500" rows="3" placeholder="记录它来自哪次决定或完成结果"></textarea></label>
+<p class="hint">提交后只进入待确认列表，不会立即变成长期记忆。不要把第三方材料或临时测试当作你的偏好。</p>
+<p class="form-error" role="alert"></p><button class="primary" type="submit">加入待确认</button></form></dialog>
+<p id="toast" class="personal-toast" role="status" hidden></p>
+</body></html>

@@ -7,7 +7,7 @@ const web = join(__dirname, "..", "..", "examples", "companion", "web");
 const readWeb = (name: string) => readFileSync(join(web, name), "utf8");
 
 test("主要页面共享小丑鱼统一视觉层", () => {
-  for (const file of ["index.html", "capabilities.html", "office.html", "work.html", "develop.html", "settings.html"]) {
+  for (const file of ["index.html", "capabilities.html", "office.html", "work.html", "settings.html"]) {
     const html = readWeb(file);
     assert.match(html, /href="\/assets\/clownfish-theme\.css"/);
     assert.ok(
@@ -24,9 +24,8 @@ test("主要页面共享小丑鱼统一视觉层", () => {
   assert.match(css, /--cf-sidebar-width: 252px/);
   assert.match(css, /--cf-panel-radius: 16px/);
   assert.match(css, /内部组件合同/);
-  assert.doesNotMatch(readWeb("develop.html"), /class="development-starters"/);
   const workbenchCss = readWeb(join("assets", "task-workbench.css"));
-  assert.match(workbenchCss, /\.task-workbench--development \.task-workbench-tools \{ order: 2; \}/);
+  assert.doesNotMatch(workbenchCss, /task-workbench--development/);
   assert.doesNotMatch(css, /开发页与新任务页同构/);
   assert.match(css, /body > #main/);
   assert.match(css, /height: calc\(100vh - \(var\(--cf-workspace-gap\) \* 2\)\)/);
@@ -51,7 +50,6 @@ test("本机背景图不设固定体积上限并使用 IndexedDB 保存", () => 
 test("带新建入口的页面共享右侧搜索按钮和独立浮层", () => {
   const pages = [
     ["index.html", "quickGroup", "sidebarSearchToggle", "conversationSearchDialog"],
-    ["develop.html", "newDevelopment", "developmentSearchToggle", "developmentSearchDialog"],
     ["work.html", "newTaskSide", "workSearchToggle", "workSearchDialog"],
     ["office.html", "newDocument", "fileSearchToggle", "fileSearchDialog"],
   ] as const;
@@ -89,29 +87,20 @@ test("首页和独立页面使用完全相同的左栏几何", () => {
   assert.match(css, /\.rail > \.brand,\s*#wechatRail > \.rail-avatar/);
 });
 
-test("新任务与开发复用同一套无顶栏工作台组件", () => {
+test("新任务使用统一的无顶栏工作台组件", () => {
   const home = readWeb("index.html");
-  const develop = readWeb("develop.html");
   const shared = readWeb(join("assets", "task-workbench.css"));
-  for (const html of [home, develop]) {
-    assert.match(html, /\/assets\/task-workbench\.css/);
-    assert.match(html, /task-workbench-sidebar/);
-    assert.match(html, /task-workbench-main/);
-    assert.doesNotMatch(html, /task-workbench-topbar/);
-    assert.match(html, /task-workbench-stage/);
-    assert.match(html, /task-workbench-composer/);
-    assert.match(html, /task-sidebar-brand/);
-    assert.match(html, /task-sidebar-primary/);
-  }
+  assert.match(home, /\/assets\/task-workbench\.css/);
+  assert.match(home, /task-workbench-sidebar/);
+  assert.match(home, /task-workbench-main/);
+  assert.doesNotMatch(home, /task-workbench-topbar/);
+  assert.match(home, /task-workbench-stage/);
+  assert.match(home, /task-workbench-composer/);
+  assert.match(home, /task-sidebar-brand/);
+  assert.match(home, /task-sidebar-primary/);
   assert.doesNotMatch(home, /task-workbench-top-actions/);
-  assert.match(develop, /task-workbench-top-actions/);
   assert.match(home, /role-intro-state task-workbench-empty-frame/);
   assert.match(home, /role-intro-card task-workbench-empty is-composer-empty/);
-  assert.match(develop, /role-intro-state task-workbench-empty-frame/);
-  assert.match(develop, /role-intro-card task-workbench-empty/);
-  assert.match(develop, /id="developmentSearchToggle"/);
-  assert.match(develop, /task-sidebar-primary app-create-search/);
-  assert.match(develop, /id="taskTitle"/);
   assert.match(shared, /--task-shell-sidebar: 252px/);
   assert.match(shared, /\.task-workbench-empty,/);
   assert.doesNotMatch(home, /starter-prompts|starter-help-close|clownfishStarterHelpClosed/);
@@ -119,17 +108,6 @@ test("新任务与开发复用同一套无顶栏工作台组件", () => {
   assert.match(shared, /\.task-workbench-stage \{[\s\S]*?flex: 1 1 0% !important;/);
   assert.match(shared, /\.task-workbench-composer \{[\s\S]*?backdrop-filter: blur\(18px\) !important;/);
   assert.match(shared, /\.task-workbench-title \.hname \{[\s\S]*?font-size: 15\.5px !important;[\s\S]*?font-weight: 500 !important;/);
-  const developmentOnly = readWeb(join("assets", "development-coding.css"));
-  assert.doesNotMatch(developmentOnly, /\.coding-shell\s*\{/);
-  assert.doesNotMatch(developmentOnly, /\.coding-sidebar\s*\{/);
-  assert.doesNotMatch(developmentOnly, /\.coding-composer\s*\{/);
-  assert.doesNotMatch(develop, /project-block|development-settings-link/);
-  const developmentScript = readWeb(join("assets", "develop-center.js"));
-  assert.match(developmentScript, /const emptyStateCopy = \$\("#codingEmpty"\)\.cloneNode\(true\)/);
-  assert.match(developmentScript, /transcript\.innerHTML = emptyTranscriptTemplate/);
-  assert.match(developmentScript, /function setTaskTitle\(title\)/);
-  assert.match(developmentScript, /AppSearchOverlay\.bind\(\{[\s\S]*dialog: "#developmentSearchDialog"/);
-  assert.doesNotMatch(developmentScript, /coding-mark/);
   const flatWorkbench = readWeb(join("assets", "flat-workbench.css"));
   assert.match(flatWorkbench, /body\[data-page="home"\] #msgs > \.task-workbench-empty-frame \{[\s\S]*height: 100% !important;[\s\S]*min-height: 100% !important;/);
   assert.match(flatWorkbench, /body\[data-page="home"\] \.is-composer-empty \{[\s\S]*translateY\(clamp\(-72px, -9vh, -56px\)\)/);

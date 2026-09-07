@@ -126,9 +126,18 @@ export class FileAgentJobQueue {
       availableAt: now,
       checkpoints: [],
     };
+    const previous = new Map(this.jobs);
     this.jobs.set(job.id, job);
-    this.prune();
-    this.save();
+    try {
+      this.prune();
+      this.save();
+    } catch (error) {
+      // A failed disk write must not leave an in-memory idempotency hit that
+      // could later be mistaken for a durable scheduled occurrence.
+      this.jobs.clear();
+      for (const [id, existing] of previous) this.jobs.set(id, existing);
+      throw error;
+    }
     this.emitChange("enqueued", job);
     return structuredClone(job);
   }

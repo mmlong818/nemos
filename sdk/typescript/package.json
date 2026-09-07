@@ -45,7 +45,6 @@
     "test:v07": "tsx --test tests/v07/integration/*.test.ts",
     "quality:office-corpus": "tsx scripts/office-corpus.ts",
     "quality:office-word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Verify-OfficeCorpus.ps1",
-    "quality:development-corpus": "tsx scripts/development-corpus.ts",
     "quality:capabilities": "node scripts/capability-real-quality.mjs",
     "vendor:docx-engine": "tsc -p examples/companion/vendor/docx-engine/tsconfig.json",
     "vendor:pptx-engine": "tsc -p examples/companion/vendor/pptx-engine/tsconfig.json",
@@ -55,19 +54,17 @@
     "check": "npm run build && npm run typecheck && npm run licenses:check && npm run release:check && npm test"
   },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.0-rc.6",
-    "@earendil-works/pi-coding-agent": "0.84.2",
     "@firecrawl/anydoc": "^0.1.8",
     "@milkdown/crepe": "^7.22.1",
     "@modelcontextprotocol/client": "^2.0.0",
     "@napi-rs/canvas": "^1.0.6",
     "@nemos/sdk": "github:mmlong818/nemos-memory#v0.7.5-alpha.18",
-    "@tiptap/core": "^3.30.1",
-    "@tiptap/extension-table": "^3.30.1",
-    "@tiptap/extension-text-align": "^3.30.1",
-    "@tiptap/markdown": "^3.30.1",
-    "@tiptap/pm": "^3.30.1",
-    "@tiptap/starter-kit": "^3.30.1",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-table": "^3.31.3",
+    "@tiptap/extension-text-align": "^3.31.3",
+    "@tiptap/markdown": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "better-sqlite3": "^12.11.1",
     "docx-preview": "^0.4.0",
     "fast-xml-parser": "^5.10.1",
@@ -78,10 +75,7 @@
     "typebox": "^1.3.13"
   },
   "optionalDependencies": {
-    "@kilocode/cli": "7.4.22",
-    "@openai/codex": "^0.147.0",
     "@playwright/mcp": "^0.0.78",
-    "opencode-ai": "^1.18.18",
     "sqlite-vec": "^0.1.0"
   },
   "peerDependencies": {
@@ -105,7 +99,8 @@
     "typescript": "^7.0.2"
   },
   "overrides": {
-    "brace-expansion": "5.0.9"
+    "brace-expansion": "5.0.9",
+    "better-sqlite3": "$better-sqlite3"
   },
   "engines": {
     "node": ">=22.19"

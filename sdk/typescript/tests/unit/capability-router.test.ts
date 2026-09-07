@@ -2,10 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { routeCapability } from "../../examples/companion/capability-router.js";
 
-test("开发目标不再路由到已移除的开发能力", () => {
-  assert.equal(routeCapability({ goal: "检查项目文档并修复构建问题" }).capabilityId, "document-draft");
-});
-
 test("explicit meeting-minute deliverables outrank incidental development vocabulary", () => {
   const result = routeCapability({
     goal: "把这段记录整理成会议纪要：周一上线新版；赵强周五前完成回归测试；风险是支付接口偶发超时。",
@@ -27,12 +23,6 @@ test("routes extraction from an attached Markdown file as document work, not int
   });
   assert.equal(result.capabilityId, "document-draft");
   assert.equal(result.confidence, "high");
-});
-
-test("工作区路径不再启动开发能力", () => {
-  const result = routeCapability({ goal: "看看这个", workspacePath: "C:\\work\\demo" });
-  assert.equal(result.catalogId, "thinking");
-  assert.equal(result.confidence, "low");
 });
 
 test("routes former task-page utilities to capability-page abilities", () => {

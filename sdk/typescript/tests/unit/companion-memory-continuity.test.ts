@@ -7,12 +7,113 @@ import test from "node:test";
 import { CompanionEngine, convScope, type ChatFn } from "../../examples/companion/engine.js";
 import { Nemos } from "../../src/index.js";
 import { makeMockLLMConfig } from "../helpers.js";
+import { conversationArchives } from "../../examples/companion/conversation-history.js";
 
 const persona = {
   id: "feifei",
   name: "菲菲",
   persona: "自然、可靠的朋友。",
 };
+
+test("网页会话在数据库关闭重开后恢复用户与助理原文，且不同会话不串线", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-web-session-restart-"));
+  let memory = makeMemory(dir);
+  const prompts: Array<{ system: string; user: string }> = [];
+  const capture: ChatFn = async (system, user) => { prompts.push({ system, user }); return "继续处理"; };
+  try {
+    const first = new CompanionEngine(memory, [persona], async () => "回复甲：按已确认的三项要求交付");
+    await first.send("me", persona.id, "任务甲：周五交付用户报告", {
+      sessionId: "task-a", sourceMessageId: "message-a", memoryWriteMode: "archive-only", voice: { durationSec: 2 },
+    });
+    const second = new CompanionEngine(memory, [persona], async () => "回复乙：这是另一个秘密任务");
+    await second.send("me", persona.id, "任务乙：无关内容", { sessionId: "task-b", memoryWriteMode: "archive-only" });
+    const archives = await conversationArchives(memory, "me", convScope("me", persona.id), "task-a", 10);
+    assert.equal(archives[0].source.conversation_id, "task-a");
+    assert.equal(archives[0].source.source_message_id, "message-a");
+    memory.close();
+    memory = makeMemory(dir);
+    const rebuilt = new CompanionEngine(memory, [persona], capture, {
+      chatStream: async (system, user, cb) => { const reply = await capture(system, user); cb.onToken(reply); return reply; },
+    });
+    await rebuilt.sendStream("me", persona.id, "继续", { sessionId: "task-a", memoryWriteMode: "archive-only" }, { onStatus() {}, onToken() {} });
+    assert.match(prompts[0].user, /对方\(语音\)：任务甲：周五交付用户报告/);
+    assert.match(prompts[0].user, /菲菲：回复甲/);
+    assert.ok(prompts[0].user.indexOf("任务甲") < prompts[0].user.indexOf("回复甲"));
+    assert.doesNotMatch(prompts[0].user + prompts[0].system, /任务乙|回复乙|秘密任务/);
+    await rebuilt.send("me", persona.id, "新任务", { sessionId: "task-c", memoryWriteMode: "archive-only" });
+    assert.doesNotMatch(prompts[1].user + prompts[1].system, /任务甲|回复甲|任务乙|回复乙/);
+    await rebuilt.send("other-user", persona.id, "继续", { sessionId: "task-a", memoryWriteMode: "archive-only" });
+    assert.doesNotMatch(prompts[2].user + prompts[2].system, /任务甲|回复甲/);
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("恢复旧会话会翻页查找，不被其它会话的最近消息挤掉", async () => {
+  const memory = new Nemos({ storage: { type: "memory" }, llm: makeMockLLMConfig(), features: { doubleCheck: false }, worker: { manualWorker: true } });
+  try {
+    const scope = convScope("me", persona.id);
+    await memory.forUser("me").ingest("较早会话需要保留的决定", { scope, skipAnalysis: true, identity: { speakerId: "user:me", subjectId: "user:me", conversationId: "older-session", sourceMessageId: "old" } });
+    for (let i = 0; i < 120; i++) {
+      await memory.forUser("me").ingest(`其它会话内容 ${i}`, { scope, skipAnalysis: true, identity: { speakerId: "user:me", subjectId: "user:me", conversationId: "other-session", sourceMessageId: `other-${i}` } });
+    }
+    const restored = await conversationArchives(memory, "me", scope, "older-session", 24);
+    assert.equal(restored.length, 1);
+    assert.equal(restored[0].content, "较早会话需要保留的决定");
+  } finally { memory.close(); }
+});
+
+test("旧版未标记会话的归档不会被猜测归入网页对话", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-session-legacy-"));
+  const memory = makeMemory(dir);
+  try {
+    const legacy = new CompanionEngine(memory, [persona], async () => "旧版回复原文");
+    await legacy.send("me", persona.id, "旧版用户原文", { memoryWriteMode: "archive-only" });
+    let received = "";
+    const rebuilt = new CompanionEngine(memory, [persona], async (system, user) => { received = system + user; return "完成"; });
+    await rebuilt.send("me", persona.id, "继续", { sessionId: "new-session", memoryWriteMode: "archive-only" });
+    assert.doesNotMatch(received, /旧版用户原文|旧版回复原文/);
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("恢复运行产生的回复仍归属于原网页会话", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-recovered-session-"));
+  const memory = makeMemory(dir);
+  try {
+    const engine = new CompanionEngine(memory, [persona], async () => "最初回复");
+    await engine.send("me", persona.id, "原任务目标", { sessionId: "recover-a", memoryWriteMode: "archive-only" });
+    await engine.recordRecoveredReply("me", persona.id, convScope("me", persona.id), "恢复后补充的结论", "recover-a");
+    let received = "";
+    const rebuilt = new CompanionEngine(memory, [persona], async (_system, user) => { received = user; return "完成"; });
+    await rebuilt.send("me", persona.id, "继续", { sessionId: "recover-a", memoryWriteMode: "archive-only" });
+    assert.match(received, /原任务目标/);
+    assert.match(received, /恢复后补充的结论/);
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("关闭写入时用户与助理均不持久保存，关闭召回也确实生效", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-session-memory-off-"));
+  const memory = makeMemory(dir);
+  try {
+    await memory.forUser("me").write({ layer: "semantic", content: "用户长期事实标记", scope: convScope("me", persona.id), source: { authoritative: true, origin: "test" } });
+    let received = "";
+    const engine = new CompanionEngine(memory, [persona], async (system) => { received = system; return "不应保存的回复"; });
+    await engine.send("me", persona.id, "不应保存的请求", { sessionId: "off", memoryWriteMode: "off", memoryMode: "off" });
+    assert.doesNotMatch(received, /用户长期事实标记/);
+    assert.equal((await conversationArchives(memory, "me", convScope("me", persona.id), "off", 24)).length, 0);
+    assert.equal((await conversationArchives(memory, "persona:feifei", convScope("me", persona.id), "off", 24)).length, 0);
+  } finally {
+    memory.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
 
 function makeMemory(dir: string): Nemos {
   return new Nemos({

@@ -52,7 +52,7 @@ export interface CapabilityTool {
   run?: (args: Record<string, unknown>, context: CapabilityToolContext) => Promise<CapabilityToolResult>;
 }
 
-export type CapabilitySurface = "task" | "education" | "capability" | "office" | "development" | "automation";
+export type CapabilitySurface = "task" | "education" | "capability" | "office" | "automation";
 
 export interface CapabilityToolSource {
   kind: "builtin" | "plugin" | "mcp";

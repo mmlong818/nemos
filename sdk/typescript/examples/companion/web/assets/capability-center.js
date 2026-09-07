@@ -1,24 +1,6 @@
 "use strict";
 
-const RECENT_WORKSPACES_KEY = "clownfish-recent-workspaces-v1";
-
-const CATALOG = [
-  { id: "presentation", backendId: "presentation-builder", name: "做 PPT", icon: "presentation", summary: "生成可放映、可继续编辑的演示文稿", description: "先梳理受众和叙事主线，再生成有版式变化、演讲备注和网页预览的 PowerPoint。", use: "汇报、提案、课程分享、路演", deliverable: "可编辑 PPTX 与网页预览", format: "pptx", featured: true, detail: "生成页面结构、版式、备注和可编辑文件" },
-  { id: "document", backendId: "document-draft", name: "写正式文档", icon: "document", summary: "起草、改写和整理正式内容", description: "根据目标和材料生成结构完整的文稿，也能沿用你的常用文笔与排版习惯。", use: "方案、总结、说明、长文", deliverable: "可编辑文稿", format: "doc", featured: true, detail: "形成结构清楚、可以继续编辑的文稿" },
-  { id: "research", backendId: "research-brief", name: "深度研究", icon: "search", summary: "搜索来源、核验声明并形成可追溯结论", description: "围绕一个问题规划研究路径，搜索并分级来源，对关键声明做独立复核，清楚标出证据和限制。", use: "行业研究、竞品、专题调研", deliverable: "带来源台账的研究报告", format: "html", featured: true, detail: "规划、搜索、来源分级、事实核验和结论复审" },
-  { id: "marketBrief", backendId: "market-briefing", name: "查港股资料", icon: "trend", summary: "读取公告、行情快照并整理盘前盘后简报", description: "按股票代码读取港交所官方公告和带查询时间的第三方行情快照；明确延迟、来源和待核验项，不提供交易指令。", use: "自选股、公告核验、盘前盘后复盘", deliverable: "带来源与时间戳的市场资料简报", format: "html", detail: "读取关注代码、官方公告、行情快照和风险边界" },
-  { id: "thinking", backendId: "thinking-workbench", name: "梳理复杂问题", icon: "lightbulb", summary: "把模糊问题变成可操作的思考工作台", description: "分开事实、假设、矛盾和未知，保留多个选项，形成可以勾选和补充的验证计划。", use: "问题拆解、创意探索、复盘", deliverable: "可交互思考工作台", format: "html", featured: true, detail: "梳理问题、假设、选择和验证办法" },
-  { id: "product", backendId: "product-design", name: "设计产品界面", icon: "layout", summary: "从用户任务形成页面和交互方案", description: "先理清真实用户路径，再产出信息结构、关键界面、交互说明和验收要点。", use: "新功能、界面改版、产品方案", deliverable: "产品设计说明", format: "html", featured: true, detail: "形成用户流程、页面结构与设计说明" },
-  { id: "meeting", backendId: "meeting-minutes", name: "整理会议纪要", icon: "checklist", summary: "从记录中提炼结论和行动项", description: "把会议文字整理成摘要、决定、责任人、截止时间、风险和未决问题。", use: "会议记录、访谈、讨论复盘", deliverable: "纪要与行动表", format: "doc", featured: true, detail: "提炼决定、行动项与未决问题" },
-  { id: "translate", backendId: "quick-translate", name: "翻译文字", icon: "translate", summary: "中英文自动识别并直接翻译", description: "用于快速处理中英文互译，结果可以复制或保存为文本。", use: "短文、邮件、即时内容", deliverable: "可复制译文", format: "txt", quickTool: true, detail: "自动识别语言并输出译文" },
-  { id: "speech", backendId: "quick-speech", name: "语音转写", icon: "mic", summary: "把音频、视频或现场录音转成文字", description: "支持选择文件或直接录音，长音频会自动分段识别并合并。", use: "录音、访谈、视频、口述", deliverable: "可保存转写文本", format: "txt", quickTool: true, detail: "上传或录音后生成完整文字" },
-  { id: "polish", backendId: "quick-polish", name: "文字润色", icon: "polish", summary: "清理错别字、标点和断句", description: "轻量改善文字表达，不扩写新信息，也不改变原意。", use: "消息、邮件、短文、初稿", deliverable: "可复制润色文本", format: "txt", quickTool: true, detail: "保持原意并改善文字表达" },
-  { id: "web", backendId: "html-report", name: "做网页报告", icon: "globe", summary: "把内容制作成独立网页", description: "生成不依赖外部服务、可直接在浏览器打开的单页内容。", use: "报告、说明页、互动展示", deliverable: "独立 HTML 网页", format: "html", detail: "制作可直接打开的独立网页" },
-  { id: "decision", backendId: "decision-brief", name: "比较方案", icon: "scale", summary: "比较证据、风险与行动条件", description: "把零散信息整理成可判断的选择，说明收益、代价、风险和什么时候应该改变决定。", use: "选型、取舍、优先级判断", deliverable: "决策简报", format: "md", detail: "比较方案、风险和行动条件" },
-  { id: "business", backendId: "business-deal", name: "推进商务合作", icon: "handshake", summary: "建立关键人、异议和跟进工作台", description: "梳理双方价值、关键人、异议、谈判边界和跟进动作，话术可以直接复制使用。", use: "合作、销售、谈判、跟进", deliverable: "可执行商务推进台", format: "html", detail: "准备合作策略、异议处理与跟进动作" },
-  { id: "market", backendId: "market-opportunity", name: "模拟市场机会", icon: "trend", summary: "用多种情景检验机会是否成立", description: "从用户、竞争、执行和不确定性出发，调整权重比较不同情景，形成机会判断和低成本验证计划。", use: "市场洞察、机会评估、定位", deliverable: "可调节情景模拟台", format: "html", detail: "比较需求、竞争和执行情景，明确失效条件" },
-  { id: "ability", backendId: "ability-builder", name: "生成新能力", icon: "branch", summary: "把重复工作沉淀成真正可用的能力", description: "先判断是否值得沉淀，再生成触发边界、输入、步骤、异常路径和测试；通过检查后会加入本机能力库。", use: "重复工作、团队方法、固定交付", deliverable: "已验证并安装的 小丑鱼能力", format: "html", detail: "资格判断、触发测试、能力生成和本机安装" },
-];
+const CATALOG = window.ClownfishWorkflowCatalog.capabilities;
 
 const ICON_PATHS = {
   clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
@@ -65,7 +47,6 @@ const MATCH_RULES = [
   ["meeting", /会议|纪要|访谈|录音|讨论记录/i],
   ["document", /(?:周报|月报|日报|材料|素材|内容).{0,18}(?:整理|摘要|总结|归纳|提炼)|(?:整理|摘要|总结|归纳|提炼).{0,18}(?:周报|月报|日报|材料|素材|内容)|管理层摘要|正式文档/i],
   ["product", /产品|界面|交互|原型|用户体验|功能设计|用户路径|操作流程|能力页|文件工作流|工作台设计/i],
-  ["developer", /开发|写代码|改代码|修复.{0,6}(问题|bug)|项目检查|代码库|仓库|(?:构建|测试).{0,12}(代码|项目|仓库|软件|程序|接口)|(?:代码|项目|仓库|软件|程序|接口).{0,12}(构建|测试)/i],
   ["business", /商务|合作|销售|客户|谈判|成交|跟进/i],
   ["marketBrief", /港股|股票|行情|公告|财报|盘前|盘后|自选|持仓|HKEX/i],
   ["market", /市场|赛道|机会|定位|竞品|增长/i],
@@ -84,7 +65,6 @@ const EXAMPLE_PROMPTS = {
   marketBrief: "例如：整理 02513.HK 最近公告和行情变化，标明来源、时间与风险",
   thinking: "例如：帮我梳理是否应该进入这个市场，分开事实、假设和待验证问题",
   product: "例如：重新设计新用户首页，减少认知负担并给出关键交互说明",
-  developer: "例如：修复页面切换抖动，检查根因，完成修改并运行相关测试",
   meeting: "例如：把会议记录整理成结论、行动项、负责人和截止时间",
   translate: "把要翻译的文字放到这里",
   speech: "选择音频、视频，或直接开始录音",
@@ -103,7 +83,6 @@ const ICON_TONES = {
   marketBrief: "#356b8c",
   thinking: "#a36a1f",
   product: "#9a476b",
-  developer: "#546b8b",
   meeting: "#4c765e",
   translate: "#4d7584",
   speech: "#9a5d4a",
@@ -174,42 +153,6 @@ function displayDate(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
-function setDevelopmentMode(mode, persist = true) {
-  const value = mode === "inspect" ? "inspect" : "develop";
-  $("#accessModeSelect").value = value;
-  $$('[data-access-mode]').forEach((button) => {
-    const selected = button.dataset.accessMode === value;
-    button.classList.toggle("is-selected", selected);
-    button.setAttribute("aria-pressed", String(selected));
-  });
-  const labels = value === "inspect" ? ["理解项目", "检查问题", "核对证据", "整理结论"] : ["理解项目", "完成修改", "运行检查", "交付结果"];
-  $$("#developerFlow li").forEach((item, index) => { const marker = item.querySelector("span"); item.textContent = labels[index]; if (marker) item.prepend(marker); });
-  updateLaunchState();
-  if (persist) saveDraft();
-}
-
-function recentWorkspaces() {
-  try {
-    const paths = JSON.parse(localStorage.getItem(RECENT_WORKSPACES_KEY) || "[]");
-    return Array.isArray(paths) ? paths.filter((item) => typeof item === "string" && item.trim()).slice(0, 5) : [];
-  } catch {
-    return [];
-  }
-}
-
-function renderRecentWorkspaces() {
-  const paths = recentWorkspaces();
-  $("#recentWorkspacePaths").innerHTML = paths.map((path) => `<option value="${escapeHtml(path)}"></option>`).join("");
-  $("#useRecentWorkspace").hidden = !paths.length;
-}
-
-function rememberWorkspace(path) {
-  const normalized = String(path || "").trim();
-  if (!normalized) return;
-  const paths = [normalized, ...recentWorkspaces().filter((item) => item.toLowerCase() !== normalized.toLowerCase())].slice(0, 5);
-  localStorage.setItem(RECENT_WORKSPACES_KEY, JSON.stringify(paths));
-  renderRecentWorkspaces();
-}
 function selectedCapability() {
   return CATALOG.find((item) => item.id === state.selectedId) || CATALOG[0];
 }
@@ -231,7 +174,7 @@ function availability(item) {
     if (item.id === "speech" && !state.toolStatus.hasZhipuKey && !state.llm.live) {
       return { ready: false, label: "需设置语音服务", action: "设置语音服务后使用" };
     }
-    return { ready: true, label: "可直接使用", action: "开始使用" };
+    return { ready: true, label: "打开后检查依赖", action: "开始使用" };
   }
   const wired = state.registry.skills.length
     ? state.registry.skills.some((ability) => ability.id === item.backendId && ability.available)
@@ -240,11 +183,10 @@ function availability(item) {
   if (!state.llm.live) return { ready: false, label: "需设置模型", action: "设置模型后即可使用" };
   const search = (state.registry.tools.length ? state.registry.tools : state.snapshot.tools)?.find((tool) => tool.id === "web.search");
   if (item.id === "research" && !search?.available) return { ready: false, label: "需联网搜索", action: "配置联网搜索后使用" };
-  return { ready: true, label: "可直接使用", action: "开始使用" };
+  return { ready: true, label: "已配置 · 执行时检查", action: "开始使用" };
 }
 
 function supportedFormats(item) {
-  if (item.id === "developer") return ["md"];
   if (item.id === "presentation") return ["pptx", "pdf", "html", "json", "md"];
   if (["research", "marketBrief", "thinking", "product", "business", "market", "ability"].includes(item.id)) return ["html", "pdf", "doc", "json", "md"];
   if (item.id === "web") return ["html", "pdf", "md", "json"];
@@ -256,9 +198,9 @@ function renderFormatOptions(item) {
   const select = $("#formatSelect");
   const previous = select.value;
   const formats = supportedFormats(item);
-  select.innerHTML = formats.map((format) => `<option value="${format}">${item.id === "developer" ? "项目修改、可运行结果与验证记录" : FORMAT_LABELS[format]}</option>`).join("");
+  select.innerHTML = formats.map((format) => `<option value="${format}">${FORMAT_LABELS[format]}</option>`).join("");
   select.value = formats.includes(previous) ? previous : item.format;
-  select.disabled = item.id === "developer";
+  select.disabled = false;
 }
 
 async function api(path, options = {}) {
@@ -281,7 +223,7 @@ function showToast(message, error = false) {
 
 function renderCatalog() {
   const root = $("#capabilityGrid");
-  root.innerHTML = CATALOG.slice(0, 20).map((item) => `
+  root.innerHTML = window.ClownfishWorkflowCatalog.tools.map((item) => `
     <button class="cap-card${item.id === state.selectedId ? " is-selected" : ""}" type="button" data-capability="${item.id}" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">
       <span class="cap-icon" aria-hidden="true">${iconSvg(item.icon)}</span>
       <strong>${item.name}</strong>
@@ -299,17 +241,16 @@ function renderExecutionState() {
   const hasInstruction = quick
     ? item.id === "speech" ? Boolean($("#quickSpeechFile").files?.[0]) : Boolean($("#quickInput").value.trim())
     : Boolean($("#goalInput").value.trim() || $("#instructionInput").value.trim());
-  const hasWorkspace = item.id !== "developer" || Boolean($("#workspaceInput").value.trim());
-  button.disabled = !status.ready || !hasInstruction || !hasWorkspace;
+  button.disabled = Boolean(state.preparingMaterials || state.receivingMaterials) || !status.ready || !hasInstruction;
   const quickAction = { translate: "开始翻译", speech: "开始转写", polish: "开始润色" }[item.id] || "开始处理";
-  button.textContent = !status.ready ? status.action : !hasInstruction ? (item.id === "speech" ? "先选择文件或开始录音" : "先输入要处理的文字") : !hasWorkspace ? "先填写项目文件夹" : quick ? quickAction : item.id === "developer" ? ($("#accessModeSelect").value === "inspect" ? "让小丑鱼开始检查" : "让小丑鱼开始开发") : "开始执行";
+  button.textContent = !status.ready ? status.action : !hasInstruction ? (item.id === "speech" ? "先选择文件或开始录音" : "先输入要处理的文字") : quick ? quickAction : "开始执行";
   $(".run-note").textContent = !status.ready
     ? (quick ? "请先在设置中完成对应服务配置。" : "请先在设置中配置模型；任务不会用离线回声生成假结果。")
-    : hasInstruction && hasWorkspace
+    : hasInstruction
       ? (quick ? "处理完成后可直接复制或保存结果。" : "任务会在后台继续；离开此页后，可在“进行中”查看。")
       : quick
         ? (item.id === "speech" ? "选择音频、视频，或直接开始录音。" : "输入文字后即可开始处理。")
-        : item.id === "developer" && !hasWorkspace ? "填写要处理的本地项目文件夹。" : "填写任务要求后即可开始。";
+        : "填写任务要求后即可开始。";
 }
 
 function selectCapability(id) {
@@ -343,7 +284,6 @@ async function recommendCapability(goal) {
       body: JSON.stringify({
         goal,
         materialNames: state.materials.map((item) => item.name),
-        workspacePath: $("#workspaceInput")?.value || "",
       }),
     });
     const result = await response.json();
@@ -362,9 +302,12 @@ function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
     if (quick && item.id !== "speech" && !$("#quickInput").value.trim()) $("#quickInput").value = goal;
     if (!quick && !$("#instructionInput").value.trim()) $("#instructionInput").value = goal;
   }
-  $("#launchTitle").textContent = item.name;
+  const workflow = window.ClownfishWorkflowCatalog.resolve(item.id);
+  $("#workflowBotContext").hidden = !workflow;
+  $("#workflowBotName").textContent = workflow ? workflow.name + " · 执行技能" : "";
+  $("#launchTitle").textContent = workflow?.name || item.name;
   $("#launchSummary").textContent = item.summary;
-  $("#instructionLabel").textContent = item.id === "developer" ? "想让小丑鱼完成什么" : "任务要求";
+  $("#instructionLabel").textContent = "任务要求";
   $("#instructionInput").placeholder = EXAMPLE_PROMPTS[item.id] || "说清楚要完成什么，也可以补充受众、重点、语气或格式";
   $("#standardTaskFields").hidden = quick;
   $("#quickAbilityFields").hidden = !quick;
@@ -374,12 +317,10 @@ function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
     $("#quickInputLabel").textContent = item.id === "translate" ? "需要翻译的文字" : "需要润色的文字";
     $("#quickInput").placeholder = EXAMPLE_PROMPTS[item.id];
   }
-  $("#developerFields").hidden = item.id !== "developer";
-  $("#formatField").hidden = item.id === "developer" || quick;
-  $("#materialDrop").hidden = item.id === "developer" || quick;
-  $("#materialList").hidden = item.id === "developer" || quick;
-  $("#advancedSettings").hidden = item.id === "developer" || quick;
-  $("#launchPanel").classList.toggle("is-developer", item.id === "developer");
+  $("#formatField").hidden = quick;
+  $("#materialDrop").hidden = quick;
+  $("#materialList").hidden = quick;
+  $("#advancedSettings").hidden = quick;
   $("#launchPanel").classList.toggle("is-quick", quick);
   renderFormatOptions(item);
   $("#formatSelect").value = item.format;
@@ -398,6 +339,7 @@ function openCapability(goal = $("#goalInput").value.trim(), options = {}) {
 }
 
 function closeCapability() {
+  $("#workflowBotContext").hidden = true;
   $("#launchPanel").hidden = true;
   $(".start-wrap").classList.remove("is-launching");
   window.scrollTo({ top: 0, behavior: "auto" });
@@ -412,8 +354,9 @@ function updateLaunchState() {
 }
 
 function renderMaterials() {
+  if ($("#materialStatus")) $("#materialStatus").textContent = "";
   $("#materialList").innerHTML = state.materials.map((file, index) => `
-    <div class="material-item"><span>${escapeHtml(file.name)} · ${Math.max(1, Math.round(file.size / 1024))} KB</span><button type="button" data-remove-material="${index}" aria-label="移除 ${escapeHtml(file.name)}">移除</button></div>`).join("");
+    <div class="material-item"><span>${escapeHtml(file.name)} · ${Math.max(1, Math.round(file.size / 1024))} KB${file.pending ? (file.file ? " · 开始执行时读取" : " · 需重新选择文件") : ""}</span><button type="button" data-remove-material="${index}" aria-label="移除 ${escapeHtml(file.name)}">移除</button></div>`).join("");
   $$('[data-remove-material]').forEach((button) => button.addEventListener("click", () => {
     state.materials.splice(Number(button.dataset.removeMaterial), 1);
     renderMaterials();
@@ -423,43 +366,17 @@ function renderMaterials() {
 }
 
 async function addMaterial(file) {
-  if (!file) return;
-  const isText = /\.(txt|md|markdown|json|html?|htm)$/i.test(file.name);
-  const isOffice = /\.(doc|docx|docm|odt|rtf|epub|ppt|pps|pot|pptx|pptm|ppsx|ppsm|odp|xls|xlsx|xlsm|xlsb|ods|csv|pdf)$/i.test(file.name);
-  if (!isText && !isOffice) return showToast("支持文字、常见文档、演示文稿、表格、PDF 和 EPUB 材料", true);
-  if (isText && file.size > 1024 * 1024) return showToast("文字材料不能超过 1 MB", true);
-  if (isOffice && file.size > 8 * 1024 * 1024) return showToast("办公文件不能超过 8 MB", true);
+  if (state.preparingMaterials || state.receivingMaterials) return;
+  const files = Array.isArray(file) ? file : file ? [file] : [];
+  if (!files.length) return;
   try {
-    showToast(isOffice ? "正在读取办公文件…" : "正在读取材料…");
-    let text = "";
-    let kind = "text";
-    if (isText) {
-      text = await file.text();
-    } else {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let binary = "";
-      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-      }
-      const response = await api("/api/files/extract", {
-        method: "POST",
-        body: JSON.stringify({ name: file.name, dataBase64: btoa(binary) }),
-      });
-      text = response.extraction?.text || "";
-      kind = response.extraction?.kind || "office";
-    }
-    state.materials = [{ name: file.name, size: file.size, text, kind }];
+    if (state.materials.length + files.length > 8) throw Error("最多添加 8 个附件");
+    const pending = files.map(window.ClownfishPendingMaterials.pending);
+    state.materials.push(...pending);
     renderMaterials();
     saveDraft();
-    showToast(responseMessageForMaterial(isOffice, text));
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : "文件读取失败", true);
-  }
-}
-
-function responseMessageForMaterial(isOffice, text) {
-  if (!isOffice) return "材料已加入";
-  return text.includes("[内容较长") ? "文件较长，已读取可处理的前半部分" : "办公文件已读取，可以开始执行";
+    showToast("附件已加入，开始执行时读取正文");
+  } catch (error) { showToast(error.message || "添加附件失败", true); }
 }
 
 function saveDraft() {
@@ -472,9 +389,7 @@ function saveDraft() {
     selectedId: state.selectedId,
     format: $("#formatSelect").value,
     memoryMode: $("#memoryToggle").checked ? "preferences" : "off",
-    materials: state.materials,
-    workspacePath: $("#workspaceInput").value,
-    accessMode: $("#accessModeSelect").value,
+    materials: window.ClownfishPendingMaterials.saved(state.materials),
     parentJobId: state.parentJobId,
     continuationTaskId: state.continuationTaskId,
     handoffChain: state.handoffChain,
@@ -518,7 +433,6 @@ function draftHasWork(draft) {
     || String(draft?.instruction || "").trim()
     || String(draft?.quickInput || "").trim()
     || String(draft?.quickResult || "").trim()
-    || String(draft?.workspacePath || "").trim()
     || (Array.isArray(draft?.materials) && draft.materials.length)
     || String(draft?.handoffSummary || "").trim()
     || (Array.isArray(draft?.handoffConversation) && draft.handoffConversation.length)
@@ -591,8 +505,6 @@ function restoreDraftById(id) {
   $("#quickResult").value = draft.quickResult || "";
   $("#quickResultWrap").hidden = !String(draft.quickResult || "").trim();
   $("#memoryToggle").checked = draft.memoryMode !== "off";
-  $("#workspaceInput").value = draft.workspacePath || "";
-  setDevelopmentMode(draft.accessMode, false);
   state.parentJobId = detachedFromChat ? "" : String(draft.parentJobId || "");
   state.continuationTaskId = detachedFromChat ? "" : String(draft.continuationTaskId || "");
   state.handoffChain = Array.isArray(draft.handoffChain) ? draft.handoffChain.slice(0, 12) : [];
@@ -627,8 +539,6 @@ function resetDraft(options = {}) {
   $("#quickResult").value = "";
   $("#quickResultWrap").hidden = true;
   $("#quickStatus").textContent = "";
-  $("#workspaceInput").value = "";
-  setDevelopmentMode("develop", false);
   state.materials = [];
   state.handoffContext = "";
   state.handoffSummary = "";
@@ -830,21 +740,30 @@ async function toggleQuickRecording() {
 }
 
 async function startTask() {
+  if (state.preparingMaterials || state.receivingMaterials) return;
   const item = selectedCapability();
   if (isQuickTool(item)) return runQuickAbility();
   const goal = $("#goalInput").value.trim();
   const details = $("#instructionInput").value.trim();
   const instruction = details || goal;
   if (!instruction) return showToast("先写下想完成的事情", true);
-  if (item.id === "developer" && !$("#workspaceInput").value.trim()) return showToast("先填写项目文件夹", true);
-  if (item.id === "developer") rememberWorkspace($("#workspaceInput").value);
   if (!isAvailable(item)) return showToast(availability(item).action, true);
   const button = $("#startTask");
   button.disabled = true;
-  button.textContent = item.id === "developer" ? "正在理解项目…" : "正在加入任务…";
+  button.textContent = "正在加入任务…";
+  state.preparingMaterials = true;
+  if ($("#materialStatus")) $("#materialStatus").textContent = "正在读取附件，请稍候…";
+  const originalMaterials = state.materials.slice();
+  const originalId = state.selectedId;
+  const panel = $("#launchPanel");
+  if (panel) panel.inert = true;
+  try {
+  const prepared = await window.ClownfishPendingMaterials.prepare(originalMaterials);
+  if (state.selectedId !== originalId || $("#goalInput").value.trim() !== goal || $("#instructionInput").value.trim() !== details || state.materials.length !== originalMaterials.length || state.materials.some((file, index) => file !== originalMaterials[index])) throw Error("准备内容已改变，请检查后重新开始");
+  if (prepared.reduce((sum, file) => sum + String(file.text || "").length, 0) > 24000) throw Error("附件正文超过 24000 字符，请减少附件或拆分任务");
   const hasHandoff = state.handoffSource === "capability" && Boolean(state.handoffSummary || state.handoffConversation.length || state.parentJobId);
-  const materials = !hasHandoff && state.materials.length
-    ? `\n\n用户提供的材料：\n${state.materials.map((item) => `--- ${item.name} ---\n${item.text}`).join("\n\n")}`
+  const materials = !hasHandoff && prepared.length
+    ? `\n\n用户提供的材料：\n${prepared.map((item) => `--- ${item.name} ---\n${item.text}`).join("\n\n")}`
     : "";
   const handoff = hasHandoff ? {
     source: "capability",
@@ -854,11 +773,10 @@ async function startTask() {
     goal,
     summary: state.handoffSummary,
     conversation: state.handoffConversation,
-    materials: state.materials,
+    materials: prepared,
     decisions: [], constraints: [], unresolved: [],
     chain: state.handoffChain,
   } : undefined;
-  try {
     const response = await api("/api/agent/job", {
       method: "POST",
       body: JSON.stringify({
@@ -871,8 +789,6 @@ async function startTask() {
         handoff,
         conversationKey: "",
         continuationTaskId: state.continuationTaskId,
-        workspacePath: item.id === "developer" ? $("#workspaceInput").value.trim() : "",
-        accessMode: item.id === "developer" && $("#accessModeSelect").value === "inspect" ? "inspect" : "develop",
         parentJobId: state.parentJobId,
         handoffChain: [...state.handoffChain, item.backendId].slice(-12),
         format: $("#formatSelect").value,
@@ -886,10 +802,13 @@ async function startTask() {
     resetDraft({ removeRecord: true });
     await refreshData();
     openConversation(state.activeConversationTaskId, state.activeConversationJobId);
-    showToast("已在能力页新建对话");
+    showToast("任务已提交，可在流程与工具记录中继续查看");
   } catch (error) {
     showToast(error.message || "任务未能开始", true);
+    if ($("#materialStatus")) $("#materialStatus").textContent = error.message || "任务未能开始，附件已保留";
   } finally {
+    state.preparingMaterials = false;
+    if (panel) panel.inert = false;
     renderExecutionState();
   }
 }
@@ -938,43 +857,8 @@ function jobMemoryUsage(job) {
   return `<details class="task-memory"><summary>本次使用了 ${preferences.length} 条习惯</summary><ul>${preferences.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></details>`;
 }
 
-function developmentProposalActions(artifact) {
-  const proposal = artifact?.metadata?.development?.proposal;
-  if (!proposal) return "";
-  const preview = `<a href="/development?id=${encodeURIComponent(proposal.id)}">审阅修改</a>`;
-  if (proposal.state === "pending") return `${preview}<button type="button" data-apply-proposal="${escapeHtml(proposal.id)}">应用修改</button><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
-  if (proposal.state === "conflicted") return `${preview}<span class="proposal-state">项目已变化，未覆盖</span><button type="button" data-reject-proposal="${escapeHtml(proposal.id)}">放弃</button>`;
-  if (proposal.state === "applied") return `<span class="proposal-state">修改已应用</span>${preview}`;
-  if (proposal.state === "rejected") return `<span class="proposal-state">提案已放弃</span>`;
-  if (proposal.state === "failed") return `<span class="proposal-state">提案生成失败</span>`;
-  return preview;
-}
-
 function artifactProofLabel(artifact) {
   return ({ produced: "已生成", validated: "已校验", verified: "已核验", approved: "已确认" })[artifact?.proof?.level] || "未检查";
-}
-function developmentProgress(job, item, progress) {
-  if (item.id !== "developer") return "";
-  const labels = job.payload?.accessMode === "inspect"
-    ? ["理解项目", "检查问题", "核对证据", "整理结论"]
-    : ["理解项目", "完成修改", "运行检查", "交付结果"];
-  const current = job.status === "queued" ? 0 : Math.min(3, Math.max(0, Math.floor(progress / 25)));
-  return `<div class="development-steps" aria-label="开发进度">${labels.map((label, index) => `<span class="development-step${index < current ? " is-done" : index === current ? " is-current" : ""}">${escapeHtml(label)}</span>`).join("")}</div>`;
-}
-
-function developmentReceipt(artifact) {
-  const receipt = artifact?.metadata?.development;
-  if (!receipt) return "";
-  const files = (receipt.proposal?.files || receipt.changedFiles || []).map((item) => typeof item === "string" ? item : item.path).filter(Boolean);
-  const checks = Array.isArray(receipt.checks) ? receipt.checks : [];
-  const passed = checks.filter((check) => check.passed).length;
-  const risks = Array.isArray(receipt.unverifiedRisks) ? receipt.unverifiedRisks.filter(Boolean) : [];
-  const mode = receipt.accessMode === "inspect" ? "只读检查" : "修改提案";
-  return `<section class="development-receipt" aria-label="开发结果摘要">
-    <div class="development-receipt-summary"><span>${mode}</span><span>${files.length} 个文件</span><span>${checks.length ? `${passed}/${checks.length} 项检查通过` : "未运行自动检查"}</span></div>
-    ${files.length ? `<ul class="development-file-list">${files.slice(0, 8).map((file) => `<li title="${escapeHtml(file)}">${escapeHtml(file)}</li>`).join("")}${files.length > 8 ? `<li>另有 ${files.length - 8} 个文件</li>` : ""}</ul>` : ""}
-    ${risks.length ? `<p class="development-risk">仍需注意：${escapeHtml(risks[0])}${risks.length > 1 ? `，另有 ${risks.length - 1} 项` : ""}</p>` : ""}
-  </section>`;
 }
 function capabilityJobs() {
   return state.jobs.filter((job) => job.type === "capability-adhoc" && job.payload?.surface === "capabilities");
@@ -1088,14 +972,14 @@ function renderActiveConversation() {
     const running = job.status === "queued" || job.status === "running";
     const assistant = running
       ? `<div class="capability-message assistant is-running"><span class="message-author">小丑鱼 · ${escapeHtml(STATUS_TEXT[job.status])}</span><p>${escapeHtml(latestCheckpoint(job)?.status || "正在处理你的要求…")}</p></div>`
-      : `<div class="capability-message assistant"><span class="message-author">小丑鱼</span><div class="message-copy">${escapeHtml(resultText(job, artifact)).replace(/\n/g, "<br>") || "本轮没有生成可显示的文字。"}</div>${artifact ? `<div class="message-artifact">${artifactLinks(artifact)}</div>${developmentReceipt(artifact)}` : ""}</div>`;
+      : `<div class="capability-message assistant"><span class="message-author">小丑鱼</span><div class="message-copy">${escapeHtml(resultText(job, artifact)).replace(/\n/g, "<br>") || "本轮没有生成可显示的文字。"}</div>${artifact ? `<div class="message-artifact">${artifactLinks(artifact)}</div>` : ""}</div>`;
     return `<div class="capability-message user"><span class="message-author">你</span><div class="message-copy">${escapeHtml(String(job.payload?.instruction || "")).replace(/\n/g, "<br>")}</div></div>${assistant}`;
   }).join("") || '<div class="capability-thread-empty">这条对话还没有内容。</div>';
   const running = jobs.some((job) => job.status === "queued" || job.status === "running");
   $("#capabilityThreadForm").hidden = archived;
   $("#capabilityThreadInput").disabled = running || !task || archived;
   $("#capabilityThreadForm").querySelector('button[type="submit"]').disabled = running || !task || archived;
-  $("#capabilityThreadStatus").textContent = archived ? "这条对话已归档，恢复后可以继续。" : running ? "小丑鱼正在处理，完成后可以继续追问。" : "对话只保留在能力页，直到你主动归档。";
+  $("#capabilityThreadStatus").textContent = archived ? "这条对话已归档，恢复后可以继续。" : running ? "小丑鱼正在处理，完成后可以继续追问。" : "任务与成果保留在流程与工具记录中，直到你主动归档。";
   const messages = $("#capabilityThreadMessages");
   messages.scrollTop = messages.scrollHeight;
 }
@@ -1114,12 +998,6 @@ async function continueCapabilityConversation(instruction) {
       capabilityId: task.capabilityId,
       instruction,
       continuationTaskId: task.id,
-      workspacePath: String(task.workspace?.path || previous?.payload?.workspacePath || ""),
-      accessMode: task.workspace?.accessMode || previous?.payload?.accessMode || "develop",
-      developmentEngine: task.workspace?.developmentEngine || previous?.payload?.developmentEngine,
-      model: task.workspace?.model || previous?.payload?.model,
-      reasoning: task.workspace?.reasoning || previous?.payload?.reasoning,
-      approvalPolicy: task.workspace?.approvalPolicy || previous?.payload?.approvalPolicy,
       format: task.format,
       memoryMode: previous?.payload?.memoryMode || "preferences",
       idempotencyKey: `capability-conversation-${crypto.randomUUID()}`,
@@ -1218,41 +1096,12 @@ function renderHistory() {
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
       <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p>${jobMemoryUsage(job)}</div>
-      ${developmentReceipt(artifact)}
-      <div class="task-actions">${job.status === "succeeded" ? `${item.id === "developer" ? `<button type="button" data-revise-job="${escapeHtml(job.id)}">继续调整</button>` : ""}<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${developmentProposalActions(artifact)}${open}</div>
+      <div class="task-actions">${job.status === "succeeded" ? `<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${open}</div>
     </article>`;
   }).join("");
   $('[data-handoff-job]').forEach((button) => button.addEventListener("click", () => handoffJob(button.dataset.handoffJob)));
-  $('[data-revise-job]').forEach((button) => button.addEventListener("click", () => continueDevelopment(button.dataset.reviseJob)));
-  $('[data-apply-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.applyProposal, "apply")));
-  $('[data-reject-proposal]').forEach((button) => button.addEventListener("click", () => decideDevelopmentProposal(button.dataset.rejectProposal, "reject")));
 }
 
-async function decideDevelopmentProposal(id, action) {
-  const applying = action === "apply";
-  if (!window.confirm(applying ? "确认应用这份修改？小丑鱼会先检查项目是否发生变化。" : "确认放弃这份修改提案？项目文件不会改变。")) return;
-  try {
-    await api(`/api/development/proposal/${action}`, { method: "POST", body: JSON.stringify({ id }) });
-    await refreshData();
-    showToast(applying ? "修改已应用到项目" : "修改提案已放弃");
-  } catch (error) {
-    await refreshData();
-    showToast(error.message || "操作未完成", true);
-  }
-}
-
-async function continueDevelopment(id) {
-  const job = state.jobs.find((item) => item.id === id);
-  if (!job) return showToast("没有找到这次开发记录", true);
-  await handoffJob(id);
-  selectCapability("developer");
-  $("#workspaceInput").value = String(job.payload?.workspacePath || "");
-  $("#instructionInput").value = "";
-  $("#instructionInput").placeholder = "继续告诉小丑鱼要调整什么，例如：按钮还是会抖动，请检查原因并修复";
-  setDevelopmentMode(job.payload?.accessMode, false);
-  openCapability("", { focusInput: true });
-  saveDraft();
-}
 async function handoffJob(id) {
   const job = state.jobs.find((item) => item.id === id);
   const artifact = artifactFromJob(job || {});
@@ -1294,7 +1143,7 @@ function openView(view, updateUrl = true) {
   const viewTitle = $("#capabilityViewTitle");
   if (viewTitle) viewTitle.textContent = "能力";
   if (updateUrl || archiveRequested) history.replaceState(null, "", location.pathname);
-  document.title = "能力 · 小丑鱼";
+  document.title = "工具与连接 · 小丑鱼";
   window.scrollTo({ top: 0, behavior: "auto" });
   if (archiveRequested) $("#capabilityArchiveSection")?.scrollIntoView({ block: "nearest" });
 }
@@ -1428,21 +1277,6 @@ async function applyChatHandoff() {
   if (goal) openCapability(goal);
 }
 
-async function applyDevelopmentContinuation() {
-  const proposalId = new URLSearchParams(location.search).get("continueProposal");
-  if (!proposalId) return;
-  try {
-    const data = await api(`/api/development/proposal?id=${encodeURIComponent(proposalId)}`);
-    selectCapability("developer");
-    $("#workspaceInput").value = String(data.proposal?.workspacePath || "");
-    $("#instructionInput").value = "";
-    $("#instructionInput").placeholder = "说明还需要调整什么，或粘贴刚才检查中发现的问题";
-    setDevelopmentMode("develop", false);
-    openCapability("", { focusInput: true });
-    history.replaceState(null, "", "/capabilities#start");
-  } catch (error) { showToast(`无法继续这次项目任务：${error.message}`, true); }
-}
-
 function bindEvents() {
   $("#capabilityArchiveToggle").addEventListener("click", () => {
     const list = $("#capabilityArchiveList");
@@ -1484,18 +1318,9 @@ function bindEvents() {
   $("#quickRecord").addEventListener("click", toggleQuickRecording);
   $("#quickCopy").addEventListener("click", () => copyQuickResult().catch((error) => showToast(error.message || "复制失败", true)));
   $("#quickDownload").addEventListener("click", downloadQuickResult);
-  $("#workspaceInput").addEventListener("input", () => { updateLaunchState(); saveDraft(); });
-  $("#useRecentWorkspace").addEventListener("click", () => {
-    const path = recentWorkspaces()[0];
-    if (!path) return;
-    $("#workspaceInput").value = path;
-    updateLaunchState();
-    saveDraft();
-  });
-  $$('[data-access-mode]').forEach((button) => button.addEventListener("click", () => setDevelopmentMode(button.dataset.accessMode)));
   $("#formatSelect").addEventListener("change", saveDraft);
   $("#memoryToggle").addEventListener("change", saveDraft);
-  $("#materialInput").addEventListener("change", async (event) => { await addMaterial(event.target.files?.[0]); event.target.value = ""; });
+  $("#materialInput").addEventListener("change", async (event) => { await addMaterial([...event.target.files]); event.target.value = ""; });
   $("#startTask").addEventListener("click", startTask);
   $("#memoryHelp").addEventListener("click", () => $("#memoryDialog").showModal());
   window.addEventListener("hashchange", () => openView(location.hash.slice(1) || "start", false));
@@ -1518,16 +1343,42 @@ function bindEvents() {
 }
 
 async function init() {
+  const requestedBot = new URLSearchParams(location.search).get("bot");
   renderStaticIcons();
   sessionStorage.removeItem(HANDOFF_KEY);
   migrateLegacyDraft();
   bindEvents();
-  renderRecentWorkspaces();
   renderCatalog();
   renderMaterials();
   renderDraftList();
   openView(location.hash.slice(1) || "start", false);
   await refreshData();
+  if (requestedBot) {
+    const workflow = window.ClownfishWorkflowCatalog.resolve(requestedBot);
+    if (workflow) {
+      selectCapability(workflow.id); openCapability("", { focusInput: true });
+      const token=new URLSearchParams(location.search).get("transfer");
+      if(token&&window.ClownfishSkillHandoff){
+        try{
+          const payload=window.ClownfishSkillHandoff.take(sessionStorage,token,workflow.id,window.ClownfishWorkflowCatalog);
+          if($("#instructionInput").value.trim() || state.materials.length)throw Error("准备页已有内容，未覆盖；请回到原任务核对");
+          state.receivingMaterials=true;
+          const panel=$("#launchPanel"); if(panel)panel.inert=true;
+          updateLaunchState();
+          const files=payload.fileCount ? await window.ClownfishSkillFiles.receive(token,payload.fileCount) : [];
+          if($("#instructionInput").value.trim() || state.materials.length)throw Error("准备页已有内容，未覆盖；请回到原任务核对");
+          state.materials=files.map(window.ClownfishPendingMaterials.pending);
+          renderMaterials();
+          $("#instructionInput").value=payload.instruction;$("#memoryToggle").checked=false;
+          updateLaunchState();
+          showToast("已带入任务与附件，未读取正文、未开始执行。请确认工具与模型设置。",false);
+        }catch(error){showToast(error.message,true);if($("#materialStatus"))$("#materialStatus").textContent=error.message;}
+        finally{state.receivingMaterials=false;const panel=$("#launchPanel");if(panel)panel.inert=false;updateLaunchState();}
+        const url=new URL(location.href);url.searchParams.delete("transfer");history.replaceState(null,"",url.pathname+url.search+url.hash);
+      }
+    }
+    else showToast("未找到这项执行技能，请返回技能库重新选择。", true);
+  }
   state.pollTimer = window.setInterval(refreshData, 4000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshData();

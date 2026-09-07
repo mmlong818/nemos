@@ -42,7 +42,7 @@ export interface DependencyArtifact {
 const CONTRACTS: ExpertExecutionContract[] = [
   {
     personaId: "system_architecture",
-    capabilityIds: ["project-development", "product-design"],
+    capabilityIds: ["product-design"],
     scenario: /架构|系统|数据流|接口|API|数据库|权限|安全|性能|扩展|迁移/i,
     tools: ["项目文件读取", "代码搜索", "依赖与配置检查"],
     workflow: ["确认系统边界和状态来源", "检查关键数据流、权限与失败路径", "给出最小可靠结构和验证点"],
@@ -52,7 +52,7 @@ const CONTRACTS: ExpertExecutionContract[] = [
   },
   {
     personaId: "lean_engineering",
-    capabilityIds: ["project-development"],
+    capabilityIds: [],
     scenario: /开发|实现|代码|重构|修复|性能|依赖|工程|最小方案/i,
     tools: ["项目文件读写", "代码搜索", "构建与测试"],
     workflow: ["明确当前成功标准", "定位最小可行修改面", "检查实现复杂度并提出可执行方案"],
@@ -62,7 +62,7 @@ const CONTRACTS: ExpertExecutionContract[] = [
   },
   {
     personaId: "quality_testing",
-    capabilityIds: ["project-development", "product-design", "presentation-builder", "document-draft", "document-conversion"],
+    capabilityIds: ["product-design", "presentation-builder", "document-draft", "document-conversion"],
     scenario: /测试|质量|验收|错误|故障|边界|稳定|恢复|真实检查|下载|上传/i,
     tools: ["测试运行", "产物读取", "真实用户路径检查"],
     workflow: ["确认最重要的用户承诺", "覆盖核心、边界和失败恢复场景", "记录可复现证据和剩余风险"],
@@ -72,7 +72,7 @@ const CONTRACTS: ExpertExecutionContract[] = [
   },
   {
     personaId: "release_operations",
-    capabilityIds: ["project-development"],
+    capabilityIds: [],
     scenario: /发布|部署|上线|构建|打包|安装|升级|回滚|备份|远端|Git/i,
     tools: ["构建与测试", "版本状态检查", "发布前安全检查"],
     workflow: ["检查构建、配置和依赖", "定义发布验证与回滚路径", "核对敏感信息和最终版本状态"],
@@ -272,7 +272,7 @@ const CONTRACTS: ExpertExecutionContract[] = [
   },
   {
     personaId: "security_compliance",
-    capabilityIds: ["project-development", "document-conversion", "workflow-builder", "operator-workflow"],
+    capabilityIds: ["document-conversion", "workflow-builder", "operator-workflow"],
     scenario: /安全|隐私|权限|密钥|令牌|凭证|泄露|合规|删除|发布|上传|外发|审计/i,
     tools: ["项目与配置检查", "敏感信息扫描", "权限和审计记录检查"],
     workflow: ["列出资产、信任边界和高风险动作", "检查输入、权限、密钥、日志和外发路径", "按严重性给出修复与验证"],
@@ -303,7 +303,6 @@ const CONTRACTS: ExpertExecutionContract[] = [
 ];
 
 const DEFAULT_TEAMS: Record<string, string[]> = {
-  "project-development": ["system_architecture", "lean_engineering", "quality_testing"],
   "research-brief": ["research_verification", "industry_analysis", "first_principles", "decision_analysis"],
   "source-finder": ["research_verification", "industry_analysis", "first_principles"],
   "market-opportunity": ["startup_validation", "industry_analysis", "long_term_strategy", "decision_analysis"],
@@ -375,9 +374,7 @@ export function planExpertTeam(input: { capabilityId: string; instruction: strin
   const assignments = selected.map<ExpertAssignmentPlan>((contract) => ({
     personaId: contract.personaId,
     responsibility: RESPONSIBILITIES[contract.personaId] ?? contract.deliverable,
-    capabilityId: input.capabilityId === "project-development" && contract.capabilityIds.includes("project-development")
-      ? "project-development"
-      : contract.capabilityIds.includes("research-brief") && /研究|核验|来源|市场|行业|竞品/i.test(input.instruction)
+    capabilityId: contract.capabilityIds.includes("research-brief") && /研究|核验|来源|市场|行业|竞品/i.test(input.instruction)
         ? "research-brief"
         : "decision-brief",
     format: contract.capabilityIds.includes("research-brief") ? "html" : "md",
@@ -466,7 +463,6 @@ export function dependencyArtifactBlock(
 
 function teamReason(capabilityId: string, count: number): string {
   const labels: Record<string, string> = {
-    "project-development": "开发任务需要工程、质量与必要的发布检查",
     "research-brief": "研究任务需要来源核验、假设检查和决策复核",
     "product-design": "产品设计需要同时检查价值、路径、界面和状态",
     "presentation-builder": "演示交付需要同时检查叙事、版式和受众表达",

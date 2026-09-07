@@ -5,10 +5,58 @@ import type { AgentTool } from "../../src/index.js";
 import { resolveLLM } from "../../examples/companion/llm.js";
 import {
   dailyChatModelForConnection,
+  fetchCompanionModelCatalog,
   modelConnectionEndpoint,
   normalizeCompanionModelConnection,
   selectCompanionConversationModel,
 } from "../../examples/companion/model-connection.js";
+
+test("model catalog fetch uses provider authentication and puts the newest chat model first", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.openai.com/v1/models");
+    assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer test-key");
+    return Response.json({ data: [
+      { id: "gpt-5.5", created: 100 },
+      { id: "text-embedding-4", created: 400 },
+      { id: "gpt-5.7", created: 300 },
+      { id: "gpt-5.6", created: 200 },
+    ] });
+  };
+  try {
+    const models = await fetchCompanionModelCatalog(normalizeCompanionModelConnection({
+      provider: "openai",
+      apiKey: "test-key",
+    }));
+    assert.deepEqual(models.map((item) => item.id), ["gpt-5.7", "gpt-5.6", "gpt-5.5"]);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("Anthropic model catalog uses its native headers and parses creation dates", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.anthropic.com/v1/models?limit=1000");
+    const headers = init?.headers as Record<string, string>;
+    assert.equal(headers["x-api-key"], "anthropic-test-key");
+    assert.equal(headers["anthropic-version"], "2023-06-01");
+    return Response.json({ data: [
+      { id: "claude-old", created_at: "2025-01-01T00:00:00Z" },
+      { id: "claude-new", created_at: "2026-01-01T00:00:00Z", display_name: "Claude New" },
+    ] });
+  };
+  try {
+    const models = await fetchCompanionModelCatalog(normalizeCompanionModelConnection({
+      provider: "anthropic",
+      apiKey: "anthropic-test-key",
+    }));
+    assert.equal(models[0]?.id, "claude-new");
+    assert.equal(models[0]?.displayName, "Claude New");
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
 
 test("model connection applies provider presets and protects remote transport", () => {
   const connection = normalizeCompanionModelConnection({

@@ -21,10 +21,11 @@ test("English capability prompts use task mode and its long-output budget", asyn
   let observed: {
     system?: string;
     maxTokens?: number;
+    model?: string;
     context?: ChatAgentContext;
   } = {};
-  const chat: ChatFn = async (system, _user, _model, maxTokens, context) => {
-    observed = { system, maxTokens, context };
+  const chat: ChatFn = async (system, _user, model, maxTokens, context) => {
+    observed = { system, model, maxTokens, context };
     return "done";
   };
   const memory = new Nemos({
@@ -48,12 +49,17 @@ test("English capability prompts use task mode and its long-output budget", asyn
       "Target artifact format: HTML",
       "Execution requirements:",
       "Return the completed structured result.",
-    ].join("\n"), { memoryMode: "off" });
+    ].join("\n"), { memoryMode: "off", model: "task-selected", toolMode: "off" });
 
     assert.match(observed.system ?? "", /Task delivery mode/);
     assert.doesNotMatch(observed.system ?? "", /角色近况不能进入能力任务/);
     assert.equal(observed.maxTokens, 6000);
     assert.equal(observed.context?.mode, "task");
+    assert.equal(observed.model, "task-selected");
+    assert.equal(observed.context?.toolMode, "off");
+    await engine.notifyStream("me", "clownfish", "Run a backend capability. Execution requirements: produce text.", { onToken: () => {}, onStatus: () => {} }, { model: "stream-selected", toolMode: "read-only" });
+    assert.equal(observed.model, "stream-selected");
+    assert.equal(observed.context?.toolMode, "read-only");
   } finally {
     memory.close();
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

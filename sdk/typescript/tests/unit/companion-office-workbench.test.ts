@@ -1,16 +1,18 @@
+import { readAppHtml } from "../fixtures/render-app-page.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { appRoute } from "../../examples/companion/app-navigation.js";
 
 const companionRoot = join(__dirname, "..", "..", "examples", "companion");
 const webRoot = join(companionRoot, "web");
-const officeHtml = readFileSync(join(webRoot, "office.html"), "utf8");
+const officeHtml = readAppHtml("office.html");
 const officeJs = readFileSync(join(webRoot, "assets", "office-workbench.js"), "utf8");
 const officeSourceJs = readFileSync(join(webRoot, "assets", "office-source-preview.js"), "utf8");
 const officeCss = readFileSync(join(webRoot, "assets", "office-workbench.css"), "utf8");
-const capabilityHtml = readFileSync(join(webRoot, "capabilities.html"), "utf8");
-const chatHtml = readFileSync(join(webRoot, "index.html"), "utf8");
+const capabilityHtml = readAppHtml("capabilities.html");
+const chatHtml = readAppHtml("index.html");
 const server = readFileSync(join(companionRoot, "server.ts"), "utf8");
 
 test("Word 转换副本使用文档式编辑器而不是 Markdown 三栏源码界面", () => {
@@ -43,17 +45,18 @@ test("Word 转换副本使用文档式编辑器而不是 Markdown 三栏源码�
 });
 
 test("办公文件工作台拥有独立入口且三个主界面导航一致", () => {
-  assert.match(server, /pathname === "\/office"/);
-  assert.match(chatHtml, /id="railOffice"[^>]+data-app-icon="file"/);
+  assert.equal(appRoute("/office")?.file, "office.html");
+  assert.match(chatHtml, /id="railOffice"[^>]+data-wb-path="\/office"/);
   assert.match(chatHtml, /window\.location\.href = "\/office"/);
-  assert.match(capabilityHtml, /href="\/office"[^>]+aria-label="办公文件"/);
-  assert.match(officeHtml, /class="is-current" href="\/office"/);
+  assert.match(capabilityHtml, /href="\/office"[^>]+data-wb-path="\/office"/);
+  assert.match(officeHtml, /data-wb-path="\/office" aria-current="page"/);
   assert.doesNotMatch(officeHtml, /class="panel-title">文件<\/strong>/);
 });
 
 test("带结果参数的办公文件地址可以打开，并通过浏览器下载通道导出", () => {
   assert.match(server, /const pathname = url\.split\("\?", 1\)\[0\]/);
-  assert.match(server, /pathname === "\/office"/);
+  assert.equal(appRoute("/office?artifact=example")?.file, "office.html");
+  assert.match(server, /renderAppPage/);
   assert.match(server, /preparedOfficeExports/);
   assert.match(server, /downloadUrl: `\/api\/files\/export\?id=\$\{id\}`/);
   assert.match(officeJs, /\/api\/files\/export\?prepare=1/);

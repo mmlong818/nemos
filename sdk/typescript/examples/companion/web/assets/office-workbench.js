@@ -568,7 +568,9 @@ async function hydrateWorkbenchState() {
     if (Array.isArray(remote.documents) && (remote.documents.length || remote.trash?.length)) {
       state.documents = remote.documents.map(safeDocument);
       state.trash = Array.isArray(remote.trash) ? remote.trash.map((item) => ({ ...safeDocument(item), deletedAt: String(item?.deletedAt || item?.updatedAt || now()) })) : [];
-      state.selectedId = state.documents.some((item) => item.id === remote.selectedId) ? remote.selectedId : state.documents[0]?.id || null;
+      const requestedDocument=new URLSearchParams(location.search).get('document');
+      state.selectedId = requestedDocument ? state.documents.find(item=>item.id===requestedDocument)?.id||null : state.documents.some((item) => item.id === remote.selectedId) ? remote.selectedId : state.documents[0]?.id || null;
+      if(requestedDocument&&!state.selectedId)showToast('这个文件已不可用，原有文件列表仍保留。',true);
       state.view = requestedView() || "edit";
       writeStoredState();
       render();
@@ -582,6 +584,7 @@ async function hydrateWorkbenchState() {
     state.view = "edit";
     writeStoredState();
     render();
+    if(new URLSearchParams(location.search).get('document'))showToast('这个文件已不可用，原有文件列表仍保留。',true);
   } catch {
     setSaveState("使用本机备份");
   }

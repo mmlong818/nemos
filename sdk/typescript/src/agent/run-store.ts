@@ -672,12 +672,35 @@ function sanitizeMessages(
     return {
       ...message,
       content,
+      ...(message.providerState ? { providerState: sanitizeProviderState(message.providerState, options) } : {}),
       toolCalls: message.toolCalls?.map((call) => ({
         ...call,
         arguments: sanitizeObject(call.arguments),
       })),
     };
   });
+}
+
+function sanitizeProviderState(
+  state: NonNullable<AgentMessage["providerState"]>,
+  options: Required<FileAgentRunStoreOptions>,
+): NonNullable<AgentMessage["providerState"]> {
+  const sanitized = sanitizeObject(state) as NonNullable<AgentMessage["providerState"]>;
+  sanitized.output = sanitized.output.map((item) => {
+    // Function arguments are JSON encoded inside a JSON document. Decode before redacting
+    // so credentials cannot bypass filtering via escaped quotes in this duplicate copy.
+    if (item.type === "function_call" && typeof item.arguments === "string") {
+      try { return { ...item, arguments: JSON.stringify(sanitizeObject(JSON.parse(item.arguments))) }; }
+      catch { return { ...item, arguments: "{}" }; }
+    }
+    if (item.type === "message" && Array.isArray(item.content)) {
+      return { ...item, content: item.content.map((part: Record<string, unknown>) => ({ ...part,
+        ...(typeof part.text === "string" ? { text: bounded(redactText(part.text), options.maxMessageChars) } : {}),
+      })) };
+    }
+    return item;
+  });
+  return sanitized;
 }
 
 function sanitizeEvent(
