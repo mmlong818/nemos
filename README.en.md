@@ -46,7 +46,7 @@ Runs retain checkpoints, cancellation, failure reasons, retry paths, and deliver
 
 ## Capabilities
 
-Clownfish currently includes 23 built-in capabilities across:
+Clownfish includes built-in capabilities across:
 
 - research, source verification, decisions, and market briefings;
 - documents, conversion, OCR, meeting minutes, editing, and HTML reports;
