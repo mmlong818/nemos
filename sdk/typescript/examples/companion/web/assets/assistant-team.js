@@ -4,20 +4,23 @@
   let data = { bots:[],jobs:[],models:[],ready:false }, selected = new URLSearchParams(location.search).get('job') || '', detailKey = '', loading = false, timer;
   let requestId = '', requestBody = '', taskOptionsKey = '', submitting = false;
   let templates = [], activeTemplate, currentJob;
-  const handoff=window.ClownfishTeamResults;
-  const materialUploads=window.ClownfishTeamMaterials.bind();
-  const routingUi=window.ClownfishTeamRouting.bind();
-  const workflows=window.ClownfishWorkflowCatalog.workflows;
-  const library=window.ClownfishBotLibrary;
-  const skills=window.ClownfishSkills;
-  const historyView=window.ClownfishUnifiedHistory;
+  let handoff,materialUploads,routingUi,workflows,library,skills,historyView;
+  function deps(){
+    handoff=handoff||window.ClownfishTeamResults;
+    materialUploads=materialUploads||window.ClownfishTeamMaterials.bind();
+    routingUi=routingUi||window.ClownfishTeamRouting.bind();
+    workflows=workflows||window.ClownfishWorkflowCatalog.workflows;
+    library=library||window.ClownfishBotLibrary;
+    skills=skills||window.ClownfishSkills;
+    historyView=historyView||window.ClownfishUnifiedHistory;
+  }
   let flowSnapshot={tasks:[],artifacts:[]},flowJobs=[],flowLoadedAt=0,flowWarning='';
   let historySpace=new URLSearchParams(location.search).get('space')||'';
   let botFilter='all', libraryKey='';
   function workflowCard(t) {
     return `<article class="bot-library-card" data-workflow-bot="${esc(t.id)}"><header><span class="bot-mark" data-app-icon="${esc(({presentation:"panel",document:"document",research:"search",marketBrief:"work",thinking:"role-think",product:"role-interface",meeting:"users",web:"code",decision:"role-decision",business:"role-sales",market:"role-strategy"})[t.id] || "boxes")}" aria-hidden="true"></span><div><span class="bot-card-kind">${esc(t.category)}</span><h3><button data-inspect-workflow="${esc(t.id)}">${esc(t.name)}</button></h3></div></header><p class="bot-card-summary">${esc(t.summary)}</p><footer><span class="bot-card-output">${esc(t.deliverable)}</span><a href="${esc(t.href)}" aria-label="准备任务：${esc(t.name)}">准备任务 →</a></footer></article>`;
   }
-  $('#builtinBotList').innerHTML=workflows.map(workflowCard).join('');
+  if(window.ClownfishWorkflowCatalog){workflows=window.ClownfishWorkflowCatalog.workflows;$('#builtinBotList').innerHTML=workflows.map(workflowCard).join('');}
   function textBotCard(b) {
     return `<article class="bot-library-card${b.enabled?'':' is-disabled'}" data-personal-bot="${esc(b.id)}"><header><span class="bot-mark" data-app-icon="${library.icon(b)}" aria-hidden="true"></span><div><span class="bot-card-kind">${b.role==='reviewer'?'独立核验':'执行与整理'}</span><h3><button data-inspect-bot="${esc(b.id)}">${esc(b.name)}</button></h3></div>${b.enabled?'':'<span class="bot-disabled-label">已停用</span>'}</header><p class="bot-card-summary">${esc(library.summary(b))}</p><footer><button class="bot-secondary-action" data-edit-bot="${esc(b.id)}" aria-label="编辑规则：${esc(b.name)}">编辑规则</button><button class="bot-use-action" data-use-bot="${esc(b.id)}" aria-label="使用 ${esc(b.name)}" ${b.enabled?'':'disabled'}>使用规则 →</button></footer></article>`;
   }
@@ -73,7 +76,7 @@
     view=view===true?'bots':view===false?'tasks':view;
     $('#teamPageTitle').textContent=view==='tasks'?'任务':'技能库';
     $('#teamPageDescription').textContent=view==='tasks'?'交办一件事，查看进度并验收结果。':'小丑鱼使用的工作方法：复用文字规则，或准备已有执行技能。';
-    $('#showTasks').hidden=view!=='tasks';
+    $('#showTasks').hidden=true; // 进行中 is a link in #taskContextLinks; the button only keeps the legacy handler.
     $('#taskContextLinks').hidden=view!=='tasks';
     $('#showBots').hidden=view==='tasks';
     $('#showMarket').hidden=view==='tasks';
@@ -82,7 +85,7 @@
     }
     for(const selector of ['.bot-help','#modelStatus','.personal-foot'])$(selector).hidden=view==='market';
     showTaskContent();
-    let url=view==='tasks'&&selected?(selected.startsWith('flow:')?'/bots?task='+encodeURIComponent(selected.slice(5)):'/bots?job='+encodeURIComponent(selected)):'/bots?view='+view;
+    let url=view==='tasks'&&selected?(selected.startsWith('flow:')?'/bots?task='+encodeURIComponent(selected.slice(5)):'/bots?job='+encodeURIComponent(selected)):view==='tasks'?'/bots?view=tasks':view==='bots'?'/skills':'/skills?view=market';
     if(view==='tasks'&&historySpace)url+='&space='+encodeURIComponent(historySpace);
     if(historyMode==='replace')history.replaceState(null,'',url);
     else if(historyMode==='push'&&location.pathname+location.search!==url)history.pushState(null,'',url);
@@ -124,6 +127,7 @@
   async function load() {
     if (loading) return; loading=true;
     try {
+      deps();
       const results=await Promise.allSettled([api(),loadFlows()]);
       if(results[0].status==='fulfilled'){data=results[0].value;$('#teamError').textContent='';}
       else {$('#teamError').textContent='文字任务记录读取失败，其他来源仍可查看；保留已有内容。';}
@@ -274,7 +278,8 @@
   function restoreLocation(historyMode='none'){
     const params=new URLSearchParams(location.search);selected=params.get('task')?'flow:'+params.get('task'):params.get('job') || '';detailKey='';historySpace=params.get('space')||'';
     currentJob=undefined;$('#jobDetail').textContent=selected?'正在读取任务…':'';
-    const view=params.get('view');tabs(selected?'tasks':['bots','market','tasks'].includes(view)?view:'tasks',historyMode);void load();
+    const view=params.get('view'),onSkills=String(location.pathname||'').replace(/\.html$/,'').replace(/\/$/,'')==='/skills';
+    tabs(selected?'tasks':['bots','market','tasks'].includes(view)?view:onSkills?'bots':'tasks',historyMode);void load();
   }
   window.addEventListener('popstate',()=>restoreLocation());restoreLocation('replace');
 })();

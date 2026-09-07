@@ -1,21 +1,22 @@
 import { renderWorkbenchNavigation, renderWorkbenchBar } from "./workbench-shell.js";
 /** One route/navigation contract for all application pages, including legacy bookmarks. */
 export const APP_ROUTES = [
-  { path: "/overview", file: "overview.html", section: "matters", title: "总览" },
+  { path: "/overview", file: "overview.html", section: "overview", title: "总览" },
   { path: "/", file: "index.html", section: "assistant", title: "助理" },
-  { path: "/matters", file: "matters.html", section: "matters", title: "进行中的事" },
-  { path: "/bots", file: "bots.html", section: "bots", title: "任务工作区" },
+  { path: "/matters", file: "matters.html", section: "matters", title: "事项" },
+  { path: "/bots", file: "bots.html", section: "matters", title: "任务" },
+  { path: "/skills", file: "bots.html", section: "bots", title: "技能库" },
   { path: "/capabilities", file: "capabilities.html", section: "capabilities", title: "工具与执行" },
   { path: "/office", file: "office.html", section: "files", title: "文件工作台" },
   { path: "/settings", file: "settings.html", section: "settings", title: "设置" },
   { path: "/tasks", file: "work.html", section: "matters", title: "流程管理", workView: "tasks" },
   { path: "/spaces", file: "work.html", section: "matters", title: "项目", workView: "spaces" },
-  { path: "/automations", file: "work.html", section: "automations", title: "自动化", workView: "automations" },
+  { path: "/automations", file: "work.html", section: "matters", title: "自动化", workView: "automations" },
   { path: "/collaboration", file: "work.html", section: "bots", title: "流程协作设置", workView: "collaboration" },
   { path: "/resources", file: "work.html", section: "files", title: "参考资料", workView: "resources" },
   { path: "/artifacts", file: "work.html", section: "files", title: "生成成果", workView: "artifacts" },
   { path: "/runs", file: "work.html", section: "settings", title: "运行日志", workView: "runs" },
-  { path: "/memory", file: "work.html", section: "settings", title: "记忆", workView: "memory" },
+  { path: "/memory", file: "work.html", section: "memory", title: "记忆", workView: "memory" },
 ] as const;
 
 export function canonicalAppPath(path: string): string {

@@ -619,7 +619,7 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
   assert.match(workHtml, /id="taskCapability" required/);
   assert.match(workScript, /请选择能力/);
   assert.doesNotMatch(workScript, /memoryArchiveExpanded|data-toggle-archive|原始归档/);
-  assert.match(workScript, /这里只显示小丑鱼整理出的事实、经历与习惯/);
+  assert.match(workScript, /已记住的事实、经历与习惯，以及等待你确认的学习提议/);
   assert.doesNotMatch(chatHtml, /协作进度|executionPanel/);
   assert.doesNotMatch(workHtml, /专家群聊|大群/);
   assert.doesNotMatch(workHtml, /id="projectsViewLink"/);
@@ -687,7 +687,6 @@ test("Companion 主界面的弹窗和可点击列表具备基础无障碍语义"
   assert.doesNotMatch(html, /id="settingsbtn"[^>]*hidden/);
   assert.match(html, /window\.location\.href = "\/settings"/);
   assert.match(html, /id="vbtn"[^>]*hidden/);
-  assert.match(html, /#sidebar \{ width:100%; height:auto; min-height:204px/);
 });
 
 test("常规任务的界面状态由持久作业投影，且重启后仍可恢复", () => {

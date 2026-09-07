@@ -22,22 +22,6 @@
   ::-webkit-scrollbar-thumb { background:rgba(139,92,246,.2); border-radius:10px; }
   ::-webkit-scrollbar-thumb:hover { background:rgba(139,92,246,.38); }
 
-  #sidebar {
-    width:306px;
-    flex-shrink:0;
-    display:flex;
-    flex-direction:column;
-    color:#f7fbfb;
-    border-right:1px solid rgba(255,255,255,.1);
-    background:
-      linear-gradient(180deg,rgba(255,255,255,.06),transparent 18%),
-      radial-gradient(circle at 0% 0%,rgba(139,92,246,.34),transparent 31%),
-      radial-gradient(circle at 94% 15%,rgba(236,72,153,.24),transparent 30%),
-      radial-gradient(circle at 18% 92%,rgba(6,182,212,.18),transparent 28%),
-      linear-gradient(180deg,var(--side),#110b1d);
-    box-shadow:18px 0 44px rgba(42,31,74,.25);
-    position:relative;
-  }
   #brand {
     position:relative;
     z-index:1;
@@ -117,17 +101,6 @@
     display:block;
     object-fit:cover;
     object-position:center;
-  }
-  .avatar-letter {
-    width:100%;
-    height:100%;
-    display:grid;
-    place-items:center;
-    color:#fff;
-    font-size:15px;
-    font-weight:900;
-    letter-spacing:0;
-    text-shadow:0 1px 8px rgba(30,18,55,.22);
   }
   .face {
     --hair-a:#8b5cf6;
@@ -257,17 +230,6 @@
       linear-gradient(0deg,rgba(236,72,153,.032) 1px,transparent 1px) 0 0/48px 48px,
       radial-gradient(circle at 70% 0%,rgba(6,182,212,.1),transparent 34%),
       linear-gradient(180deg,#fffaff,#f2f7ff);
-  }
-  #topbar {
-    min-height:78px;
-    padding:16px 24px;
-    display:flex;
-    align-items:center;
-    gap:16px;
-    background:rgba(255,255,255,.72);
-    border-bottom:1px solid rgba(139,92,246,.12);
-    backdrop-filter:blur(18px);
-    -webkit-backdrop-filter:blur(18px);
   }
   #header {
     min-width:0;
@@ -786,23 +748,6 @@
     font-size:13px;
     line-height:1.65;
   }
-  .constellation {
-    position:relative;
-    width:230px;
-    aspect-ratio:1;
-    border-radius:50%;
-    background:
-      radial-gradient(circle at 50% 50%,rgba(139,92,246,.18),transparent 24%),
-      radial-gradient(circle at 50% 50%,rgba(236,72,153,.13),transparent 48%);
-  }
-  .orbit {
-    position:absolute;
-    inset:12%;
-    border:1px solid rgba(23,33,39,.15);
-    border-radius:50%;
-    transform:rotate(-12deg);
-  }
-  .orbit.two { inset:25%; transform:rotate(24deg); border-style:dashed; }
   .core {
     position:absolute;
     left:50%;
@@ -835,13 +780,6 @@
   .empty-copy {
     text-align:left;
   }
-  .empty-copy .eyebrow {
-    color:var(--accent);
-    font-size:12px;
-    font-weight:900;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-  }
   .empty-copy h2 {
     margin-top:10px;
     max-width:420px;
@@ -857,21 +795,6 @@
     color:var(--muted);
     line-height:1.7;
     font-size:14px;
-  }
-  .empty-prompts {
-    display:flex;
-    flex-wrap:wrap;
-    gap:8px;
-    margin-top:18px;
-  }
-  .empty-prompts span {
-    padding:7px 10px;
-    border-radius:999px;
-    background:rgba(255,255,255,.82);
-    border:1px solid var(--line);
-    color:#40515a;
-    font-size:12px;
-    font-weight:700;
   }
 
   #composer {
@@ -1127,12 +1050,6 @@
     font-size:12px;
   }
   .tool-settings-actions button.primary { background:var(--grad); color:#fff; border:none; }
-  .smkey { padding:14px 20px; border-top:1px solid #f0eef6; display:flex; flex-direction:column; gap:8px; }
-  .smkey-label { font-size:13px; font-weight:600; }
-  .smkey-status { font-size:12px; color:var(--muted); }
-  .smkey-row { display:flex; gap:8px; }
-  .smkey-row input { flex:1; min-width:0; padding:8px 10px; border:1px solid #ccc; border-radius:8px; font-size:13px; }
-  .smkey-hint { font-size:11px; color:var(--muted); line-height:1.5; }
   body:not(.developer-mode) .dev-only { display:none !important; }
   #sm-devtoggle { color:#5d5175; }
   .grow { display:flex; align-items:center; gap:11px; padding:10px 4px; cursor:pointer; border-bottom:1px solid rgba(212,225,225,.78); }
@@ -1574,7 +1491,6 @@
   @media (max-width:1080px) { #studio { display:none; } }
   @media (max-width:720px) {
     body { display:block; overflow:hidden; padding-top:var(--client-top-safe); }
-    #sidebar { width:100%; height:238px; }
     #brand { padding:18px 18px 10px; font-size:20px; }
     #brand::before { width:34px; height:6px; margin-bottom:10px; }
     #brand small {
@@ -1614,7 +1530,6 @@
       font-size:11px;
     }
     #main { height:calc(100vh - 238px - var(--client-top-safe)); }
-    #topbar { min-height:62px; padding:12px 14px; gap:8px; }
     #header { margin-left:0; padding:7px 10px 7px 7px; gap:8px; border-radius:17px; }
     #header .havatar { width:36px; height:36px; border-radius:13px; }
     #header .hname { max-width:92px; }
@@ -1624,7 +1539,6 @@
     .msg-body { max-width:calc(100vw - 92px); }
     .empty-state { grid-template-columns:1fr; min-height:330px; gap:16px; text-align:center; }
     .empty-copy { text-align:center; }
-    .constellation { width:150px; margin:0 auto; }
     .character-stage { width:210px; min-height:280px; margin:0 auto; }
     .portrait { transform:scale(.82); transform-origin:center bottom; }
     .character-card { left:8px; top:0; }
@@ -1652,55 +1566,6 @@
     padding-top:0;
   }
   body::before { display:none; }
-  #sidebar {
-    width:254px;
-    flex-direction:row;
-    color:#1f2329;
-    background:#f7f7f7;
-    border-right:1px solid #dcdfe6;
-    box-shadow:none;
-  }
-  #sidebar::after { display:none; }
-  #wechatRail {
-    width:60px;
-    flex:0 0 60px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    padding:34px 0 14px;
-    background:#d6ddec;
-    border-right:1px solid rgba(0,0,0,.05);
-  }
-  .rail-avatar {
-    width:36px;
-    height:36px;
-    border-radius:7px;
-    overflow:hidden;
-    border:0;
-    padding:0;
-    display:grid;
-    place-items:center;
-    background:var(--grad);
-    color:#fff;
-    font:700 14px/1 system-ui,sans-serif;
-    cursor:pointer;
-    margin-bottom:22px;
-  }
-  .rail-avatar img { width:100%; height:100%; display:block; object-fit:cover; }
-  .rail-icon {
-    width:44px;
-    height:44px;
-    border:0;
-    border-radius:8px;
-    background:transparent;
-    color:#58606c;
-    cursor:pointer;
-    font-size:20px;
-    display:grid;
-    place-items:center;
-    transition:background .12s ease,color .12s ease;
-  }
-  .rail-spacer { flex:1; }
   #settingsbtn {
     position:static;
     margin:0;
@@ -1751,13 +1616,6 @@
     gap:7px;
     padding:0 10px 10px;
   }
-  #wechatSearch > .search-icon {
-    position:absolute;
-    margin-left:9px;
-    color:#8f959e;
-    font-size:13px;
-    pointer-events:none;
-  }
   #wechatSearch input {
     width:132px;
     height:28px;
@@ -1781,40 +1639,6 @@
     line-height:1;
   }
   #wechatSearch > button:hover { background:#ebedf0; }
-  #quickCreateMenu {
-    display:none;
-    position:absolute;
-    z-index:35;
-    top:52px;
-    right:8px;
-    width:154px;
-    padding:5px;
-    border:1px solid rgba(255,255,255,.08);
-    border-radius:7px;
-    background:#3b3244;
-    box-shadow:0 14px 34px rgba(35,24,48,.28);
-  }
-  #quickCreateMenu.show { display:block; animation:quick-menu-in .12s ease-out; }
-  @keyframes quick-menu-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
-  #quickCreateMenu .quick-create-item {
-    width:100%;
-    height:42px;
-    padding:0 11px;
-    border:0;
-    border-radius:5px;
-    background:transparent;
-    color:#fff;
-    display:flex;
-    align-items:center;
-    gap:11px;
-    cursor:pointer;
-    font-size:13px;
-    text-align:left;
-  }
-  #quickCreateMenu .quick-create-item:hover,
-  #quickCreateMenu .quick-create-item:focus-visible { background:rgba(255,255,255,.1); outline:none; }
-  #quickCreateMenu .quick-create-icon { position:static; margin:0; color:#ded5e8; pointer-events:none; }
-  #quickCreateMenu .quick-create-icon .ui-icon { width:18px; height:18px; }
   #contacts {
     flex:1;
     padding:0;
@@ -1867,14 +1691,6 @@
   #main {
     background:#f5f5f5;
   }
-  #topbar {
-    min-height:56px;
-    padding:0 16px;
-    background:#f7f7f7;
-    border-bottom:1px solid #e5e5e5;
-    backdrop-filter:none;
-    -webkit-backdrop-filter:none;
-  }
   #header {
     margin-left:0;
     padding:0;
@@ -1892,15 +1708,6 @@
     letter-spacing:0;
   }
   #header .htag { display:none; }
-  #topActions {
-    margin-left:auto;
-    display:flex;
-    align-items:center;
-    gap:4px;
-    padding:2px;
-    border-radius:6px;
-    background:transparent;
-  }
   #relbar { display:none; }
   #msgs {
     padding:18px 18px 20px;
@@ -2131,24 +1938,7 @@
   .role-intro-card li { position:relative; padding-left:16px; color:#35322d; font-size:13px; line-height:1.55; }
   .role-intro-card li::before { content:""; position:absolute; left:0; top:.62em; width:5px; height:5px; border-radius:50%; background:#b73870; }
   .role-intro-hint { margin-top:14px !important; padding-top:12px; border-top:1px solid #ebe6de; color:#8a8379 !important; }
-  .empty-prompts span {
-    background:#fff;
-    border-color:#e5e5e5;
-    color:#636a73;
-  }
   /* WeChat structure with Clownfish desktop-tool palette */
-  #sidebar {
-    width:255px;
-    background:#f5f0f8;
-    border-right:1px solid rgba(84,64,116,.16);
-  }
-  #wechatRail {
-    width:60px;
-    flex-basis:60px;
-    padding:34px 0 14px;
-    background:linear-gradient(180deg,#ded5ef 0%,#cfd9ec 64%,#c9d4e8 100%);
-    border-right:1px solid rgba(84,64,116,.12);
-  }
   #sessionPane { width:195px; background:#f5f0f8; }
   #brand { display:none; }
   #wechatSearch { padding:18px 10px 10px; }
@@ -2199,34 +1989,12 @@
     letter-spacing:0;
   }
   #main { background:#f7f3fb; }
-  #topbar {
-    min-height:56px;
-    padding:0 16px;
-    background:#fbf8fd;
-    border-bottom:1px solid rgba(84,64,116,.12);
-  }
   #header .hname {
     max-width:460px;
     color:#221c2f;
     font-size:15.5px;
     font-weight:500;
   }
-  #topActions { gap:2px; }
-  #topActions button,
-  .top-icon {
-    width:32px;
-    min-width:32px;
-    height:32px;
-    border:0;
-    border-radius:4px;
-    background:transparent;
-    color:#554c63;
-    box-shadow:none;
-    font-size:17px;
-    cursor:pointer;
-  }
-  #topActions button:hover,
-  .top-icon:hover { background:#efe8f6; color:#9b5cf6; transform:none; box-shadow:none; }
   #msgs {
     padding:18px 18px 20px;
     background:#f7f3fb;
@@ -2287,20 +2055,12 @@
     stroke-linecap:round;
     stroke-linejoin:round;
   }
-  .rail-icon .ui-icon { width:22px; height:22px; }
   #topActions .ui-icon,
   #vbtn .ui-icon,
   #imgbtn .ui-icon,
   #shotbtn .ui-icon,
   #filebtn .ui-icon { width:18px; height:18px; margin:auto; }
   #quickGroup .ui-icon { width:18px; height:18px; margin:auto; }
-  #wechatSearch .search-icon {
-    position:absolute;
-    margin-left:9px;
-    color:#8f959e;
-    pointer-events:none;
-  }
-  #wechatSearch .search-icon .ui-icon { width:14px; height:14px; }
   .icon-badge {
     margin-left:3px;
     font-size:10px;
@@ -2341,13 +2101,9 @@
   }
   * { touch-action:manipulation; }
   body, #main, #msgs { background:#f4f1eb; color:var(--ink); }
-  #sidebar { background:#f1ece3; border-right-color:#d8d1c6; }
-  #wechatRail { background:#ddd6cb; border-right-color:#cfc7bb; }
   #sessionPane, #contacts { background:#f1ece3; }
-  .rail-avatar { background:#ad315f; box-shadow:none; }
   .rail-icon, #settingsbtn { color:#676960; }
   .rail-icon:hover, #settingsbtn:hover { color:#211f1c; background:rgba(255,252,247,.72); }
-  .rail-icon.active { color:#8f2f59; background:#f8f1f3; }
   .rail-avatar, .rail-icon, #settingsbtn { border-radius:8px; }
   #wechatSearch input { background:#fffcf7; color:#686b64; box-shadow:inset 0 0 0 1px #ded7cd; }
   #wechatSearch > button:hover { color:#8f2f59; background:#e8e0d6; }
@@ -2478,40 +2234,12 @@
   }
   #composerTool:hover, #composerCapability:hover { color:#8f2f59; background:#f3e9ed; }
   #composerTool .ui-icon, #composerCapability .ui-icon { width:17px; height:17px; }
-  #chatCapabilityBridge {
-    min-height:54px;
-    display:none;
-    grid-template-columns:34px minmax(0,1fr) auto;
-    align-items:center;
-    gap:10px;
-    margin:10px 18px 0;
-    padding:9px 10px;
-    border:1px solid #d5c5cb;
-    border-radius:8px;
-    background:#fbf5f7;
-  }
-  #chatCapabilityBridge.show { display:grid; }
-  .chat-capability-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:7px; color:#8f2f59; background:#f1dde5; }
-  .chat-capability-icon .ui-icon { width:19px; height:19px; }
-  .chat-capability-copy { min-width:0; display:grid; gap:3px; }
-  .chat-capability-copy strong { overflow:hidden; color:#211f1c; font-size:12.5px; font-weight:650; text-overflow:ellipsis; white-space:nowrap; }
-  .chat-capability-copy small { color:#5d6059; font-size:11px; letter-spacing:.015em; }
-  #chatCapabilityOpen { min-height:34px; padding:0 11px; border:1px solid #d5c5cb; border-radius:6px; color:#8f2f59; background:#fffefa; cursor:pointer; font-size:11.5px; font-weight:600; letter-spacing:.015em; }
-  #chatCapabilityOpen:hover { border-color:#c999ad; background:#faf1f4; }
   button:disabled { cursor:not-allowed; opacity:.48; }
   button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
     outline:2px solid rgba(173,49,95,.72);
     outline-offset:2px;
   }
   .row.history-target .bub, .row.history-target .expert-longform { outline:2px solid rgba(173,49,95,.55); outline-offset:4px; background-color:#fff8fa; transition:outline-color .2s ease, background-color .2s ease; }
-  #quickCreateMenu {
-    color:#211f1c;
-    background:#fffcf7;
-    border:1px solid #d8d1c6;
-    box-shadow:var(--shadow-sm);
-  }
-  #quickCreateMenu .quick-create-item { color:#211f1c; }
-  #quickCreateMenu .quick-create-item:hover, #quickCreateMenu .quick-create-item:focus-visible { color:#8f2f59; background:#f4e9ed; outline:none; }
 
   #onboardingmodal, #memmodal, #groupmodal, #contactmodal, #personamodal, #avatarcropmodal, #historymodal, #toolmodal, #toolsettingsmodal, #modelmodal, #hkmodal, #capmodal, #approvalmodal, #sourcemodal, #settingsmenu {
     background:rgba(38,33,34,.42);
@@ -2604,9 +2332,6 @@
   .smitem b { font-size:13.5px; font-weight:600; }
   .smitem small { color:#777970; font-size:11.5px; font-weight:400; letter-spacing:.015em; }
   .smitem.danger, .smitem.danger .smitem-icon { color:#a23747; }
-  .smkey { border-top-color:#e1dbd1; background:#f8f4ed; }
-  .smkey-label { color:#211f1c; letter-spacing:.01em; }
-  .smkey-hint { color:#686b64; }
   .model-connect-box { width:560px !important; max-height:min(760px,92vh); }
   .model-connect-body { min-height:0; display:flex; flex-direction:column; gap:16px; padding:18px; overflow-y:auto; }
   .model-current {
@@ -2706,29 +2431,6 @@
   }
   .ui-icon-slot > .ui-icon { width:100%; height:100%; margin:0; }
   .rail-icon > .ui-icon-slot, #settingsbtn > .ui-icon-slot { width:22px; height:22px; flex-basis:22px; }
-  #topActions {
-    display:grid;
-    grid-template-columns:repeat(2,32px);
-    grid-auto-rows:32px;
-    align-items:center;
-    gap:2px;
-  }
-  #topActions button, #topActions .top-icon {
-    width:32px;
-    min-width:32px;
-    height:32px;
-    min-height:32px;
-    display:grid;
-    place-items:center;
-    padding:0;
-    contain:layout paint;
-    transition:color 120ms cubic-bezier(0,0,.2,1), background-color 120ms cubic-bezier(0,0,.2,1);
-  }
-  #topActions button.is-reserved {
-    visibility:hidden;
-    pointer-events:none;
-  }
-  #topActions .ui-icon-slot { width:18px; height:18px; flex-basis:18px; }
   .role-avatar-mark {
     width:100%;
     height:100%;
@@ -2775,22 +2477,14 @@
   .contact .avatar, #header .havatar, .msg-avatar, .avatar-preview { background:#e3dfd7 !important; }
   [hidden] { display:none !important; }
 
-  @media (prefers-reduced-motion: reduce) {
-    #topActions button, #topActions .top-icon { transition-duration:.01ms; }
-  }
-
   @media (max-width:720px) {
     body { display:flex; flex-direction:column; overflow:hidden; padding-top:0; }
-    #sidebar { width:100%; height:auto; min-height:204px; max-height:46vh; flex:0 0 auto; flex-direction:row; overflow:hidden; }
-    #wechatRail { width:52px; flex-basis:52px; padding:14px 0 10px; }
-    .rail-avatar { margin-bottom:12px; }
     #sessionPane { width:calc(100% - 52px); }
     #wechatSearch { padding:10px; }
     #wechatSearch input { width:calc(100vw - 124px); }
     #contacts { display:flex; min-height:76px; overflow-x:auto; overflow-y:hidden; padding:0 8px 8px; }
     .contact { min-width:176px; min-height:62px; margin:0; border-right:1px solid #ded7cd; border-bottom:0; }
     #main { height:auto; min-height:0; flex:1 1 auto; }
-    #topbar { min-height:52px; padding:0 10px; }
     #header .hname { max-width:38vw; }
     #msgs { padding:14px 12px; }
     .row { max-width:96%; }
@@ -2804,8 +2498,6 @@
     #vbtn, #imgbtn, #shotbtn, #filebtn { width:36px; height:36px; }
     #composerTool, #composerCapability { width:36px; min-width:36px; padding:0; border-left:0; }
     #composerTool span:last-child, #composerCapability span:last-child { display:none; }
-    #chatCapabilityBridge { grid-template-columns:30px minmax(0,1fr); margin:8px 10px 0; }
-    #chatCapabilityOpen { grid-column:1 / -1; width:100%; }
     #txt { min-width:0; height:58px; min-height:58px; }
     #send { min-width:58px; height:36px; padding:0 11px; }
     .modal-box { width:calc(100vw - 24px) !important; max-width:none; max-height:88vh; border-radius:9px; }
@@ -2828,16 +2520,7 @@
   #brand { min-height:52px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 10px 6px 12px; color:#282923; font-size:14px; font-weight:600; letter-spacing:.01em; }
   #brand::before { display:none; }
   #brand small { display:none; }
-  .sidebar-header-actions { display:flex; align-items:center; gap:2px; margin-left:auto; }
-  #wechatRail { padding-top:20px; }
-  #wechatRail .rail-avatar { margin-bottom:3px; }
-  .rail-brand-label { margin-bottom:13px; color:#4f514c; font-size:10px; font-weight:600; line-height:1.25; letter-spacing:.02em; }
-  .sidebar-header-action { width:32px; height:32px; display:grid; place-items:center; padding:0; border:0; border-radius:7px; color:#5f625c; background:transparent; cursor:pointer; }
-  .sidebar-header-action:hover, .sidebar-header-action[aria-expanded="true"] { color:#211f1c; background:#e5ded4; }
-  .sidebar-header-action:focus-visible { outline:2px solid #8f2f59; outline-offset:1px; }
-  .sidebar-header-action .ui-icon { width:17px; height:17px; }
   #wechatSearch { display:grid; gap:6px; padding:0 9px 10px; }
-  #wechatSearch > .search-icon { display:none; }
   #quickGroup { width:100% !important; height:38px !important; display:flex; align-items:center; gap:9px; padding:0 10px; border-radius:7px !important; color:#211f1c !important; background:#e5ded4 !important; font-size:13px !important; font-weight:600; letter-spacing:.01em; text-align:left; }
   #quickGroup:hover { background:#ddd5ca !important; }
   #quickGroup:focus-visible { outline:2px solid #8f2f59; outline-offset:1px; }
@@ -2864,8 +2547,6 @@
   @media(max-width:520px){.mode-switch{gap:3px}.mode-switch button{padding:0 8px}#contacts .contact-delete{opacity:1}}
   @media(max-width:720px){
     body{display:block;padding-left:52px}
-    #sidebar{position:fixed;inset:0 auto 0 0;width:52px;height:100vh;min-height:0;max-height:none;display:block;overflow:visible;z-index:30}
-    #wechatRail{width:52px;height:100%;padding:12px 0 8px}
     #sessionPane{display:none}
     #main{width:100%;height:100vh;min-height:0}
     #header .hname{max-width:55vw}
@@ -4356,7 +4037,7 @@ function emptyStateHtml() {
       + '    </nav>'
       + '    <header class="role-intro-head"><h2>' + esc(content.title) + '</h2></header>'
       + '    <p>' + esc(content.desc) + '</p>'
-      + '    <p class="wb-assistant-role-hint">直接说出目标，让小丑鱼帮你推进。需要复用一种工作方法？<a href="/bots?view=bots">查看技能库 →</a></p>'
+      + '    <p class="wb-assistant-role-hint">直接说出目标，让小丑鱼帮你推进。需要复用一种工作方法？<a href="/skills">查看技能库 →</a></p>'
       + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><select id="heroModelSelect" aria-label="任务模型" hidden></select><small id="heroModelStatus" role="status" aria-live="polite"></small><button type="button" id="heroSend">发送</button></div></div>'
       + '  </article>'
       + '</section>';
@@ -7703,12 +7384,18 @@ async function changeTaskModel(select) {
   if (!node) return;
   const requested = select.value;
   const status = select.id === "heroModelSelect" ? $("#heroModelStatus") : $("#taskModelStatus");
-  select.disabled = true;
-  status.textContent = requested === "default" ? "" : "正在检查，完成前保留原模型…";
+  // A model that passed its probe within the last week switches instantly; only unknown or
+  // failed models block the picker while the server re-runs the connection check.
+  const cached = modelConnectionState?.modelChecks?.[requested];
+  const fresh = cached?.chat === "passed" && Date.now() - Date.parse(cached.checkedAt) < 7 * 24 * 60 * 60 * 1000;
+  if (requested !== "default" && !fresh) {
+    select.disabled = true;
+    status.textContent = "正在检查，完成前保留原模型…";
+  } else status.textContent = "";
   try {
     if (requested !== "default") {
-      const result = await api("/api/llm-model/check", { model: requested });
-      renderModelConnectionStatus(result);
+      const result = fresh ? { ok: true, checked: cached } : await api("/api/llm-model/check", { model: requested });
+      if (!fresh) renderModelConnectionStatus(result);
       if (!result.ok) throw new Error(result.checked?.detail || "模型检查未通过");
       status.textContent = result.checked.tools === "passed" ? "工具往返已验证" : "仅文字已验证，请关闭工具";
       status.title = result.checked.detail;

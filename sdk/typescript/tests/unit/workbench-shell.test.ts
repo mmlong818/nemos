@@ -28,6 +28,26 @@ for(const route of APP_ROUTES)test('新工作台保留路由与单一高亮 '+ro
   for(const id of ['settingsbtn','railCap','railOffice','railWork'])assert.equal((html.match(new RegExp(`id="${id}"`,'g'))||[]).length,1);
   assert.ok(html.includes('/assets/workbench-ui.css'));
 });
+test('服务端直接渲染单层产品导航，旧书签保留在隐藏容器',()=>{
+  const html=renderAppPage(readFileSync('examples/companion/web/index.html','utf8'),'/');
+  const nav=html.match(/<aside class="rail app-nav"[\s\S]*?<\/aside>/)![0];
+  assert.match(nav,/id="wbNavigation" data-product-navigation="true"/);
+  assert.match(nav,/<details class="wb-tools"><summary>管理<\/summary>/);
+  for(const key of ['overview','assistant','matters','tasks','files','memory','bots','tools','settings'])assert.ok(nav.includes(`data-product-key="${key}"`),key);
+  const legacy=nav.match(/<div hidden data-legacy-navigation>([\s\S]*?)<\/div>/)![1];
+  for(const href of ['/tasks','/automations','/spaces','/office','/resources','/collaboration','/runs'])assert.ok(legacy.includes(`href="${href}"`),href);
+  assert.ok(!legacy.includes('href="/matters"'),'事项已是主入口，不应再作为旧书签');
+  assert.match(nav,/<a class="wb-link" id="railMatters" href="\/matters" data-wb-path="\/matters" data-product-key="matters">/);
+  for(const id of ['railAssistant','railBots','railWork','railCap','railMatters','railOffice','settingsbtn'])assert.ok(nav.includes(`id="${id}"`),id);
+});
+test('管理分组在当前路径属于技能库或工具与连接时展开',()=>{
+  const page=readFileSync('examples/companion/web/bots.html','utf8');
+  assert.doesNotMatch(renderAppPage(page,'/bots'),/<details class="wb-tools" open>/,'/bots 是任务主入口，不展开管理组');
+  assert.match(renderAppPage(page,'/skills'),/<details class="wb-tools" open>/);
+  assert.doesNotMatch(renderAppPage(readFileSync('examples/companion/web/work.html','utf8'),'/automations'),/<details class="wb-tools" open>/,'自动化属于任务页签，不在管理组');
+  assert.match(renderAppPage(readFileSync('examples/companion/web/capabilities.html','utf8'),'/capabilities'),/<details class="wb-tools" open>/);
+  assert.doesNotMatch(renderAppPage(page,'/'),/<details class="wb-tools" open>/);
+});
 test('新导航覆盖全部应用地址，无虚假目标',()=>{
   assert.deepEqual(new Set(WORKBENCH_LINKS.map(l=>l.href.split('?')[0])),new Set(APP_ROUTES.map(r=>r.path)));
 });

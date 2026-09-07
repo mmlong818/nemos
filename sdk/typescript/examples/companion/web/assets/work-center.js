@@ -2,7 +2,7 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const workViews = new Set(["tasks", "spaces", "automations", "collaboration", "resources", "artifacts", "runs", "memory"]);
 const viewFromLocation = () => window.ClownfishNavigation.workView();
-let view = viewFromLocation();
+let view;
 const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [], reviewGroups: [], approvals: [], relationshipMemory: null, productReviews: [], productReviewSummary: null };
 const loadedViews = new Set();
 let loadSequence = 0;
@@ -46,7 +46,7 @@ const pageCopy = {
   resources: ["任务所需的上下文", "参考资料", "保存本地笔记、文本和链接，并在执行任务时明确选择。"],
   artifacts: ["文件", "文件", "资料、成果与编辑副本，在这里找回并继续使用。"],
   runs: ["高级排错", "运行日志", "查看后台工作、失败原因和中断后可恢复的执行。"],
-  memory: ["由你控制", "记忆", "这里只显示小丑鱼整理出的事实、经历与习惯，你可以随时修正或忘记。"],
+  memory: ["由你控制", "记忆", "已记住的事实、经历与习惯，以及等待你确认的学习提议。你可以随时修正、不学习或忘记。"],
 };
 
 function setPage() {
@@ -1101,17 +1101,18 @@ $("#newTaskSide").onclick = () => {
 };
 
 hydrateIcons();
-const workSearchOverlay = window.AppSearchOverlay.bind({
+let workSearchOverlay;
+const searchOverlay = () => workSearchOverlay || (workSearchOverlay = window.AppSearchOverlay.bind({
   dialog: "#workSearchDialog",
   trigger: "#workSearchToggle",
   input: "#workSearch",
   close: "#closeWorkSearch",
   render: renderWorkSearchResults,
-});
+}));
 $("#workSearchResults").onclick = async (event) => {
   const result = event.target.closest("[data-work-search-kind]");
   if (!result) return;
-  workSearchOverlay.close();
+  searchOverlay().close();
   const kind = result.dataset.workSearchKind;
   const id = result.dataset.workSearchId;
   if (kind === "task") {
@@ -1122,6 +1123,9 @@ $("#workSearchResults").onclick = async (event) => {
   else if (kind === "resource") document.querySelector(`[data-preview-resource="${CSS.escape(id)}"]`)?.click();
   else if (kind === "memory") document.querySelector(`[data-memory-detail="${CSS.escape(id)}"]`)?.click();
 };
-setPage();
-showLoading();
-void load();
+if (window.ClownfishNavigation) {
+  view = viewFromLocation();
+  setPage();
+  showLoading();
+  void load();
+}

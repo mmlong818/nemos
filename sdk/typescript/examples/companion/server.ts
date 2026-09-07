@@ -305,6 +305,13 @@ function backupSummary(): { dir: string; count: number; latest: string | null } 
 
 let modelConnection = loadSavedLLMConnection();
 if (modelConnection) modelConnection.modelChecks ??= {};
+/** Passed chat probes stay valid for a week; failures are always re-probed. */
+export const MODEL_CHECK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export function isFreshModelCheck(check: { chat: string; checkedAt: string } | undefined, now = Date.now()): boolean {
+  if (!check || check.chat !== "passed") return false;
+  const at = Date.parse(check.checkedAt);
+  return Number.isFinite(at) && now - at < MODEL_CHECK_TTL_MS;
+}
 let modelConnectionUpdating = false;
 let modelCatalog = loadSavedLLMModelCatalog();
 let modelCatalogFetchedAt = loadSavedLLMModelCatalogFetchedAt();
@@ -5856,11 +5863,18 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/llm-model/check") {
+      const b = (await readBody(req)) as { model?: string; force?: boolean };
+      const id = String(b.model || "").trim();
+      // A model that already passed the chat probe recently is reused as-is: re-probing on every
+      // switch costs four model calls and freezes the picker for seconds. `force` re-runs the probe.
+      const cached = modelConnection?.modelChecks?.[id];
+      if (modelConnection && cached && b.force !== true && isFreshModelCheck(cached) && modelCatalog.some((item) => item.id === id)) {
+        send(res, 200, { ok: true, ...modelConnectionStatus(), checkedModel: id, checked: cached, cached: true });
+        return;
+      }
       if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
       modelConnectionUpdating = true;
       try {
-        const b = (await readBody(req)) as { model?: string };
-        const id = String(b.model || "").trim();
         if (!modelConnection || !modelCatalog.some((item) => item.id === id)) throw new Error("请从当前连接的模型目录中选择型号。");
         const check = await checkCompanionModel({ ...modelConnection, model: id });
         const updated = { ...modelConnection, modelChecks: { ...modelConnection.modelChecks, [id]: check } };

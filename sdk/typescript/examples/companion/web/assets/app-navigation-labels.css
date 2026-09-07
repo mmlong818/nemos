@@ -281,7 +281,6 @@ html { scrollbar-gutter: stable; }
   }
 
   .rail-secondary, .rail-settings, #settingsbtn { margin-top: auto; }
-  #sidebar { width: 352px; background: transparent !important; box-shadow: none !important; }
   #sessionPane {
     width: 252px;
     border-right: 1px solid var(--cf-line, #d9d9de) !important;
@@ -291,7 +290,6 @@ html { scrollbar-gutter: stable; }
 }
 
 @media (max-width: 720px) {
-  #wechatRail .rail-label { display: none; }
   /* 底部横栏保留中文标签：与首页一致，覆盖 system-center 的隐藏规则 */
   .rail nav small,
   .rail-settings small,
@@ -301,7 +299,7 @@ html { scrollbar-gutter: stable; }
     font-weight: 600;
     line-height: 1;
   }
-  /* 窄屏底栏条目收窄，保证品牌、五个入口和设置都完整可见 */
+  /* 窄屏底栏条目收窄，保证品牌、五个主入口、管理和设置都完整可见（超出时横向滚动） */
   .rail { gap: 2px; overflow-x: auto; scrollbar-width: none; }
   .rail > .brand { width: 40px; height: 40px; flex: 0 0 auto; }
   .rail nav > a,

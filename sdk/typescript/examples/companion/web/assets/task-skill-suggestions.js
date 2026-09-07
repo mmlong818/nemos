@@ -1,6 +1,5 @@
 (() => {
   const form=document.querySelector('#taskForm');if(!form)return;
-  const helper=window.ClownfishSkillHandoff,catalog=window.ClownfishWorkflowCatalog;
   const panel=document.createElement('section');panel.className='task-skill-suggestions';panel.hidden=true;panel.setAttribute('aria-label','可选执行技能');
   const title=document.createElement('strong');title.textContent='需要专业成果？可选执行技能';
   const choices=document.createElement('div');choices.className='team-detail-actions';
@@ -10,6 +9,8 @@
   const status=document.createElement('p');status.className='hint';status.setAttribute('role','status');
   panel.append(title,choices,note,status);document.querySelector('#teamRoutingPreview').after(panel);
   function render(){
+    const helper=window.ClownfishSkillHandoff,catalog=window.ClownfishWorkflowCatalog;
+    if(!helper||!catalog)return;
     const suggestions=helper.suggest(form.elements.objective.value,catalog);
     panel.hidden=!suggestions.length;choices.replaceChildren();status.textContent='';
     for(const item of suggestions){

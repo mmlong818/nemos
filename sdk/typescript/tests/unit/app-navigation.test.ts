@@ -36,8 +36,9 @@ test("客户端导航按同一份路由清单同步高亮，未知路径不冒�
     classList:{toggle(_name:string,_selected:boolean){}},setAttribute(name:string,value:string){this.attrs[name]=value;},removeAttribute(name:string){delete this.attrs[name];}}));
   const ctx:any={location:{get pathname(){return current;}},window:{addEventListener(){}},document:{getElementById(){return {textContent:JSON.stringify(APP_ROUTES)};},querySelectorAll(){return nodes;},addEventListener(){}}};
   runInNewContext(readFileSync("examples/companion/web/assets/app-navigation.js","utf8"),ctx);
-  assert.equal(ctx.window.ClownfishNavigation.workView(),"resources");assert.equal(nodes[10].attrs["aria-current"],"page");
-  current="/memory.html";ctx.window.ClownfishNavigation.sync();assert.equal(nodes[3].attrs["aria-current"],"page");assert.equal(nodes[4].attrs["aria-current"],undefined);
+  const node=(path:string)=>nodes[WORKBENCH_LINKS.findIndex((item)=>item.href.split('?')[0]===path)];
+  assert.equal(ctx.window.ClownfishNavigation.workView(),"resources");assert.equal(node("/resources").attrs["aria-current"],"page");
+  current="/memory.html";ctx.window.ClownfishNavigation.sync();assert.equal(node("/memory").attrs["aria-current"],"page");assert.equal(node("/matters").attrs["aria-current"],undefined);
   current="/not-a-page";ctx.window.ClownfishNavigation.sync();assert.ok(nodes.every((node)=>!node.attrs["aria-current"]));
 });
 test("缺少共用导航占位符拒绝静默交付不完整页面",()=>{assert.throws(()=>renderAppPage("<html></html>","/"),/missing/);});
