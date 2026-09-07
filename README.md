@@ -76,8 +76,6 @@ Bot 市场只包含随应用发布的本地精选模板，不同步 Grok 账号�
 
 实时价格、余票、房态和订座等数据只有在可靠实时来源实际返回时才会标记为已确认；目前不内置动车、航班、酒店和餐馆的实时交易适配器。
 
-![小丑鱼 Bot 市场](docs/assets/readme/clownfish-bots-0.5.5.png)
-
 ## 文件工作台
 
 支持 Word、PowerPoint、Excel、PDF、OpenDocument、RTF、EPUB、CSV、TXT 和 Markdown。
@@ -94,11 +92,7 @@ Bot 市场只包含随应用发布的本地精选模板，不同步 Grok 账号�
 
 复杂浮动对象、批注、跨节页眉页脚、公式、图表、演示母版和电子表格公式仍由原文件或桌面 Office/WPS 保真承接。
 
-![小丑鱼工具与连接](docs/assets/readme/clownfish-capabilities-0.5.5.png)
-
 ## 记忆、模型与数据
-
-![小丑鱼模型设置](docs/assets/readme/clownfish-settings-0.5.5.png)
 
 记忆分为已记住内容和待确认内容。待确认内容必须经过用户明确确认才会进入长期记忆，也可以随时撤回；事项的进行中、已完成和待确认状态共享同一个事项工作区。
 
