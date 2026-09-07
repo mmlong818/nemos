@@ -3,7 +3,7 @@
 [中文](README.md) · **English**
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-v0.2.3-b33f72)](https://github.com/mmlong818/nemos/tree/v0.2.3)
+[![Version](https://img.shields.io/badge/version-v0.5.5-b33f72)](https://github.com/mmlong818/nemos/tree/v0.5.5)
 [![License](https://img.shields.io/badge/integration-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#run-locally)
 
@@ -11,9 +11,9 @@ Clownfish is a **local-first AI work application with long-term memory and real 
 
 See the [Privacy Policy](PRIVACY.en.md) for local storage, external-service, synchronization, export, and deletion boundaries.
 
-## v0.2.3 release
+## v0.5.5 release
 
-This release completes real quality acceptance for the capability set and unifies the application, desktop shell, manifest, and documentation version. All 23 built-in capabilities have real execution paths; complex capabilities have explicit timeout and structured-repair boundaries; Settings links the privacy policy to the running product version.
+This release consolidates Tasks, Bots, Capabilities, Files, Memory, and Model Settings into one personal AI assistant workbench. It adds task-level Bot routing, bounded text collaboration, model queue visibility and cancellation, delivery receipts, shared materials, and local-first storage. The legacy development engine has been removed.
 
 ![Clownfish tasks](docs/assets/readme/clownfish-chat-2026-08-16.png)
 
@@ -30,6 +30,15 @@ This release completes real quality acceptance for the capability set and unifie
 All surfaces share task, attachment, decision, and artifact identities. A handoff carries the full source text, a deduplicated summary, attachments, and prior decisions rather than only the latest message.
 
 ## Tasks and collaboration
+
+### Assistant, Bot, capability, and tool
+
+- **Assistant** is the user-facing coordinator that understands goals and delivers results.
+- **Bot** is a reusable role and instruction set, such as plant care, meeting preparation, or project follow-up.
+- **Capability** is an executable end-to-end workflow, such as document conversion, research, presentation generation, or file analysis.
+- **Tool** is one concrete operation, such as reading a file, calling a model, or using a connector.
+
+The Bot market contains curated templates shipped with the application. It does not mirror Grok, sync a Grok account, download third-party scripts, or carry private Bot memory.
 
 A new task can be a normal conversation, outcome-oriented work, or guided study. Clownfish remains the single user-facing coordinator. Specialists are internal execution units selected again when the topic changes; users do not need to configure or chat with them individually.
 
@@ -86,10 +95,10 @@ Local Docker may use `http://127.0.0.1:8799`; remote deployment requires HTTPS.
 
 ## Verified status
 
-As of 2026-08-17:
+As of 2026-09-07:
 
 - build and type checking pass;
-- **483 automated tests: 482 pass and one Blender check is skipped because Blender is not installed**;
+- workbench, model scheduling, Bot market, autonomous collaboration, and file workflows have unit and isolated integration coverage;
 - Pi Agent is upgraded to **0.84.2**, with the build and engine-specific tests passing;
 - official Playwright MCP tool discovery and the media connector lifecycle are covered by executable tests;
 - document conversion, Office export, task recovery, and encrypted sync have automated coverage.

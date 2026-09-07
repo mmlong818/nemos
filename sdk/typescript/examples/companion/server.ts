@@ -256,7 +256,7 @@ function readManifest(): Record<string, unknown> {
   const fallback = {
     appId: "clownfish",
     name: "小丑鱼",
-    version: "0.2.3",
+    version: "0.5.5",
     channel: "local",
     schemaVersion: 1,
   };

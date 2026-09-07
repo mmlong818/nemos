@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.5
+
+- Unified the personal assistant workbench across tasks, Bots, capabilities, files, memory, and model settings.
+- Added bounded autonomous text collaboration with planning, step receipts, model queue visibility, cancellation, and shared call budgets.
+- Added the local Bot market and clarified the boundaries between assistant, Bot, capability, and tool.
+- Removed the legacy development engine and updated the application, desktop manifest, privacy policy, and documentation version.
+- Updated safe dependency ranges and fixed PDF.js to 5.4.624; PPTX image input rejects ICNS, JXL, HEIF, and HEIC data.
+
 ## 0.2.3
 
 - Unified the TypeScript package, desktop manifest, runtime fallback, public documentation, and privacy-policy version.
