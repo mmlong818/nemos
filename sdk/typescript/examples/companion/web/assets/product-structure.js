@@ -13,7 +13,11 @@
   function area(path,search=''){
     path=path.replace(/\.html$/,'').replace(/\/$/,'')||'/';
     if(path==='/bots')return ['bots','market'].includes(new URLSearchParams(search).get('view'))?'bots':'tasks';
-    if(['/tasks','/work','/matters','/spaces','/collaboration'].includes(path))return path==='/matters'&&new URLSearchParams(search).get('view')==='learning'?'memory':'tasks';
+    if(['/tasks','/work','/matters','/spaces','/collaboration'].includes(path)){
+      // All matter states share one context. The status filter belongs to the
+      // matters workspace; it must not make the primary rail jump to Tasks.
+      return path==='/matters'?'memory':'tasks';
+    }
     if(['/artifacts','/resources','/office'].includes(path))return 'files';
     if(path==='/memory')return 'memory';
     if(path==='/automations')return 'automations';
@@ -49,7 +53,7 @@
   }
   function mount(){
     const path=location.pathname.replace(/\.html$/,'');const params=new URLSearchParams(location.search);
-    if(['/spaces','/matters'].includes(path)&&params.get('view')!=='learning'){
+    if(path==='/spaces'){
       const head=document.querySelector('.work-page-head,.personal-head');
       head?.after(tabs([['/bots?view=tasks','执行任务','tasks'],['/matters','长期跟进','matters'],['/spaces','项目','spaces']],path.slice(1),'任务视图'));
     }
@@ -59,10 +63,6 @@
     if(path==='/memory'){
       const head=document.querySelector('.work-page-head');
       head?.after(tabs([['/memory','已记住','memory'],['/matters?view=learning','待确认','learning']], 'memory','记忆视图'));
-    }
-    if(path==='/matters'&&params.get('view')==='learning'){
-      const head=document.querySelector('.personal-head');
-      if(head){head.querySelector('h1').textContent='记忆确认';head.querySelector('p:last-child').textContent='审阅值得长期保留的内容；只有确认后才会记住。';head.after(tabs([['/memory','已记住','memory'],['/matters?view=learning','待确认','learning']], 'learning','记忆视图'));}
     }
   }
   window.ClownfishProductStructure=Object.freeze({items,area,organizeNavigation});

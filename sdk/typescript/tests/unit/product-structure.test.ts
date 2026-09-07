@@ -12,7 +12,7 @@ test('four primary destinations and secondary legacy addresses map consistently'
   for(const [path,query,key] of [
     ['/','','assistant'],['/overview','','assistant'],['/bots','','tasks'],['/bots','?view=tasks','tasks'],
     ['/bots','?view=bots','bots'],['/bots','?view=market','bots'],['/tasks','','tasks'],['/collaboration','','tasks'],
-    ['/spaces','','tasks'],['/matters','','tasks'],['/matters','?view=learning','memory'],
+    ['/spaces','','tasks'],['/matters','','memory'],['/matters','?view=ongoing','memory'],['/matters','?view=completed','memory'],['/matters','?view=learning','memory'],
     ['/artifacts','','files'],['/resources','','files'],['/office.html','','files'],['/memory/','','memory'],
     ['/runs','','settings'],['/settings','','settings'],['/capabilities','','tools'],['/automations','','automations']
   ])assert.equal(product.area(path,query),key,`${path}${query}`);
