@@ -1,6 +1,6 @@
 "use strict";
 
-const CATALOG = window.ClownfishWorkflowCatalog.capabilities;
+const CATALOG = () => window.ClownfishWorkflowCatalog.capabilities;
 
 const ICON_PATHS = {
   clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
@@ -154,11 +154,11 @@ function displayDate(value) {
 }
 
 function selectedCapability() {
-  return CATALOG.find((item) => item.id === state.selectedId) || CATALOG[0];
+  return CATALOG().find((item) => item.id === state.selectedId) || CATALOG()[0];
 }
 
 function capabilityForBackend(id) {
-  return CATALOG.find((item) => item.backendId === id) || CATALOG.find((item) => item.id === id) || CATALOG[1];
+  return CATALOG().find((item) => item.backendId === id) || CATALOG().find((item) => item.id === id) || CATALOG()[1];
 }
 
 function isAvailable(item) {
@@ -255,7 +255,7 @@ function renderExecutionState() {
 
 function selectCapability(id) {
   const previousId = state.selectedId;
-  state.selectedId = CATALOG.some((item) => item.id === id) ? id : "document";
+  state.selectedId = CATALOG().some((item) => item.id === id) ? id : "document";
   if (previousId !== state.selectedId) {
     $("#quickResult").value = "";
     $("#quickResultWrap").hidden = true;
@@ -440,7 +440,7 @@ function draftHasWork(draft) {
 }
 
 function draftTitle(draft) {
-  const item = CATALOG.find((entry) => entry.id === draft.selectedId);
+  const item = CATALOG().find((entry) => entry.id === draft.selectedId);
   const source = String(draft.goal || draft.instruction || draft.quickInput || draft.quickResult || "").trim().replace(/\s+/g, " ");
   return source ? source.slice(0, 30) : `${item?.name || "能力"}未完成内容`;
 }
@@ -450,7 +450,7 @@ function renderDraftList() {
   $("#capabilityDraftSection").hidden = drafts.length === 0;
   $("#capabilityDraftCount").textContent = String(drafts.length);
   $("#capabilityDraftList").innerHTML = drafts.map((draft) => {
-    const item = CATALOG.find((entry) => entry.id === draft.selectedId);
+    const item = CATALOG().find((entry) => entry.id === draft.selectedId);
     return `<div class="capability-draft-row"><button type="button" data-capability-draft="${escapeHtml(draft.id)}"><strong>${escapeHtml(draft.title || draftTitle(draft))}</strong><small>${escapeHtml(item?.name || "能力")} · ${escapeHtml(displayDate(draft.updatedAt))}</small></button><button type="button" class="capability-row-action" data-archive-capability-draft="${escapeHtml(draft.id)}" aria-label="归档${escapeHtml(draft.title || draftTitle(draft))}">归档</button></div>`;
   }).join("");
 }
@@ -497,7 +497,7 @@ function restoreDraftById(id) {
   const detachedFromChat = draft.handoffSource === "chat";
   state.activeDraftId = draft.id;
 
-  state.selectedId = CATALOG.some((item) => item.id === draft.selectedId) ? draft.selectedId : "document";
+  state.selectedId = CATALOG().some((item) => item.id === draft.selectedId) ? draft.selectedId : "document";
   state.materials = Array.isArray(draft.materials) ? draft.materials.slice(-8) : [];
   $("#goalInput").value = draft.goal || "";
   $("#instructionInput").value = draft.instruction || "";
@@ -903,7 +903,7 @@ function renderArchiveList() {
       return `<div class="capability-archive-row"><button type="button" data-open-archived-capability-task="${escapeHtml(task.id)}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(item.name)} · ${displayDate(task.archivedAt)}</small></button><button type="button" class="capability-row-action danger" data-delete-capability-task="${escapeHtml(task.id)}" aria-label="删除${escapeHtml(task.title)}">删除</button></div>`;
     }),
     ...drafts.map((draft) => {
-      const item = CATALOG.find((entry) => entry.id === draft.selectedId);
+      const item = CATALOG().find((entry) => entry.id === draft.selectedId);
       return `<div class="capability-archive-row"><button type="button" data-open-archived-capability-draft="${escapeHtml(draft.id)}"><strong>${escapeHtml(draft.title || draftTitle(draft))}</strong><small>未完成 · ${escapeHtml(item?.name || "能力")} · ${displayDate(draft.archivedAt)}</small></button><button type="button" class="capability-row-action danger" data-delete-archived-capability-draft="${escapeHtml(draft.id)}" aria-label="删除${escapeHtml(draft.title || draftTitle(draft))}">删除</button></div>`;
     }),
   ];

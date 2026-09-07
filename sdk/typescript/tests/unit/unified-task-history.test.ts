@@ -35,6 +35,9 @@ test('搜索、来源、项目筛选组合，不改变原始顺序', () => {
   const items = [{title:'Monthly Review',source:'workflow',spaceId:'p'}, {title:'Review',source:'bot'}, {title:'other',source:'workflow',spaceId:'p'}];
   assert.deepEqual(plain(h.filter(items,{query:' REVIEW ',source:'workflow',space:'p'})), [items[0]]);
   assert.equal(h.filter(items,{space:'missing'}).length,0);
+  assert.ok(h.filter(items,{source:'automation'}).every((x:any)=>x.kind==='自动化'));
+  assert.ok(h.filter(items,{source:'single'}).every((x:any)=>x.kind!=='自动化'));
+  assert.equal(h.filter(items,{source:'automation'}).length+h.filter(items,{source:'single'}).length,items.length);
 });
 
 test('详情保留管理与协作能力，成果归属准确，所有外来文本转义', () => {

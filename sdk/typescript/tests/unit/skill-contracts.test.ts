@@ -80,5 +80,5 @@ test('新界面保留旧选择器和深链接，技能是可选项且不伪装�
   assert.match(html,/id="skillRecipeFields"/);assert.match(source,/ruleEditorMode\(!b\)/);
   assert.match(source,/openBot\(\);ruleEditorMode\(false\)/);
   assert.match(source,/skills\.workflow\(b\):skills\.rule\(b\)/);
-  assert.match(read('assets/product-structure.js'),/href:'\/bots\?view=bots',label:'技能库'/);
+  assert.match(read('assets/product-structure.js'),/href:'\/skills',label:'技能库'/);
 });

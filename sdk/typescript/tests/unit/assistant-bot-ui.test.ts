@@ -67,7 +67,7 @@ test("Bot 页明确职责、模型与资料边界，并保留所有工作入口"
 test("助理与总览使用同一产品区分，不承诺自动加入专业能力", () => {
   const assistant = source("index.html");
   assert.match(assistant, /class="wb-assistant-role-hint"/);
-  assert.match(assistant, /href="\/bots\?view=bots">查看技能库/);
+  assert.match(assistant, /href="\/skills">查看技能库/);
   assert.doesNotMatch(assistant, /专业判断与能力会在后台按需加入/);
   const overview = source("overview.html");
   assert.match(overview, /<h2>工作技能<\/h2>/);

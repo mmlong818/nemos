@@ -36,15 +36,14 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
   for (const page of pages) {
     assert.match(page, /\/assets\/app-navigation-labels\.css/);
   }
-  for (const label of ["助理工作区", "进行中的事", "Bot 团队", "能力工具", "文件编辑", "自动化", "设置"]) {
+  for (const label of ["总览", "助理", "任务", "文件", "记忆", "技能库", "自动化", "工具与连接", "设置"]) {
     assert.ok(pages.every((page) => page.includes(`</span>${label}</a>`)));
   }
   assert.match(pages[0], /class="rail-label"/);
-  assert.match(pages[0], /<aside class="rail app-nav" aria-label="主导航" id="wbNavigation">/);
+  assert.match(pages[0], /<aside class="rail app-nav" aria-label="主导航" id="wbNavigation" data-product-navigation="true">/);
   assert.match(navigation, /@media \(min-width: 721px\)/);
   assert.match(navigation, /\.rail nav small,[\s\S]+display: block/);
   assert.match(navigation, /--app-rail-reserved: calc\(var\(--app-rail-left\) \+ var\(--app-rail-shell\) \+ 14px\)/);
-  assert.match(navigation, /#sidebar \{ width: 352px;/);
   assert.match(navigation, /#sessionPane \{[\s\S]+width: 252px/);
   assert.match(navigation, /--app-nav-width: 60px/);
   assert.match(navigation, /--app-nav-gap: 4px/);
@@ -59,7 +58,6 @@ test("角色使用功能徽记，右上角只保留对话操作", () => {
 
   assert.match(page, /const ROLE_BADGES =/);
   assert.match(page, /className: "role-glyph"/);
-  assert.match(page, /grid-template-columns:repeat\(2,32px\)/);
   assert.doesNotMatch(page, /id="callbtn"/);
   assert.doesNotMatch(page, /id="callbar"/);
   assert.doesNotMatch(page, /id="topMore"/);
@@ -74,7 +72,7 @@ test("后台角色能力保留，专家配置不再占用主界面", () => {
   for (const roleId of ["clownfish", "feifei", "teacher_lin", "azhe", "lingling"]) {
     assert.match(page, new RegExp(`${roleId}: \\{`));
   }
-  assert.match(page, /专业判断与能力会在后台按需加入/);
+  assert.match(page, /功能型专家；他们不会默认占据你的首页/);
   assert.doesNotMatch(page, /starter-prompts|starter-help-close|clownfishStarterHelpClosed/);
   assert.doesNotMatch(page, /id="sm-persona"/);
   assert.doesNotMatch(page, />专家与角色</);

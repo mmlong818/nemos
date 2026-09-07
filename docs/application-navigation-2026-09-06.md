@@ -1,5 +1,7 @@
 # 应用导航与页面归属整理
 
+> **已被取代(Superseded)**:本文描述的七入口架构经 2026-09-07 技能库迁移与导航收敛后已变更,2026-09-07 晚些时候导航进一步合并为服务端单层渲染、总览进入主导航。当前事实源:`sdk/typescript/examples/companion/app-navigation.ts`(路由)、`workbench-shell.ts`(导航渲染)、`web/assets/product-structure.js`(区域映射);盘点见 `docs/interface-inventory-2026-09-07.md` 与 `docs/web-interface-map-2026-09-07.md`。
+
 日期：2026-09-06。范围：整理应用入口、路由与页面行为；没有打包、推送或进行新的付费模型验收。
 
 ## 结论与当前状态

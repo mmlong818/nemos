@@ -27,6 +27,15 @@ test("完整模型流程：自动筛选、手动锁定、失败保留、目录�
     assert.equal(checked.ok, true); assert.equal(checked.model, "manual"); assert.equal(checked.checkedModel, "ready");
     const checkFailure = await request("/api/llm-model/check", { model: "unavailable" });
     assert.equal(checkFailure.ok, false); assert.equal(checkFailure.model, "manual");
+    // Passed probes are reused: switching back to an already verified model sends no model requests.
+    const requestsBefore = h.requests.length;
+    const cachedCheck = await request("/api/llm-model/check", { model: "ready" });
+    assert.equal(cachedCheck.ok, true); assert.equal(cachedCheck.cached, true); assert.equal(cachedCheck.checked.tools, "passed");
+    assert.equal(h.requests.length, requestsBefore);
+    const forced = await request("/api/llm-model/check", { model: "ready", force: true });
+    assert.equal(forced.ok, true); assert.notEqual(forced.cached, true); assert.ok(h.requests.length > requestsBefore);
+    const failedAgain = await request("/api/llm-model/check", { model: "unavailable" });
+    assert.notEqual(failedAgain.cached, true);
     const chat = { text: "ROUTE_MODEL_CHECK", target: { kind: "persona", id: "clownfish" }, sessionId: "routing-check", workMode: "task", model: "ready", toolMode: "off" };
     await request("/api/chat", chat);
     const route = h.requests.filter((item) => item.body?.messages?.some((message: any) => String(message.content).includes("ROUTE_MODEL_CHECK")));

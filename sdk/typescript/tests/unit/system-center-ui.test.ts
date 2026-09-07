@@ -72,7 +72,7 @@ test("模型设置会获取并展示多个可选模型", () => {
   assert.match(html, /id="modelCatalog"/);
   assert.match(html, /id="modelSelectionMode"/);
   assert.match(html, /不读取聊天记录/);
-  assert.match(script, /state\.models/);
+  assert.match(script, /renderModelCatalog/);
   assert.match(server, /fetchCompanionModelCatalog/);
   assert.match(server, /selectCheckedCompanionModel\(next, nextCatalog, mode\)/);
   assert.doesNotMatch(server, /model: nextCatalog\[0\]!\.id/);
@@ -81,7 +81,6 @@ test("模型设置会获取并展示多个可选模型", () => {
 test("窄屏任务页收起会话列表并保留一级导航", () => {
   const chat = readWeb("index.html");
   assert.match(chat, /@media\(max-width:720px\)\{[\s\S]*#sessionPane\{display:none\}/);
-  assert.match(chat, /#sidebar\{position:fixed;inset:0 auto 0 0;width:52px;height:100vh/);
   assert.match(chat, /#main\{width:100%;height:100vh;min-height:0\}/);
 });
 

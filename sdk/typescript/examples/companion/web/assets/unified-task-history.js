@@ -14,7 +14,8 @@
     return [...botJobs.map(job=>({...job,source:'bot',kind:'文字任务'})),...flows];
   }
   function filter(items,{query='',source='',space=''}={}){
-    return items.filter(item=>(!source||item.source===source)&&(!space||item.spaceId===space)&&String(item.title||'').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+    const bySource=item=>!source||(source==='automation'?item.kind==='自动化':source==='single'?item.kind!=='自动化':item.source===source);
+    return items.filter(item=>bySource(item)&&(!space||item.spaceId===space)&&String(item.title||'').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   }
   function groups(items){
     const list=[{title:'进行中',jobs:[]},{title:'需要处理',jobs:[]},{title:'待开始与已暂停',jobs:[]},{title:'已结束',jobs:[]}];
