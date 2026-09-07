@@ -1,7 +1,6 @@
 export interface CapabilityRouteInput {
   goal: string;
   materialNames?: string[];
-  workspacePath?: string;
 }
 
 export interface CapabilityRouteResult {

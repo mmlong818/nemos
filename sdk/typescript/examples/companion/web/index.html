@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="zh">
-<head>
+<head><script src="/assets/product-structure.js" defer></script><script src="/assets/assistant-digest.js" defer></script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="/assets/brand/clownfish-mark.svg" />
+<link rel="stylesheet" href="/assets/model-picker.css" />
 <title>小丑鱼</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -2882,16 +2883,7 @@
   </head>
 <body data-page="home">
   <div class="app-shell">
-    <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" id="railUserAvatar" aria-label="回到小丑鱼对话"><img class="avatar-img" alt="" width="36" height="36" src="/assets/brand/clownfish-mark.svg" /></a>
-      <nav>
-        <a class="is-current" href="/" aria-current="page" data-app-icon="message"><span></span><small>任务</small></a>
-        <a href="/capabilities" id="railCap" data-app-icon="boxes"><span></span><small>能力</small></a>
-        <a href="/office" id="railOffice" data-app-icon="file"><span></span><small>文件</small></a>
-        <a href="/tasks" id="railWork" data-app-icon="work"><span></span><small>自动化</small></a>
-      </nav>
-      <a class="rail-secondary" href="/settings" id="settingsbtn" data-app-icon="settings"><span></span><small>设置</small></a>
-    </aside>
+    <!-- APP_NAVIGATION -->
     <main class="task-workbench home-shell">
       <div class="workbench-body">
     <div id="sessionPane" class="task-workbench-sidebar">
@@ -2991,8 +2983,15 @@
             <select id="modelProvider" name="provider"></select>
           </label>
           <label class="model-field" for="modelName">
-            <span id="modelNameLabel">任务与专家模型</span>
-            <input id="modelName" name="model" placeholder="例如：glm-5.2" autocomplete="off" spellcheck="false" />
+            <span id="modelNameLabel">默认任务模型</span>
+            <input id="modelName" name="model" list="modelCatalog" placeholder="提交 Key 后自动获取" autocomplete="off" spellcheck="false" />
+            <datalist id="modelCatalog"></datalist>
+            <small id="modelCatalogHint">提交 Key 后自动获取模型列表。</small>
+          </label>
+          <label class="model-field model-field-wide" for="modelSelectionMode">
+            <span>模型选择方式</span>
+            <select id="modelSelectionMode"><option value="auto">自动检查较新候选（最多 3 个）</option><option value="manual">手动指定，不自动更换</option></select>
+            <small>检查会发送少量测试请求，可能产生模型费用；不读取聊天记录、不执行真实工具。缺少创建时间时保留目录顺序。</small>
           </label>
           <label class="model-field model-field-wide" for="modelKey">
             <span>API Key</span>
@@ -3481,6 +3480,8 @@
         </div>
         <div id="composerTools" class="task-workbench-tools">
           <div class="tool-left">
+            <select id="taskModelSelect" title="为当前任务选择模型" aria-label="任务模型" hidden></select>
+            <small id="taskModelStatus" role="status" aria-live="polite"></small>
             <button id="vbtn" title="切换语音条" data-icon="mic" hidden></button>
             <button id="shotbtn" title="截屏" data-icon="scissors"></button>
             <button id="imgbtn" title="发图片（识图）" data-icon="image"></button>
@@ -3522,7 +3523,10 @@
     </form>
   </dialog>
 <script src="/assets/app-icons.js"></script>
+<script src="/assets/model-shortlist.js"></script>
+<script src="/assets/model-picker.js"></script>
 <script src="/assets/app-search-overlay.js"></script>
+<script src="/assets/agent-events.js"></script>
 <script>
 const BUILD = "v16 clownfish-identity-migration";
 const APP_PERSONA_ID = "clownfish";
@@ -4200,7 +4204,9 @@ function deleteConversation(id) {
 function conversationRequestOptions(key) {
   const node = activeConversation(key);
   const config = node?.config || conversationDefaults();
-  return { sessionId: node?.id, model: config.model, reasoning: config.reasoning, toolMode: config.toolMode, workMode: normalizeWorkMode(config.workMode) };
+  const modelId = config.model && config.model !== "default" ? config.model : modelConnectionState?.model;
+  const supported = modelConnectionState?.reasoningEfforts?.[modelId] || [];
+  return { sessionId: node?.id, model: config.model, reasoning: config.reasoning, reasoningEffort: supported.includes(config.reasoningEffort) ? config.reasoningEffort : "auto", toolMode: config.toolMode, workMode: normalizeWorkMode(config.workMode) };
 }
 function saveLogs() {
   try { localStorage.setItem(CHAT_LOGS_KEY, JSON.stringify(chatLogs)); } catch {}
@@ -4291,11 +4297,38 @@ function activeWorkMode() {
   return normalizeWorkMode(activeConversation("persona:" + APP_PERSONA_ID)?.config?.workMode);
 }
 
+function syncTaskModelSelector() {
+  for (const select of [$("#taskModelSelect"), $("#heroModelSelect")].filter(Boolean)) {
+  const node = activeConversation("persona:" + APP_PERSONA_ID);
+  select.hidden = state.target?.id !== APP_PERSONA_ID || !modelConnectionState?.live;
+  if (select.hidden) { window.ClownfishModelPicker?.sync(select, modelConnectionState); continue; }
+  select.onchange = () => changeTaskModel(select);
+  const requested = node?.config?.model;
+  const selected = requested || "default";
+  const shortlist = window.ClownfishModelShortlist;
+  const models = shortlist.taskModels(modelConnectionState, selected);
+  select.title = "仅显示常用型号；更多型号可在设置中手动指定。切换会发送少量测试请求，可能产生模型费用；通过后才切换";
+  select.innerHTML = '<option value="default">跟随默认 · ' + esc(modelConnectionState.model) + ' · ' + esc(shortlist.checkLabel(modelConnectionState.modelChecks?.[modelConnectionState.model])) + '</option>'
+    + models.map((item) => '<option value="' + esc(item.id) + '"' + (item.missing ? ' disabled' : '') + '>' + esc(shortlist.label(item, modelConnectionState)) + '</option>').join("");
+  select.value = selected;
+  window.ClownfishModelPicker?.sync(select, modelConnectionState, {
+    effort: node?.config?.reasoningEffort || "auto",
+    onEffortChange: (effort) => {
+      if (!node) return;
+      node.config = { ...(node.config || {}), reasoningEffort: effort };
+      node.updatedAt = Date.now();
+      saveConversationTrees();
+      syncTaskModelSelector();
+    },
+  });
+  }
+}
+
 function setActiveWorkMode(mode) {
   const node = activeConversation("persona:" + APP_PERSONA_ID);
   if (!node || (node.messages || []).some((entry) => entry.side === "me" || entry.side === "user")) return;
   const normalized = normalizeWorkMode(mode);
-  node.config = { ...(node.config || {}), ...conversationDefaults(normalized) };
+  node.config = { ...(node.config || {}), ...conversationDefaults(normalized), model: node.config?.model || "default", reasoningEffort: node.config?.reasoningEffort || "auto" };
   node.title = WORK_MODES[normalized].title;
   node.updatedAt = Date.now();
   saveConversationTrees();
@@ -4311,7 +4344,7 @@ function emptyStateHtml() {
   if (state.target?.kind === "persona" && state.target.id === APP_PERSONA_ID) {
     const mode = activeWorkMode();
     const content = mode === "task"
-      ? { title: "准备完成什么？", desc: "描述目标、已有材料和希望得到的结果。专业判断与能力会在后台按需加入。" }
+      ? { title: "准备完成什么？", desc: "描述目标、已有材料和希望得到的结果。小丑鱼帮你拆解和推进；使用工具时遵循当前配置与授权。" }
       : mode === "study"
         ? { title: "今天想学会什么？", desc: "可以发来知识点、题目或不理解的地方；系统会通过讲解、提问和练习陪你掌握。" }
         : { title: "想聊点什么？", desc: "可以直接提问、讨论想法，或从一件小事开始。" };
@@ -4323,7 +4356,8 @@ function emptyStateHtml() {
       + '    </nav>'
       + '    <header class="role-intro-head"><h2>' + esc(content.title) + '</h2></header>'
       + '    <p>' + esc(content.desc) + '</p>'
-      + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><button type="button" id="heroSend">发送</button></div></div>'
+      + '    <p class="wb-assistant-role-hint">直接说出目标，让小丑鱼帮你推进。需要复用一种工作方法？<a href="/bots?view=bots">查看技能库 →</a></p>'
+      + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><select id="heroModelSelect" aria-label="任务模型" hidden></select><small id="heroModelStatus" role="status" aria-live="polite"></small><button type="button" id="heroSend">发送</button></div></div>'
       + '  </article>'
       + '</section>';
   }
@@ -4352,7 +4386,7 @@ function emptyStateHtml() {
     + '  </div>'
     + '</section>';
 }
-function showEmptyState() { const m = $("#msgs"); m.innerHTML = emptyStateHtml(); const composer = $("#composer"); if (composer) composer.classList.toggle("hero-mode", !!m.querySelector(".hero-composer")); }
+function showEmptyState() { const m = $("#msgs"); m.innerHTML = emptyStateHtml(); const composer = $("#composer"); if (composer) composer.classList.toggle("hero-mode", !!m.querySelector(".hero-composer")); syncTaskModelSelector(); }
 function updateRailStats() {
   const personas = $("#statPersonas"), chats = $("#statChats"), groups = $("#statGroups"), mode = $("#statMode");
   if (personas) personas.textContent = String(state.personas.length || 0);
@@ -4596,7 +4630,7 @@ function renderLog() {
   const m = $("#msgs"); m.innerHTML = "";
   ensureConversationTree(logKey());
   const log = chatLogs[logKey()] || [];
-  if (!log.length) { m.innerHTML = emptyStateHtml(); const composer = $("#composer"); if (composer) composer.classList.toggle("hero-mode", !!m.querySelector(".hero-composer")); m.scrollTop = 0; return; }
+  if (!log.length) { m.innerHTML = emptyStateHtml(); const composer = $("#composer"); if (composer) composer.classList.toggle("hero-mode", !!m.querySelector(".hero-composer")); syncTaskModelSelector(); m.scrollTop = 0; return; }
   m.innerHTML = "";
   for (let messageIndex = 0; messageIndex < log.length; messageIndex += 1) {
     const e = log[messageIndex];
@@ -4649,6 +4683,7 @@ async function loadState() {
     showOnboardingModal();
   }
   refreshRuntimePanel();
+  await refreshLLMStatus(false);
 }
 
 function isOnboardingComplete() {
@@ -4819,6 +4854,7 @@ function renderConversationHeader() {
     const mode = WORK_MODES[normalizeWorkMode(node?.config?.workMode)];
     const title = conversationTitle(node?.messages, node?.title || mode.title);
     $("#header").innerHTML = '<div><div class="hname">' + esc(title) + '</div><div class="htag">' + esc(mode.label) + '</div></div>';
+    syncTaskModelSelector();
     return;
   }
   const av = visualOf(state.target.kind, state.target.id);
@@ -6433,7 +6469,6 @@ async function deliverCompletedAgentRuns(runs) {
   const pending = (runs || []).filter((run) =>
     run.metadata?.surface !== "capability"
       && run.metadata?.surface !== "office"
-      && run.metadata?.surface !== "development"
       && run.status === "completed"
       && run.resumeCount > 0
       && !delivered.has(run.runId));
@@ -6981,13 +7016,12 @@ async function refreshAgentOps() {
   }
 }
 function startAgentEventStream() {
-  if (!window.EventSource || agentEventSource) return;
-  agentEventSource = new EventSource("/api/agent/events");
-  agentEventSource.addEventListener("job", () => { refreshAgentOps(); });
-  agentEventSource.addEventListener("run", (event) => {
+  if (!window.ClownfishAgentEvents || agentEventSource) return;
+  agentEventSource = window.ClownfishAgentEvents.connect({ onSync: refreshAgentOps, onEvent: (name, event) => {
+    if (name !== "run") return;
     let payload = null;
     try { payload = JSON.parse(event.data || "{}"); } catch {}
-    if (payload && payload.action === "delivery" && payload.surface !== "capability" && payload.surface !== "office" && payload.surface !== "development") {
+    if (payload && payload.action === "delivery" && payload.surface !== "capability" && payload.surface !== "office") {
       deliverAgentRun({
         runId: payload.runId,
         sessionId: payload.sessionId,
@@ -6995,9 +7029,7 @@ function startAgentEventStream() {
         metadata: { personaId: payload.personaId, scope: payload.scope, mode: payload.mode, surface: payload.surface },
       });
     }
-    if ($("#capmodal").classList.contains("show") || (payload && payload.action === "delivery")) refreshAgentOps();
-  });
-  agentEventSource.addEventListener("approval", () => { refreshAgentOps(); });
+  } });
 }
 function renderCapabilityLists() {
   renderSkillAudit();
@@ -7441,22 +7473,29 @@ function renderModelConnectionStatus(state, hydrateForm = false) {
     ? (routedModels ? state.providerName + " · 对话 " + state.dailyChatModel + " / 任务 " + state.model : state.providerName + " · " + state.model)
     : "当前离线，可连接任意模型服务";
   if (current) {
-    current.classList.toggle("live", Boolean(state.live));
+    current.classList.toggle("live", state.check?.chat === "passed");
     current.innerHTML = '<span class="model-current-dot" aria-hidden="true"></span><span><b>'
-      + esc(state.live ? state.providerName + " · 已连接" : "离线模式")
+      + esc(state.live ? state.providerName + " · " + (!state.check ? "已配置，未检查" : state.check.chat !== "passed" ? "检查未通过" : state.check.tools === "passed" ? "工具往返已验证" : "仅文字已验证") : "离线模式")
       + '</b><small>'
       + esc(state.live
-        ? (routedModels ? "日常对话：" + state.dailyChatModel + " · 任务与专家：" + state.model : "默认模型：" + state.model)
+        ? "默认模型：" + state.model + " · " + (state.check?.detail || "保存后可检查能力。")
         : "基础功能仍可使用，连接模型后可获得完整体验")
       + '</small></span>';
   }
   if (offline) offline.disabled = !state.live;
+  const models = window.ClownfishModelShortlist.shortlist(state);
+  const catalog = $("#modelCatalog");
+  if (catalog) catalog.innerHTML = models.map((item) => '<option value="' + esc(item.id) + '">' + esc(item.displayName || item.id) + '</option>').join("");
+  const catalogHint = $("#modelCatalogHint");
+  if (catalogHint) catalogHint.textContent = models.length ? "仅展示 " + models.length + " 个常用型号；更多型号在设置中查看，仍可手动填写。" : "保存时读取目录；不提供目录的服务可手动填写。";
+  syncTaskModelSelector();
   if (!hydrateForm) return;
   const providerSelect = $("#modelProvider");
   providerSelect.innerHTML = (state.providers || []).map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("");
   providerSelect.value = state.provider || "zhipu";
   const preset = modelPreset(providerSelect.value) || modelPreset("zhipu");
   $("#modelName").value = state.model || preset?.model || "";
+  $("#modelSelectionMode").value = state.live ? state.selectionMode || "manual" : "auto";
   $("#modelBaseUrl").value = state.baseUrl || preset?.baseUrl || "";
   $("#modelProtocol").value = state.protocol || preset?.protocol || "openai-compatible";
   $("#modelKey").value = "";
@@ -7480,9 +7519,12 @@ function applyModelPreset(providerId) {
   const preset = modelPreset(providerId);
   if (!preset) return;
   $("#modelName").value = preset.model;
+  $("#modelSelectionMode").value = "auto";
   $("#modelBaseUrl").value = preset.baseUrl;
   $("#modelProtocol").value = preset.protocol;
   $("#modelKey").value = "";
+  $("#modelCatalog").innerHTML = "";
+  $("#modelCatalogHint").textContent = "提交该服务的 Key 后自动获取模型列表。";
   updateModelFormHints();
 }
 async function refreshLLMStatus(hydrateForm = false) {
@@ -7614,20 +7656,21 @@ $("#modelForm").onsubmit = async (event) => {
   event.preventDefault();
   const btn = $("#modelSave");
   btn.disabled = true;
-  btn.textContent = "正在测试…";
+  btn.textContent = "正在获取…";
   $("#llmstatus").className = "";
-  $("#llmstatus").textContent = "正在验证地址、密钥和模型…";
+  $("#llmstatus").textContent = "正在检查模型的文字回复、输出方式和工具往返…";
   try {
     const state = await api("/api/llm-config", {
       provider: $("#modelProvider").value,
       protocol: $("#modelProtocol").value,
       baseUrl: $("#modelBaseUrl").value.trim(),
       model: $("#modelName").value.trim(),
+      selectionMode: $("#modelSelectionMode").value,
       key: $("#modelKey").value.trim()
     });
     renderModelConnectionStatus(state, true);
     $("#llmstatus").className = "success";
-    $("#llmstatus").textContent = "连接成功，配置已保存在本机。";
+    $("#llmstatus").textContent = "已保存 " + state.model + "。" + (state.check?.detail || "") + (state.catalogWarning || "");
     await loadState();
   } catch (error) {
     $("#llmstatus").className = "error";
@@ -7654,6 +7697,31 @@ $("#modelOffline").onclick = async () => {
   }
 };
 $("#modelProvider").onchange = () => applyModelPreset($("#modelProvider").value);
+$("#modelName").oninput = () => { $("#modelSelectionMode").value = "manual"; };
+async function changeTaskModel(select) {
+  const node = activeConversation("persona:" + APP_PERSONA_ID);
+  if (!node) return;
+  const requested = select.value;
+  const status = select.id === "heroModelSelect" ? $("#heroModelStatus") : $("#taskModelStatus");
+  select.disabled = true;
+  status.textContent = requested === "default" ? "" : "正在检查，完成前保留原模型…";
+  try {
+    if (requested !== "default") {
+      const result = await api("/api/llm-model/check", { model: requested });
+      renderModelConnectionStatus(result);
+      if (!result.ok) throw new Error(result.checked?.detail || "模型检查未通过");
+      status.textContent = result.checked.tools === "passed" ? "工具往返已验证" : "仅文字已验证，请关闭工具";
+      status.title = result.checked.detail;
+    }
+    node.config = { ...(node.config || {}), model: requested };
+    node.updatedAt = Date.now();
+    saveConversationTrees();
+  } catch (error) {
+    if (error.data?.checkedModel && error.data?.checked) renderModelConnectionStatus(error.data);
+    status.textContent = "未切换：" + String(error.data?.userMessage || error.data?.checked?.detail || error.message || "请稍后重试").slice(0, 240);
+  }
+  finally { select.disabled = false; syncTaskModelSelector(); }
+}
 $("#modelclose").onclick = () => $("#modelmodal").classList.remove("show");
 $("#modelmodal").onclick = (event) => { if (event.target.id === "modelmodal") $("#modelmodal").classList.remove("show"); };
 function openSettingsMenu() {
@@ -7793,9 +7861,9 @@ document.addEventListener("keydown", (event) => {
 });
 $("#railCap").onclick = () => { window.location.href = "/capabilities"; };
 $("#railOffice").onclick = () => { window.location.href = "/office"; };
-$("#railWork").onclick = () => { window.location.href = "/tasks"; };
+$("#railWork").onclick = () => { window.location.href = "/automations"; };
 $("#composerTool").onclick = openToolModal;
-$("#railUserAvatar").onclick = () => openAppIfNeeded();
+if ($("#railUserAvatar")) $("#railUserAvatar").onclick = () => openAppIfNeeded();
 $("#sm-group").onclick = () => smRun(openGroupModal);
 $("#sm-avatar").onclick = () => smRun(() => openPersonaModal("me"));
 $("#sm-model").onclick = openModelModal;

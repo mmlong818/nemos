@@ -30,29 +30,8 @@ import {
 import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
 import { exportOfficeDocument } from "./office-export.js";
 import { ArtifactWorkspaceStore, type ArtifactWorkspaceState } from "./artifact-workspace.js";
-import { assessProfessionalArtifact, type ProfessionalArtifactReceipt } from "./professional-artifact-gate.js";
+import type { ProfessionalArtifactReceipt } from "./professional-artifact-gate.js";
 import { admitGeneratedAbilitySpec, admitInstalledSkillContent, type CapabilityAdmissionReceipt } from "./capability-admission.js";
-import {
-  normalizeDevelopmentApprovalPolicy,
-  type DevelopmentApprovalPolicy,
-} from "./development-approval.js";
-import {
-  normalizeDevelopmentEngine,
-  type DevelopmentEngine,
-} from "./development-engine-contract.js";
-import {
-  developmentContextSummary,
-  renderDevelopmentContextBundle,
-  type DevelopmentContextBundle,
-} from "./development-context.js";
-import { compareDevelopmentRuns, type DevelopmentRunComparison } from "./development-run-comparison.js";
-import type { DevelopmentTelemetryEvent } from "./pi-development.js";
-import { buildDevelopmentDecisionGraph, type DevelopmentDecisionGraph } from "./development-decision-graph.js";
-export {
-  DEVELOPMENT_ENGINES,
-  normalizeDevelopmentEngine,
-  type DevelopmentEngine,
-} from "./development-engine-contract.js";
 
 const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -156,7 +135,7 @@ export interface CapabilityTaskExecution {
   updatedAt: string;
 }
 
-export type CapabilityTaskOriginKind = "chat" | "capability" | "office" | "development" | "direct" | "orchestration" | "automation";
+export type CapabilityTaskOriginKind = "chat" | "capability" | "office" | "direct" | "orchestration" | "automation";
 
 export interface CapabilityTaskOrigin {
   kind: CapabilityTaskOriginKind;
@@ -166,26 +145,8 @@ export interface CapabilityTaskOrigin {
   jobId?: string;
 }
 
-export interface CapabilityTaskWorkspace {
-  path: string;
-  accessMode: "inspect" | "develop";
-  developmentEngine?: DevelopmentEngine;
-  model?: string;
-  reasoning?: DevelopmentReasoning;
-  approvalPolicy?: DevelopmentApprovalPolicy;
-  installDependencies?: boolean;
-}
-
-export const DEVELOPMENT_REASONING_LEVELS = ["fast", "balanced", "deep"] as const;
-export type DevelopmentReasoning = typeof DEVELOPMENT_REASONING_LEVELS[number];
-
-export function normalizeDevelopmentReasoning(value: unknown): DevelopmentReasoning {
-  return DEVELOPMENT_REASONING_LEVELS.includes(value as DevelopmentReasoning) ? value as DevelopmentReasoning : "balanced";
-}
-
 function capabilityAgentSurface(task: Pick<CapabilityTask, "oneOff" | "origin">): CapabilityAgentSurface {
   if (task.origin?.kind === "office") return "office";
-  if (task.origin?.kind === "development") return "development";
   if (task.origin?.kind === "capability") return "capability";
   return "task";
 }
@@ -214,10 +175,10 @@ export interface CapabilityTask {
   updatedAt: string;
   lastRunAt?: string;
   lastRunKey?: string;
+  /** Successfully queued occurrence; retained even if the job history is pruned. */
+  lastScheduledOccurrenceKey?: string;
   execution?: CapabilityTaskExecution;
   origin?: CapabilityTaskOrigin;
-  workspace?: CapabilityTaskWorkspace;
-  contextBundle?: DevelopmentContextBundle;
   /** v0.8：这次交付面向的沟通对象；决定注入哪份关系档案。 */
   counterpartId?: string;
   spaceId?: string;
@@ -237,18 +198,9 @@ interface AdHocTaskInput {
   trigger?: string;
   runId?: string;
   memoryMode?: "default" | "preferences" | "off";
-  workspacePath?: string;
-  accessMode?: "inspect" | "develop";
-  installDependencies?: boolean;
-  developmentEngine?: DevelopmentEngine;
-  model?: string;
-  reasoning?: DevelopmentReasoning;
-  approvalPolicy?: DevelopmentApprovalPolicy;
   origin?: CapabilityTaskOrigin;
   continuationTaskId?: string;
-  contextBundle?: DevelopmentContextBundle;
   onProgress?: (message: string, percent: number) => void;
-  onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
 }
 
 export interface CapabilityArtifact {
@@ -267,15 +219,11 @@ export interface CapabilityArtifact {
     generatedAbilityId?: string;
     contextFile?: string;
     validationChecks?: CapabilityArtifactValidationCheck[];
-    development?: CapabilityDevelopmentReceipt;
     workspace?: { status: "draft" | "review" | "done"; updatedAt: string; versionCount: number };
     presentationVersion?: { state: "validated" | "needs-review"; lastGoodArtifactId?: string };
     presentationVisualReview?: import("./presentation-visual-review.js").PresentationVisualReview;
     lineage?: { version: number; previousArtifactId?: string };
     professionalReceipt?: ProfessionalArtifactReceipt;
-    developmentContext?: ReturnType<typeof developmentContextSummary>;
-    developmentComparison?: DevelopmentRunComparison;
-    developmentDecisionGraph?: DevelopmentDecisionGraph;
   };
   proof?: CapabilityArtifactProof;
   verification?: SourceVerificationReport;
@@ -287,32 +235,6 @@ export interface CapabilityArtifactValidationCheck {
   status: "passed" | "failed" | "not-run";
   phase?: "validation" | "verification";
   detail?: string;
-}
-
-export interface CapabilityDevelopmentReceipt {
-  engine?: DevelopmentEngine;
-  workspacePath: string;
-  accessMode: "inspect" | "develop";
-  approvalPolicy?: DevelopmentApprovalPolicy;
-  changedFiles: string[];
-  baseRevision?: string;
-  fileReceipts: Array<{ path: string; state: "present" | "deleted"; sha256?: string; byteLength?: number }>;
-  checks: Array<{ command: string; passed: boolean; output: string; checkedAt: string }>;
-  dependencyReceipts?: Array<{ id: string; label: string; passed: boolean; output: string; installedAt: string }>;
-  contextReceipts?: Array<{ kind: "directory" | "file-lines" | "text-search"; path: string; anchor: string; confidence: "exact"; truncated: boolean }>;
-  unverifiedRisks: string[];
-  proposal?: {
-    id: string;
-    state: "staging" | "pending" | "applied" | "rejected" | "conflicted" | "failed" | "rolled_back";
-    files: Array<{ path: string; operation: "create" | "update"; proposedHash: string; byteLength: number }>;
-    conflicts?: string[];
-  };
-  toolCalls: number;
-  /** v0.8：本轮所用的开发会话；回传即可在下一条指令上接着做。 */
-  sessionId?: string;
-  sessionFile?: string;
-  sessionResumed?: boolean;
-  isolatedWorkspace?: boolean;
 }
 
 export interface RetainedCapabilityArtifact extends CapabilityArtifact {
@@ -342,18 +264,6 @@ export interface CapabilityNotification {
   name: string;
   text: string;
   artifact: CapabilityArtifact;
-}
-
-function developmentRunSnapshot(artifact: CapabilityArtifact) {
-  const development = artifact.metadata?.development;
-  return {
-    artifactId: artifact.id,
-    engine: development?.engine,
-    changedFiles: development?.changedFiles,
-    checks: development?.checks,
-    contextFingerprints: artifact.metadata?.developmentContext?.fingerprints,
-    sessionResumed: development?.sessionResumed,
-  };
 }
 
 export interface CapabilitySnapshot {
@@ -431,12 +341,12 @@ export interface SkillAudit {
   items: SkillAuditItem[];
 }
 
-type CapabilityAgentSurface = "task" | "capability" | "office" | "development";
+type CapabilityAgentSurface = "task" | "capability" | "office";
 
 export interface CapabilityRuntimeOptions {
   dataDir: string;
-  notify: (personaId: string, text: string, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface) => Promise<{ reply: string; facts: string[] }>;
-  notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface) => Promise<{ reply: string; facts: string[] }>;
+  notify: (personaId: string, text: string, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface) => Promise<{ reply: string; facts: string[] }>;
+  notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface) => Promise<{ reply: string; facts: string[] }>;
   personas: () => CapabilityPersona[];
   toolRegistry?: CapabilityToolRegistry;
   knowledgeContext?: (ids: string[]) => string;
@@ -444,21 +354,6 @@ export interface CapabilityRuntimeOptions {
   counterpartContext?: (counterpartId: string) => string;
   /** v0.8：取某个角色的后台工具绑定；返回 undefined 表示不限制。 */
   toolBinding?: (personaId: string) => PersonaToolBinding | undefined;
-  runDeveloper?: (input: {
-    workspacePath: string;
-    instruction: string;
-    accessMode: "inspect" | "develop";
-    installDependencies?: boolean;
-    engine?: DevelopmentEngine;
-    model?: string;
-    reasoning?: DevelopmentReasoning;
-    approvalPolicy?: DevelopmentApprovalPolicy;
-    signal?: AbortSignal;
-    onProgress?: (message: string, percent: number) => void;
-    onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
-    sessionMode?: "continue" | "new" | "resume";
-    sessionFile?: string;
-  }) => Promise<{ reply: string } & CapabilityDevelopmentReceipt>;
 }
 
 export interface CapabilityRuntimeLimits {
@@ -466,6 +361,13 @@ export interface CapabilityRuntimeLimits {
   maxToolRounds: number;
   maxTotalTokens: number;
   maxOutputChars: number;
+}
+
+/** Per-execution routing, also used by continuation/repair calls; never a global default. */
+export interface CapabilityRunOptions extends CapabilityRuntimeLimits {
+  reasoningEffort?: import("./model-reasoning.js").ReasoningEffort;
+  model?: string;
+  toolMode?: "auto" | "read-only" | "off";
 }
 
 export interface CapabilityStreamCb {
@@ -1075,7 +977,6 @@ export class CapabilityRuntime {
     enabled?: boolean;
     spaceId?: string;
     knowledgeIds?: string[];
-    workspace?: CapabilityTaskWorkspace;
     counterpartId?: string;
   }): CapabilityTask {
     const ability = this.requireAbility(input.capabilityId);
@@ -1091,7 +992,6 @@ export class CapabilityRuntime {
       enabled: input.enabled ?? true,
       spaceId: input.spaceId ? this.requireSpace(input.spaceId, true).id : undefined,
       knowledgeIds: normalizeKnowledgeIds(input.knowledgeIds),
-      workspace: input.workspace ? { ...input.workspace } : undefined,
       counterpartId: input.counterpartId?.trim() || undefined,
       createdAt: now,
       updatedAt: now,
@@ -1100,24 +1000,6 @@ export class CapabilityRuntime {
     this.tasks.push(task);
     this.saveTasks();
     return task;
-  }
-
-  /**
-   * 用户此前已经授权过的开发工作区。
-   *
-   * 角色自主发起开发时只能从这份清单里选——让模型自由填路径，等于把「读写哪个目录」
-   * 的决定权从用户手里交给模型。清单只由用户亲自发起过的开发任务与产物累积而成。
-   */
-  listDevelopmentWorkspaces(): CapabilityTaskWorkspace[] {
-    const seen = new Map<string, CapabilityTaskWorkspace>();
-    for (const task of this.tasks) {
-      if (task.workspace?.path) seen.set(task.workspace.path, { ...task.workspace });
-    }
-    for (const artifact of this.artifacts) {
-      const path = artifact.metadata?.development?.workspacePath;
-      if (path && !seen.has(path)) seen.set(path, { path, accessMode: "inspect" });
-    }
-    return [...seen.values()];
   }
 
   updateTask(input: {
@@ -1341,10 +1223,16 @@ export class CapabilityRuntime {
     if (changed) this.saveTasks();
   }
 
-  dueTaskRuns(trigger: "time" | "turn"): CapabilityDueTaskRun[] {
-    const now = new Date();
+  recordScheduledOccurrence(taskId: string, occurrenceKey: string): void {
+    const task = this.requireTask(taskId);
+    if (task.lastScheduledOccurrenceKey === occurrenceKey) return;
+    task.lastScheduledOccurrenceKey = occurrenceKey;
+    this.saveTasks();
+  }
+
+  dueTaskRuns(trigger: "time" | "turn", now = new Date()): CapabilityDueTaskRun[] {
     return this.tasks
-      .filter((task) => this.isDue(task, trigger))
+      .filter((task) => this.isDue(task, trigger, now))
       .map((task) => ({
         taskId: task.id,
         personaId: task.personaId,
@@ -1368,38 +1256,17 @@ export class CapabilityRuntime {
     return out;
   }
 
-  async runTask(id: string, trigger: string, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string): Promise<CapabilityNotification> {
+  async runTask(id: string, trigger: string, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string): Promise<CapabilityNotification> {
     const task = this.requireTask(id);
     const ability = this.requireAbility(task.capabilityId);
     const persona = this.persona(task.personaId);
     this.appendTaskStorylineEvent(task, { type: "handoff", text: `${persona.name}开始处理`, personaId: task.personaId });
     this.saveTasks();
     try {
-      const developmentResult = ability.id === "project-development"
-        ? await this.runDevelopmentTask({
-            workspacePath: task.workspace?.path,
-            accessMode: task.workspace?.accessMode,
-            developmentEngine: task.workspace?.developmentEngine,
-            model: task.workspace?.model,
-            reasoning: task.workspace?.reasoning,
-            approvalPolicy: task.workspace?.approvalPolicy,
-            installDependencies: task.workspace?.installDependencies,
-          }, task, signal)
-        : undefined;
-      const result = developmentResult
-        ?? await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task));
+      const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task));
       this.markSkillUsed(ability);
-      const reply = developmentResult
-        ? developmentResult.reply
-        : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId, surface: capabilityAgentSurface(task) });
-      const runtimeMetadata = developmentResult
-        ? {
-            development: developmentResult,
-            validationChecks: developmentValidationChecks(developmentResult),
-            professionalReceipt: developmentProfessionalReceipt(developmentResult),
-          }
-        : undefined;
-      return this.finishTaskRun(task, ability, persona, reply, runtimeMetadata);
+      const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId, surface: capabilityAgentSurface(task) });
+      return this.finishTaskRun(task, ability, persona, reply);
     } catch (error) {
       this.appendTaskStorylineEvent(task, { type: "error", text: "本次执行未完成，可从运行记录查看原因", personaId: task.personaId });
       this.saveTasks();
@@ -1407,46 +1274,23 @@ export class CapabilityRuntime {
     }
   }
 
-  async runTaskStream(id: string, trigger: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits, runId?: string): Promise<CapabilityNotification> {
+  async runTaskStream(id: string, trigger: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string): Promise<CapabilityNotification> {
     const task = this.requireTask(id);
     const ability = this.requireAbility(task.capabilityId);
     const persona = this.persona(task.personaId);
     this.appendTaskStorylineEvent(task, { type: "handoff", text: `${persona.name}开始处理`, personaId: task.personaId });
     this.saveTasks();
     try {
-      const developmentResult = ability.id === "project-development"
-        ? await this.runDevelopmentTask({
-            workspacePath: task.workspace?.path,
-            accessMode: task.workspace?.accessMode,
-            developmentEngine: task.workspace?.developmentEngine,
-            model: task.workspace?.model,
-            reasoning: task.workspace?.reasoning,
-            approvalPolicy: task.workspace?.approvalPolicy,
-            installDependencies: task.workspace?.installDependencies,
-            onProgress: (message) => cb.onStatus(message),
-          }, task, signal)
-        : undefined;
       const streamCb = isNativeCapabilityId(ability.id)
         ? { onStatus: cb.onStatus, onToken: (_token: string) => undefined }
         : cb;
-      const result = developmentResult
-        ?? (this.opts.notifyStream
+      const result = this.opts.notifyStream
           ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), streamCb, signal, limits, runId, undefined, capabilityAgentSurface(task))
-          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task)));
-      if (developmentResult) cb.onToken(developmentResult.reply);
-      else if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
+          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task));
+      if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
       this.markSkillUsed(ability);
-      const reply = developmentResult
-        ? developmentResult.reply
-        : await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId, surface: capabilityAgentSurface(task) });
-      const runtimeMetadata = developmentResult
-        ? {
-            development: developmentResult,
-            validationChecks: developmentValidationChecks(developmentResult),
-            professionalReceipt: developmentProfessionalReceipt(developmentResult),
-          }
-        : undefined;
-      return this.finishTaskRun(task, ability, persona, reply, runtimeMetadata);
+      const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId, surface: capabilityAgentSurface(task) });
+      return this.finishTaskRun(task, ability, persona, reply);
     } catch (error) {
       this.appendTaskStorylineEvent(task, { type: "error", text: "本次执行未完成，可从运行记录查看原因", personaId: task.personaId });
       this.saveTasks();
@@ -1461,24 +1305,8 @@ export class CapabilityRuntime {
     reply: string,
     runtimeMetadata?: NonNullable<CapabilityArtifact["metadata"]>,
   ): Promise<CapabilityNotification> {
-    const previousArtifact = [...this.artifacts].reverse().find((item) => item.taskId === task.id);
     const artifact = await this.writeArtifact(task, ability, reply);
     if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
-    if (task.contextBundle) artifact.metadata = { ...artifact.metadata, developmentContext: developmentContextSummary(task.contextBundle) };
-    if (artifact.metadata?.development) {
-      artifact.metadata.developmentDecisionGraph = buildDevelopmentDecisionGraph({
-        instruction: task.instruction,
-        artifactId: artifact.id,
-        context: task.contextBundle,
-        development: artifact.metadata.development,
-      });
-    }
-    if (previousArtifact?.metadata?.development && artifact.metadata?.development) {
-      artifact.metadata.developmentComparison = compareDevelopmentRuns(
-        developmentRunSnapshot(previousArtifact),
-        developmentRunSnapshot(artifact),
-      );
-    }
     withArtifactProof(artifact);
     if (ability.id === "presentation-builder") {
       const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level !== "produced");
@@ -1516,69 +1344,34 @@ export class CapabilityRuntime {
     };
   }
 
-  async runAdHocTask(input: AdHocTaskInput, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
+  async runAdHocTask(input: AdHocTaskInput, signal?: AbortSignal, limits?: CapabilityRunOptions): Promise<CapabilityNotification> {
     const { task, ability, persona } = this.createAdHocTask(input);
     try {
       input.onProgress?.("正在分析目标并生成结构", 20);
-      // 用一个已收窄的局部变量承接开发结果，让交付回执的类型契约在编译期成立，
-      // 而不是依赖三处独立的 ability.id 判断。
-      const developmentResult = ability.id === "project-development"
-        ? await this.runDevelopmentTask(input, task, signal)
-        : undefined;
-      const result = developmentResult
-        ?? await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task));
+      const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task));
       this.markSkillUsed(ability);
-      const reply = developmentResult
-        ? developmentResult.reply
-        : await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress, surface: capabilityAgentSurface(task) });
-      const runtimeMetadata = developmentResult
-        ? {
-            development: developmentResult,
-            validationChecks: developmentValidationChecks(developmentResult),
-            professionalReceipt: developmentProfessionalReceipt(developmentResult),
-          }
-        : undefined;
+      const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress, surface: capabilityAgentSurface(task) });
       input.onProgress?.("正在生成并保存交付物", 85);
-      return this.finishAdHocRun(task, ability, persona, reply, runtimeMetadata);
+      return this.finishAdHocRun(task, ability, persona, reply);
     } catch (error) {
       this.failAdHocRun(task, error);
       throw error;
     }
   }
 
-  async runAdHocTaskStream(input: AdHocTaskInput, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRuntimeLimits): Promise<CapabilityNotification> {
+  async runAdHocTaskStream(input: AdHocTaskInput, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRunOptions): Promise<CapabilityNotification> {
     const { task, ability, persona } = this.createAdHocTask(input);
     try {
-      const developmentResult = ability.id === "project-development"
-        ? await this.runDevelopmentTask({
-            ...input,
-            onProgress: (message, percent) => {
-              input.onProgress?.(message, percent);
-              cb.onStatus(message);
-            },
-          }, task, signal)
-        : undefined;
       const streamCb = isNativeCapabilityId(ability.id)
         ? { onStatus: cb.onStatus, onToken: (_token: string) => undefined }
         : cb;
-      const result = developmentResult
-        ?? (this.opts.notifyStream
+      const result = this.opts.notifyStream
           ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), streamCb, signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task))
-          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task)));
-      if (developmentResult) cb.onToken(developmentResult.reply);
-      else if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
+          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task));
+      if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
       this.markSkillUsed(ability);
-      const reply = developmentResult
-        ? developmentResult.reply
-        : await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, surface: capabilityAgentSurface(task) });
-      const runtimeMetadata = developmentResult
-        ? {
-            development: developmentResult,
-            validationChecks: developmentValidationChecks(developmentResult),
-            professionalReceipt: developmentProfessionalReceipt(developmentResult),
-          }
-        : undefined;
-      return this.finishAdHocRun(task, ability, persona, reply, runtimeMetadata);
+      const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, surface: capabilityAgentSurface(task) });
+      return this.finishAdHocRun(task, ability, persona, reply);
     } catch (error) {
       this.failAdHocRun(task, error);
       throw error;
@@ -1590,7 +1383,7 @@ export class CapabilityRuntime {
     ability: Capability,
     initialReply: string,
     cb?: CapabilityStreamCb,
-    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface } = {},
+    execution: { signal?: AbortSignal; limits?: CapabilityRunOptions; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface } = {},
   ): Promise<string> {
     if (isNativeCapabilityId(ability.id)) {
       return this.completeNativeAbilityReply(task, ability.id, initialReply, execution);
@@ -1624,7 +1417,7 @@ export class CapabilityRuntime {
     task: CapabilityTask,
     abilityId: Parameters<typeof nativeCapabilityContract>[0],
     initialReply: string,
-    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface },
+    execution: { signal?: AbortSignal; limits?: CapabilityRunOptions; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface },
   ): Promise<string> {
     execution.onProgress?.("正在校验交付结构", 48);
     let initialError = "";
@@ -1684,7 +1477,7 @@ export class CapabilityRuntime {
     ability: Capability,
     initialReply: string,
     cb?: CapabilityStreamCb,
-    execution: { signal?: AbortSignal; limits?: CapabilityRuntimeLimits; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface } = {},
+    execution: { signal?: AbortSignal; limits?: CapabilityRunOptions; runId?: string; memoryMode?: "default" | "preferences" | "off"; onProgress?: (message: string, percent: number) => void; surface?: CapabilityAgentSurface } = {},
   ): Promise<string> {
     let reply = initialReply.trim();
     const maxOutputChars = execution.limits?.maxOutputChars;
@@ -1725,26 +1518,12 @@ export class CapabilityRuntime {
       existing.instruction = text(input.instruction, existing.instruction, 160000);
       existing.format = normalizeFormat(input.format || ability.defaultFormat);
       existing.updatedAt = now;
-      existing.contextBundle = input.contextBundle;
       existing.origin = {
         ...origin,
         kind: existing.origin?.kind || origin.kind,
         conversationKey: origin.conversationKey || existing.origin?.conversationKey,
         conversationId: origin.conversationId || existing.origin?.conversationId,
       };
-      if (input.workspacePath) {
-        const developmentEngine = normalizeDevelopmentEngine(input.developmentEngine);
-        const accessMode = input.accessMode === "inspect" ? "inspect" : "develop";
-        existing.workspace = {
-          path: text(input.workspacePath, "", 2_000),
-          accessMode,
-          developmentEngine,
-          model: text(input.model, "", 120) || undefined,
-          reasoning: normalizeDevelopmentReasoning(input.reasoning),
-          approvalPolicy: normalizeDevelopmentApprovalPolicy(developmentEngine, input.approvalPolicy, accessMode),
-          installDependencies: input.installDependencies === true,
-        };
-      }
       existing.execution = origin.jobId ? {
         jobId: origin.jobId,
         status: "running",
@@ -1778,20 +1557,6 @@ export class CapabilityRuntime {
       createdAt: now,
       updatedAt: now,
       origin,
-      contextBundle: input.contextBundle,
-      workspace: input.workspacePath ? (() => {
-        const developmentEngine = normalizeDevelopmentEngine(input.developmentEngine);
-        const accessMode = input.accessMode === "inspect" ? "inspect" as const : "develop" as const;
-        return {
-          path: text(input.workspacePath, "", 2_000),
-          accessMode,
-          developmentEngine,
-          model: text(input.model, "", 120) || undefined,
-          reasoning: normalizeDevelopmentReasoning(input.reasoning),
-          approvalPolicy: normalizeDevelopmentApprovalPolicy(developmentEngine, input.approvalPolicy, accessMode),
-          installDependencies: input.installDependencies === true,
-        };
-      })() : undefined,
       oneOff: true,
       execution: origin.jobId ? {
         jobId: origin.jobId,
@@ -1805,50 +1570,6 @@ export class CapabilityRuntime {
     this.tasks.push(task);
     this.saveTasks();
     return { task, ability, persona };
-  }
-
-  private async runDevelopmentTask(
-    input: {
-      workspacePath?: string;
-      accessMode?: "inspect" | "develop";
-      installDependencies?: boolean;
-      developmentEngine?: DevelopmentEngine;
-      model?: string;
-      reasoning?: DevelopmentReasoning;
-      approvalPolicy?: DevelopmentApprovalPolicy;
-      onProgress?: (message: string, percent: number) => void;
-      onTelemetry?: (event: DevelopmentTelemetryEvent) => void;
-      sessionMode?: "continue" | "new" | "resume";
-      sessionFile?: string;
-    },
-    task: CapabilityTask,
-    signal?: AbortSignal,
-  ): Promise<({ reply: string; facts: string[] } & CapabilityDevelopmentReceipt)> {
-    if (!this.opts.runDeveloper) throw new Error("开发能力尚未完成运行连接。");
-    const developmentEngine = normalizeDevelopmentEngine(input.developmentEngine);
-    const accessMode = input.accessMode === "inspect" ? "inspect" : "develop";
-    const context = renderDevelopmentContextBundle(task.contextBundle);
-    const previousDevelopment = [...this.artifacts]
-      .reverse()
-      .find((artifact) => artifact.taskId === task.id && artifact.metadata?.development?.engine === developmentEngine)
-      ?.metadata?.development;
-    const canResume = Boolean(previousDevelopment?.sessionFile);
-    const result = await this.opts.runDeveloper({
-      workspacePath: String(input.workspacePath || ""),
-      instruction: context ? `${task.instruction.trim()}\n\n${context}` : task.instruction,
-      accessMode,
-      installDependencies: input.installDependencies === true,
-      engine: developmentEngine,
-      model: text(input.model, "", 120) || undefined,
-      reasoning: normalizeDevelopmentReasoning(input.reasoning),
-      approvalPolicy: normalizeDevelopmentApprovalPolicy(developmentEngine, input.approvalPolicy, accessMode),
-      signal,
-      onProgress: input.onProgress,
-      onTelemetry: input.onTelemetry,
-      sessionMode: input.sessionMode ?? (canResume ? "resume" : "continue"),
-      sessionFile: input.sessionFile ?? (canResume ? previousDevelopment?.sessionFile : undefined),
-    });
-    return { ...result, checks: result.checks.map((check) => ({ ...check, output: check.output.slice(0, 12_000) })), facts: [] };
   }
 
   private async finishAdHocRun(
@@ -1866,21 +1587,6 @@ export class CapabilityRuntime {
       lineage: { version, previousArtifactId: previousArtifact?.id },
     };
     if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
-    if (task.contextBundle) artifact.metadata = { ...artifact.metadata, developmentContext: developmentContextSummary(task.contextBundle) };
-    if (artifact.metadata?.development) {
-      artifact.metadata.developmentDecisionGraph = buildDevelopmentDecisionGraph({
-        instruction: task.instruction,
-        artifactId: artifact.id,
-        context: task.contextBundle,
-        development: artifact.metadata.development,
-      });
-    }
-    if (previousArtifact?.metadata?.development && artifact.metadata?.development) {
-      artifact.metadata.developmentComparison = compareDevelopmentRuns(
-        developmentRunSnapshot(previousArtifact),
-        developmentRunSnapshot(artifact),
-      );
-    }
     withArtifactProof(artifact);
     if (ability.id === "presentation-builder") {
       const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level !== "produced");
@@ -2013,20 +1719,6 @@ export class CapabilityRuntime {
     this.saveArtifacts();
     return state;
   }
-  updateDevelopmentProposalState(
-    proposalId: string,
-    state: NonNullable<CapabilityDevelopmentReceipt["proposal"]>["state"],
-    conflicts?: string[],
-  ): CapabilityArtifact | null {
-    const artifact = this.artifacts.find((item) => item.metadata?.development?.proposal?.id === proposalId);
-    const proposal = artifact?.metadata?.development?.proposal;
-    if (!artifact || !proposal) return null;
-    proposal.state = state;
-    proposal.conflicts = conflicts?.length ? [...conflicts] : undefined;
-    this.saveArtifacts();
-    return structuredClone(artifact);
-  }
-
   sendArtifact(res: ServerResponse, id: string | null, disposition: "inline" | "attachment" = "inline"): boolean {
     const artifact = this.findVisibleArtifact(id);
     if (!artifact) return false;
@@ -2294,12 +1986,12 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     return this.opts.personas().find((item) => item.id === id) ?? { id, name: id };
   }
 
-  private isDue(task: CapabilityTask, trigger: "time" | "turn"): boolean {
+  private isDue(task: CapabilityTask, trigger: "time" | "turn", at = new Date()): boolean {
     if (!task.enabled) return false;
     if (trigger === "time" && task.schedule.mode === "daily") {
-      const key = runKey(task, new Date());
-      if (task.lastRunKey === key) return false;
-      const now = nowInTimezone(task.schedule.timezone || "Asia/Shanghai");
+      const key = runKey(task, at);
+      if (task.lastRunKey === key || task.lastScheduledOccurrenceKey === key) return false;
+      const now = nowInTimezone(task.schedule.timezone || "Asia/Shanghai", at);
       if (!(task.schedule.days || DEFAULT_DAYS).includes(now.weekday)) return false;
       return now.minuteOfDay >= timeToMinute(task.schedule.time || "09:00");
     }
@@ -2829,37 +2521,6 @@ function withArtifactProof(artifact: CapabilityArtifact): CapabilityArtifact {
     checks,
   };
   return artifact;
-}
-
-function developmentValidationChecks(result: CapabilityDevelopmentReceipt): CapabilityArtifactValidationCheck[] {
-  const substantive = result.checks.filter((item) => !["git_status", "git_diff"].includes(item.command));
-  if (substantive.length === 0) return [{ id: "project-checks", label: "项目构建、测试或类型检查", status: "not-run", detail: "本次没有运行项目级检查" }];
-  return substantive.map((item, index) => ({
-    id: `project-check-${index + 1}`,
-    label: item.command,
-    status: item.passed ? "passed" : "failed",
-    detail: item.output.slice(0, 500),
-  }));
-}
-
-function developmentProfessionalReceipt(result: CapabilityDevelopmentReceipt): ProfessionalArtifactReceipt {
-  const substantive = result.checks.filter((item) => !["git_status", "git_diff"].includes(item.command));
-  return assessProfessionalArtifact({
-    domain: "software",
-    artifactExists: result.accessMode === "inspect" || result.fileReceipts.length > 0,
-    structuredInput: true,
-    intermediateArtifact: result.accessMode === "inspect" || result.fileReceipts.length > 0,
-    renderedArtifact: result.accessMode === "inspect" || result.fileReceipts.length > 0,
-    version: result.baseRevision || "unversioned",
-    checks: substantive.map((item) => ({
-      id: item.command,
-      label: item.command,
-      required: true,
-      passed: item.passed,
-      phase: "verification",
-      detail: item.output.slice(0, 500),
-    })),
-  });
 }
 
 function nextSkillVersion(previous?: string): string {
@@ -3773,7 +3434,7 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function nowInTimezone(timezone: string): { dateKey: string; weekday: number; minuteOfDay: number } {
+function nowInTimezone(timezone: string, at = new Date()): { dateKey: string; weekday: number; minuteOfDay: number } {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",
@@ -3783,7 +3444,7 @@ function nowInTimezone(timezone: string): { dateKey: string; weekday: number; mi
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).formatToParts(new Date()).map((p) => [p.type, p.value]));
+  }).formatToParts(at).map((p) => [p.type, p.value]));
   const weekdays: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
   return {
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,

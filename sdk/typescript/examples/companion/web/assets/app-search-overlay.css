@@ -46,8 +46,7 @@
   padding: 10px 0 12px;
   border-top: 1px solid rgba(104, 112, 105, .16);
 }
-.task-create-footer .task-workbench-new,
-.development-sidebar-foot .task-workbench-new {
+.task-create-footer .task-workbench-new {
   width: 100% !important;
   min-width: 0 !important;
   justify-content: center !important;
@@ -56,8 +55,7 @@
   background: rgba(255, 255, 255, .72) !important;
   box-shadow: 0 3px 10px rgba(36, 45, 39, .05);
 }
-.task-create-footer .action-plus,
-.development-sidebar-foot .action-plus { font-size: 18px; font-weight: 400; line-height: 1; }
+.task-create-footer .action-plus { font-size: 18px; font-weight: 400; line-height: 1; }
 
 .file-panel-actions.app-create-search > .toolbar-button {
   height: 34px;

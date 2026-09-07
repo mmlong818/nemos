@@ -72,8 +72,7 @@
   letter-spacing: .01em !important;
 }
 
-#quickGroup.task-workbench-new,
-#newDevelopment.task-workbench-new {
+#quickGroup.task-workbench-new {
   width: 228px !important;
   flex: 0 0 228px !important;
   height: var(--task-control-height) !important;
@@ -542,6 +541,23 @@
   gap: 7px;
 }
 
+#taskModelSelect,
+#heroModelSelect {
+  max-width: min(260px, 42vw);
+  padding-right: 24px !important;
+  color: var(--task-text) !important;
+  border: 1px solid var(--task-shell-line) !important;
+  background: rgba(255, 253, 249, .9) !important;
+  text-overflow: ellipsis;
+  min-width: 0;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+#taskModelStatus, #heroModelStatus { font-size: 11px; max-width: 180px; color: var(--task-muted); }
+#heroModelSelect { margin-right: auto; }
+
 .task-workbench-tools [data-app-icon],
 .task-workbench-tools [data-app-icon] > span,
 .task-workbench-tools [data-app-icon] svg {
@@ -568,8 +584,7 @@
   box-shadow: 0 5px 14px rgba(173, 49, 95, .18) !important;
 }
 
-#send.task-workbench-send,
-#startDevelop.task-workbench-send {
+#send.task-workbench-send {
   width: 58px !important;
   height: var(--task-control-height) !important;
   min-height: var(--task-control-height) !important;
@@ -580,94 +595,6 @@
   background: var(--task-accent) !important;
   font-size: 12px !important;
   font-weight: 700 !important;
-}
-
-/* 开发只复用工作台骨架；项目、权限和依赖仍是开发业务。 */
-@media (min-width: 801px) {
-  .task-workbench--development {
-    box-sizing: border-box;
-    height: 100vh !important;
-    margin: 0 !important;
-    overflow: hidden !important;
-    display: grid;
-    grid-template-columns: var(--task-shell-sidebar) minmax(0, 1fr);
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-
-  .task-workbench--development .task-workbench-main {
-    box-sizing: border-box;
-    height: calc(100vh - (var(--cf-workspace-gap) * 2));
-    margin: var(--cf-workspace-gap) var(--cf-workspace-gap) var(--cf-workspace-gap) 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    border: 1px solid rgba(255, 255, 255, .86);
-    border-radius: var(--cf-workspace-radius);
-    box-shadow: var(--cf-workspace-shadow), inset 0 1px 0 rgba(255, 255, 255, .9);
-  }
-
-  .task-workbench--development .task-workbench-sidebar {
-    transform: translateX(-8px);
-  }
-
-  .task-workbench--development .task-workbench-stage {
-    padding: 28px 30px !important;
-  }
-
-  .task-workbench--development .task-workbench-stage::before {
-    display: none;
-  }
-
-  .task-workbench--development .task-workbench-composer {
-    width: calc(100% - (var(--task-shell-gap) * 2));
-    max-width: none;
-    margin: 0 var(--task-shell-gap) var(--task-shell-gap);
-  }
-
-  .task-workbench--development .coding-sidebar-head {
-    box-sizing: border-box;
-    height: 96px;
-    flex: 0 0 96px;
-    padding: 0;
-    display: block;
-    border-bottom: 0;
-  }
-
-  .task-workbench--development .coding-sidebar-head strong,
-  .task-workbench--development .coding-topbar small { display: none; }
-
-  .task-workbench--development .development-history {
-    position: static;
-    width: auto;
-    height: auto;
-    background: transparent;
-  }
-
-  .task-workbench--development .development-history {
-    min-height: 0;
-    flex: 1;
-    padding: 4px 8px 12px;
-    border: 0;
-  }
-
-  .task-workbench--development .development-list {
-    display: grid;
-    gap: 4px;
-    overflow: hidden auto;
-  }
-
-  .task-workbench--development .development-item {
-    width: 100%;
-    min-width: 0;
-    min-height: 36px;
-    padding: 0 8px 0 9px;
-  }
-
-  .task-workbench--development .task-workbench-tools { order: 2; }
-  .task-workbench--development .task-workbench-composer .status { order: 4; }
 }
 
 @media (max-width: 800px) {
@@ -721,8 +648,7 @@
   padding: 3px 0 0 !important;
 }
 
-#send.task-workbench-send,
-#startDevelop.task-workbench-send {
+#send.task-workbench-send {
   width: auto !important;
   height: 40px !important;
   min-height: 40px !important;

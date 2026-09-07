@@ -8,7 +8,6 @@ export type CapabilityAdmissionScenario =
   | "malformed-input"
   | "tool-failure"
   | "handoff-recovery"
-  | "windows-path"
   | "damaged-format"
   | "model-refusal";
 
@@ -26,7 +25,7 @@ export interface CapabilityAdmissionOutcome {
 export type CapabilityAdmissionProfileId =
   | "generated-ability"
   | "installed-skill"
-  | `admission-probes:${"native" | "development" | "generated"}`;
+  | `admission-probes:${"native" | "generated"}`;
 
 export interface CapabilityAdmissionReceipt {
   version: 1;
@@ -37,9 +36,8 @@ export interface CapabilityAdmissionReceipt {
   outcomes: CapabilityAdmissionOutcome[];
 }
 
-export const CAPABILITY_ADMISSION_MATRIX: Readonly<Record<"native" | "development" | "generated", readonly CapabilityAdmissionScenario[]>> = {
+export const CAPABILITY_ADMISSION_MATRIX: Readonly<Record<"native" | "generated", readonly CapabilityAdmissionScenario[]>> = {
   native: ["normal", "empty-result", "malformed-input", "damaged-format", "model-refusal"],
-  development: ["normal", "tool-failure", "handoff-recovery", "windows-path", "model-refusal"],
   generated: ["normal", "empty-result", "malformed-input", "model-refusal"],
 };
 

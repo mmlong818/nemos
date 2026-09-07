@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
+<head><script src="/assets/product-structure.js" defer></script>
+  <script src="/assets/task-navigation.js" defer></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
@@ -21,16 +22,7 @@
 </head>
 <body data-page="tasks">
   <div class="app-shell">
-    <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" aria-label="返回小丑鱼对话"><img src="/assets/brand/clownfish-mark.svg" alt="" width="36" height="36"></a>
-      <nav>
-        <a href="/" title="任务" aria-label="任务" data-app-icon="message"><span aria-hidden="true"></span><small>任务</small></a>
-        <a href="/capabilities" title="能力" aria-label="能力" data-app-icon="boxes"><span aria-hidden="true"></span><small>能力</small></a>
-        <a href="/office" title="办公文件" aria-label="办公文件" data-app-icon="file"><span aria-hidden="true"></span><small>文件</small></a>
-        <a class="is-current" href="/automations" title="自动化" aria-label="自动化" aria-current="page" data-app-icon="work"><span aria-hidden="true"></span><small>自动化</small></a>
-      </nav>
-      <a class="rail-settings" href="/settings" title="设置" aria-label="设置" data-app-icon="settings"><span aria-hidden="true"></span><small>设置</small></a>
-    </aside>
+    <!-- APP_NAVIGATION -->
     <main class="task-workbench work-shell">
       <aside class="task-workbench-sidebar work-sidebar">
         <header class="task-sidebar-head">
@@ -39,6 +31,16 @@
             <button class="app-search-trigger" id="workSearchToggle" type="button" title="搜索工作内容" aria-label="搜索工作内容" aria-haspopup="dialog" aria-expanded="false"><span data-app-icon="search" aria-hidden="true"><span></span></span><span class="app-search-label">搜索自动化</span></button>
           </div>
         </header>
+        <nav class="work-view-nav tabs" aria-label="工作分区">
+          <a href="/tasks" data-view="tasks">任务记录</a>
+          <a href="/spaces" data-view="spaces">项目</a>
+          <a href="/automations" data-view="automations">自动化</a>
+          <a href="/collaboration" data-view="collaboration">能力协作记录</a>
+          <a href="/resources" data-view="resources">参考资料</a>
+          <a href="/artifacts" data-view="artifacts">生成成果</a>
+          <a href="/runs" data-view="runs">运行记录</a>
+          <a href="/memory" data-view="memory">记忆</a>
+        </nav>
         <footer class="task-create-footer"><button id="newTaskSide" class="task-workbench-new" type="button" title="新建自动化" aria-label="新建自动化"><span class="action-plus" aria-hidden="true">＋</span><span>新建自动化</span></button></footer>
       </aside>
 
@@ -46,8 +48,14 @@
         <div class="task-workbench-stage work-stage">
           <header class="work-page-head">
             <p class="eyebrow" id="pageEyebrow">持续工作</p>
+            <h1 id="pageTitle">工作记录</h1>
             <p class="work-page-description" id="pageDescription">把需要重复执行的事情留在这里。</p>
+            <p id="eventConnectionStatus" role="status" hidden></p>
+            <button id="retryEventConnection" type="button" hidden>重新连接</button>
           </header>
+          <div id="workLocalActions" class="work-local-actions" aria-label="当前页面操作"><a id="workStartTask" class="wb-primary-link" href="/bots?view=tasks" hidden>发起任务</a></div>
+          <section id="workInlineEditor" class="work-inline-editor" aria-label="编辑工作内容" hidden></section>
+          <section id="workResourcePreview" class="work-resource-preview" aria-labelledby="workResourceTitle" hidden><header><h2 id="workResourceTitle"></h2><button id="closeResourcePreview" type="button">收起预览</button></header><pre id="workResourceBody"></pre></section>
           <section class="content" id="content" aria-live="polite">
             <div class="loading" role="status" aria-label="正在读取本机数据"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span><span class="cf-skeleton is-short"></span></div>
           </section>
@@ -72,16 +80,16 @@
       <h2 id="taskDialogTitle">新建任务</h2>
       <input id="taskId" type="hidden">
       <label>任务名称<input id="taskTitle" maxlength="60" required placeholder="例如：每周经营复盘"></label>
-      <label>具体要求<textarea id="taskInstruction" rows="5" maxlength="2000" required placeholder="说清要处理什么、交付给谁、最重要的标准"></textarea></label>
+      <label>具体要求<textarea id="taskInstruction" rows="3" maxlength="2000" required placeholder="说清要处理什么、交付给谁、最重要的标准"></textarea></label>
+      <details class="work-secondary-details"><summary>关联项目与参考资料（可选）</summary>
       <label>归入项目
         <select id="taskSpace"><option value="">暂不归类</option></select>
         <small class="field-hint">只有同一件事包含多个任务时才需要。</small>
       </label>
-      <details class="task-knowledge-picker">
-        <summary>参考资料（可选）</summary>
+      <section class="task-knowledge-picker" aria-label="参考资料">
         <p class="field-hint">最多选择 8 份本地资料，执行时会一并交给小丑鱼。</p>
         <div id="taskKnowledge" class="knowledge-checklist"></div>
-      </details>
+      </section></details>
       <div class="form-row">
         <label>使用能力<select id="taskCapability" required></select></label>
         <label>结果形式<select id="taskFormat"><option value="html">网页</option><option value="doc">Word</option><option value="pptx">PowerPoint</option><option value="md">文稿</option><option value="json">数据</option><option value="txt">纯文本</option></select></label>
@@ -90,7 +98,7 @@
         <label>执行方式<select id="taskSchedule"><option value="manual">需要时手动运行</option><option value="daily">每天定时运行</option><option value="turns">按使用频率运行</option></select></label>
         <label id="scheduleDetail">时间<input id="taskTime" type="time" value="09:00"></label>
       </div>
-      <button class="primary" type="submit">保存任务</button>
+      <p class="work-form-error" role="alert"></p><p class="field-hint">保存每天或按使用频率运行的任务即会启用计划，仅在应用后台运行时触发；可能产生模型或工具费用。保存手动任务不会立即执行。</p><button class="primary" type="submit">保存任务</button>
     </form>
   </dialog>
 
@@ -102,7 +110,7 @@
       <input id="spaceId" type="hidden">
       <label>项目名称<input id="spaceTitle" maxlength="60" required placeholder="例如：新版发布"></label>
       <label>这件事要做到什么<textarea id="spaceDescription" rows="4" maxlength="400" placeholder="简要记录目标、范围或完成标准"></textarea></label>
-      <button class="primary" type="submit">保存项目</button>
+      <p class="work-form-error" role="alert"></p><button class="primary" type="submit">保存项目</button>
     </form>
   </dialog>
 
@@ -179,7 +187,7 @@
       <label id="knowledgeUrlField" hidden>网页链接<input id="knowledgeUrl" type="url" placeholder="https://"></label>
       <label id="knowledgeFileField" hidden>选择文本文件<input id="knowledgeFile" type="file" accept=".txt,.md,.csv,.json,.html,.xml,text/*"></label>
       <label>资料内容<textarea id="knowledgeContent" rows="8" maxlength="500000" placeholder="粘贴正文、摘要或你希望小丑鱼使用的信息"></textarea></label>
-      <button class="primary" type="submit">保存资料</button>
+      <p class="work-form-error" role="alert"></p><button class="primary" type="submit">保存资料</button>
     </form>
   </dialog>
 
@@ -204,7 +212,9 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/assets/app-icons.js" defer></script>
   <script src="/assets/app-search-overlay.js" defer></script>
-  <script id="newTaskSideBinder">document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("newTaskSide");if(b)b.addEventListener("click",function(){if(typeof openTaskDialog==="function")openTaskDialog();});});</script>
+  <script src="/assets/agent-events.js" defer></script>
+  <script src="/assets/workbench-memory.js" defer></script>
+  <script src="/assets/file-library.js" defer></script>
   <script src="/assets/work-center.js" defer></script>
   <script src="/assets/scramble-confetti.js" defer></script>
 </body>

@@ -5,7 +5,7 @@
 //
 // 同一个请求对不同对象给出不同口径，靠的是这份档案，而不是让模型自由发挥。
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
@@ -79,13 +79,43 @@ function cleanList(values: unknown, limit: number): string[] {
 function writeAtomic(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  writeFileSync(temporary, content, "utf8");
-  renameSync(temporary, path);
+  try {
+    writeFileSync(temporary, content, "utf8");
+    renameSync(temporary, path);
+  } finally {
+    try { unlinkSync(temporary); } catch { /* Rename succeeded, or no temporary file was created. */ }
+  }
+}
+
+export class RelationshipMemoryUnavailableError extends Error {
+  readonly code = "RELATIONSHIP_MEMORY_UNAVAILABLE";
+  constructor() {
+    super("关系记忆暂时无法读取或已被外部修改，不能当作空档案。已停止相关读写，请恢复原文件后重启应用；不会自动清空或覆盖。");
+    this.name = "RelationshipMemoryUnavailableError";
+  }
+}
+
+function validProfiles(value: unknown): value is CounterpartProfile[] {
+  if (!Array.isArray(value)) return false;
+  const ids = new Set<string>();
+  return value.every((item) => {
+    if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim() || ids.has(item.id)) return false;
+    ids.add(item.id);
+    return typeof item.displayName === "string" && RELATION_KINDS.has(item.relation)
+      && Array.isArray(item.boundaries) && item.boundaries.every((text: unknown) => typeof text === "string")
+      && Array.isArray(item.notes) && item.notes.every((note: CounterpartNote) => note && typeof note.text === "string"
+        && Number.isFinite(Date.parse(note.at)) && ["user", "observed"].includes(note.source))
+      && Number.isSafeInteger(item.interactionCount) && item.interactionCount >= 0
+      && [item.createdAt, item.updatedAt].every((at) => typeof at === "string" && Number.isFinite(Date.parse(at)))
+      && [item.tone, item.language, item.firstInteractionAt, item.lastInteractionAt].every((field) => field === undefined || typeof field === "string");
+  });
 }
 
 export class RelationshipMemory {
   private readonly file: string;
   private profiles: CounterpartProfile[];
+  private persistedText: string | undefined;
+  private readState: "missing" | "ready" | "unavailable" = "missing";
 
   constructor(dataDir: string) {
     this.file = join(dataDir, "counterparts.json");
@@ -93,34 +123,70 @@ export class RelationshipMemory {
   }
 
   private load(): CounterpartProfile[] {
-    if (!existsSync(this.file)) return [];
     try {
-      const parsed = JSON.parse(readFileSync(this.file, "utf8")) as unknown;
-      return Array.isArray(parsed) ? (parsed as CounterpartProfile[]) : [];
-    } catch {
-      // 档案读不出来时按空处理：宁可这次没有差异化口径，也不要拿半份档案去发言。
+      const text = readFileSync(this.file, "utf8");
+      const parsed: unknown = JSON.parse(text);
+      if (!validProfiles(parsed)) throw new Error("Invalid relationship memory schema");
+      this.persistedText = text;
+      this.readState = "ready";
+      return parsed;
+    } catch (error) {
+      // Buzz engram_fetch.rs distinguishes confirmed absence from unreadable memory.
+      // Apply that boundary locally: only ENOENT is absence; invalid data is never reset.
+      this.readState = (error as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "unavailable";
       return [];
     }
   }
 
-  private save(): void {
-    writeAtomic(this.file, JSON.stringify(this.profiles, null, 2));
+  getReadStatus(): { state: "missing" | "ready" | "unavailable"; writable: boolean } {
+    return { state: this.readState, writable: this.readState !== "unavailable" };
+  }
+
+  private assertReadable(): void {
+    if (this.readState === "unavailable") throw new RelationshipMemoryUnavailableError();
+  }
+
+  private save(profiles: CounterpartProfile[]): void {
+    this.assertReadable();
+    // Do not silently overwrite a file repaired/changed by another process since load.
+    let current: string | undefined;
+    try { current = readFileSync(this.file, "utf8"); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        this.readState = "unavailable";
+        throw new RelationshipMemoryUnavailableError();
+      }
+    }
+    if (current !== this.persistedText) {
+      this.readState = "unavailable";
+      throw new RelationshipMemoryUnavailableError();
+    }
+    const text = JSON.stringify(profiles, null, 2);
+    writeAtomic(this.file, text);
+    // Publish the new in-memory state only after the durable write succeeds.
+    this.profiles = profiles;
+    this.persistedText = text;
+    this.readState = "ready";
   }
 
   list(): CounterpartProfile[] {
+    this.assertReadable();
     return this.profiles.map((item) => structuredClone(item));
   }
 
   get(id: string): CounterpartProfile | undefined {
+    this.assertReadable();
     const found = this.profiles.find((item) => item.id === id.trim());
     return found ? structuredClone(found) : undefined;
   }
 
   upsert(id: string, patch: CounterpartPatch): CounterpartProfile {
+    this.assertReadable();
     const key = id.trim();
     if (!key) throw new Error("关系档案需要一个对象 id。");
     const now = new Date().toISOString();
-    const existing = this.profiles.find((item) => item.id === key);
+    const next = structuredClone(this.profiles);
+    const existing = next.find((item) => item.id === key);
     const profile: CounterpartProfile = existing ?? {
       id: key,
       displayName: key,
@@ -151,16 +217,18 @@ export class RelationshipMemory {
       profile.interactionCount += 1;
     }
     profile.updatedAt = now;
-    if (!existing) this.profiles.push(profile);
-    this.save();
+    if (!existing) next.push(profile);
+    this.save(next);
     return structuredClone(profile);
   }
 
   remove(id: string): boolean {
+    this.assertReadable();
     const index = this.profiles.findIndex((item) => item.id === id.trim());
     if (index < 0) return false;
-    this.profiles.splice(index, 1);
-    this.save();
+    const next = structuredClone(this.profiles);
+    next.splice(index, 1);
+    this.save(next);
     return true;
   }
 

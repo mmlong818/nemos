@@ -29,7 +29,7 @@
   --scramble-hairline-soft: rgba(255, 255, 255, 0.44);
 
   /* 字体：统一引用 clownfish-theme 的 --cf-font-family；
-     development.html 不加载 clownfish-theme，保留字面量回退 */
+     未加载 clownfish-theme 时保留字面量回退 */
   --font-ui: var(--cf-font-family, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
 
   /* 页面级强调色（默认 = 任务/工作 系统蓝） */
@@ -354,11 +354,9 @@ body > #main {
 /* ---------- 按钮 ---------- */
 .primary,
 .primary-button,
-.send-development,
 .send-to-capability,
 #send,
-#send.task-workbench-send,
-#startDevelop.task-workbench-send {
+#send.task-workbench-send {
   border-color: var(--page-accent) !important;
   color: #fff !important;
   background: var(--page-accent) !important;
@@ -366,11 +364,9 @@ body > #main {
 }
 .primary:hover,
 .primary-button:hover,
-.send-development:hover,
 .send-to-capability:hover,
 #send:hover,
-#send.task-workbench-send:hover,
-#startDevelop.task-workbench-send:hover {
+#send.task-workbench-send:hover {
   border-color: var(--page-accent-dark) !important;
   background: var(--page-accent-dark) !important;
 }

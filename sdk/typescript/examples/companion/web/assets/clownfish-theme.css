@@ -395,36 +395,36 @@ select {
 .lede { max-width: 64ch; }
 /* 页面主按钮 = 页面强调色：scramble-theme 定义 --page-accent（按 data-page 着色），
    未加载 scramble 的环境回退品牌珊瑚红 */
-.primary, .send-development, .send-to-capability {
+.primary, .send-to-capability {
   border-color: var(--page-accent, var(--cf-coral)) !important;
   color: #fff !important;
   background: var(--page-accent, var(--cf-coral)) !important;
   box-shadow: 0 6px 16px rgba(173, 49, 95, .14);
 }
-.primary:hover, .send-development:hover, .send-to-capability:hover {
+.primary:hover, .send-to-capability:hover {
   border-color: var(--page-accent-dark, var(--cf-coral-hover)) !important;
   background: var(--page-accent-dark, var(--cf-coral-hover)) !important;
 }
 
 /* 微交互：主按钮类 hover 轻浮起、active 回弹，统一弹性缓动；reduced-motion 下整体关闭。 */
 @media (prefers-reduced-motion: no-preference) {
-  .primary, .send-development, .send-to-capability, #send,
+  .primary, .send-to-capability, #send,
   .primary-button, .quiet-button, .toolbar-button {
     transition: color var(--cf-fast) ease, background-color var(--cf-fast) ease,
       border-color var(--cf-fast) ease, box-shadow var(--cf-default) var(--cf-ease),
       transform var(--cf-default) var(--cf-spring);
   }
-  .primary:hover, .send-development:hover, .send-to-capability:hover, #send:hover,
+  .primary:hover, .send-to-capability:hover, #send:hover,
   .primary-button:hover, .quiet-button:hover, .toolbar-button:hover {
     transform: translateY(-1px);
   }
-  .primary:hover, .send-development:hover, .send-to-capability:hover {
+  .primary:hover, .send-to-capability:hover {
     box-shadow: 0 10px 24px rgba(173, 49, 95, .22);
   }
   .primary-button:hover, .quiet-button:hover, .toolbar-button:hover {
     box-shadow: 0 8px 20px rgba(45, 39, 31, .12);
   }
-  .primary:active, .send-development:active, .send-to-capability:active, #send:active,
+  .primary:active, .send-to-capability:active, #send:active,
   .primary-button:active, .quiet-button:active, .toolbar-button:active {
     transform: scale(.98);
   }

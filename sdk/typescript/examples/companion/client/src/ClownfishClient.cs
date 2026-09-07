@@ -46,6 +46,9 @@ namespace ClownfishClient
         private string closeBehavior;
         private string notificationPermission;
         private bool forcedExit;
+        private System.Windows.Forms.Timer reminderTimer;
+        private bool reminderPollRunning;
+        private string lastReminderToken;
 
         public MainForm()
         {
@@ -66,6 +69,7 @@ namespace ClownfishClient
             appVersion = ReadManifestValue("version", "0.1.0");
             closeBehavior = ReadClientPreference("closeBehavior", "ask");
             notificationPermission = ReadClientPreference("notificationPermission", "ask");
+            lastReminderToken = ReadClientPreference("lastReminderToken", "");
 
             Text = "小丑鱼";
             StartPosition = FormStartPosition.CenterScreen;
@@ -101,6 +105,8 @@ namespace ClownfishClient
             FormClosed += (sender, args) =>
             {
                 StopServerIfOwned();
+                if (reminderTimer != null) reminderTimer.Dispose();
+                Microsoft.Win32.SystemEvents.PowerModeChanged -= HandlePowerModeChanged;
                 if (trayIcon != null) trayIcon.Dispose();
                 if (trayMenu != null) trayMenu.Dispose();
                 if (appIcon != null) appIcon.Dispose();
@@ -188,7 +194,7 @@ namespace ClownfishClient
                 Visible = false
             };
             trayIcon.DoubleClick += (sender, args) => RestoreFromTray();
-            trayIcon.BalloonTipClicked += (sender, args) => RestoreFromTray();
+            trayIcon.BalloonTipClicked += (sender, args) => { RestoreFromTray(); if (webView.CoreWebView2 != null) webView.CoreWebView2.Navigate(baseUrl + "/matters"); };
         }
 
         private void RestoreFromTray()
@@ -323,6 +329,10 @@ namespace ClownfishClient
                 await WaitForServerAsync();
                 await InitWebViewAsync();
                 webView.CoreWebView2.Navigate(baseUrl);
+                reminderTimer = new System.Windows.Forms.Timer { Interval = 15000 };
+                reminderTimer.Tick += async (sender, args) => await PollPersonalRemindersAsync();
+                reminderTimer.Start();
+                Microsoft.Win32.SystemEvents.PowerModeChanged += HandlePowerModeChanged;
             }
             catch (Exception ex)
             {
@@ -330,6 +340,47 @@ namespace ClownfishClient
                 forcedExit = true;
                 Close();
             }
+        }
+
+        private void HandlePowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs args)
+        {
+            if (args.Mode != Microsoft.Win32.PowerModes.Resume || IsDisposed || !IsHandleCreated) return;
+            BeginInvoke(new Action(async () => { if (reminderTimer != null) reminderTimer.Interval = 15000; await PollPersonalRemindersAsync(); }));
+        }
+
+        private async Task PollPersonalRemindersAsync()
+        {
+            if (reminderPollRunning || forcedExit || IsDisposed) return;
+            reminderPollRunning = true;
+            try
+            {
+                // Only restart an exited backend owned by this client. Never
+                // replace another process; the durable worker handles recovery.
+                if (spawnedServer && serverProcess != null && serverProcess.HasExited && !await IsServerReadyAsync()) StartServer();
+                if (notificationPermission != "allowed") return;
+                var json = await Task.Run(() => {
+                    var request = (HttpWebRequest)WebRequest.Create(baseUrl + "/api/personal-work/reminder-summary");
+                    request.Proxy = null; request.Timeout = 5000; request.ReadWriteTimeout = 5000;
+                    using (var response = request.GetResponse())
+                    using (var reader = new StreamReader(response.GetResponseStream())) return reader.ReadToEnd();
+                });
+                if (forcedExit || IsDisposed) return;
+                var countMatch = Regex.Match(json, "\"count\"\\s*:\\s*(\\d+)");
+                var tokenMatch = Regex.Match(json, "\"token\"\\s*:\\s*\"([a-f0-9]{64})\"");
+                int count;
+                if (!countMatch.Success || !tokenMatch.Success || !int.TryParse(countMatch.Groups[1].Value, out count)) return;
+                reminderTimer.Interval = 15000;
+                var token = tokenMatch.Groups[1].Value;
+                if (count > 0 && token != lastReminderToken && trayIcon != null)
+                {
+                    trayIcon.Visible = true;
+                    // Keep private matter titles off the lock screen.
+                    trayIcon.ShowBalloonTip(5000, "小丑鱼：需要你跟进", "有 " + count + " 件事项到了跟进时间。点击查看。", ToolTipIcon.Info);
+                }
+                if (token != lastReminderToken) { lastReminderToken = token; SaveClientPreferences(); }
+            }
+            catch { if (reminderTimer != null && !IsDisposed) reminderTimer.Interval = Math.Min(120000, reminderTimer.Interval * 2); }
+            finally { reminderPollRunning = false; }
         }
 
         private async Task InitWebViewAsync()
@@ -485,6 +536,9 @@ namespace ClownfishClient
             info.EnvironmentVariables["PORT"] = port.ToString();
             info.EnvironmentVariables["CLOWNFISH_HOME"] = dataDir;
             info.EnvironmentVariables["CLOWNFISH_MANIFEST"] = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "manifest.json");
+            // Node fetch does not use HTTP_PROXY / HTTPS_PROXY unless environment proxy support is enabled.
+            // Keep NO_PROXY semantics so local services continue to connect directly.
+            info.EnvironmentVariables["NODE_USE_ENV_PROXY"] = "1";
 
             var sandboxRuntime = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mcp-runtime");
             var sandboxNode = Path.Combine(sandboxRuntime, "node.exe");
@@ -592,7 +646,8 @@ namespace ClownfishClient
                 Directory.CreateDirectory(dataDir);
                 var json = "{"
                     + "\"closeBehavior\":\"" + ClientJsonEscape(NormalizeCloseBehavior(closeBehavior)) + "\","
-                    + "\"notificationPermission\":\"" + ClientJsonEscape(NormalizeNotificationPermission(notificationPermission)) + "\""
+                    + "\"notificationPermission\":\"" + ClientJsonEscape(NormalizeNotificationPermission(notificationPermission)) + "\","
+                    + "\"lastReminderToken\":\"" + ClientJsonEscape(lastReminderToken ?? "") + "\""
                     + "}";
                 File.WriteAllText(ClientPreferencesFile(), json, Encoding.UTF8);
             }
@@ -676,7 +731,9 @@ namespace ClownfishClient
         {
             if (File.Exists(bundledNode))
             {
-                return "\"node_modules\\tsx\\dist\\cli.mjs\" \"examples\\companion\\server.ts\"";
+                // Keep the server itself as our child, not a tsx CLI wrapper
+                // whose exit can leave an unowned listener behind.
+                return "--import tsx \"examples\\companion\\server.ts\"";
             }
             return "run companion";
         }
@@ -727,7 +784,7 @@ namespace ClownfishClient
             {
                 try
                 {
-                    var request = (HttpWebRequest)WebRequest.Create(baseUrl + "/api/state");
+                    var request = (HttpWebRequest)WebRequest.Create(baseUrl + "/api/health");
                     request.Timeout = 900;
                     request.ReadWriteTimeout = 900;
                     using (var response = (HttpWebResponse)request.GetResponse())
@@ -754,8 +811,11 @@ namespace ClownfishClient
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
-                Process.Start(taskkill);
-                Thread.Sleep(300);
+                using (var terminator = Process.Start(taskkill))
+                {
+                    if (terminator != null) terminator.WaitForExit(5000);
+                }
+                serverProcess.WaitForExit(5000);
             }
             catch
             {

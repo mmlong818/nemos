@@ -8,17 +8,10 @@
 
 | 组件 | 当前版本 | 用途 | 许可证 | 上游 |
 | --- | --- | --- | --- | --- |
-| Pi Agent | 0.84.2 | 默认开发引擎 | MIT | [earendil-works/pi](https://github.com/earendil-works/pi) |
-| DeepSeek Harness / DSH | 0.1.0-rc.6 | 可选开发引擎 | MIT | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) |
-| Kilo Code CLI | 7.4.22 | 可选开发引擎 | MIT | [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode) |
-| OpenCode | 1.18.18 | 可选开发引擎 | MIT | [anomalyco/opencode](https://github.com/anomalyco/opencode) |
-| OpenAI Codex CLI | 0.147.0 | 可选开发引擎 | Apache-2.0 | [openai/codex](https://github.com/openai/codex) |
 | AnyDoc | 0.1.8 | 文档解析适配 | MIT | [firecrawl/anydoc](https://github.com/firecrawl/anydoc) |
 | Microsoft WebView2 SDK | 1.0.4022.49 | Windows 桌面外壳 | Microsoft 软件许可条款 | [NuGet 包](https://www.nuget.org/packages/Microsoft.Web.WebView2/) |
 | Node.js | 主机版本及 26.5.0 沙箱版本 | 应用与隔离工具运行时 | MIT 及随附第三方条款 | [nodejs/node](https://github.com/nodejs/node) |
 | Python | 3.14.6 嵌入式版本 | 隔离工具运行时 | Python Software Foundation License | [python/cpython](https://github.com/python/cpython) |
-
-OpenCode 的 Windows 平台二进制包没有单独填写 `license` 元数据；其父包与上游仓库均声明 MIT，本项目按同一发行物记录。平台包的缺失元数据不应被误写成“没有许可证”。
 
 ## 纳入仓库的代码
 
@@ -26,8 +19,11 @@ OpenCode 的 Windows 平台二进制包没有单独填写 `license` 元数据；
 | --- | --- | --- | --- |
 | `sdk/typescript/examples/companion/vendor/docx-engine/` | GenOffice `packages/docx-engine` | `185040fd2f9f3114db164ea435cf155f52aa0330` | Apache-2.0 |
 | `sdk/typescript/examples/companion/vendor/pptx-engine/` | GenOffice `packages/pptx-engine` | `185040fd2f9f3114db164ea435cf155f52aa0330` | Apache-2.0 |
+| `sdk/typescript/examples/companion/web/assets/agent-events.js`（重连判断函数） | Block Buzz `desktop/src/shared/api/relayReconnectPolicy.ts` | `3c7f288c60d67df78577b237e27c3dfc8831aaa1` | Apache-2.0 |
 
 两个目录均保留上游 `LICENSE` 全文，并在各自 `README.md` 中记录来源与本地修改。GenOffice 的企业授权目录未被复制。
+
+Buzz 部分版权归 Copyright 2026 Block, Inc. 所有，适用 Apache-2.0。许可证全文及修改范围见 `sdk/typescript/examples/companion/vendor/buzz/`，该目录随便携包分发。只适配了独立重连判断函数，未嵌入 Buzz 服务端、开发引擎或桌面框架。
 
 ## 图像运行库
 

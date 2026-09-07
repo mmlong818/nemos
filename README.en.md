@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/integration-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#run-locally)
 
-Clownfish is a **local-first AI work application with long-term memory and real task execution**. The user describes an outcome; Clownfish selects capabilities, coordinates internal specialists, works with files, or delegates real project work to a coding engine while retaining the complete task history.
+Clownfish is a **local-first AI work application with long-term memory and real task execution**. The user describes an outcome; Clownfish selects capabilities, coordinates internal specialists, and works with files while retaining the complete task history.
 
 See the [Privacy Policy](PRIVACY.en.md) for local storage, external-service, synchronization, export, and deletion boundaries.
 
@@ -24,7 +24,6 @@ This release completes real quality acceptance for the capability set and unifie
 | **Tasks** | Describe a goal and attach images or files | Persistent task, progress, automatic title, and results |
 | **Capabilities** | Auto-select or directly launch specialized work | Structured research, documents, presentations, analysis, and design |
 | **Files** | Open office files, convert, edit, process, and export | Original, editable copy, versions, and new exports |
-| **Development** | Create or link a local project and describe a change | Real code changes, checks, proposals, rollback, and run history |
 | **Automations** | Manage repeated work | Pausable, editable, and manually runnable schedules |
 | **Settings** | Configure models, engines, connectors, and storage | Encrypted configuration and verified connection state |
 
@@ -44,7 +43,7 @@ Clownfish currently includes 23 built-in capabilities across:
 - documents, conversion, OCR, meeting minutes, editing, and HTML reports;
 - presentations, product design, and image-prompt reconstruction;
 - operator workspaces, group progress, workflows, business development, and market simulation;
-- real project development and reusable capability creation.
+- reusable capability creation.
 
 Capabilities can continue one another while keeping the original task context. Volatile prices, ticket inventory, room availability, and reservations are confirmed only when a reliable live source actually returns them. The product does not currently ship transaction adapters for rail, flights, hotels, or restaurants.
 
@@ -70,28 +69,6 @@ Complex floating objects, comments, cross-section headers and footers, formulas,
 
 ![Clownfish files](docs/assets/readme/clownfish-office-2026-08-16.png)
 
-## Development workbench
-
-The interface is designed for regular users; the selected coding engine performs the real project work.
-
-- **Pi Agent 0.84.2** is the default;
-- **DeepSeek Harness, Kilo Code, OpenCode, and Codex** are available;
-- all five use one plugin contract with separate adapters and honest capability declarations;
-- new projects use a managed root, while a directory in the task links an existing project directly;
-- context selection can include related code, explicit files, current Git changes, and active decisions;
-- the process view normalizes context, tool, checking, approval, and completion events;
-- projects support archive, run comparison, per-file review, selective application, and safe rollback.
-
-Ordinary modifications prefer an isolated workspace and an approval proposal. Codex full access directly edits the current project only after explicit selection.
-
-### Engine updates
-
-On startup, Clownfish performs a read-only npm release check for all five engines. It evaluates version range, release channel, CLI entry point, Node.js requirement, and deprecation state. Safe-looking updates are offered normally; structural risk produces a warning and a second confirmation.
-
-Installation never happens silently. After confirmation, Clownfish installs the package, runs the application build and engine-specific tests, and restores the previous dependency files if validation fails. A successful upgrade requires a restart and leaves an audit record.
-
-![Clownfish development](docs/assets/readme/clownfish-develop-2026-08-16.png)
-
 ## Memory, models, and storage
 
 The memory core comes from the independent [`@nemos/sdk`](https://github.com/mmlong818/nemos-memory) dependency. User facts, persona self-memory, task context, and specialist execution remain separated. Capabilities may apply a small number of delivery preferences or disable them for one run; the current request always wins.
@@ -113,10 +90,9 @@ As of 2026-08-17:
 
 - build and type checking pass;
 - **483 automated tests: 482 pass and one Blender check is skipped because Blender is not installed**;
-- all five coding engines have real CLI/SDK adapters and readiness checks;
 - Pi Agent is upgraded to **0.84.2**, with the build and engine-specific tests passing;
 - official Playwright MCP tool discovery and the media connector lifecycle are covered by executable tests;
-- document conversion, Office export, development isolation, proposal application, rollback, task recovery, and encrypted sync have automated coverage.
+- document conversion, Office export, task recovery, and encrypted sync have automated coverage.
 
 Tests validate specific code paths; they do not imply manual verification of every external model account, live data source, or complex Office layout.
 
@@ -145,7 +121,7 @@ Output: `examples\companion\client\dist\portable\小丑鱼`.
 
 | Document | Purpose |
 | --- | --- |
-| [Application guide](sdk/typescript/examples/companion/README.md) | Pages, data, endpoints, coding engines, and desktop builds |
+| [Application guide](sdk/typescript/examples/companion/README.md) | Pages, data, endpoints, and desktop builds |
 | [TypeScript integration](sdk/typescript/README.en.md) | Agent runtime exports and memory APIs |
 | [Memory architecture](docs/architecture-overview.md) | Implemented structure and boundaries |
 | [Agent runtime](sdk/typescript/examples/companion/docs/agent-runtime-design.md) | Tasks, tools, permissions, and recovery |

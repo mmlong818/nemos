@@ -1,3 +1,4 @@
+import { readAppHtml } from "../fixtures/render-app-page.js";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -83,7 +84,7 @@ test("单次能力任务只使用偏好记忆或完全关闭召回", async () =>
   }
 });
 
-test("能力运行把任务、能力、文件和开发上下文传给各自的 Agent 表面", async () => {
+test("能力运行把任务、能力和文件上下文传给各自的 Agent 表面", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-capability-surfaces-"));
   const surfaces: Array<string | undefined> = [];
   try {
@@ -95,7 +96,7 @@ test("能力运行把任务、能力、文件和开发上下文传给各自的 A
         return { reply: THINKING_RESULT, facts: [] };
       },
     });
-    for (const kind of ["chat", "capability", "office", "development"] as const) {
+    for (const kind of ["chat", "capability", "office"] as const) {
       await runtime.runAdHocTask({
         title: `${kind} surface`,
         personaId: "clownfish",
@@ -112,7 +113,7 @@ test("能力运行把任务、能力、文件和开发上下文传给各自的 A
     });
     await runtime.runTask(reusable.id, "manual");
 
-    assert.deepEqual(surfaces, ["task", "capability", "office", "development", "task"]);
+    assert.deepEqual(surfaces, ["task", "capability", "office", "task"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -347,204 +348,6 @@ test("删除归档任务时可选择保留或一并删除产出文件", async ()
   }
 });
 
-test.skip("开发项目作为独立能力执行，并保存可继续交接的完整结果", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "clownfish-development-capability-"));
-  const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-workspace-"));
-  let received: { workspacePath: string; instruction: string; accessMode: string } | undefined;
-  try {
-    const runtime = new CapabilityRuntime({
-      dataDir: dir,
-      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
-      notify: async () => { throw new Error("开发能力不应走普通角色回复"); },
-      runDeveloper: async (input) => {
-        received = { workspacePath: input.workspacePath, instruction: input.instruction, accessMode: input.accessMode };
-        return { reply: "已完成项目修改。\n\n测试通过。", workspacePath: input.workspacePath, accessMode: input.accessMode, changedFiles: ["src/app.ts"], fileReceipts: [{ path: "src/app.ts", state: "present", sha256: "a".repeat(64), byteLength: 120 }], checks: [{ command: "npm_test", passed: true, output: "通过", checkedAt: "2026-08-06T00:00:00.000Z" }], unverifiedRisks: [], proposal: { id: "devprop-test", state: "pending", files: [{ path: "src/app.ts", operation: "update", proposedHash: "a".repeat(64), byteLength: 120 }] }, toolCalls: 3 };
-      },
-    });
-    const notification = await runtime.runAdHocTask({
-      title: "修复项目",
-      personaId: "clownfish",
-      capabilityId: "project-development",
-      instruction: "修复页面跳动，并运行测试。",
-      workspacePath: workspace,
-      accessMode: "develop",
-    });
-    assert.deepEqual(received, { workspacePath: workspace, instruction: "修复页面跳动，并运行测试。", accessMode: "develop" });
-    const handoff = runtime.artifactHandoff(notification.artifact.id);
-    assert.equal(handoff?.text, "已完成项目修改。\n\n测试通过。");
-    assert.equal(notification.artifact.proof?.level, "verified");
-    assert.equal(notification.artifact.metadata?.development?.checks[0]?.command, "npm_test");
-    assert.equal(notification.artifact.metadata?.development?.proposal?.state, "pending");
-    assert.equal(runtime.updateDevelopmentProposalState("devprop-test", "applied")?.metadata?.development?.proposal?.state, "applied");
-    assert.equal(new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "", facts: [] }) }).snapshot().artifacts[0]?.metadata?.development?.proposal?.state, "applied");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
-
-test.skip("同一 Pi 开发任务会携带上下文包并精确恢复上一轮会话", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "clownfish-development-resume-"));
-  const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-resume-workspace-"));
-  const calls: Array<{ instruction: string; sessionMode?: string; sessionFile?: string }> = [];
-  try {
-    const runtime = new CapabilityRuntime({
-      dataDir: dir,
-      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
-      notify: async () => { throw new Error("开发能力不应走普通角色回复"); },
-      runDeveloper: async (input) => {
-        calls.push({ instruction: input.instruction, sessionMode: input.sessionMode, sessionFile: input.sessionFile });
-        return {
-          reply: "本轮完成。",
-          engine: "pi",
-          workspacePath: input.workspacePath,
-          accessMode: input.accessMode,
-          changedFiles: [],
-          fileReceipts: [],
-          checks: [],
-          unverifiedRisks: [],
-          toolCalls: 1,
-          sessionId: `session-${calls.length}`,
-          sessionFile: join(dir, "sessions", "same.jsonl"),
-          sessionResumed: calls.length > 1,
-        };
-      },
-    });
-    const contextBundle = {
-      version: 1 as const,
-      createdAt: new Date().toISOString(),
-      workspacePath: workspace,
-      budgetTokens: 32000,
-      tokenEstimate: 12,
-      itemCount: 1,
-      selectedPaths: [],
-      includeGitDiff: false,
-      items: [{ id: "summary:1", kind: "summary" as const, label: "背景", content: "保留现有公开接口", fingerprint: "a".repeat(64), tokenEstimate: 12, truncated: false }],
-    };
-    const first = await runtime.runAdHocTask({
-      title: "继续开发",
-      personaId: "clownfish",
-      capabilityId: "project-development",
-      instruction: "完成第一步",
-      workspacePath: workspace,
-      accessMode: "develop",
-      developmentEngine: "pi",
-      contextBundle,
-    });
-    const second = await runtime.runAdHocTask({
-      title: "继续开发",
-      personaId: "clownfish",
-      capabilityId: "project-development",
-      instruction: "完成第二步",
-      workspacePath: workspace,
-      accessMode: "develop",
-      developmentEngine: "pi",
-      continuationTaskId: first.artifact.taskId,
-      contextBundle,
-    });
-    assert.match(calls[0]!.instruction, /本次上下文包/);
-    assert.equal(calls[0]!.sessionMode, "continue");
-    assert.equal(calls[1]!.sessionMode, "resume");
-    assert.equal(calls[1]!.sessionFile, join(dir, "sessions", "same.jsonl"));
-    assert.equal(second.artifact.metadata?.developmentComparison?.previousArtifactId, first.artifact.id);
-    assert.equal(second.artifact.metadata?.developmentComparison?.sessionResumed, true);
-    assert.equal(second.artifact.metadata?.developmentComparison?.contextAdded, 0);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
-
-test.skip("开发能力的计划任务、流式和单次入口全部调用真实开发引擎", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "clownfish-development-entrypoints-"));
-  const workspace = mkdtempSync(join(tmpdir(), "clownfish-development-entrypoint-workspace-"));
-  const calls: Array<{ workspacePath: string; accessMode: string; engine?: string }> = [];
-  let ordinaryModelCalls = 0;
-  try {
-    const runtime = new CapabilityRuntime({
-      dataDir: dir,
-      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
-      notify: async () => {
-        ordinaryModelCalls += 1;
-        return { reply: "不应由普通模型完成开发任务", facts: [] };
-      },
-      notifyStream: async () => {
-        ordinaryModelCalls += 1;
-        return { reply: "不应由普通流式模型完成开发任务", facts: [] };
-      },
-      runDeveloper: async (input) => {
-        calls.push({ workspacePath: input.workspacePath, accessMode: input.accessMode, engine: input.engine });
-        input.onProgress?.("正在读取项目", 30);
-        return {
-          reply: "已完成真实项目检查。",
-          workspacePath: input.workspacePath,
-          accessMode: input.accessMode,
-          changedFiles: [],
-          fileReceipts: [],
-          checks: [{ command: "npm_test", passed: true, output: "通过", checkedAt: "2026-08-15T00:00:00.000Z" }],
-          contextReceipts: [{ kind: "directory", path: ".", anchor: "package.json", confidence: "exact", truncated: false }],
-          unverifiedRisks: [],
-          toolCalls: 2,
-        };
-      },
-    });
-    const task = runtime.createTask({
-      title: "持续检查项目",
-      personaId: "clownfish",
-      capabilityId: "project-development",
-      instruction: "检查项目并说明问题。",
-      workspace: { path: workspace, accessMode: "inspect", developmentEngine: "pi" },
-    });
-    await runtime.runTask(task.id, "manual");
-
-    const scheduledStatuses: string[] = [];
-    const scheduledTokens: string[] = [];
-    await runtime.runTaskStream(task.id, "manual", {
-      onStatus: (value) => scheduledStatuses.push(value),
-      onToken: (value) => scheduledTokens.push(value),
-    });
-
-    await runtime.runAdHocTask({
-      title: "单次检查",
-      personaId: "clownfish",
-      capabilityId: "project-development",
-      instruction: "检查项目。",
-      workspacePath: workspace,
-      accessMode: "inspect",
-    });
-
-    const adHocStatuses: string[] = [];
-    const adHocTokens: string[] = [];
-    await runtime.runAdHocTaskStream({
-      title: "流式检查",
-      personaId: "clownfish",
-      capabilityId: "project-development",
-      instruction: "继续检查项目。",
-      workspacePath: workspace,
-      accessMode: "inspect",
-    }, {
-      onStatus: (value) => adHocStatuses.push(value),
-      onToken: (value) => adHocTokens.push(value),
-    });
-
-    assert.equal(ordinaryModelCalls, 0);
-    assert.equal(calls.length, 4);
-    assert.ok(calls.every((call) => call.workspacePath === workspace));
-    assert.ok(calls.every((call) => call.accessMode === "inspect"));
-    assert.ok(calls.every((call) => call.engine === "pi"));
-    assert.ok(scheduledStatuses.includes("正在读取项目"));
-    assert.match(scheduledTokens.join(""), /真实项目检查/);
-    assert.ok(adHocStatuses.includes("正在读取项目"));
-    assert.match(adHocTokens.join(""), /真实项目检查/);
-    const developmentArtifacts = runtime.snapshot().artifacts.filter((artifact) => artifact.capabilityId === "project-development");
-    assert.equal(developmentArtifacts.length, 4);
-    assert.ok(developmentArtifacts.every((artifact) => artifact.metadata?.development?.toolCalls === 2));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
-
 test("生成能力更新时递增版本、记录内容指纹并保留可回滚快照", () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-skill-lifecycle-"));
   try {
@@ -672,8 +475,8 @@ test("长期任务脉络会保存进展、专家职责、决定替代关系和�
 
 test("能力中心页面包含独立对话、手动归档和受保护删除", () => {
   const webDir = join(process.cwd(), "examples", "companion", "web");
-  const html = readFileSync(join(webDir, "capabilities.html"), "utf8");
-  const script = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
+  const html = readAppHtml("capabilities.html");
+  const script = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8") + readFileSync(join(webDir, "assets", "workflow-catalog.js"), "utf8");
 
   assert.match(html, /data-view="start"/);
   assert.doesNotMatch(html, /data-view="record"/);
@@ -709,7 +512,7 @@ test("能力中心页面包含独立对话、手动归档和受保护删除", ()
   assert.match(script, /name: "做 PPT"/);
   assert.match(script, /name: "深度研究"/);
   assert.match(script, /name: "查港股资料"/);
-  assert.match(script, /name: "生成新能力"/);
+  assert.match(script, /name: "扩展构建（高级）"/);
   assert.doesNotMatch(script, /name: "开发项目"/);
   assert.match(script, /name: "翻译文字"/);
   assert.match(script, /name: "语音转写"/);
@@ -718,31 +521,23 @@ test("能力中心页面包含独立对话、手动归档和受保护删除", ()
   assert.match(script, /\/api\/tools\/translate/);
   assert.match(script, /\/api\/tools\/polish/);
   assert.match(script, /\/api\/asr/);
-  assert.match(html, /id="workspaceInput"/);
-  assert.match(html, /id="recentWorkspacePaths"/);
-  assert.match(html, /id="useRecentWorkspace"/);
-  assert.match(script, /clownfish-recent-workspaces-v1/);
-  assert.match(html, /id="accessModeSelect"/);
-  assert.match(html, /开发模式会运行项目自带的测试或构建脚本/);
-  assert.match(html, /只读检查不会运行这些脚本/);
+  assert.doesNotMatch(`${html}\n${script}`, /workspaceInput|recentWorkspacePaths|accessModeSelect|clownfish-recent-workspaces-v1/);
   assert.doesNotMatch(html, /personaSelect|由谁完成/);
   assert.doesNotMatch(script, /personaSelect/);
   assert.match(script, /personaId: "clownfish"/);
-  assert.match(script, /项目修改、可运行结果与验证记录/);
   assert.match(script, /format: "pptx"/);
   assert.match(script, /name: "写正式文档"/);
-  assert.match(html, /class="rail-secondary" href="\/settings"/);
+  assert.match(html, /id="settingsbtn"[^>]*href="\/settings"/);
   assert.doesNotMatch(html, /class="rail-memory"/);
   assert.doesNotMatch(`${html}\n${script}`, /github\.com|plugin:\/\//i);
 });
 
 test("任务页与能力页暂时保持运行记录隔离", () => {
   const webDir = join(process.cwd(), "examples", "companion", "web");
-  const chatHtml = readFileSync(join(webDir, "index.html"), "utf8");
-  const capabilityHtml = readFileSync(join(webDir, "capabilities.html"), "utf8");
+  const chatHtml = readAppHtml("index.html");
+  const capabilityHtml = readAppHtml("capabilities.html");
   const capabilityScript = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
   const officeScript = readFileSync(join(webDir, "assets", "office-workbench.js"), "utf8");
-  const developmentScript = readFileSync(join(webDir, "assets", "develop-center.js"), "utf8");
   const llmSource = readFileSync(join(process.cwd(), "examples", "companion", "llm.ts"), "utf8");
   const serverSource = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
   assert.match(chatHtml, /id="composerTool"[^>]*hidden/);
@@ -759,8 +554,6 @@ test("任务页与能力页暂时保持运行记录隔离", () => {
   assert.match(capabilityScript, /agent\/jobs\?limit=200&surface=capabilities/);
   assert.match(capabilityScript, /conversationKey: ""/);
   assert.match(officeScript, /surface: "office"/);
-  assert.match(developmentScript, /surface: "development"/);
-  assert.match(developmentScript, /agent\/jobs\?limit=500&surface=development/);
   assert.match(chatHtml, /agent\/jobs\?limit=30&surface=task/);
   assert.match(chatHtml, /agent\/runs\?limit=30&surface=task/);
   assert.match(chatHtml, /agent\/approvals\?limit=30&surface=task/);
@@ -790,7 +583,7 @@ test("能力自动选择和重复任务只使用当前对外能力", () => {
   const webDir = join(process.cwd(), "examples", "companion", "web");
   const capabilityScript = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
   const workScript = readFileSync(join(webDir, "assets", "work-center.js"), "utf8");
-  const workHtml = readFileSync(join(webDir, "work.html"), "utf8");
+  const workHtml = readAppHtml("work.html");
   assert.match(capabilityScript, /管理层摘要\|正式文档/);
   assert.match(workScript, /const PUBLIC_CAPABILITY_IDS =/);
   assert.match(workScript, /publicAbilities\(\)/);
@@ -803,9 +596,9 @@ test("能力自动选择和重复任务只使用当前对外能力", () => {
 
 test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单一入口", () => {
   const webDir = join(process.cwd(), "examples", "companion", "web");
-  const workHtml = readFileSync(join(webDir, "work.html"), "utf8");
+  const workHtml = readAppHtml("work.html");
   const workScript = readFileSync(join(webDir, "assets", "work-center.js"), "utf8");
-  const chatHtml = readFileSync(join(webDir, "index.html"), "utf8");
+  const chatHtml = readAppHtml("index.html");
 
   assert.match(workHtml, /id="storyDialog"/);
   assert.match(workHtml, /任务脉络/);
@@ -832,9 +625,9 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
   assert.doesNotMatch(workHtml, /id="projectsViewLink"/);
   assert.match(workHtml, /id="taskSpace"/);
   assert.match(workScript, /function renderSpaces/);
-  assert.match(workScript, /单个任务无需建项目/);
+  assert.match(workScript, /单个任务(?:无需|不必)建项目/);
   assert.match(workScript, /\/tasks\?space=/);
-  assert.doesNotMatch(workHtml, /data-view="(?:tasks|spaces|collaboration|resources|artifacts|runs|memory)"/);
+  assert.match(workHtml, /data-view="(?:tasks|spaces|collaboration|resources|artifacts|runs|memory)"/);
   assert.match(workScript, /function updatePrimaryWorkNavigation/);
   assert.match(workScript, /\/api\/capabilities\/task\/collaborate/);
   assert.match(workScript, /\/api\/knowledge/);
@@ -842,17 +635,17 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
 
 test("选择能力后直接进入填写和执行，不再经过准备能力步骤", () => {
   const webDir = join(process.cwd(), "examples", "companion", "web");
-  const html = readFileSync(join(webDir, "capabilities.html"), "utf8");
+  const html = readAppHtml("capabilities.html");
   const script = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
 
-  assert.match(html, /直接选择能力/);
+  assert.match(html, /直接使用工具/);
   assert.match(html, /class="capability-picker" id="capabilityPicker"/);
   assert.match(html, /id="launchPanel"/);
   assert.match(html, /自动选择能力/);
-  assert.match(html, /class="catalog-or">或<\/p>/);
+  assert.doesNotMatch(html, /class="catalog-or">或<\/p>/);
   assert.match(readFileSync(join(webDir, "assets", "capability-center.css"), "utf8"), /\.hero h1, \.catalog-or \{ font-size: 27px; \}/);
   assert.doesNotMatch(html, /id="toggleAll"|常用能力|再次使用/);
-  assert.match(script, /CATALOG\.slice\(0, 20\)/);
+  assert.match(script, /ClownfishWorkflowCatalog\.tools\.map/);
   assert.doesNotMatch(script, /showAll|RECENT_KEY|data-reuse-job|function reuseJob/);
   assert.match(html, /id="closeLaunch"[^>]*>关闭/);
   assert.match(html, /id="capabilityDraftList"/);
@@ -864,7 +657,7 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.match(script, /data-capability[\s\S]*activateCapability/);
   assert.match(script, /focusInput: true/);
   assert.match(script, /classList\.add\("is-launching"\)/);
-  assert.match(script, /button\.disabled = !status\.ready \|\| !hasInstruction/);
+  assert.match(script, /button\.disabled = Boolean\(state\.preparingMaterials \|\| state\.receivingMaterials\) \|\| !status\.ready \|\| !hasInstruction/);
   assert.match(script, /const ICON_TONES =/);
   assert.match(script, /function artifactDisplayTitle/);
   assert.match(script, /function updateLaunchState\(\)/);
@@ -873,7 +666,7 @@ test("选择能力后直接进入填写和执行，不再经过准备能力步�
   assert.doesNotMatch(`${html}\n${script}`, /prepareSelected|flow-steps|帮我准备|准备这个能力|准备：/);
 });
 test("Companion 主界面的弹窗和可点击列表具备基础无障碍语义", () => {
-  const html = readFileSync(join(process.cwd(), "examples", "companion", "web", "index.html"), "utf8");
+  const html = readAppHtml("index.html");
   const dialogIds = [
     "onboardingmodal", "memmodal", "groupmodal", "contactmodal", "settingsmenu", "toolsettingsmodal",
     "sourcemodal", "historymodal", "toolmodal", "personamodal", "avatarcropmodal", "hkmodal", "approvalmodal", "capmodal",
@@ -890,7 +683,7 @@ test("Companion 主界面的弹窗和可点击列表具备基础无障碍语义"
   assert.match(html, /id="closeConversationSearch"[^>]+aria-label="关闭搜索"/);
   assert.match(html, /id="composerTool"/);
   assert.doesNotMatch(html, /id="railDesktop"/);
-  assert.match(html, /id="settingsbtn"[^>]*data-app-icon="settings"/);
+  assert.match(html, /id="settingsbtn"[^>]*href="\/settings"/);
   assert.doesNotMatch(html, /id="settingsbtn"[^>]*hidden/);
   assert.match(html, /window\.location\.href = "\/settings"/);
   assert.match(html, /id="vbtn"[^>]*hidden/);

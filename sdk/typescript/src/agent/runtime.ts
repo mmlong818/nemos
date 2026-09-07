@@ -182,7 +182,8 @@ export class AgentRuntime {
           ...(response.inputTokens === undefined ? {} : { inputTokens: normalizeTokenCount(response.inputTokens) }),
           ...(response.outputTokens === undefined ? {} : { outputTokens: normalizeTokenCount(response.outputTokens) }),
         });
-        messages.push({ role: "assistant", content: response.text, toolCalls: calls });
+        messages.push({ role: "assistant", content: response.text, toolCalls: calls,
+          ...(response.providerState ? { providerState: response.providerState } : {}) });
         completedRounds = round;
 
         if (calls.length > 0 && usage.totalTokens >= this.config.maxTotalTokens) {
@@ -353,20 +354,24 @@ function trimHistory(messages: AgentMessage[], maxChars: number): AgentMessage[]
   if (historyChars(messages) <= maxChars) return messages;
   const system = messages.find((item) => item.role === "system");
   const kept: AgentMessage[] = [];
-  let used = system?.content.length ?? 0;
+  let used = system ? messageChars(system) : 0;
   for (let index = messages.length - 1; index >= 0; index--) {
     const item = messages[index]!;
     if (item.role === "system") continue;
-    if (used + item.content.length > maxChars && kept.length > 0) break;
+    if (used + messageChars(item) > maxChars && kept.length > 0) break;
     kept.unshift(item);
-    used += item.content.length;
+    used += messageChars(item);
   }
   while (kept[0]?.role === "tool") kept.shift();
   return system ? [system, ...kept] : kept;
 }
 
 function historyChars(messages: readonly AgentMessage[]): number {
-  return messages.reduce((sum, item) => sum + item.content.length, 0);
+  return messages.reduce((sum, item) => sum + messageChars(item), 0);
+}
+
+function messageChars(message: AgentMessage): number {
+  return message.content.length + (message.providerState ? JSON.stringify(message.providerState).length : 0);
 }
 
 function linkedController(signal?: AbortSignal): {

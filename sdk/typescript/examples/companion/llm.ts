@@ -8,6 +8,7 @@
 //   bash:        ZHIPU_API_KEY=... npx tsx examples/companion/chat-cli.ts
 
 import { randomUUID } from "node:crypto";
+import { modelResourceKey, modelScheduler } from "./model-scheduler.js";
 
 import {
   AgentRuntime,
@@ -24,11 +25,15 @@ import {
 } from "../../src/index.js";
 import type { ChatAgentContext, ChatFn, ChatStreamFn } from "./engine.js";
 import type { CapabilityStreamCb } from "./capabilities.js";
+import { makeOpenAIResponsesAgentModel } from "./openai-responses.js";
+import { resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
 import {
+  CompanionModelHttpError,
   companionModelProviderPreset,
   defaultCompanionModelConnection,
   modelConnectionEndpoint,
   normalizeCompanionModelConnection,
+  usesOpenAIResponses,
   type CompanionModelConnection,
 } from "./model-connection.js";
 
@@ -404,6 +409,8 @@ function makeConnectionChat(
       makeConnectionAgentModel({
         connection,
         model: selectedModel,
+        reasoningEffort: context?.reasoningEffort,
+        onModelAdmission: context?.onModelAdmission,
         maxTokens: completionTokens,
         temperature: 0.85,
         stream: false,
@@ -464,6 +471,8 @@ function makeConnectionChatStream(
       makeConnectionAgentModel({
         connection,
         model: selectedModel,
+        reasoningEffort: context?.reasoningEffort,
+        onModelAdmission: context?.onModelAdmission,
         maxTokens: completionTokens,
         temperature: 0.6,
         stream: true,
@@ -537,6 +546,8 @@ function makeConnectionAgentResume(
       makeConnectionAgentModel({
         connection,
         model: selectedModel,
+        reasoningEffort: context?.reasoningEffort,
+        onModelAdmission: context?.onModelAdmission,
         maxTokens,
         temperature: 0.6,
         stream: Boolean(cb),
@@ -569,7 +580,7 @@ function makeConnectionAgentResume(
   };
 }
 
-function storedAgentContext(run: AgentStoredRun): ChatAgentContext | undefined {
+export function storedAgentContext(run: Pick<AgentStoredRun, "metadata" | "runId" | "sessionId" | "prompt">): ChatAgentContext | undefined {
   const metadata = run.metadata;
   const mode = metadata?.mode;
   if (
@@ -580,15 +591,18 @@ function storedAgentContext(run: AgentStoredRun): ChatAgentContext | undefined {
   ) {
     return undefined;
   }
-  let memoryScopes: string[] = [metadata.scope];
+  // Missing legacy metadata may use the original scope. Present-but-empty or
+  // malformed metadata must fail closed instead of granting memory access.
+  let memoryScopes: string[] = metadata.memoryScopes === undefined ? [metadata.scope] : [];
   try {
     const parsed = JSON.parse(metadata.memoryScopes || "[]");
     if (Array.isArray(parsed)) {
       const cleaned = parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
-      if (cleaned.length > 0) memoryScopes = cleaned;
+      // Explicit [] means memory lookup was disabled. Do not re-open it on resume.
+      if (metadata.memoryScopes !== undefined) memoryScopes = cleaned;
     }
   } catch {
-    // 旧运行没有 memoryScopes 时使用当前会话 scope。
+    // 保持保守的默认范围，不从损坏的元数据恢复额外权限。
   }
   return {
     runId: run.runId,
@@ -600,6 +614,7 @@ function storedAgentContext(run: AgentStoredRun): ChatAgentContext | undefined {
     memoryScopes,
     mode,
     surface: isStoredAgentSurface(metadata.surface) ? metadata.surface : undefined,
+    reasoningEffort: metadata.reasoningEffort as ReasoningEffort | undefined,
     toolMode: metadata.toolMode === "off" ? "off" : metadata.toolMode === "read-only" ? "read-only" : "auto",
   };
 }
@@ -609,7 +624,6 @@ function isStoredAgentSurface(value: string | undefined): value is NonNullable<C
     || value === "education"
     || value === "capability"
     || value === "office"
-    || value === "development"
     || value === "automation";
 }
 
@@ -647,6 +661,7 @@ function agentMetadata(
       ...(context.surface ? { surface: context.surface } : {}),
       memoryScopes: JSON.stringify(context.memoryScopes),
       toolMode: context.toolMode ?? "auto",
+      ...(context.reasoningEffort ? { reasoningEffort: context.reasoningEffort } : {}),
       ...(context.mode === "chat" ? { objective: runObjective(context.instruction) } : {}),
     } : {}),
     ...runtime,
@@ -683,6 +698,8 @@ function agentLimits(context: ChatAgentContext | undefined, defaultMaxTokens: nu
   return { maxRounds, maxToolRounds, maxTotalTokens, maxOutputChars, maxTokens };
 }
 interface ConnectionAgentModelOptions {
+  onModelAdmission?: ChatAgentContext['onModelAdmission'];
+  reasoningEffort?: ReasoningEffort;
   connection: CompanionModelConnection;
   model: string;
   maxTokens: number;
@@ -704,10 +721,22 @@ interface ZhipuChatResponse {
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
-function makeConnectionAgentModel(options: ConnectionAgentModelOptions): AgentModel {
-  return options.connection.protocol === "anthropic"
-    ? makeAnthropicAgentModel(options)
-    : makeOpenAICompatibleAgentModel(options);
+export function makeConnectionAgentModel(options: ConnectionAgentModelOptions): AgentModel {
+  resolveReasoningEffort(options.connection, options.model, options.reasoningEffort);
+  const check = options.connection.modelChecks?.[options.model];
+  const effective = check?.streaming === "failed" ? { ...options, stream: false } : options;
+  const adapter = options.connection.protocol === "anthropic"
+    ? makeAnthropicAgentModel(effective)
+    : usesOpenAIResponses({ ...options.connection, model: options.model })
+      ? makeOpenAIResponsesAgentModel(effective)
+      : makeOpenAICompatibleAgentModel(effective);
+  return { complete: (request) => {
+    if (check?.chat === "failed") throw new Error("当前模型连接检查未通过，请在设置中重新检查或选择其他模型。");
+    if (request.tools.length && check && check.tools !== "passed") {
+      throw new Error("当前模型的工具调用检查未通过。请选择已验证工具调用的模型，或关闭工具后仅进行文字对话。");
+    }
+    return modelScheduler.run(modelResourceKey(options.connection), request.signal, () => adapter.complete(request), options.onModelAdmission);
+  } };
 }
 
 function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): AgentModel {
@@ -716,6 +745,7 @@ function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): A
       const body: Record<string, unknown> = {
         model: options.model,
         messages: request.messages.map(toZhipuMessage),
+        ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
       };
       const outputTokens = Math.max(1, Math.min(options.maxTokens, request.maxOutputTokens ?? options.maxTokens));
       if (options.connection.provider === "openai") {
@@ -744,12 +774,13 @@ function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): A
         signal: request.signal,
       });
       if (!resp.ok) {
-        const provider = companionModelProviderPreset(options.connection.provider).name;
-        throw new Error(`[companion] ${provider} HTTP ${resp.status}: ${(await resp.text()).slice(0, 240)}`);
+        await resp.body?.cancel();
+        throw new CompanionModelHttpError(resp.status);
       }
-      return options.stream
-        ? readZhipuStream(resp, request.onTextDelta)
-        : readZhipuResponse(resp);
+      if (options.stream) return readZhipuStream(resp, request.onTextDelta);
+      const result = await readZhipuResponse(resp);
+      if (result.text) request.onTextDelta?.(result.text);
+      return result;
     },
   };
 }
@@ -796,8 +827,8 @@ function makeAnthropicAgentModel(options: ConnectionAgentModelOptions): AgentMod
         signal: request.signal,
       });
       if (!resp.ok) {
-        const provider = companionModelProviderPreset(options.connection.provider).name;
-        throw new Error(`[companion] ${provider} HTTP ${resp.status}: ${(await resp.text()).slice(0, 240)}`);
+        await resp.body?.cancel();
+        throw new CompanionModelHttpError(resp.status);
       }
       const data = await resp.json() as {
         content?: AnthropicContentBlock[];

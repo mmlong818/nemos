@@ -45,9 +45,13 @@ test("memory tool preserves the Engine-provided user and persona scope boundary"
     forUser(userId: string) {
       requestedUser = userId;
       return {
-        async getRelevantContext(_query: string, options: { scopes?: string[] }) {
+        async recall(_query: string, options: { scopes?: string[] }) {
           requestedScopes = options.scopes ?? [];
-          return "- 用户喜欢无糖咖啡";
+          return { items: [{ memory: {
+            id: "preference-a", layer: "personal_semantic", type: "user", content: "用户喜欢无糖咖啡",
+            source: { authoritative: false, kind: "derived", origin: "llm-extract", confidence: "medium", chain_depth: 1 },
+            created_at: "2026-09-06T00:00:00Z",
+          } }] };
         },
       };
     },
@@ -143,9 +147,6 @@ test("task and artifact lookup keep task, capability, office, and development re
   assert.match(officeResult.content, /文件页结果/);
   assert.doesNotMatch(officeResult.content, /任务页结果|能力页结果|开发页结果/);
 
-  const developmentResult = await executeFor("development", "capability_artifact_list");
-  assert.match(developmentResult.content, /开发页结果/);
-  assert.doesNotMatch(developmentResult.content, /任务页结果|能力页结果|文件页结果/);
 });
 
 test("only clownfish receives the approved write tool for saving recurring work", async () => {
@@ -205,29 +206,6 @@ test("only clownfish receives the approved write tool for saving recurring work"
   });
 });
 
-test("通用重复任务不会暴露缺少工作区授权的开发能力", async () => {
-  const capabilities = {
-    snapshot: () => ({
-      abilities: [
-        { id: "research-brief", name: "资料收集简报" },
-        { id: "project-development", name: "开发项目" },
-      ],
-      tasks: [],
-      artifacts: [],
-    }),
-  };
-  const provider = createCompanionAgentToolProvider({
-    memory: () => ({} as Nemos),
-    capabilities: () => capabilities as unknown as CapabilityRuntime,
-  });
-  const tools = await provider("把每天的 AI 新闻收集保存为常规任务", { ...context, personaId: "clownfish" });
-  const taskTool = tools.find((tool) => tool.definition.name === "capability_task_create");
-
-  assert.ok(taskTool);
-  const schema = taskTool.definition.inputSchema as { properties: { capabilityId: { description: string } } };
-  assert.match(schema.properties.capabilityId.description, /research-brief/);
-  assert.doesNotMatch(schema.properties.capabilityId.description, /project-development/);
-});
 test("only Clownfish can install a Skill and the write happens after tool execution", async () => {
   const installed: Array<Record<string, unknown>> = [];
   const fetched: string[] = [];

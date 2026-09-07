@@ -1,4 +1,4 @@
-export type DomainPackId = "research" | "office" | "development" | "operations" | "finance";
+export type DomainPackId = "research" | "office" | "operations" | "finance";
 
 export interface DomainPackQualityCase {
   id: string;
@@ -46,22 +46,6 @@ export const DOMAIN_PACK_QUALITY_CASES: DomainPackQualityCase[] = [
     title: "不虚构责任人的会议纪要",
     request: "从不完整记录生成纪要，未知责任人和日期必须标为待确认。",
     requiredSignals: ["决议", "行动项", "待确认"],
-  },
-  {
-    id: "development-safe-patch",
-    packId: "development",
-    capabilityId: "project-development",
-    title: "受控项目修改",
-    request: "定位错误、生成逐文件提案、运行项目检查，再回滚本次修改。",
-    requiredSignals: ["文件", "检查", "回滚"],
-  },
-  {
-    id: "development-inspect-only",
-    packId: "development",
-    capabilityId: "project-development",
-    title: "只读项目检查",
-    request: "只检查项目并给出原因，不写入任何文件。",
-    requiredSignals: ["只读", "检查", "未写入"],
   },
   {
     id: "operations-metric-definition",

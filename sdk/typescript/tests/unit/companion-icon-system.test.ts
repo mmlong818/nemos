@@ -1,3 +1,4 @@
+import { readAppHtml } from "../fixtures/render-app-page.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ const webRoot = join(process.cwd(), "examples", "companion", "web");
 test("聊天、能力、办公文件和工作页共用同一套主导航图标", () => {
   const icons = readFileSync(join(webRoot, "assets", "app-icons.js"), "utf8");
   const pages = ["index.html", "capabilities.html", "office.html", "work.html"]
-    .map((file) => readFileSync(join(webRoot, file), "utf8"));
+    .map((file) => readAppHtml(file));
   const scripts = ["capability-center.js", "office-workbench.js", "work-center.js"]
     .map((file) => readFileSync(join(webRoot, "assets", file), "utf8"));
 
@@ -17,31 +18,29 @@ test("聊天、能力、办公文件和工作页共用同一套主导航图标",
     assert.match(icons, new RegExp(`\\b${name}:`));
   }
   assert.match(icons, /stroke-width="2"/);
-  assert.match(icons, /hydrateDevelopmentUpdateBadge/);
-  assert.match(icons, /\/api\/development\/engine-updates/);
-  assert.match(icons, /rail-update-badge/);
+  assert.doesNotMatch(icons, /hydrateDevelopmentUpdateBadge|\/api\/development\/engine-updates|rail-update-badge/);
   assert.match(icons, /role-engineer/);
   assert.match(icons, /role-product/);
-  assert.match(pages[3], /aria-label="自动化"[^>]+aria-current="page"[^>]+data-app-icon="work"/);
-  assert.match(pages[3], /aria-label="设置"[^>]+data-app-icon="settings"/);
+  assert.match(pages[3], /data-wb-path="\/automations"[^>]+aria-current="page"/);
+  assert.match(pages[3], /id="settingsbtn"[^>]+data-wb-path="\/settings"/);
   for (const script of scripts) assert.match(script, /window\.ClownfishIcons/);
   assert.doesNotMatch(scripts[2], /const icons\s*=/);
 });
 
 test("桌面左侧主导航同时显示图标和中文名称", () => {
   const pages = ["index.html", "capabilities.html", "office.html", "work.html"]
-    .map((file) => readFileSync(join(webRoot, file), "utf8"));
+    .map((file) => readAppHtml(file));
   const navigation = readFileSync(join(webRoot, "assets", "app-navigation-labels.css"), "utf8");
   const brandMark = readFileSync(join(webRoot, "assets", "brand", "clownfish-mark.svg"), "utf8");
 
   for (const page of pages) {
     assert.match(page, /\/assets\/app-navigation-labels\.css/);
   }
-  for (const label of ["任务", "能力", "文件", "自动化", "设置"]) {
-    assert.ok(pages.every((page) => page.includes(`<small>${label}</small>`)));
+  for (const label of ["助理工作区", "进行中的事", "Bot 团队", "能力工具", "文件编辑", "自动化", "设置"]) {
+    assert.ok(pages.every((page) => page.includes(`</span>${label}</a>`)));
   }
   assert.match(pages[0], /class="rail-label"/);
-  assert.match(pages[0], /<aside class="rail" aria-label="主导航">/);
+  assert.match(pages[0], /<aside class="rail app-nav" aria-label="主导航" id="wbNavigation">/);
   assert.match(navigation, /@media \(min-width: 721px\)/);
   assert.match(navigation, /\.rail nav small,[\s\S]+display: block/);
   assert.match(navigation, /--app-rail-reserved: calc\(var\(--app-rail-left\) \+ var\(--app-rail-shell\) \+ 14px\)/);
@@ -55,7 +54,7 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
 });
 
 test("角色使用功能徽记，右上角只保留对话操作", () => {
-  const page = readFileSync(join(webRoot, "index.html"), "utf8");
+  const page = readAppHtml("index.html");
   const experts = readFileSync(join(process.cwd(), "examples", "companion", "experts.ts"), "utf8");
 
   assert.match(page, /const ROLE_BADGES =/);
@@ -70,7 +69,7 @@ test("角色使用功能徽记，右上角只保留对话操作", () => {
 });
 
 test("后台角色能力保留，专家配置不再占用主界面", () => {
-  const page = readFileSync(join(webRoot, "index.html"), "utf8");
+  const page = readAppHtml("index.html");
 
   for (const roleId of ["clownfish", "feifei", "teacher_lin", "azhe", "lingling"]) {
     assert.match(page, new RegExp(`${roleId}: \\{`));
@@ -84,10 +83,10 @@ test("后台角色能力保留，专家配置不再占用主界面", () => {
 });
 
 test("新对话直接创建并在空白页选择工作方式", () => {
-  const page = readFileSync(join(webRoot, "index.html"), "utf8");
+  const page = readAppHtml("index.html");
 
   assert.match(page, /id="quickGroup"[^>]*>[\s\S]*新对话/);
-  assert.match(page, /<a class="brand" href="\/" id="railUserAvatar"/);
+  assert.match(page, /<a class="brand wb-brand" href="\/overview"/);
   assert.match(page, /id="sidebarSearchToggle"[^>]*aria-expanded="false"/);
   assert.match(page, /id="sidebarSearchToggle"[\s\S]*id="quickGroup"/);
   assert.match(page, /id="conversationSearchDialog"[^>]*aria-labelledby="conversationSearchTitle"/);
@@ -110,7 +109,7 @@ test("新对话直接创建并在空白页选择工作方式", () => {
 });
 
 test("对话没有主对话特例并支持确认删除", () => {
-  const page = readFileSync(join(webRoot, "index.html"), "utf8");
+  const page = readAppHtml("index.html");
 
   assert.doesNotMatch(page, /title: "主对话"/);
   assert.match(page, /function makeConversationNode/);

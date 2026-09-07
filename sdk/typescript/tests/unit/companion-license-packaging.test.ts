@@ -20,14 +20,29 @@ test("便携包携带项目和第三方授权文件", () => {
 });
 
 test("便携包包含实际运行所需的开源文档引擎及其目录内许可证", () => {
-  assert.match(buildScript, /examples\\companion\\vendor/);
-  assert.match(buildScript, /Copy-Item -LiteralPath \$CompanionVendor -Destination \$PortableCompanion -Recurse -Force/);
+  assert.match(buildScript, /Get-ChildItem -LiteralPath \(Join-Path \$SdkRoot "examples\\companion"\) -Directory/);
+  assert.match(buildScript, /\.Name -notin @\("client", "docs"\)/);
+  assert.match(notices, /vendor\/docx-engine/);
+  assert.match(notices, /vendor\/pptx-engine/);
+});
+
+test("Buzz 适配代码保留上游许可和固定提交，并沿用随包目录规则", () => {
+  const companion = join(repoRoot, "sdk", "typescript", "examples", "companion");
+  const source = readFileSync(join(companion, "web", "assets", "agent-events.js"), "utf8");
+  const license = readFileSync(join(companion, "vendor", "buzz", "LICENSE"), "utf8");
+  const provenance = readFileSync(join(companion, "vendor", "buzz", "README.md"), "utf8");
+  assert.match(source, /Copyright 2026 Block, Inc/);
+  assert.match(source, /Modified 2026-09-06/);
+  assert.match(license, /Apache License[\s\S]*Version 2\.0/);
+  assert.match(license, /Copyright 2026 Block, Inc/);
+  assert.match(provenance, /3c7f288c60d67df78577b237e27c3dfc8831aaa1/);
+  assert.match(notices, /vendor\/buzz/);
+  assert.match(buildScript, /\.Name -notin @\("client", "docs"\)/);
 });
 
 test("公开授权说明不把仓库整体误称为单一开源许可证项目", () => {
-  assert.match(licensing, /708 个唯一的“包名 \+ 版本”条目/);
+  assert.match(licensing, /唯一的“包名 \+ 版本”条目/);
   assert.match(licensing, /LGPL-3\.0-or-later/);
   assert.match(notices, /本仓库的许可证不会覆盖或替代这些条款/);
-  assert.match(notices, /Pi Agent/);
-  assert.match(notices, /OpenAI Codex CLI/);
+  assert.doesNotMatch(notices, /Pi Agent|OpenAI Codex CLI/);
 });

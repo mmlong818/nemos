@@ -13,7 +13,6 @@
 | 查港股资料 | market-briefing | Markdown | 公告、关注列表与行情快照 |
 | 梳理复杂问题 | thinking-workbench | HTML | 事实、假设、矛盾和验证 |
 | 设计产品界面 | product-design | HTML | 用户流程、页面和验收 |
-| 开发项目 | project-development | 项目修改 + 验证记录 | 读取指定项目、形成修改提案并验证 |
 | 整理会议纪要 | meeting-minutes | DOCX | 决定、行动项、责任与风险 |
 | 翻译文字 | quick-translate | TXT | 中英文自动识别与快速互译 |
 | 语音转写 | quick-speech | TXT | 音频、视频和现场录音转文字 |

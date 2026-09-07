@@ -4,110 +4,95 @@
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { "content-type": "application/json", ...(options.headers || {}) } }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.userMessage || data.error || `请求失败（${response.status}）`); return data; }
   let modelState = null;
-  function activate(section) { const id = ["models", "connections", "storage", "privacy", "appearance"].includes(section) ? section : "models"; document.querySelectorAll("[data-section]").forEach((item) => item.classList.toggle("is-current", item.dataset.section === id)); document.querySelectorAll("[data-panel]").forEach((item) => item.classList.toggle("is-current", item.dataset.panel === id)); history.replaceState(null, "", `#${id}`); }
-  document.querySelector(".settings-nav").onclick = (event) => { const button = event.target.closest("[data-section]"); if (button) activate(button.dataset.section); };
+  const sections = ["models", "connections", "storage", "privacy", "appearance", "advanced"];
+  const tabs = [...document.querySelectorAll('.settings-nav [data-section]')];
+  document.querySelector('.settings-nav').setAttribute('role','tablist');
+  function activate(section, historyMode = 'replace') {
+    const id = sections.includes(section) ? section : 'models';
+    tabs.forEach(item => {
+      const active=item.dataset.section===id;
+      item.classList.toggle('is-current',active);item.id='settings-tab-'+item.dataset.section;
+      item.setAttribute('role','tab');item.setAttribute('aria-controls','settings-panel-'+item.dataset.section);
+      item.setAttribute('aria-selected',String(active));item.tabIndex=active?0:-1;
+    });
+    document.querySelectorAll('[data-panel]').forEach(item=>{
+      const active=item.dataset.panel===id;item.classList.toggle('is-current',active);
+      item.id='settings-panel-'+item.dataset.panel;item.setAttribute('role','tabpanel');
+      item.setAttribute('aria-labelledby','settings-tab-'+item.dataset.panel);item.hidden=!active;
+    });
+    if(historyMode!=='none'&&location.hash!=='#'+id)history[historyMode==='push'?'pushState':'replaceState'](null,'','#'+id);
+    document.title=tabs.find(t=>t.dataset.section===id).textContent+' · 设置 · 小丑鱼';
+    window.dispatchEvent(new Event('clownfish:navigation'));
+  }
+  document.querySelector('.settings-nav').onclick=event=>{const button=event.target.closest('[data-section]');if(button)activate(button.dataset.section,'push');};
+  document.querySelector('.settings-nav').onkeydown=event=>{
+    const index=tabs.indexOf(event.target);if(index<0)return;
+    const target={ArrowRight:(index+1)%tabs.length,ArrowLeft:(index+tabs.length-1)%tabs.length,Home:0,End:tabs.length-1}[event.key];
+    if(target===undefined)return;event.preventDefault();activate(tabs[target].dataset.section,'push');tabs[target].focus();
+  };
+  window.addEventListener('popstate',()=>activate(location.hash.slice(1),'none'));
+  window.addEventListener('hashchange',()=>activate(location.hash.slice(1),'none'));
   function preset(id) { return (modelState?.providers || []).find((item) => item.id === id); }
   function updateModelHints() { const item = preset($("#modelProvider").value); $("#modelProtocol").disabled = $("#modelProvider").value !== "custom"; $("#modelKey").placeholder = item?.keyRequired ? `粘贴 ${item.name} API Key` : "本机服务通常无需填写"; $("#modelKeyHint").textContent = modelState?.provider === item?.id && modelState?.hasKey ? "已保存密钥；留空继续使用原密钥。" : "密钥使用当前 Windows 用户加密，仅保存在本机。"; }
-  function renderModel(state, fill = false) { modelState = state; $("#modelCurrentTitle").textContent = state.live ? `${state.providerName} · 已连接` : "离线模式"; $("#modelCurrentDetail").textContent = state.live ? `日常对话：${state.dailyChatModel || state.model} · 任务：${state.model}` : "连接模型后可以使用完整任务能力"; $("#modelDot").classList.toggle("live", !!state.live); $("#modelOffline").disabled = !state.live; if (!fill) return; $("#modelProvider").innerHTML = (state.providers || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join(""); $("#modelProvider").value = state.provider || "custom"; const item = preset($("#modelProvider").value) || {}; $("#modelProtocol").value = state.protocol || item.protocol || "openai-compatible"; $("#modelBaseUrl").value = state.baseUrl || item.baseUrl || ""; $("#modelName").value = state.model || item.model || ""; updateModelHints(); }
-  async function loadModel() { try { renderModel(await api("/api/llm"), true); } catch (error) { $("#modelStatus").className = "status error"; $("#modelStatus").textContent = error.message; } }
-  $("#modelProvider").onchange = () => { const item = preset($("#modelProvider").value); if (item) { $("#modelProtocol").value = item.protocol; $("#modelBaseUrl").value = item.baseUrl; $("#modelName").value = item.model; } $("#modelKey").value = ""; updateModelHints(); };
-  $("#modelForm").onsubmit = async (event) => { event.preventDefault(); const button = $("#modelSave"); button.disabled = true; $("#modelStatus").className = "status"; $("#modelStatus").textContent = "正在测试地址、密钥和模型…"; try { const state = await api("/api/llm-config", { method: "POST", body: JSON.stringify({ provider: $("#modelProvider").value, protocol: $("#modelProtocol").value, baseUrl: $("#modelBaseUrl").value.trim(), model: $("#modelName").value.trim(), key: $("#modelKey").value.trim() }) }); renderModel(state, true); $("#modelStatus").className = "status success"; $("#modelStatus").textContent = "连接成功，配置已保存在本机。"; } catch (error) { $("#modelStatus").className = "status error"; $("#modelStatus").textContent = `连接失败：${error.message}`; } finally { button.disabled = false; } };
-  $("#modelOffline").onclick = async () => { try { renderModel(await api("/api/llm-config", { method: "POST", body: JSON.stringify({ offline: true }) }), true); $("#modelStatus").className = "status success"; $("#modelStatus").textContent = "已切换到离线模式。"; } catch (error) { $("#modelStatus").className = "status error"; $("#modelStatus").textContent = error.message; } };
-  const developmentEngineNames = { pi: "Pi Agent", dsh: "DeepSeek Harness", kilo: "Kilo Code", opencode: "OpenCode", codex: "Codex" };
-  function normalizedDevelopmentEngine(value) { return Object.prototype.hasOwnProperty.call(developmentEngineNames, value) ? value : "pi"; }
-  function loadDevelopmentPreference() { const state = JSON.parse(localStorage.getItem("clownfish-development-settings") || "{}"); $("#defaultDevelopmentEngine").value = normalizedDevelopmentEngine(state.defaultDevelopmentEngine); $("#defaultAccessMode").value = state.defaultAccessMode === "inspect" ? "inspect" : "develop"; $("#defaultDependencyMode").value = state.installDependencies === false ? "skip" : "install"; }
-  $("#saveDevelopment").onclick = () => { localStorage.setItem("clownfish-development-settings", JSON.stringify({ defaultDevelopmentEngine: normalizedDevelopmentEngine($("#defaultDevelopmentEngine").value), defaultAccessMode: $("#defaultAccessMode").value, installDependencies: $("#defaultDependencyMode").value === "install" })); $("#developmentStatus").className = "status success"; $("#developmentStatus").textContent = "开发设置已保存。"; };
-  let developmentModelState = null;
-  let editingDevelopmentEngine = "pi";
-  function ensureDevelopmentModelPanel() {
-    if ($("#developmentModelConnections")) return;
-    $("#developmentTools").insertAdjacentHTML("beforebegin", `<section class="development-model-panel" aria-labelledby="developmentModelTitle"><header><div><h3 id="developmentModelTitle">引擎模型</h3><p>默认继承上方模型。只有需要不同供应商、账号或模型时才单独设置。</p></div></header><div class="development-model-list" id="developmentModelConnections"><p class="status">正在读取…</p></div><form class="development-model-editor" id="developmentModelConnectionForm" hidden><div class="development-model-editor-head"><div><strong id="developmentModelEditorTitle">配置引擎模型</strong><small id="developmentModelEditorSummary"></small></div><button type="button" class="development-model-close" id="cancelDevelopmentModel" aria-label="关闭模型设置">×</button></div><div class="form-grid"><label class="field"><span>使用方式</span><select id="developmentModelMode"><option value="inherit">继承默认模型</option><option value="independent">使用独立模型</option></select><small>继承时会自动跟随“模型”页的修改。</small></label><label class="field development-independent-field"><span>模型服务</span><select id="developmentModelProvider"></select><small id="developmentModelKeyHint">独立密钥只加密保存在本机。</small></label><label class="field development-independent-field"><span>接口协议</span><select id="developmentModelProtocol"><option value="openai-compatible">OpenAI 兼容</option><option value="anthropic">Anthropic</option></select><small>Codex 必须使用 OpenAI Responses 兼容服务。</small></label><label class="field development-independent-field"><span>API 地址</span><input id="developmentModelBaseUrl" type="url" inputmode="url" spellcheck="false" autocomplete="off"><small>远程地址必须使用 HTTPS。</small></label><label class="field development-independent-field"><span>模型名称</span><input id="developmentModelName" spellcheck="false" autocomplete="off"><small>填写服务商提供的真实模型 ID。</small></label><label class="field development-independent-field"><span>API Key</span><input id="developmentModelKey" type="password" spellcheck="false" autocomplete="new-password"><small>留空会沿用该引擎已保存的密钥。</small></label></div><div class="development-model-warning" id="developmentModelWarning" hidden></div><div class="form-actions"><button class="primary" id="saveDevelopmentModel" type="submit">测试并保存</button><button class="button" id="cancelDevelopmentModelSecondary" type="button">取消</button></div><p class="status" id="developmentModelStatus" role="status" aria-live="polite"></p></form></section>`);
+  function modelCheckLabel(check) { return !check ? "未检查" : check.chat !== "passed" ? "连接未通过" : check.tools === "passed" ? "工具往返已验证" : "仅文字已验证"; }
+  function renderModelCatalog(state) {
+    const shortlist = window.ClownfishModelShortlist;
+    const all = shortlist.catalog(state);
+    const common = shortlist.shortlist(state);
+    const expanded = $("#modelCatalogToggle").getAttribute("aria-pressed") === "true";
+    const models = expanded ? all : common;
+    $("#modelCatalog").innerHTML = models.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(shortlist.label(item, state))}</option>`).join("");
+    $("#modelCatalogHint").textContent = expanded
+      ? `全部 ${all.length} 个目录候选；包含旧版、专用和未检查型号，目录存在不代表可用。`
+      : `常用 ${common.length} 个 / 目录 ${all.length} 个。其余型号仅收起，不改动已保存连接；仍可手动填写。`;
+    $("#modelCatalogToggle").textContent = expanded ? "收起高级目录" : "查看全部型号（高级）";
   }
-  function developmentModelPreset(id) { return (developmentModelState?.providers || []).find((item) => item.id === id); }
-  function updateDevelopmentModelFields() {
-    const independent = $("#developmentModelMode").value === "independent";
-    document.querySelectorAll(".development-independent-field").forEach((field) => { field.hidden = !independent; });
-    const provider = $("#developmentModelProvider").value;
-    const preset = developmentModelPreset(provider);
-    $("#developmentModelProtocol").disabled = provider !== "custom" || editingDevelopmentEngine === "codex";
-    if (editingDevelopmentEngine === "codex") $("#developmentModelProtocol").value = "openai-compatible";
-    $("#developmentModelKeyHint").textContent = developmentModelState?.engines?.[editingDevelopmentEngine]?.hasKey
-      ? "已保存密钥；留空继续使用。"
-      : (preset?.keyRequired ? `需要 ${preset.name} API Key。` : "本机服务通常无需填写密钥。");
-    const warning = $("#developmentModelWarning");
-    warning.hidden = editingDevelopmentEngine !== "codex" || !independent;
-    warning.textContent = warning.hidden ? "" : "Codex 使用 Responses API；所填服务必须兼容该接口。";
-  }
-  function renderDevelopmentModelConnections(state) {
-    developmentModelState = state;
-    $("#developmentModelConnections").innerHTML = Object.entries(developmentEngineNames).map(([id, name]) => {
-      const item = state.engines?.[id] || {};
-      const detail = item.effective ? `${item.providerName || "模型服务"} · ${item.model || "未命名模型"}` : "尚未连接可用模型";
-      const mode = item.mode === "independent" ? "独立" : "继承";
-      return `<article class="development-model-row"><div class="development-model-identity"><strong>${escapeHtml(name)}</strong><span class="development-model-mode ${item.mode === "independent" ? "is-independent" : ""}">${mode}</span><small>${escapeHtml(detail)}</small></div><button type="button" data-development-model-engine="${escapeHtml(id)}">设置</button></article>`;
-    }).join("");
-  }
-  function openDevelopmentModelEditor(engine) {
-    editingDevelopmentEngine = normalizedDevelopmentEngine(engine);
-    const item = developmentModelState?.engines?.[editingDevelopmentEngine] || {};
-    $("#developmentModelEditorTitle").textContent = `${developmentEngineNames[editingDevelopmentEngine]} · 模型`;
-    $("#developmentModelEditorSummary").textContent = item.mode === "independent" ? "当前使用独立连接" : "当前继承默认模型";
-    $("#developmentModelMode").value = item.mode === "independent" ? "independent" : "inherit";
-    $("#developmentModelProvider").innerHTML = (developmentModelState?.providers || []).map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.name)}</option>`).join("");
-    $("#developmentModelProvider").value = item.provider || "zhipu";
-    $("#developmentModelProtocol").value = item.protocol || "openai-compatible";
-    $("#developmentModelBaseUrl").value = item.baseUrl || "";
-    $("#developmentModelName").value = item.model || "";
-    $("#developmentModelKey").value = "";
-    $("#developmentModelStatus").textContent = "";
-    $("#developmentModelConnectionForm").hidden = false;
-    updateDevelopmentModelFields();
-    $("#developmentModelMode").focus();
-  }
-  function closeDevelopmentModelEditor() { $("#developmentModelConnectionForm").hidden = true; }
-  async function loadDevelopmentModelConnections() {
-    ensureDevelopmentModelPanel();
-    try { renderDevelopmentModelConnections(await api("/api/development/model-connections")); }
-    catch (error) { $("#developmentModelConnections").innerHTML = `<p class="status error">${escapeHtml(error.message)}</p>`; }
-  }
-  ensureDevelopmentModelPanel();
-  $("#developmentModelConnections").onclick = (event) => { const button = event.target.closest("[data-development-model-engine]"); if (button) openDevelopmentModelEditor(button.dataset.developmentModelEngine); };
-  $("#developmentModelProvider").onchange = () => { const item = developmentModelPreset($("#developmentModelProvider").value); if (item) { $("#developmentModelProtocol").value = item.protocol; $("#developmentModelBaseUrl").value = item.baseUrl; $("#developmentModelName").value = item.model; } $("#developmentModelKey").value = ""; updateDevelopmentModelFields(); };
-  $("#developmentModelMode").onchange = updateDevelopmentModelFields;
-  $("#cancelDevelopmentModel").onclick = closeDevelopmentModelEditor;
-  $("#cancelDevelopmentModelSecondary").onclick = closeDevelopmentModelEditor;
-  $("#developmentModelConnectionForm").onsubmit = async (event) => {
-    event.preventDefault();
-    const button = $("#saveDevelopmentModel");
-    button.disabled = true;
-    $("#developmentModelStatus").className = "status";
-    $("#developmentModelStatus").textContent = $("#developmentModelMode").value === "inherit" ? "正在保存…" : "正在验证模型连接…";
-    try {
-      const state = await api("/api/development/model-connections", { method: "POST", body: JSON.stringify({ engine: editingDevelopmentEngine, mode: $("#developmentModelMode").value, provider: $("#developmentModelProvider").value, protocol: $("#developmentModelProtocol").value, baseUrl: $("#developmentModelBaseUrl").value.trim(), model: $("#developmentModelName").value.trim(), key: $("#developmentModelKey").value.trim() }) });
-      renderDevelopmentModelConnections(state);
-      closeDevelopmentModelEditor();
-      $("#developmentStatus").className = "status success";
-      $("#developmentStatus").textContent = `${developmentEngineNames[editingDevelopmentEngine]} 的模型设置已保存。`;
-    } catch (error) {
-      $("#developmentModelStatus").className = "status error";
-      $("#developmentModelStatus").textContent = `保存失败：${error.message}`;
-    } finally { button.disabled = false; }
+  $("#modelCatalogToggle").onclick = () => {
+    if (!modelState || $("#modelProvider").value !== modelState.provider) return;
+    const button = $("#modelCatalogToggle");
+    button.setAttribute("aria-pressed", String(button.getAttribute("aria-pressed") !== "true"));
+    renderModelCatalog(modelState);
   };
-  function renderTools(development = {}) {
-    for (const [id, name] of Object.entries(developmentEngineNames)) {
-      if (id === "pi") continue;
-      const option = $("#defaultDevelopmentEngine").querySelector(`option[value="${id}"]`);
-      if (!option) continue;
-      option.disabled = development[id]?.available !== true;
-      option.textContent = option.disabled ? `${name}（不可用）` : name;
-    }
-    const selected = $("#defaultDevelopmentEngine").selectedOptions[0];
-    if (selected?.disabled) $("#defaultDevelopmentEngine").value = "pi";
-    $("#defaultDevelopmentEngineHint").textContent = "Pi Agent 是默认引擎；其余引擎会按本机安装和当前模型连接状态启用。";
-    const names = { node: "Node.js", git: "Git", python: "Python", ...developmentEngineNames };
-    $("#developmentTools").innerHTML = Object.entries(development).map(([id, item]) => `<div class="tool-row"><div><h3>${escapeHtml(names[id] || id)}<span class="badge ${item.available ? "ready" : ""}">${item.available ? "可用" : "未安装"}</span></h3><p>${escapeHtml(item.version || "相关检查会明确跳过，不会伪装成已验证")}</p></div></div>`).join("");
+  function renderModel(state, fill = false) {
+    modelState = state;
+    $("#modelCurrentTitle").textContent = state.live ? `${state.providerName} · ${modelCheckLabel(state.check)}` : "离线模式";
+    $("#modelCurrentDetail").textContent = state.live ? `默认模型：${state.model} · ${state.check?.detail || "已配置，尚未进行能力检查。"}` : "连接模型后可以使用在线对话";
+    $("#modelDot").classList.toggle("live", state.check?.chat === "passed");
+    $("#modelOffline").disabled = !state.live;
+    $("#modelCatalogToggle").disabled = false;
+    renderModelCatalog(state);
+    $("#modelCheckList").innerHTML = Object.entries(state.modelChecks || {}).map(([id, check]) => `<article class="connection-row"><div><h3>${escapeHtml(id)}<span class="badge ${check.tools === "passed" ? "ready" : ""}">${modelCheckLabel(check)}</span></h3><p>${escapeHtml(check.detail)}</p><p>检查时间：${escapeHtml(new Date(check.checkedAt).toLocaleString())} · 仅代表当时的接口测试结果</p></div></article>`).join("");
+    if (!fill) return;
+    $("#modelProvider").innerHTML = (state.providers || []).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+    $("#modelProvider").value = state.provider || "custom";
+    const item = preset($("#modelProvider").value) || {};
+    $("#modelProtocol").value = state.protocol || item.protocol || "openai-compatible";
+    $("#modelBaseUrl").value = state.baseUrl || item.baseUrl || "";
+    $("#modelName").value = state.model || item.model || "";
+    $("#modelSelectionMode").value = state.live ? state.selectionMode || "manual" : "auto";
+    updateModelHints();
   }
-  function renderConnections(connectors = []) { const labels = { ready: "已连接", available: "可安装", "not-installed": "未安装" }; $("#connectionList").innerHTML = connectors.map((item) => `<article class="connection-row"><div><h3>${escapeHtml(item.name)}<span class="badge ${item.state}">${escapeHtml(labels[item.state] || item.state)}</span></h3><p>${escapeHtml(item.purpose)} · ${item.provider === "built-in" ? "应用内置" : "扩展提供"}</p><p>${escapeHtml(item.fallback || "")}</p></div>${item.state === "ready" ? `<button data-test="${escapeHtml(item.id)}">测试连接</button>` : `<button data-install>导入连接器</button>`}</article>`).join(""); }
+  async function loadModel() { try { renderModel(await api("/api/llm"), true); } catch (error) { $("#modelStatus").className = "status error"; $("#modelStatus").textContent = error.message; } }
+  $("#modelProvider").onchange = () => { $("#modelCatalogToggle").disabled = true; $("#modelCatalogToggle").setAttribute("aria-pressed", "false"); $("#modelCatalogToggle").textContent = "查看全部型号（高级）"; const item = preset($("#modelProvider").value); if (item) { $("#modelProtocol").value = item.protocol; $("#modelBaseUrl").value = item.baseUrl; $("#modelName").value = item.model; } $("#modelCatalog").innerHTML = ""; $("#modelCatalogHint").textContent = "保存时获取该服务的模型目录。"; $("#modelKey").value = ""; $("#modelSelectionMode").value = "auto"; updateModelHints(); };
+  $("#modelName").oninput = () => { $("#modelSelectionMode").value = "manual"; };
+  $("#modelForm").onsubmit = async (event) => {
+    event.preventDefault();
+    const button = $("#modelSave"); button.disabled = true;
+    $("#modelStatus").className = "status";
+    $("#modelStatus").textContent = $("#modelSelectionMode").value === "auto" ? "正在读取目录并检查候选（最多 3 个）；原连接继续保留…" : "正在检查指定模型的文字、流式和工具往返；不会更换型号…";
+    try {
+      const state = await api("/api/llm-config", { method: "POST", body: JSON.stringify({ provider: $("#modelProvider").value, protocol: $("#modelProtocol").value, baseUrl: $("#modelBaseUrl").value.trim(), model: $("#modelName").value.trim(), selectionMode: $("#modelSelectionMode").value, key: $("#modelKey").value.trim() }) });
+      renderModel(state, true); $("#modelKey").value = "";
+      $("#modelStatus").className = "status success";
+      $("#modelStatus").textContent = `已保存 ${state.model}。${state.check?.detail || ""}${state.catalogWarning || ""}`;
+    } catch (error) { $("#modelStatus").className = "status error"; $("#modelStatus").textContent = `未保存：${error.message}`; }
+    finally { button.disabled = false; }
+  };
+  $("#modelOffline").onclick = async () => { try { renderModel(await api("/api/llm-config", { method: "POST", body: JSON.stringify({ offline: true }) }), true); $("#modelStatus").className = "status success"; $("#modelStatus").textContent = "已切换到离线模式。"; } catch (error) { $("#modelStatus").className = "status error"; $("#modelStatus").textContent = error.message; } };
+  function renderConnections(connectors = []) {
+    const labels = { ready: "运行时就绪", available: "待连接", "not-installed": "未安装" };
+    $("#connectionList").innerHTML = connectors.map((item) => `<article class="connection-row"><div><h3>${escapeHtml(item.name)}<span class="badge ${item.state}">${escapeHtml(item.provider === "built-in" && item.state === "ready" ? "可用" : labels[item.state] || item.state)}</span></h3><p>${escapeHtml(item.purpose)} · ${item.provider === "built-in" ? "应用内置" : "扩展提供"}</p><p>${escapeHtml(item.detail || item.fallback || "")}</p></div>${item.state === "ready" ? `<button data-test="${escapeHtml(item.id)}">测试连接</button>` : item.extensionId ? `<button data-manage-extension>管理连接器</button>` : `<button data-install>导入连接器</button>`}</article>`).join("");
+  }
   function renderBundledPlugins(items = []) { $("#bundledPluginList").innerHTML = items.map((item) => `<article class="connection-row"><div><h3>${escapeHtml(item.name)}<span class="badge ${item.installed ? "ready" : ""}">${item.installed ? "已安装" : item.installable ? "可安装" : "缺少依赖"}</span></h3><p>${escapeHtml(item.description)}</p><p>${escapeHtml(item.dependencySummary || "依赖信息未提供。")}</p>${item.reason ? `<p>${escapeHtml(item.reason)}</p>` : ""}</div>${item.installed ? "" : `<button data-install-bundled="${escapeHtml(item.id)}" ${item.installable ? "" : "disabled"}>安装</button>`}</article>`).join(""); }
   function renderCapabilityRuntime(registry = {}, executionState = {}) {
     const counts = registry.counts || {};
@@ -122,7 +107,7 @@
   }
   function renderExtensions(items = [], updateState = {}) { const updates = new Map((updateState.items || []).map((item) => [item.id, item])); $("#extensionList").innerHTML = items.length ? items.map((item) => { const update = updates.get(item.manifest?.id); const updateButton = update?.updateAvailable ? `<button data-upgrade-extension="${escapeHtml(update.id)}" data-version="${escapeHtml(update.latestVersion)}" data-risk="${escapeHtml(update.risk)}">升级到 ${escapeHtml(update.latestVersion)}</button>` : ""; const updateDetail = update?.reasons?.length ? ` · ${escapeHtml(update.reasons.join("；"))}` : ""; return `<article class="connection-row"><div><h3>${escapeHtml(item.manifest?.name || item.manifest?.id)}<span class="badge ${item.enabled ? "ready" : ""}">${item.enabled ? "已启用" : "已停用"}</span>${update?.updateAvailable ? `<span class="badge ${update.risk === "compatible" ? "ready" : ""}">${update.risk === "compatible" ? "可升级" : "需确认"}</span>` : ""}</h3><p>${escapeHtml(item.manifest?.version || "")}${item.runtimeError ? ` · ${escapeHtml(item.runtimeError)}` : ""}${updateDetail}</p></div><div>${updateButton}<button data-toggle="${escapeHtml(item.manifest.id)}" data-enabled="${item.enabled ? "1" : "0"}">${item.enabled ? "停用" : "启用"}</button></div></article>`; }).join("") : "<p class=\"status\">还没有安装扩展。</p>"; }
   async function loadPlatform() { try { const [platform, extensions, registry, executions, extensionUpdates] = await Promise.all([api("/api/platform/readiness"), api("/api/agent/extensions"), api("/api/capabilities/registry"), api("/api/capabilities/executions?limit=10"), api("/api/agent/extension-updates")]); renderConnections(platform.connectors); renderBundledPlugins(platform.bundledPlugins || []); renderCapabilityRuntime(registry, executions); renderExtensions(extensions.extensions, extensionUpdates); } catch (error) { $("#connectionStatus").className = "status error"; $("#connectionStatus").textContent = error.message; } }
-  $("#connectionList").onclick = async (event) => { const test = event.target.closest("[data-test]"); if (event.target.closest("[data-install]")) $("#extensionFile").click(); if (!test) return; try { const result = await api("/api/platform/connector/test", { method: "POST", body: JSON.stringify({ id: test.dataset.test }) }); $("#connectionStatus").className = "status success"; $("#connectionStatus").textContent = `连接正常，发现 ${result.toolCount} 个可用工具。`; } catch (error) { $("#connectionStatus").className = "status error"; $("#connectionStatus").textContent = error.message; } };
+  $("#connectionList").onclick = async (event) => { const test = event.target.closest("[data-test]"); if (event.target.closest("[data-install]")) $("#extensionFile").click(); if (event.target.closest("[data-manage-extension]")) $("#extensionList").scrollIntoView({ behavior: "smooth", block: "center" }); if (!test) return; try { const result = await api("/api/platform/connector/test", { method: "POST", body: JSON.stringify({ id: test.dataset.test }) }); $("#connectionStatus").className = "status success"; $("#connectionStatus").textContent = result.note || `连接正常，发现 ${result.toolCount} 个可用工具。`; } catch (error) { $("#connectionStatus").className = "status error"; $("#connectionStatus").textContent = error.message; } };
   $("#bundledPluginList").onclick = async (event) => { const button = event.target.closest("[data-install-bundled]"); if (!button) return; const isBrowser = button.dataset.installBundled === "browser.playwright"; if (isBrowser && !confirm("浏览器操作会启动隔离的 Chrome，并可访问你交给任务的网页。确认安装吗？")) return; button.disabled = true; try { await api("/api/platform/bundled-plugin/install", { method: "POST", body: JSON.stringify({ id: button.dataset.installBundled, confirmExecutable: isBrowser }) }); $("#connectionStatus").className = "status success"; $("#connectionStatus").textContent = "能力插件已安装并启用。"; await loadPlatform(); } catch (error) { button.disabled = false; $("#connectionStatus").className = "status error"; $("#connectionStatus").textContent = error.message; } };
   $("#extensionList").onclick = async (event) => { const upgrade = event.target.closest("[data-upgrade-extension]"); const button = event.target.closest("[data-toggle]"); try { if (upgrade) { const risky = upgrade.dataset.risk !== "compatible"; if (risky && !confirm("新版本改变了权限或运行结构。确认审查后升级吗？")) return; upgrade.disabled = true; await api("/api/agent/extension-updates/upgrade", { method: "POST", body: JSON.stringify({ id: upgrade.dataset.upgradeExtension, latestVersion: upgrade.dataset.version, acceptRisk: risky, confirmPermissionExpansion: risky, confirmUnsandboxed: risky }) }); $("#connectionStatus").className = "status success"; $("#connectionStatus").textContent = "扩展已完成校验并升级。"; await loadPlatform(); return; } if (!button) return; await api("/api/agent/extension/enabled", { method: "POST", body: JSON.stringify({ id: button.dataset.toggle, enabled: button.dataset.enabled !== "1" }) }); await loadPlatform(); } catch (error) { if (upgrade) upgrade.disabled = false; $("#connectionStatus").className = "status error"; $("#connectionStatus").textContent = error.message; } };
   $("#importExtension").onclick = () => $("#extensionFile").click();
@@ -161,6 +146,6 @@
       await loadRetainedOutputs();
     } catch (error) { button.disabled = false; alert(error.message); }
   };
-  async function loadPrivacy() { try { const state = await api("/api/runtime"); const version = escapeHtml(state.manifest?.version || "未知"); $("#privacyList").innerHTML = `<div class="privacy-row"><div><b>隐私协议 · v${version}</b><p>生效日期：2026 年 8 月 17 日。说明本机保存、外部模型、插件、开发引擎、同步、导出和删除边界。</p></div><a class="button" href="https://github.com/mmlong818/nemos/blob/main/PRIVACY.md" target="_blank" rel="noopener">查看协议</a></div><div class="privacy-row"><div><b>本机数据目录</b><p>${escapeHtml(state.dataDir)}</p></div></div><div class="privacy-row"><div><b>数据何时离开本机</b><p>仅在你配置并使用模型、搜索、插件、开发引擎或自托管同步时，必要内容才会发送给对应服务。</p></div></div><div class="privacy-row"><div><b>记忆与偏好</b><p>可查看、修正和删除整理后的记忆，不展示内部原始归档。</p></div><a class="button" href="/memory">查看记忆</a></div><div class="privacy-row"><div><b>运行与审计记录</b><p>能力执行、权限确认和异常都可以追溯。</p></div><a class="button" href="/runs">查看记录</a></div><div class="privacy-row"><div><b>备份</b><p>${state.backups?.latest ? `最近备份：${escapeHtml(state.backups.latest)}` : "暂未读取到备份记录"}</p></div></div>`; } catch (error) { $("#privacyList").innerHTML = `<p class="status error">${escapeHtml(error.message)}</p>`; } }
+  async function loadPrivacy() { try { const state = await api("/api/runtime"); const version = escapeHtml(state.manifest?.version || "未知"); $("#privacyList").innerHTML = `<div class="privacy-row"><div><b>隐私协议 · v${version}</b><p>生效日期：2026 年 8 月 17 日。说明本机保存、外部模型、插件、同步、导出和删除边界。</p></div><a class="button" href="https://github.com/mmlong818/nemos/blob/main/PRIVACY.md" target="_blank" rel="noopener">查看协议</a></div><div class="privacy-row"><div><b>本机数据目录</b><p>${escapeHtml(state.dataDir)}</p></div></div><div class="privacy-row"><div><b>数据何时离开本机</b><p>仅在你配置并使用模型、搜索、插件或自托管同步时，必要内容才会发送给对应服务。</p></div></div><div class="privacy-row"><div><b>记忆与偏好</b><p>可查看、修正和删除整理后的记忆，不展示内部原始归档。</p></div><a class="button" href="/memory">查看记忆</a></div><div class="privacy-row"><div><b>运行与审计记录</b><p>能力执行、权限确认和异常都可以追溯。</p></div><a class="button" href="/runs">查看记录</a></div><div class="privacy-row"><div><b>备份</b><p>${state.backups?.latest ? `最近备份：${escapeHtml(state.backups.latest)}` : "暂未读取到备份记录"}</p></div></div>`; } catch (error) { $("#privacyList").innerHTML = `<p class="status error">${escapeHtml(error.message)}</p>`; } }
   window.ClownfishIcons?.hydrate(); activate(location.hash.slice(1)); loadModel(); loadPlatform(); loadStorage(); loadRetainedOutputs(); loadPrivacy();
 })();
