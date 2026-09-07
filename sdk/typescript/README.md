@@ -2,9 +2,9 @@
 
 [English](README.en.md)
 
-当前包版本：`0.7.5-alpha.17`；文档复核：2026-08-13。记忆内核依赖为 `@nemos/sdk` `0.7.5-alpha.18`。
+应用包版本：`0.5.5`；文档复核：2026-09-07。记忆内核依赖为 `@nemos/sdk` `0.7.5-alpha.18`。
 
-本目录是小丑鱼应用与可审计 Agent 运行时的 TypeScript 包。`src/index.ts` 会重新导出独立维护的 `@nemos/sdk`，并导出本仓库的 Agent 运行时；记忆内核源码不在这里重复维护。
+本目录是小丑鱼应用与可审计 Agent 运行时的 TypeScript 包。应用工作台提供任务、Bot、能力、文件、模型调度和本机数据管理；`src/index.ts` 重新导出独立维护的 `@nemos/sdk` 与本仓库 Agent 运行时，记忆内核源码不在这里重复维护。
 
 ## 安装
 
