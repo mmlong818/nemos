@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // 与 .gitignore 对齐：本机工作目录与参考代码不属于本仓库的文档，不参与检查。
-const ignoredDirectories = new Set([".git", "dist", "node_modules", "vendor", ".tmp", "tmp", "output", ".cache"]);
+const ignoredDirectories = new Set([".git", "dist", "node_modules", "vendor", ".tmp", "tmp", "output", "outputs", ".cache"]);
 const failures = [];
 
 function fail(message) {
@@ -51,8 +51,11 @@ for (const file of markdownFiles.filter((path) => path.startsWith(join(root, "sp
   }
 }
 
-const capabilityScript = readFileSync(join(root, "sdk", "typescript", "examples", "companion", "web", "assets", "capability-center.js"), "utf8");
+// 目录已从 capability-center.js 搬到 workflow-catalog.js（能力页和 Bot 页共用同一份）。
+// 这里跟着搬：核验必须读界面真正使用的那份，读旧文件会一直数出 0 项。
+const capabilityScript = readFileSync(join(root, "sdk", "typescript", "examples", "companion", "web", "assets", "workflow-catalog.js"), "utf8");
 const publicCapabilityCount = [...capabilityScript.matchAll(/backendId:/g)].length;
+if (publicCapabilityCount === 0) fail("没有从工作流目录读到任何能力，核验读的可能已不是界面使用的目录");
 const capabilityMap = readFileSync(join(root, "sdk", "typescript", "examples", "companion", "docs", "clownfish-capability-map.md"), "utf8");
 const companionReadme = readFileSync(join(root, "sdk", "typescript", "examples", "companion", "README.md"), "utf8");
 if (!capabilityMap.includes(`面向用户的 ${publicCapabilityCount} 项能力`)) fail("能力地图数量与界面不一致");
@@ -66,30 +69,30 @@ if (!zhTests || zhTests !== enTests) fail("中英文 README 的测试数量不�
 /**
  * 每个界面当前应使用的截图，逐项登记。
  * 只有那个界面真的变了才重拍并改这里——用一个全局日期会逼着无关界面陪着重拍。
+ *
+ * 文件名不再带日期或版本号：同一界面永远只有一张 `-current.png`，重拍即覆盖。
+ * 代价是文件名不再说明拍摄时间，收益是不会再出现"README 指着一个已删除的旧文件"
+ * 这种情况——那正是 README.en.md 曾经卡住的地方。带日期或版本后缀的引用因此
+ * 一律视为过时残留，由下面那条统一拦下。
  */
 const currentScreenshots = {
-  chat: "docs/assets/readme/clownfish-chat-2026-08-10.png",
-  capabilities: "docs/assets/readme/clownfish-capabilities-2026-08-10.png",
-  office: "docs/assets/readme/clownfish-office-2026-08-11.png",
-  work: "docs/assets/readme/clownfish-work-2026-08-10.png",
-  memory: "docs/assets/readme/clownfish-memory-2026-08-10.png",
-  "model-connection": "docs/assets/readme/clownfish-model-connection-2026-08-10.png",
+  task: "docs/assets/readme/clownfish-task-current.png",
+  assistant: "docs/assets/readme/clownfish-assistant-current.png",
+  memory: "docs/assets/readme/clownfish-memory-current.png",
 };
-for (const [screen, relativePath] of Object.entries(currentScreenshots)) {
+for (const relativePath of Object.values(currentScreenshots)) {
   if (!existsSync(join(root, relativePath))) fail(`当前 README 截图不存在：${relativePath}`);
   if (!rootReadme.includes(relativePath) || !englishReadme.includes(relativePath)) {
     fail(`中英文 README 没有共同使用当前截图：${relativePath}`);
-    continue;
-  }
-  // 同一界面不能同时残留旧版本的引用。
-  const stale = new RegExp(`docs/assets/readme/clownfish-${screen}-\\d{4}-\\d{2}-\\d{2}(?:-v\\d+)?\\.(?:png|jpg)`, "g");
-  for (const [label, content] of [["中文", rootReadme], ["英文", englishReadme]]) {
-    const used = [...new Set(content.match(stale) ?? [])];
-    if (used.length > 1) fail(`${label} README 同时引用了 ${screen} 的多张截图：${used.join("、")}`);
   }
 }
-if (/clownfish-[^)]+-2026-08-08\.jpg/.test(`${rootReadme}\n${englishReadme}`)) {
-  fail("README 仍引用旧版 2026-08-08 截图");
+// 登记表之外的截图引用只有两种可能：带版本/日期后缀的旧残留，或忘记登记的新图。
+// 两种都要拦——前者会指向已删除的文件，后者会绕过"中英文共用同一张"的约束。
+const registered = new Set(Object.values(currentScreenshots));
+for (const [label, content] of [["中文", rootReadme], ["英文", englishReadme]]) {
+  for (const reference of new Set(content.match(/docs\/assets\/readme\/[\w.-]+/g) ?? [])) {
+    if (!registered.has(reference)) fail(`${label} README 引用了未登记的截图：${reference}`);
+  }
 }
 
 const memoryDesign = readFileSync(join(root, "sdk", "typescript", "examples", "companion", "docs", "capability-center-memory-design.md"), "utf8");

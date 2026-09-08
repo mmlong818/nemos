@@ -17,19 +17,30 @@ test("real server: memory failure is explicit, attention resolves after a decisi
       assert.match(data.error, /不会自动清空或覆盖/);
     }
     assert.equal(readFileSync(file, "utf8"), "{QA-corrupted-memory");
+    // 只断言本夹具植入的三条，不断言队列总数：默认每日计划任务到点后会被调度器
+    // 入队并产生一条待送达记录，总数因此随运行时刻变化（09:10 之前 3 条、之后 4 条）。
+    // 用总数断言等于让这个测试被无关的后台活动挟持。
+    const planted = [`job:${app.uncertainId}`, `job:${app.failedId}`, `approval:${app.approvalId}`];
+    const idsOf = (queue: any): string[] => queue.items.map((item: any) => item.id);
     const first = await get("/api/review-queue");
-    assert.equal(first.items.length, 3);
-    assert.equal(first.items[0].id, `job:${app.uncertainId}`);
+    for (const id of planted) assert.ok(idsOf(first).includes(id), `待处理队列缺少 ${id}`);
+    assert.equal(first.items[0].id, `job:${app.uncertainId}`, "uncertain 排在最前");
     assert.equal(first.relationshipMemory.state, "unavailable");
     assert.deepEqual((await get("/api/review-queue")).items, first.items);
     assert.equal((await post("/api/agent/approval/decision", { id: app.approvalId, allowed: false })).status, 200);
-    assert.equal((await get("/api/review-queue")).items.length, 2);
+    const afterDecision = idsOf(await get("/api/review-queue"));
+    assert.equal(afterDecision.includes(`approval:${app.approvalId}`), false, "已决定的审批离开队列");
+    for (const id of [`job:${app.uncertainId}`, `job:${app.failedId}`]) {
+      assert.ok(afterDecision.includes(id), `${id} 不应受审批决定影响`);
+    }
     const before = await get("/api/agent/job?id=" + app.uncertainId);
     await app.restart();
     const after = await get("/api/agent/job?id=" + app.uncertainId);
     assert.equal(after.job.status, "uncertain");
     assert.equal(after.job.attempts, before.job.attempts, "restart never replays uncertain work");
-    assert.equal((await get("/api/review-queue")).items.length, 2);
+    const afterRestart = idsOf(await get("/api/review-queue"));
+    assert.ok(afterRestart.includes(`job:${app.uncertainId}`), "重启后 uncertain 仍在队列里");
+    assert.equal(afterRestart.includes(`approval:${app.approvalId}`), false, "重启不会让已决定的审批回到队列");
     writeFileSync(file, "[]");
     await app.restart();
     assert.deepEqual((await get("/api/relationships")).profiles, []);

@@ -63,3 +63,6 @@ Thumbs.db
 # Coverage
 coverage/
 .nyc_output/
+
+# 本机 QA 产物（截图、录屏、审计报告），不进仓库
+outputs/

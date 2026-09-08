@@ -28,9 +28,20 @@ expectEqual("桌面清单", manifest.version);
 
 expectContains("服务端回退清单", resolve(packageRoot, "examples", "companion", "server.ts"), `version: "${version}"`);
 expectContains("中文 README 徽章", resolve(repoRoot, "README.md"), `版本-v${version}`);
-if (!readText(resolve(repoRoot, "README.md")).includes(`## v${version} 正式版`) && !readText(resolve(repoRoot, "README.md")).includes("## 产品概览")) failures.push(`中文 README 缺少当前产品概览标题`);
 expectContains("英文 README 徽章", resolve(repoRoot, "README.en.md"), `version-v${version}`);
-if (!readText(resolve(repoRoot, "README.en.md")).includes(`## v${version} release`) && !readText(resolve(repoRoot, "README.en.md")).includes("## Product overview")) failures.push(`英文 README 缺少当前产品概览标题`);
+// README 按开源项目形式重构后，概览小节改名为「这是什么 / What it is」。这里认新旧两种：
+// 这条守卫真正要保证的是"README 描述的是当前发布版本"，而版本一致由上面的徽章检查负责；
+// 标题名只是用来确认概览小节还在，不该把它钉死在某一次文案上。
+const overviewHeadings = {
+  "README.md": [`## v${version} 正式版`, "## 产品概览", "## 这是什么"],
+  "README.en.md": [`## v${version} release`, "## Product overview", "## What it is"],
+};
+for (const [file, headings] of Object.entries(overviewHeadings)) {
+  const content = readText(resolve(repoRoot, file));
+  if (!headings.some((heading) => content.includes(heading))) {
+    failures.push(`${file} 缺少概览小节标题（可用：${headings.join(" / ")}）`);
+  }
+}
 expectContains("本机应用文档", resolve(packageRoot, "examples", "companion", "README.md"), `统一发布版本：**${version}**`);
 expectContains("中文隐私协议", resolve(repoRoot, "PRIVACY.md"), `版本：${version}`);
 expectContains("英文隐私协议", resolve(repoRoot, "PRIVACY.en.md"), `Version: ${version}`);
