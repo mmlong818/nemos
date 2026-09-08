@@ -26,7 +26,8 @@ cd ..\..; node scripts\verify-docs.mjs
 ## 陷阱
 
 - **行尾**：仓库存 LF、`core.autocrlf=false`。脚本写文件必须显式 `newline="\n"`，否则几十行改动
-  会变成整文件 diff。收尾查 `grep -qU $'\r' <file>`。
+  会变成整文件 diff。收尾用 `git diff --stat <file>` 判断：只该有你改的那几行，整文件重写一眼可见。
+  **不要用 `grep -qU $'\r'`**——Bash 工具里这段转义会被吃掉，退化成匹配字母 r，于是永远"命中"。
 - **heredoc**：bash heredoc 吃反斜杠，正则与转义序列被静默写坏。写脚本请用 Write 工具落文件。
 - **测试里切源码**：泛型函数名让字面量匹配失败（`readJsonFile<T>(` ≠ `"function readJsonFile("`），
   切片静默返回半个文件、断言**偶然通过**。

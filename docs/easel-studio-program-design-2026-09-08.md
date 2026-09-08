@@ -4,6 +4,8 @@
 
 已定范围：**只接选题发现与脚本两类 skill；用小丑鱼已配置的模型；不接发布。**
 
+选题一侧**只接不抓网的评估类 skill**——理由与最终白名单见第十节。
+
 ---
 
 ## 一、研究结论（都已核对）
@@ -157,7 +159,8 @@ function startModelShim(options: { credentialProxyUrl: string; credentialProxyTo
 - `parseEaselDoctor`：缺 Python/openclaw → `missing-dependency`；缺模型配置 → `not-configured`；
   非零退出且输出不可解析 → `probe-failed`；正常 → `ready`。四种都不抛。
 - `resolveEaselOutput` 拒绝 `../` 逃出 `easelRoot` 的路径，也拒绝绝对路径与符号链接目标。
-- 清单里**不含任何发布类 skill**——本轮范围硬约束，用名单取反断言。
+- 清单里**不含任何发布类 skill，也不含任何抓取第三方站点的 skill**——本轮范围硬约束，
+  用名单取反断言（含 `skill-trending-topics` / `skill-trend-rider` / `skill-ugc-discovery`）。
 
 `tests/unit/easel-model-shim.test.ts`（外壳包内）
 - `/v1/chat/completions` 把请求包成信封、带 lease token、上游 URL 落在绑定前缀内。
@@ -172,7 +175,7 @@ function startModelShim(options: { credentialProxyUrl: string; credentialProxyTo
 
 ## 八、我最没把握的几个决定
 
-1. ~~Easel 的 skill 名称我还没核实~~ —— **已查**（见第十节）。候选已确定，但**其中一个有实质问题**。
+1. ~~Easel 的 skill 名称我还没核实~~ —— **已查、已定**（见第十节）。白名单四个，均不抓网。
 
 2. **`easel skill` 是否真的能无 Web headless 跑通。** CLI 入口存在，但它依赖 `openclaw` profile
    已初始化（`setup.sh` 做的事）。没有实机验证之前，"能被 MCP 外壳驱动"是推断而非事实。
@@ -234,4 +237,25 @@ README 与能力提示里都写着：实时价格、余票、房态这类数据*
    仍为 `read`。风险：抓取失效时它会安静地给出空榜或过时榜，而用户看不出区别。
 3. 接，且不加标注。**不建议**，与现有产品承诺冲突。
 
-若选 1，第七节那条"清单里不含发布类 skill"的断言应扩展成"不含任何抓取第三方站点的 skill"。
+### 决定：方案 1
+
+**本轮白名单只四个，均不抓网：**
+
+| 工具 | Easel skill | 作用 |
+| --- | --- | --- |
+| `easel_evaluate_topic` | `skill-topic-evaluator` | 评估你或小丑鱼给出的选题 |
+| `easel_write_video_script` | `video-script` | 视频脚本 |
+| `easel_write_hook` | `skill-hook-generator` | 开头钩子 |
+| `easel_write_outline` | `skill-article-outline` | 文章大纲 |
+
+排除 `skill-trending-topics` / `skill-trend-rider` / `skill-ugc-discovery`。
+
+**理由**：小丑鱼已经有联网研究链路，没必要引入第二套抓取，更不必替 Easel 的爬取结果背书。
+热搜榜与实时价格、余票、房态同类——抓取失效时它会安静地给出空榜或过时榜，而用户看不出区别，
+这正是小丑鱼在事实层一直避免的那种失败形状。**选题从哪来**：由你直接给，或由现有的
+「资料研究 / 市场机会」能力产出，再交给 `skill-topic-evaluator` 评估。
+
+方案 2（接但标注"未经核验"）留作后续选项，前置条件是抓取失败必须能与"榜确实是空的"区分开，
+并按失败编号上报——在那之前，标注只是把判断责任推给用户。
+
+第七节的断言已按此扩展。
