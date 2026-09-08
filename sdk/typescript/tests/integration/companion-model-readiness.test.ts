@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { startModelHarness } from "../fixtures/companion-model-harness.js";
+import { DPAPI_ONLY, startModelHarness } from "../fixtures/companion-model-harness.js";
 
-test("完整模型流程：自动筛选、手动锁定、失败保留、目录兼容、任务切换和重启", { timeout: 90_000 }, async () => {
+test("完整模型流程：自动筛选、手动锁定、失败保留、目录兼容、任务切换和重启", { timeout: 90_000, skip: DPAPI_ONLY }, async () => {
   const h = await startModelHarness();
   const request = async (path: string, body?: unknown, expected = 200) => {
     const response = await fetch(h.base + path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -84,7 +84,7 @@ test("完整模型流程：自动筛选、手动锁定、失败保留、目录�
   } finally { await h.stop(); }
 });
 
-test("Astra 模型在完整服务中以 Responses 检查、保存和重启，旧失败结果不会直接放行", { timeout: 90_000 }, async () => {
+test("Astra 模型在完整服务中以 Responses 检查、保存和重启，旧失败结果不会直接放行", { timeout: 90_000, skip: DPAPI_ONLY }, async () => {
   const h = await startModelHarness();
   try {
     const save = await fetch(h.base + "/api/llm-config", { method: "POST", headers: { "content-type": "application/json" },

@@ -94,6 +94,21 @@ export async function startModelHarness() {
     restart: async (whileStopped?: () => void | Promise<void>) => { await stopApp(); await whileStopped?.(); await startApp(); } };
 }
 
+/**
+ * 保存模型连接必须落一份 `llm-key.dpapi.json`，而 DPAPI 只有 Windows 有
+ * （`server.ts` 的 protectSecret 走 powershell.exe）。非 Windows 上保存接口返回 400
+ * `spawnSync powershell.exe ENOENT`，不是缺陷而是产品边界：README 写明"Windows 下密钥
+ * 使用当前用户的 DPAPI 加密"。
+ *
+ * 因此这几个整合测试按平台跳过，与 three-dimensional-verifier 缺 Blender 时同一处理。
+ * **不要**为了让 Linux 变绿而给非 Windows 造一套更弱的落盘加密——那是在发明没有用户
+ * 拥有的产品行为，而且是更不安全的那一种。真要支持，见
+ * docs/model-key-storage-non-windows-2026-09-08.md。
+ */
+export const DPAPI_ONLY = process.platform === "win32"
+  ? false
+  : "需要 Windows DPAPI 保存模型密钥（非 Windows 上保存接口按设计返回 400）";
+
 if (process.argv.includes("--serve-model-qa")) {
   startModelHarness().then((harness) => console.log(JSON.stringify({ base: harness.base, modelBase: harness.modelBase, dataDir: harness.dir })))
     .catch((error) => { console.error(error); process.exitCode = 1; });
