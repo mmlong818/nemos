@@ -10,13 +10,17 @@
 import { randomUUID } from "node:crypto";
 import { modelResourceKey, modelScheduler } from "./model-scheduler.js";
 import { AGENT_BUDGET, resolveAgentBudget, type AgentBudget } from "./runtime-limits.js";
+import { parseUnifiedTaskContext } from "./unified-task-context.js";
+import { type FileLlmCallLedger, type LlmCallPurpose } from "./llm-call-ledger.js";
 
 import {
   AgentRuntime,
+  AgentTurnDispositionError,
   type AgentMessage,
   type AgentModel,
   type AgentRunCheckpoint,
   type AgentRunObserver,
+  type AgentRunResult,
   type AgentStoredRun,
   type AgentTool,
   type AgentToolAuthorizationInput,
@@ -32,6 +36,7 @@ import {
   CompanionModelHttpError,
   companionModelProviderPreset,
   defaultCompanionModelConnection,
+  isModelCheckEligible,
   modelConnectionEndpoint,
   normalizeCompanionModelConnection,
   usesOpenAIResponses,
@@ -80,6 +85,8 @@ export interface ResolvedLLM {
   configureAgentObserver: (observer?: AgentRunObserver) => void;
   /** 高权限工具统一进入产品层的持久化审批。 */
   configureAgentAuthorizer: (authorizer?: AgentToolAuthorizer) => void;
+  /** App-owned, metadata-only ledger for actual outbound text-model HTTP calls. */
+  configureCallLedger: (ledger?: FileLlmCallLedger) => void;
   /** 从持久化检查点继续一次中断的 Agent 运行。 */
   resumeAgentRun: ((
     run: AgentStoredRun,
@@ -94,6 +101,7 @@ export function resolveLLM(config?: CompanionModelConnection): ResolvedLLM {
   let agentToolProvider: AgentToolProvider = () => [];
   let agentObserver: AgentRunObserver | undefined;
   let agentAuthorizer: AgentToolAuthorizer | undefined;
+  let callLedger: FileLlmCallLedger | undefined;
   const additionalTools: AgentToolProvider = (instruction, context) => agentToolProvider(instruction, context);
   const configureAgentTools = (provider: AgentToolProvider): void => {
     agentToolProvider = provider;
@@ -103,6 +111,9 @@ export function resolveLLM(config?: CompanionModelConnection): ResolvedLLM {
   };
   const configureAgentAuthorizer = (authorizer?: AgentToolAuthorizer): void => {
     agentAuthorizer = authorizer;
+  };
+  const configureCallLedger = (ledger?: FileLlmCallLedger): void => {
+    callLedger = ledger;
   };
   const connection = config ? normalizeCompanionModelConnection(config) : connectionFromEnvironment();
   if (connection) {
@@ -114,20 +125,21 @@ export function resolveLLM(config?: CompanionModelConnection): ResolvedLLM {
       && connection.baseUrl === "https://api.openai.com/v1";
     const tools = isZhipu ? [makeWebSearchTool(connection.apiKey)] : [];
     return {
-      extraction: makeConnectionExtract(connection, extractModel),
+      extraction: makeConnectionExtract(connection, extractModel, () => callLedger),
       embedding: isZhipu
         ? { provider: "zhipu", apiKey: connection.apiKey }
         : isOfficialOpenAI
           ? { provider: "openai", apiKey: connection.apiKey }
           : { provider: "none" },
-      chat: makeConnectionChat(connection, chatModel, tools, additionalTools, () => agentObserver, () => agentAuthorizer),
-      chatStream: makeConnectionChatStream(connection, chatModel, tools, additionalTools, () => agentObserver, () => agentAuthorizer),
+      chat: makeConnectionChat(connection, chatModel, tools, additionalTools, () => agentObserver, () => agentAuthorizer, () => callLedger),
+      chatStream: makeConnectionChatStream(connection, chatModel, tools, additionalTools, () => agentObserver, () => agentAuthorizer, () => callLedger),
       vision: isZhipu ? makeVision(connection.apiKey) : null,
       tts: isZhipu ? makeTts(connection.apiKey) : null,
       asr: isZhipu ? makeAsr(connection.apiKey) : null,
       configureAgentTools,
       configureAgentObserver,
       configureAgentAuthorizer,
+      configureCallLedger,
       resumeAgentRun: makeConnectionAgentResume(
         connection,
         chatModel,
@@ -135,6 +147,7 @@ export function resolveLLM(config?: CompanionModelConnection): ResolvedLLM {
         additionalTools,
         () => agentObserver,
         () => agentAuthorizer,
+        () => callLedger,
       ),
       label: `${provider.name} · ${chatModel}`,
       live: true,
@@ -151,6 +164,7 @@ export function resolveLLM(config?: CompanionModelConnection): ResolvedLLM {
     configureAgentTools,
     configureAgentObserver,
     configureAgentAuthorizer,
+    configureCallLedger,
     resumeAgentRun: null,
     label: "离线模式（本地启发式抽取 + 基础回复）",
     live: false,
@@ -242,7 +256,7 @@ function freshSearchQuery(query: string): string {
 }
 
 // —— 抽取 LLM（包一层强制中文，避免 flash 偶尔输出英文事实）——
-function makeConnectionExtract(connection: CompanionModelConnection, model: string): LLMConfig {
+function makeConnectionExtract(connection: CompanionModelConnection, model: string, ledger: () => FileLlmCallLedger | undefined): LLMConfig {
   const ZH = "\n\n【语言要求】抽取出的所有文本字段（content / basis 等）必须用中文（与用户输入语言一致），绝不要译成英文。JSON 结构保持不变。";
   return {
     provider: "custom",
@@ -254,6 +268,8 @@ function makeConnectionExtract(connection: CompanionModelConnection, model: stri
         maxTokens: 2200,
         temperature: 0,
         stream: false,
+        ledger: ledger(),
+        purpose: "memory_extract",
       });
       const response = await agentModel.complete({
         messages: [
@@ -381,6 +397,7 @@ const TOOL_POLICY =
 const WEB_CUES =
   /(weather|temperature|rain|typhoon|stock|index|fund|exchange rate|price|quote|ticket|fare|inventory|availability|room status|news|headline|score|match|IPO|market cap|funding|earnings|flight|train|schedule|hotel|restaurant|booking|reservation|opening hours|menu|queue|seat|attraction|ticketing|route|address|phone|rating|review|official|source|verify|today|tomorrow|latest|current|now|nearby|map|availability|\u5929\u6c14|\u6c14\u6e29|\u4e0b\u96e8|\u53f0\u98ce|\u964d\u6e29|\u66b4\u96e8|\u80a1\u4ef7|\u80a1\u7968|\u5927\u76d8|\u6307\u6570|\u57fa\u91d1|\u6da8\u8dcc|\u6c47\u7387|\u7f8e\u5143|\u65e5\u5143|\u6b27\u5143|\u82f1\u9551|\u6bd4\u7279\u5e01|\u6cb9\u4ef7|\u91d1\u4ef7|\u623f\u4ef7|\u591a\u5c11\u94b1|\u62a5\u4ef7|\u7968\u4ef7|\u4ef7\u683c|\u8d39\u7528|\u65b0\u95fb|\u5934\u6761|\u53d1\u751f\u4e86\u4ec0\u4e48|\u51fa\u4ec0\u4e48\u4e8b|\u6bd4\u5206|\u8d5b\u4e8b|\u6bd4\u8d5b|\u593a\u51a0|\u5229\u7387|\u878d\u8d44|\u5e02\u503c|\u4e0a\u5e02|\u8d22\u62a5|\u822a\u73ed|\u8f66\u6b21|\u73ed\u6b21|\u52a8\u8f66|\u9ad8\u94c1|\u706b\u8f66|\u5217\u8f66|\u673a\u7968|\u706b\u8f66\u7968|\u9152\u5e97|\u9910\u9986|\u996d\u5e97|\u9884\u8ba2|\u8ba2\u623f|\u623f\u6001|\u83dc\u5355|\u6392\u961f|\u6392\u53f7|\u8425\u4e1a\u65f6\u95f4|\u5730\u5740|\u7535\u8bdd|\u8bc4\u5206|\u8bc4\u4ef7|\u9644\u8fd1|\u8def\u7ebf|\u5730\u56fe|\u666f\u70b9|\u95e8\u7968|\u5b98\u65b9|\u6765\u6e90|\u6838\u5b9e|\u4eca\u5929|\u660e\u5929|\u6700\u65b0|\u73b0\u5728|\u8def\u51b5|\u9650\u53f7|\u4e0a\u6620|\u7968\u623f|\u6392\u540d|\u699c\u5355)/i;
 const WEB_VERBS = /(搜一?下|查一?下|搜搜|帮我查|查查|联网|百度|谷歌|google)/i;
+const EXPLICIT_TURN_PROTOCOL = "\n\n[Task turn protocol] When the task is ready to end, call finish_turn as the only tool call in that response. Use completed only with a user-visible answer in assistant text or an artifact reference returned by a tool. Use waiting_input with one concrete question, or blocked with one concrete blocker. A tool action receipt alone is not a final delivery.";
 function mightNeedWeb(user: string): boolean {
   const lines = user.split("\n").filter((l) => /^对方/.test(l)).join("\n") || user;
   return WEB_CUES.test(lines) || WEB_VERBS.test(lines);
@@ -393,19 +410,22 @@ function makeConnectionChat(
   additionalTools: AgentToolProvider = () => [],
   observer: () => AgentRunObserver | undefined = () => undefined,
   authorizer: () => AgentToolAuthorizer | undefined = () => undefined,
+  ledger: () => FileLlmCallLedger | undefined = () => undefined,
 ): ChatFn {
   return async (system, user, model, maxTokens, context): Promise<string> => {
     const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
     const extraTools = context?.toolMode === "off" ? [] : [...await additionalTools(context?.instruction ?? user, context)];
     const runtimeTools = context?.toolMode === "off" ? [] : uniqueAgentTools([...tools, ...extraTools]).filter((tool) => context?.toolMode !== "read-only" || readOnlyAgentTool(tool));
     const useTools = runtimeTools.length > 0 && (mightNeedWeb(user) || extraTools.length > 0);
-    const sys = useTools
+    const explicitTermination = context?.mode === "task" && useTools;
+    const sys = (useTools
       ? `${system}${TOOL_POLICY}\n（现在是 ${now}（北京时间），引用搜索结果时务必注意时效，过时的就说过时。）`
-      : system;
+      : system) + (explicitTermination ? EXPLICIT_TURN_PROTOCOL : "");
     const requestedMaxTokens = maxTokens || 800;
     const limits = agentLimits(context, requestedMaxTokens);
     const selectedModel = model || defaultModel;
     const completionTokens = Math.min(requestedMaxTokens, limits.maxTokens);
+    const runId = context?.runId ?? `companion-chat-${randomUUID()}`;
     const runtime = new AgentRuntime(
       makeConnectionAgentModel({
         connection,
@@ -415,6 +435,9 @@ function makeConnectionChat(
         maxTokens: completionTokens,
         temperature: 0.85,
         stream: false,
+        runId: context?.runId,
+        purpose: context?.llmPurpose,
+        ledger: ledger(),
       }),
       useTools ? runtimeTools : [],
       {
@@ -422,9 +445,9 @@ function makeConnectionChat(
         maxToolRounds: limits.maxToolRounds,
         maxTotalTokens: limits.maxTotalTokens,
         authorizeTool: authorizer(),
+        terminationProtocol: explicitTermination ? "explicit" : "legacy",
       },
     );
-    const runId = context?.runId ?? `companion-chat-${randomUUID()}`;
     const result = await runtime.run({
       runId,
       sessionId: context?.sessionId ?? runId,
@@ -439,10 +462,11 @@ function makeConnectionChat(
         maxTotalTokens: String(limits.maxTotalTokens),
         maxOutputChars: String(limits.maxOutputChars),
         stream: "false",
+        terminationProtocol: explicitTermination ? "explicit" : "legacy",
       }),
       observer: observer(),
     });
-    return result.output.slice(0, limits.maxOutputChars).trim() || "（……）";
+    return completedAgentOutput(result, limits.maxOutputChars);
   };
 }
 
@@ -454,20 +478,23 @@ function makeConnectionChatStream(
   additionalTools: AgentToolProvider = () => [],
   observer: () => AgentRunObserver | undefined = () => undefined,
   authorizer: () => AgentToolAuthorizer | undefined = () => undefined,
+  ledger: () => FileLlmCallLedger | undefined = () => undefined,
 ): ChatStreamFn {
   return async (system, user, cb, model, maxTokens, context) => {
     const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
     const extraTools = context?.toolMode === "off" ? [] : [...await additionalTools(context?.instruction ?? user, context)];
     const runtimeTools = context?.toolMode === "off" ? [] : uniqueAgentTools([...tools, ...extraTools]).filter((tool) => context?.toolMode !== "read-only" || readOnlyAgentTool(tool));
     const useTools = runtimeTools.length > 0 && (mightNeedWeb(user) || extraTools.length > 0);
-    const sys = useTools
+    const explicitTermination = context?.mode === "task" && useTools;
+    const sys = (useTools
       ? `${system}${TOOL_POLICY}\n（现在是 ${now}（北京时间），引用搜索结果注意时效。）`
-      : system;
+      : system) + (explicitTermination ? EXPLICIT_TURN_PROTOCOL : "");
     const requestedMaxTokens = maxTokens || 1200;
     const limits = agentLimits(context, requestedMaxTokens);
     const selectedModel = model || defaultModel;
     const completionTokens = Math.min(requestedMaxTokens, limits.maxTokens);
     let emittedChars = 0;
+    const runId = context?.runId ?? `companion-stream-${randomUUID()}`;
     const runtime = new AgentRuntime(
       makeConnectionAgentModel({
         connection,
@@ -477,6 +504,9 @@ function makeConnectionChatStream(
         maxTokens: completionTokens,
         temperature: 0.6,
         stream: true,
+        runId: context?.runId,
+        purpose: context?.llmPurpose,
+        ledger: ledger(),
       }),
       useTools ? runtimeTools : [],
       {
@@ -484,9 +514,9 @@ function makeConnectionChatStream(
         maxToolRounds: limits.maxToolRounds,
         maxTotalTokens: limits.maxTotalTokens,
         authorizeTool: authorizer(),
+        terminationProtocol: explicitTermination ? "explicit" : "legacy",
       },
     );
-    const runId = context?.runId ?? `companion-stream-${randomUUID()}`;
     const result = await runtime.run({
       runId,
       sessionId: context?.sessionId ?? runId,
@@ -501,6 +531,7 @@ function makeConnectionChatStream(
         maxTotalTokens: String(limits.maxTotalTokens),
         maxOutputChars: String(limits.maxOutputChars),
         stream: "true",
+        terminationProtocol: explicitTermination ? "explicit" : "legacy",
       }),
       observer: observer(),
       onTextDelta: (text) => {
@@ -518,7 +549,7 @@ function makeConnectionChatStream(
         }
       },
     });
-    return result.output.slice(0, limits.maxOutputChars).trim() || "（……）";
+    return completedAgentOutput(result, limits.maxOutputChars);
   };
 }
 
@@ -529,11 +560,17 @@ function makeConnectionAgentResume(
   additionalTools: AgentToolProvider,
   observer: () => AgentRunObserver | undefined,
   authorizer: () => AgentToolAuthorizer | undefined,
+  ledger: () => FileLlmCallLedger | undefined,
 ): NonNullable<ResolvedLLM["resumeAgentRun"]> {
   return async (run, checkpoint, cb) => {
     const context = storedAgentContext(run);
     const extraTools = [...await additionalTools(context?.instruction ?? run.prompt, context)];
-    const runtimeTools = uniqueAgentTools([...tools, ...extraTools]);
+    const runtimeTools = context?.toolMode === "off"
+      ? []
+      : uniqueAgentTools([...tools, ...extraTools]).filter((tool) => context?.toolMode !== "read-only" || readOnlyAgentTool(tool));
+    // Old checkpoints predate the protocol and must resume under their original
+    // text-only contract. New runs persist this flag before their first model call.
+    const explicitTermination = run.metadata?.terminationProtocol === "explicit" && runtimeTools.length > 0;
     const selectedModel = run.metadata?.model || defaultModel;
     const { maxTokens, maxRounds, maxToolRounds, maxTotalTokens, maxOutputChars } = storedAgentBudget(run);
     let emittedChars = 0;
@@ -548,6 +585,9 @@ function makeConnectionAgentResume(
         maxTokens,
         temperature: 0.6,
         stream: Boolean(cb),
+        runId: run.runId,
+        purpose: context?.llmPurpose,
+        ledger: ledger(),
       }),
       runtimeTools,
       {
@@ -555,12 +595,13 @@ function makeConnectionAgentResume(
         maxToolRounds,
         maxTotalTokens,
         authorizeTool: authorizer(),
+        terminationProtocol: explicitTermination ? "explicit" : "legacy",
       },
     );
     const result = await runtime.run({
       runId: run.runId,
       sessionId: run.sessionId,
-      systemPrompt: run.systemPrompt,
+      systemPrompt: run.systemPrompt + (explicitTermination ? EXPLICIT_TURN_PROTOCOL : ""),
       prompt: run.prompt,
       metadata: run.metadata,
       observer: observer(),
@@ -573,8 +614,18 @@ function makeConnectionAgentResume(
         if (bounded) cb.onToken(bounded);
       } : undefined,
     });
-    return result.output.slice(0, maxOutputChars).trim();
+    return completedAgentOutput(result, maxOutputChars);
   };
+}
+
+function completedAgentOutput(result: AgentRunResult, maxOutputChars: number): string {
+  if (result.disposition.state === "waiting_input" || result.disposition.state === "blocked") {
+    throw new AgentTurnDispositionError(result.disposition);
+  }
+  if (result.disposition.state === "cancelled") {
+    throw new AgentTurnDispositionError(result.disposition);
+  }
+  return result.output.slice(0, maxOutputChars).trim();
 }
 
 export function storedAgentContext(run: Pick<AgentStoredRun, "metadata" | "runId" | "sessionId" | "prompt">): ChatAgentContext | undefined {
@@ -613,6 +664,8 @@ export function storedAgentContext(run: Pick<AgentStoredRun, "metadata" | "runId
     surface: isStoredAgentSurface(metadata.surface) ? metadata.surface : undefined,
     reasoningEffort: metadata.reasoningEffort as ReasoningEffort | undefined,
     toolMode: metadata.toolMode === "off" ? "off" : metadata.toolMode === "read-only" ? "read-only" : "auto",
+    llmPurpose: isLlmCallPurpose(metadata.llmPurpose) ? metadata.llmPurpose : undefined,
+    taskContext: parseUnifiedTaskContext(metadata.taskContext),
   };
 }
 
@@ -648,11 +701,17 @@ function agentMetadata(
       ...(context.surface ? { surface: context.surface } : {}),
       memoryScopes: JSON.stringify(context.memoryScopes),
       toolMode: context.toolMode ?? "auto",
+      ...(context.llmPurpose ? { llmPurpose: context.llmPurpose } : {}),
+      ...(context.taskContext ? { taskContext: JSON.stringify(context.taskContext) } : {}),
       ...(context.reasoningEffort ? { reasoningEffort: context.reasoningEffort } : {}),
       ...(context.mode === "chat" ? { objective: runObjective(context.instruction) } : {}),
     } : {}),
     ...runtime,
   };
+}
+
+function isLlmCallPurpose(value: unknown): value is LlmCallPurpose {
+  return ["task_turn", "team_plan", "team_worker", "team_review", "team_final", "memory_extract", "completion_verify", "other"].includes(String(value));
 }
 
 function runObjective(instruction: string): string {
@@ -697,6 +756,10 @@ interface ConnectionAgentModelOptions {
   maxTokens: number;
   temperature: number;
   stream: boolean;
+  /** Existing application run id, never a synthesized task identity. */
+  runId?: string;
+  purpose?: LlmCallPurpose;
+  ledger?: FileLlmCallLedger;
 }
 
 interface ZhipuToolCall {
@@ -714,8 +777,18 @@ interface ZhipuChatResponse {
 }
 
 export function makeConnectionAgentModel(options: ConnectionAgentModelOptions): AgentModel {
+  return makeConnectionAgentModelInternal(options, false);
+}
+
+/** Only model-readiness imports this explicit synthetic-probe factory. */
+export function makeReadinessProbeAgentModel(options: ConnectionAgentModelOptions): AgentModel {
+  return makeConnectionAgentModelInternal(options, true);
+}
+
+function makeConnectionAgentModelInternal(options: ConnectionAgentModelOptions, readinessProbe: boolean): AgentModel {
   resolveReasoningEffort(options.connection, options.model, options.reasoningEffort);
-  const check = options.connection.modelChecks?.[options.model];
+  const storedCheck = options.connection.modelChecks?.[options.model];
+  const check = storedCheck?.connectionRevision === options.connection.connectionRevision ? storedCheck : undefined;
   const effective = check?.streaming === "failed" ? { ...options, stream: false } : options;
   const adapter = options.connection.protocol === "anthropic"
     ? makeAnthropicAgentModel(effective)
@@ -724,11 +797,62 @@ export function makeConnectionAgentModel(options: ConnectionAgentModelOptions): 
       : makeOpenAICompatibleAgentModel(effective);
   return { complete: (request) => {
     if (check?.chat === "failed") throw new Error("当前模型连接检查未通过，请在设置中重新检查或选择其他模型。");
-    if (request.tools.length && check && check.tools !== "passed") {
+    // A resumed checkpoint is rebuilt through this same adapter. Its historical
+    // model name never grants access after the current connection has changed.
+    if (!readinessProbe && options.connection.connectionRevision && !isModelCheckEligible(options.connection, check, "chat")) {
+      throw new Error("当前模型尚未通过此连接的文字回复检查，请在设置中明确检查后再使用。");
+    }
+    if (request.tools.length && !readinessProbe && options.connection.connectionRevision && !isModelCheckEligible(options.connection, check, "tools")) {
       throw new Error("当前模型的工具调用检查未通过。请选择已验证工具调用的模型，或关闭工具后仅进行文字对话。");
     }
-    return modelScheduler.run(modelResourceKey(options.connection), request.signal, () => adapter.complete(request), options.onModelAdmission);
+    return modelScheduler.run(modelResourceKey(options.connection), request.signal, async () => {
+      // The entry is started only after admission, immediately before an adapter performs HTTP.
+      // Thus queue waiting, tool work and retries are not misreported as provider calls.
+      const entry = safelyStartLedger(options.ledger, {
+        runId: options.runId,
+        taskId: taskIdFromRunId(options.runId),
+        purpose: options.purpose ?? purposeFromRunId(options.runId),
+        provider: options.connection.provider,
+        model: options.model,
+      });
+      try {
+        const response = await adapter.complete(request);
+        safelyFinishLedger(entry, { status: "completed", usage: providerUsage(response.inputTokens, response.outputTokens) });
+        return response;
+      } catch (error) {
+        safelyFinishLedger(entry, { status: request.signal.aborted ? "cancelled" : "failed", error });
+        throw error;
+      }
+    }, options.onModelAdmission);
   } };
+}
+
+function purposeFromRunId(runId: string | undefined): LlmCallPurpose {
+  if (!runId) return "other";
+  if (/^team\/[\w.-]+\/planner\//.test(runId)) return "team_plan";
+  if (/^team\/[\w.-]+\/final\//.test(runId)) return "team_final";
+  if (/^team\/[\w.-]+\/review:/.test(runId)) return "team_review";
+  if (/^team\/[\w.-]+\/work:/.test(runId)) return "team_worker";
+  return "task_turn";
+}
+
+function taskIdFromRunId(runId: string | undefined): string | undefined {
+  const match = /^team\/([\w.-]+)\//.exec(runId ?? "");
+  return match?.[1];
+}
+
+function providerUsage(inputTokens: unknown, outputTokens: unknown) {
+  const input = finiteToken(inputTokens), output = finiteToken(outputTokens);
+  return input === undefined && output === undefined
+    ? { reported: false }
+    : { reported: true, inputTokens: input, outputTokens: output, totalTokens: input !== undefined && output !== undefined ? input + output : undefined };
+}
+function finiteToken(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined; }
+function safelyStartLedger(ledger: FileLlmCallLedger | undefined, input: Parameters<FileLlmCallLedger["start"]>[0]) {
+  try { return ledger?.start(input); } catch { return undefined; }
+}
+function safelyFinishLedger(entry: ReturnType<FileLlmCallLedger["start"]> | undefined, outcome: Parameters<ReturnType<FileLlmCallLedger["start"]>["finish"]>[0]): void {
+  try { entry?.finish(outcome); } catch { /* Observability must not affect the model result. */ }
 }
 
 function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): AgentModel {
