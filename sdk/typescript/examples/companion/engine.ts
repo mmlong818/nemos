@@ -16,6 +16,9 @@ import { APP_PERSONA_ID, personaIdentityAliases } from "./identity.js";
 import { groupParticipationFor, selectGroupResponderIds, type GroupReplyRoute } from "./group-routing.js";
 import { conversationArchives, eventSequence } from "./conversation-history.js";
 import { isCurrentUserMemory, userMemoryEvidence, userMemoryPrompt, userMemoryText, type UserMemoryEvidence } from "./memory-evidence.js";
+import { presenceContextBlock, type InFlightWork } from "./presence-contract.js";
+import { COMPANION_MEMORY_SCOPE, MEMORY_ANCHOR_CAP } from "./memory-config.js";
+import { describeFailure, type FailureReport } from "./failure-registry.js";
 
 export interface Persona {
   id: string;
@@ -112,6 +115,66 @@ export interface SendOptions {
   memoryWriteMode?: "default" | "archive-only" | "off";
 }
 
+/**
+ * 一次整合的归一化结果。
+ *
+ * 内核返回的 ReflectResult 是一组计数，没有"这轮算成功还是算没做"的判断；
+ * 这里把它折算成互斥的 outcome，并附上对应的失败编号，让调用方不必自己拼条件。
+ */
+export type MemoryConsolidationOutcome =
+  | { outcome: "consolidated"; consumed: number; derived: number; invalidated: number; notes: FailureReport[] }
+  | { outcome: "no-input"; consumed: 0; derived: 0; invalidated: 0; notes: FailureReport[] }
+  | { outcome: "no-output"; consumed: number; derived: 0; invalidated: number; notes: FailureReport[] }
+  | { outcome: "skipped"; consumed: 0; derived: 0; invalidated: 0; notes: FailureReport[] };
+
+export interface MemoryConsolidationState {
+  lastRunAt: string | null;
+  lastEventSeq: number;
+  running: boolean;
+  /** 上一次整合抛错时的失败记录；成功或从未跑过时为 undefined。 */
+  failure?: FailureReport;
+}
+
+/**
+ * 把 ReflectResult 折算成互斥结果。
+ *
+ * 「消费了输入但没有产出」单独成一态：内核对模型输出不合法、被守门规则过滤、
+ * 本轮确实没东西可沉淀这三种情况都是静默 return null，彼此不可区分，所以这里
+ * 只能给出一个合并的结论而不假装知道是哪一种。
+ */
+export function normalizeConsolidation(result: {
+  episodicConsumed: number;
+  anchorCount: number;
+  derived: unknown[];
+  invalidated?: number;
+  skippedReason?: string;
+}): MemoryConsolidationOutcome {
+  const notes: FailureReport[] = [];
+  // 依据被裁剪过：结论仍然写入，但只依据了子集，值得让调用方知道。
+  if (result.anchorCount > MEMORY_ANCHOR_CAP) {
+    notes.push(describeFailure("CF-E0304", { anchorCount: result.anchorCount, cap: MEMORY_ANCHOR_CAP }));
+  }
+  if (result.skippedReason) {
+    notes.push(describeFailure("CF-E0302", {}));
+    return { outcome: "skipped", consumed: 0, derived: 0, invalidated: 0, notes };
+  }
+  const invalidated = result.invalidated ?? 0;
+  if (result.episodicConsumed === 0) {
+    return { outcome: "no-input", consumed: 0, derived: 0, invalidated: 0, notes };
+  }
+  if (result.derived.length === 0) {
+    notes.push(describeFailure("CF-E0303", { episodicConsumed: result.episodicConsumed }));
+    return { outcome: "no-output", consumed: result.episodicConsumed, derived: 0, invalidated, notes };
+  }
+  return {
+    outcome: "consolidated",
+    consumed: result.episodicConsumed,
+    derived: result.derived.length,
+    invalidated,
+    notes,
+  };
+}
+
 export interface CompanionEngineOptions {
   /**
    * 把记忆抽取放后台（不阻塞回复）。需 Nemos 的 worker 在跑（非 manualWorker）。
@@ -124,6 +187,12 @@ export interface CompanionEngineOptions {
   userProfile?: () => UserAddressingProfile | null;
   /** 当前角色可用的后台能力/Skills 摘要。由服务层提供，engine 只负责注入聊天上下文。 */
   capabilityContext?: (personaId: string) => string;
+  /**
+   * 当前还在后台跑的活。由服务层从任务队列与投递外发箱汇总，engine 只负责注入。
+   * 返回空数组表示这一轮没有在飞的活——那时不注入任何在场规则，避免模型凭空
+   * 提起不存在的后台任务。
+   */
+  inFlightWork?: (personaId: string) => readonly InFlightWork[];
 }
 
 export interface UserAddressingProfile {
@@ -663,9 +732,37 @@ export class CompanionEngine {
       .filter((item) => item.content.length > 0);
   }
 
-  /** 离线整合：沉淀事实 + 矛盾失效（需 SDK features.reflect / invalidation 开）。 */
-  async consolidate(userId: string): Promise<void> {
-    await this.nemos.forUser(userId).runReflect();
+  /**
+   * 离线整合：沉淀事实 + 矛盾失效（需 SDK features.reflect / invalidation 开）。
+   *
+   * 返回归一化后的结果而不是 void。原先这里把整个 ReflectResult 丢掉，于是
+   * skippedReason、episodicConsumed、anchorCount、invalidated 全部看不见——
+   * 一次「租约被占所以什么都没做」和一次「跑完并沉淀了 5 条」对调用方完全一样。
+   */
+  async consolidate(userId: string): Promise<MemoryConsolidationOutcome> {
+    const result = await this.nemos.forUser(userId).runReflect();
+    return normalizeConsolidation(result);
+  }
+
+  /**
+   * 上一次整合留下的状态。
+   *
+   * 自动整合由内核按 autoTriggerThreshold 自己触发，不经过 consolidate()，所以
+   * 它失败时应用侧唯一的观察点就是这里的 last_error。不读它的话，记忆停止沉淀
+   * 是完全静默的：用户只会觉得"它最近不太记得事"。
+   */
+  memoryConsolidationState(userId: string): MemoryConsolidationState {
+    const state = this.nemos.raw().storage.getReflectionState(COMPANION_MEMORY_SCOPE.tenantId, userId, COMPANION_MEMORY_SCOPE.spaceId);
+    const failure = state.last_error
+      ? describeFailure("CF-E0301", { lastRunAt: state.last_run_at ?? "" })
+      : undefined;
+    return {
+      lastRunAt: state.last_run_at,
+      lastEventSeq: state.last_event_seq,
+      // 租约还在有效期内说明有一次整合正在跑，不是故障。
+      running: Boolean(state.lease_until && Date.parse(state.lease_until) > Date.now()),
+      failure,
+    };
   }
 
   // ——— 私有 ———
@@ -851,6 +948,7 @@ export class CompanionEngine {
       `涉及日期、星期、今天/明天/下周、截止时间或预约时间时，以这里的本机时间为准。`,
       `如果 ta 没给具体日期，不要凭空假设某个星期几；要么问清楚，要么明确写"日期待确认"。`,
       ...this.capabilityContextBlock(persona, instruction),
+      ...this.presenceBlock(persona),
       ``,
       this.buildStyle(persona, turnCount),
       ``,
@@ -905,6 +1003,7 @@ export class CompanionEngine {
       `If reliable access is unavailable, downgrade clearly, give verification links or integration steps, and do not fabricate.`,
       `If information is incomplete, still deliver a useful version based on known constraints and list the gaps.`,
       ...this.capabilityContextBlock(persona, instruction),
+      ...this.presenceBlock(persona),
       ...(relSetting ? [``, `Relationship context: ${relSetting}`] : []),
       ``,
       userMemoryPrompt(ctx),
@@ -932,6 +1031,11 @@ export class CompanionEngine {
         : `如果 ta 明确要求你以后用某个特定称呼，就自然接受并按那个称呼回应。`,
       `禁止露骨、色情、低俗或让人不适的称呼；不要每句话都硬塞称呼，像真实微信聊天一样自然使用。`,
     ];
+  }
+
+  /** 在场契约：有活在飞时才注入，规则与状态一起给，避免模型自己编造进度。 */
+  private presenceBlock(persona: Persona): string[] {
+    return presenceContextBlock(this.opts.inFlightWork?.(persona.id) ?? []);
   }
 
   private capabilityContextBlock(persona: Persona, instruction: string): string[] {

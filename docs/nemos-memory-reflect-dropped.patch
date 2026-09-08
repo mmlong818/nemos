@@ -1,0 +1,161 @@
+diff --git a/src/index.ts b/src/index.ts
+index 7fd7658..126128a 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -75,6 +75,11 @@ export {
+   type ReflectConfig,
+   type ReflectInput,
+   type ReflectResult,
++  type ReflectDropped,
++  type ReflectDropReason,
++  // 锚点上限导出出去：ReflectResult.anchorCount 是裁剪【前】的条数，调用方要判断
++  // "本轮依据被裁过"只能拿它和这个上限比。不导出就只能在应用侧抄一个 50。
++  DEFAULT_ANCHOR_CAP,
+ } from "./reflect.js";
+ export {
+   memoriesToMarkdown,
+diff --git a/src/reflect.ts b/src/reflect.ts
+index 7994398..cf1ce48 100644
+--- a/src/reflect.ts
++++ b/src/reflect.ts
+@@ -206,8 +206,41 @@ export interface ReflectResult {
+   /** v0.6：本轮被矛盾失效的旧 personal_semantic 条数（invalidationEnabled 时）。 */
+   invalidated?: number;
+   skippedReason?: "lease-held";
++  /**
++   * 本轮被丢弃的提案，按原因分桶。
++   *
++   * 动机：此前这些丢弃全是静默的 `return null` / `continue`，于是「消费了输入却零产出」
++   * 对调用方是一个不可分的状态——模型输出不合法、被守门规则挡下、本轮确实没东西可沉淀，
++   * 三种情况看起来完全一样，界面因此无法告诉用户"记忆为什么没长"。
++   *
++   * 只是计数，不改变任何丢弃行为，也不携带被丢内容（避免把 LLM 原始输出带出接口）。
++   */
++  dropped?: ReflectDropped;
+ }
+ 
++/** 提案被丢弃的原因分桶。每一项都对应 reflect 里一个既有的静默丢弃点。 */
++export interface ReflectDropped {
++  /** 模型输出不是合法 JSON，或缺少 derived 数组。此前连一条日志都没有。 */
++  unparseable: number;
++  /** layer 不是 semantic / personal_semantic。 */
++  wrongLayer: number;
++  /** content 去空白后为空。 */
++  emptyContent: number;
++  /** consolidated_from 不在本轮 episodic 集合里（防 LLM 编造来源）。 */
++  unknownSource: number;
++  /** invalidates 里指向非 anchor 的 id 被剔除的条数；提案本身仍然保留。 */
++  unknownInvalidates: number;
++}
++
++export { DEFAULT_ANCHOR_CAP } from "./invalidation.js";
++
++/** buildReflectDerived 能给出的丢弃原因；与 ReflectDropped 的计数键一一对应。 */
++export type ReflectDropReason = "wrongLayer" | "emptyContent" | "unknownSource";
++
++const NO_DROPS: ReflectDropped = Object.freeze({
++  unparseable: 0, wrongLayer: 0, emptyContent: 0, unknownSource: 0, unknownInvalidates: 0,
++});
++
+ export async function runReflect(
+   storage: Storage,
+   llm: LLMProvider,
+@@ -235,8 +268,10 @@ export async function runReflect(
+   // 此时不 early-return，转而走 psem↔psem 互斥核对。lexical / 关闭路径行为不变。
+   const psemReconcileEligible = useSemantic && input.invalidationEnabled === true;
+   if (episodic.length === 0 && !psemReconcileEligible) {
+-    return { episodicConsumed: 0, anchorCount: 0, derived: [] };
++    return { episodicConsumed: 0, anchorCount: 0, derived: [], dropped: { ...NO_DROPS } };
+   }
++  // 本轮的丢弃计数。只累加，不影响任何既有分支的行为。
++  const dropped: ReflectDropped = { ...NO_DROPS };
+ 
+   const allAnchor = config.includePersonalSemantic
+     ? storage.listPersonalSemantic(input.tenantId, input.userId)
+@@ -285,13 +320,19 @@ export async function runReflect(
+     }
+ 
+     const parsed = parseReflectJson(raw);
+-    for (const d of parsed.derived ?? []) {
+-      const memory = buildReflectDerived(d, input.defaultScope, epIdSet, log);
+-      if (!memory) continue;
++    if (parsed.unparseable) dropped.unparseable += 1;
++    for (const d of parsed.output.derived ?? []) {
++      const outcome = buildReflectDerived(d, input.defaultScope, epIdSet, log);
++      if (!outcome.memory) {
++        dropped[outcome.reason] += 1;
++        continue;
++      }
++      const memory = outcome.memory;
+       built.push(memory);
+       if (input.invalidationEnabled && Array.isArray(d.invalidates) && d.invalidates.length > 0) {
+         // 守门：被失效 id 必须来自 anchor（即现有 personal_semantic），杜绝 LLM 编造
+         const valid = d.invalidates.filter((id) => anchorById.has(id));
++        dropped.unknownInvalidates += d.invalidates.length - valid.length;
+         if (valid.length > 0) invalidatesMap.set(memory.id, valid);
+       }
+     }
+@@ -366,6 +407,7 @@ export async function runReflect(
+     domainEvolution,
+     prospectiveVerified,
+     invalidated,
++    dropped,
+   };
+ }
+ 
+@@ -518,16 +560,18 @@ function buildReflectUserMessage(
+   );
+ }
+ 
+-function parseReflectJson(raw: string): ReflectJsonOutput {
++function parseReflectJson(raw: string): { output: ReflectJsonOutput; unparseable: boolean } {
+   let cleaned = raw.trim();
+   if (cleaned.startsWith("```")) {
+     cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+   }
+   try {
+     const obj = JSON.parse(cleaned) as ReflectJsonOutput;
+-    return obj && Array.isArray(obj.derived) ? obj : { derived: [] };
++    if (obj && Array.isArray(obj.derived)) return { output: obj, unparseable: false };
++    // 解析成功但结构不对，与解析失败同样是"这轮模型输出用不了"。
++    return { output: { derived: [] }, unparseable: true };
+   } catch {
+-    return { derived: [] };
++    return { output: { derived: [] }, unparseable: true };
+   }
+ }
+ 
+@@ -536,14 +580,14 @@ function buildReflectDerived(
+   defaultScope: string,
+   epIdSet: Set<string>,
+   log: (level: LogLevel, msg: string, meta?: Record<string, unknown>) => void,
+-): Memory | null {
++): { memory: Memory; reason?: undefined } | { memory: null; reason: ReflectDropReason } {
+   const layerRaw = String(raw.layer || "").toLowerCase();
+   if (layerRaw !== "semantic" && layerRaw !== "personal_semantic") {
+     log("warn", "[nemos reflect] 跳过非 semantic/personal_semantic derived", { layer: raw.layer });
+-    return null;
++    return { memory: null, reason: "wrongLayer" };
+   }
+   const content = (raw.content || "").trim();
+-  if (!content) return null;
++  if (!content) return { memory: null, reason: "emptyContent" };
+ 
+   // consolidated_from 严格过滤：必须是本次输入 episodic 集合的 id
+   const fromIds = Array.isArray(raw.consolidated_from)
+@@ -553,7 +597,7 @@ function buildReflectDerived(
+     log("warn", "[nemos reflect] 跳过没有 consolidated_from 的 derived（防止 LLM 编造）", {
+       content: content.slice(0, 80),
+     });
+-    return null;
++    return { memory: null, reason: "unknownSource" };
+   }
+ 
+   const now = nowIso();
+@@ -604,5 +648,5 @@ function buildReflectDerived(
+   if (memory.source.perspectives_conflict === undefined) {
+     delete memory.source.perspectives_conflict;
+   }
+-  return memory;
++  return { memory };
+ }
