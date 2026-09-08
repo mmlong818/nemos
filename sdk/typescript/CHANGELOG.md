@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Agent runs in task mode with tools mounted now carry an explicit turn disposition: `completed` requires visible text or artifact evidence, while `blocked`, `waiting_input`, and cancellation stay as distinct states instead of passing for delivery.
+- Added a bounded, atomically persisted ledger of every real text-model HTTP call, keyed by purpose (`task_turn`, `team_plan`, `team_worker`, `team_review`, `team_final`, `memory_extract`), exposed read-only at `/api/llm-calls`. Provider usage is recorded as returned or as `unknown`, never as zero, and in-flight entries left by a restart become `interrupted`. Team task details show call counts and known tokens.
+- Messages appended to a running tool-free team task are now steered at phase boundaries: `merge` adds context for the next phase, `redirect` replaces the remaining goal and invalidates old-goal receipts as completion evidence. The inbox is capped at 500 messages and returns 409 beyond that rather than dropping input.
+- Chat, background tasks, and capability runs share one bounded context snapshot; scheduled tasks resume from an explicit handoff record (latest per task, at most 200 tasks) and stay within the originally persisted tool mode and memory scope.
+- Imported skill templates keep the template source version separate from a local derived rule version; editing rules bumps only the local version and re-importing a template never overwrites the user's rules. Rules are fixed to `private` visibility.
+- Model connections carry an opaque local `connectionRevision`; catalog, favorites, and model checks are bound to it. Saving, switching, or loading settings issues no inference request; a model check is an explicit, possibly billable, single-ID operation whose result expires after seven days. Changing provider, protocol, base URL, or credentials discards old checks instead of reusing them.
+- The clownfish brand mark is now a PNG family generated from one master image by `Update-Clownfish-Icons.ps1`; the SVG mark was removed.
+
 ## 0.7.6
 
 - Made CI green on both Linux and Windows for the first time; the documentation and vendored-artifact checks had never actually run there, having always been preceded by a failing test step.

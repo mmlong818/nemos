@@ -189,6 +189,9 @@ docker compose up -d --build
 | [失败注册表与工作准则](docs/failure-registry-2026-09-08.md) | 失败编号、权限规则层、在场契约 |
 | [网络策略与沙箱现状](docs/network-policy-2026-09-08.md) | 出站允许名单、扩展沙箱的实际强制范围 |
 | [四道门与提示指令预算](docs/agentic-workflow-2026-09-08.md) | 写代码前的对齐门、提示指令预算守卫 |
+| [显式完成、调用账本与运行中转向](docs/cumora-adoption-2026-09-09.md) | 回合完成语义、目的级模型调用账本、阶段边界 merge/redirect |
+| [统一上下文、交接与技能规则版本](docs/qm-adoption-2026-09-09.md) | 受限上下文快照、计划任务交接、模板与本地规则双版本 |
+| [模型目录与资格检查](docs/model-catalog-adoption-2026-09-09.md) | 连接 revision、目录 stale、显式单型号检查与过期 |
 
 ## 参与贡献
 

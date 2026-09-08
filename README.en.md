@@ -189,6 +189,9 @@ As of 2026-09-08:
 | [Failure registry and work guidelines](docs/failure-registry-2026-09-08.md) | Failure codes, the permission rule layer, the presence contract |
 | [Network policy and sandbox status](docs/network-policy-2026-09-08.md) | Outbound allowlist and what the extension sandbox actually enforces |
 | [Alignment gates and prompt budget](docs/agentic-workflow-2026-09-08.md) | Pre-coding alignment gates and the prompt instruction-budget guard |
+| [Explicit completion, call ledger, and mid-run steering](docs/cumora-adoption-2026-09-09.md) | Turn disposition, purpose-level model call ledger, merge/redirect at phase boundaries |
+| [Unified context, handoff, and skill rule versions](docs/qm-adoption-2026-09-09.md) | Bounded context snapshot, scheduled-task handoff, template vs. local rule versions |
+| [Model catalog and eligibility checks](docs/model-catalog-adoption-2026-09-09.md) | Connection revision, stale catalog, explicit single-model checks with expiry |
 
 ## Contributing
 
