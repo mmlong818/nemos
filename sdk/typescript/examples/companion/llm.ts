@@ -9,6 +9,7 @@
 
 import { randomUUID } from "node:crypto";
 import { modelResourceKey, modelScheduler } from "./model-scheduler.js";
+import { AGENT_BUDGET, resolveAgentBudget, type AgentBudget } from "./runtime-limits.js";
 
 import {
   AgentRuntime,
@@ -534,11 +535,7 @@ function makeConnectionAgentResume(
     const extraTools = [...await additionalTools(context?.instruction ?? run.prompt, context)];
     const runtimeTools = uniqueAgentTools([...tools, ...extraTools]);
     const selectedModel = run.metadata?.model || defaultModel;
-    const maxTokens = metadataNumber(run, "maxTokens", 1200, 1, 200_000);
-    const maxRounds = metadataNumber(run, "maxRounds", 4, 1, 20);
-    const maxToolRounds = metadataNumber(run, "maxToolRounds", 2, 0, maxRounds);
-    const maxTotalTokens = metadataNumber(run, "maxTotalTokens", maxTokens * maxRounds * 2, 100, 2_000_000);
-    const maxOutputChars = metadataNumber(run, "maxOutputChars", 4_800, 100, 200_000);
+    const { maxTokens, maxRounds, maxToolRounds, maxTotalTokens, maxOutputChars } = storedAgentBudget(run);
     let emittedChars = 0;
     cb?.onStatus("恢复任务");
 
@@ -627,16 +624,6 @@ function isStoredAgentSurface(value: string | undefined): value is NonNullable<C
     || value === "automation";
 }
 
-function metadataNumber(
-  run: AgentStoredRun,
-  key: string,
-  fallback: number,
-  minimum: number,
-  maximum: number,
-): number {
-  const parsed = Number(run.metadata?.[key]);
-  return Math.min(maximum, Math.max(minimum, Number.isFinite(parsed) ? parsed : fallback));
-}
 function readOnlyAgentTool(tool: AgentTool): boolean {
   return /(^|_)(search|read|get|list|find|lookup|preview|inspect|status|query)(_|$)/i.test(tool.definition.name);
 }
@@ -679,23 +666,28 @@ function runObjective(instruction: string): string {
     .slice(0, 60);
 }
 
-function agentLimits(context: ChatAgentContext | undefined, defaultMaxTokens: number): {
-  maxRounds: number;
-  maxToolRounds: number;
-  maxTotalTokens: number;
-  maxOutputChars: number;
-  maxTokens: number;
-} {
-  const requested = context?.runtimeLimits;
-  const maxRounds = Math.min(20, Math.max(1, requested?.maxRounds ?? 4));
-  const maxToolRounds = Math.min(maxRounds, Math.max(0, requested?.maxToolRounds ?? 2));
-  const maxOutputChars = Math.min(200_000, Math.max(100, requested?.maxOutputChars ?? defaultMaxTokens * 4));
-  const maxTokens = Math.max(1, Math.min(defaultMaxTokens, maxOutputChars));
-  const maxTotalTokens = Math.min(
-    2_000_000,
-    Math.max(100, requested?.maxTotalTokens ?? maxTokens * maxRounds * 2),
-  );
-  return { maxRounds, maxToolRounds, maxTotalTokens, maxOutputChars, maxTokens };
+/** 新发起的对话：把本次请求的回复长度与显式覆盖折算成预算，边界见 runtime-limits.ts。 */
+function agentLimits(context: ChatAgentContext | undefined, defaultMaxTokens: number): AgentBudget {
+  return resolveAgentBudget(context?.runtimeLimits, defaultMaxTokens);
+}
+
+/**
+ * 续跑的任务：预算来自当初落盘的元数据，但必须走同一个折算函数。
+ * 元数据缺失或被改坏时回退到与新发起路径完全相同的默认值。
+ */
+function storedAgentBudget(run: AgentStoredRun): AgentBudget {
+  return resolveAgentBudget({
+    maxTokens: storedNumber(run, "maxTokens"),
+    maxRounds: storedNumber(run, "maxRounds"),
+    maxToolRounds: storedNumber(run, "maxToolRounds"),
+    maxTotalTokens: storedNumber(run, "maxTotalTokens"),
+    maxOutputChars: storedNumber(run, "maxOutputChars"),
+  }, storedNumber(run, "maxTokens") ?? AGENT_BUDGET.maxTokens.fallback);
+}
+
+function storedNumber(run: AgentStoredRun, key: string): number | undefined {
+  const parsed = Number(run.metadata?.[key]);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 interface ConnectionAgentModelOptions {
   onModelAdmission?: ChatAgentContext['onModelAdmission'];
