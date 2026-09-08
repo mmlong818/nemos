@@ -3,7 +3,7 @@
 <head><script src="/assets/product-structure.js" defer></script><script src="/assets/unsandboxed-notice.js" defer></script><script src="/assets/assistant-digest.js" defer></script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="icon" href="/assets/brand/clownfish-mark.svg" />
+<link rel="icon" href="/assets/brand/clownfish-mark.png" />
 <link rel="stylesheet" href="/assets/model-picker.css" />
 <title>小丑鱼</title>
 <style>
@@ -2671,8 +2671,8 @@
           </label>
           <label class="model-field model-field-wide" for="modelSelectionMode">
             <span>模型选择方式</span>
-            <select id="modelSelectionMode"><option value="auto">自动检查较新候选（最多 3 个）</option><option value="manual">手动指定，不自动更换</option></select>
-            <small>检查会发送少量测试请求，可能产生模型费用；不读取聊天记录、不执行真实工具。缺少创建时间时保留目录顺序。</small>
+            <select id="modelSelectionMode"><option value="manual">固定所选型号，不自动更换</option></select>
+            <small>保存不会检查或更换模型。能力检查需在设置页显式发起，可能发送多个合成请求并产生费用。</small>
           </label>
           <label class="model-field model-field-wide" for="modelKey">
             <span>API Key</span>
@@ -2700,7 +2700,7 @@
         <div class="model-actions">
           <button id="modelOffline" class="btn-secondary" type="button">使用离线模式</button>
           <span id="llmstatus" role="status" aria-live="polite"></span>
-          <button id="modelSave" class="btn-primary" type="submit">测试并保存</button>
+          <button id="modelSave" class="btn-primary" type="submit">保存（不检查）</button>
         </div>
       </form>
     </div>
@@ -3513,7 +3513,7 @@ function assetId(kind, id) {
 }
 function characterAsset(kind, id, type) {
   const asset = assetId(kind, id);
-  return asset === APP_PERSONA_ID ? "/assets/brand/clownfish-mark.svg" : "/assets/characters/" + asset + "-" + type + ".png";
+  return asset === APP_PERSONA_ID ? "/assets/brand/clownfish-mark.png" : "/assets/characters/" + asset + "-" + type + ".png";
 }
 function customPersonaAvatar(id) {
   if (id === APP_PERSONA_ID) return "";
@@ -3525,7 +3525,7 @@ function customMeAvatar() {
 function renderRailUserAvatar() {
   const el = $("#railUserAvatar");
   if (!el) return;
-  el.innerHTML = '<img class="avatar-img" alt="" width="36" height="36" src="/assets/brand/clownfish-mark.svg" />';
+  el.innerHTML = '<img class="avatar-img" alt="" width="36" height="36" src="/assets/brand/clownfish-mark.png" />';
 }
 function imageHtml(src, cls = "avatar-img") {
   return '<img class="' + cls + '" alt="" width="38" height="38" loading="lazy" src="' + esc(src) + '" />';
@@ -3544,7 +3544,7 @@ function faceHtml(kind, id) {
     if (custom) return imageHtml(custom);
   }
   if (kind === "persona" && id === APP_PERSONA_ID) {
-    return '<img class="avatar-img" alt="" width="38" height="38" loading="lazy" src="/assets/brand/clownfish-mark.svg" />';
+    return '<img class="avatar-img" alt="" width="38" height="38" loading="lazy" src="/assets/brand/clownfish-mark.png" />';
   }
   return avatarLetterHtml(kind, id);
 }
@@ -3988,9 +3988,9 @@ function syncTaskModelSelector() {
   const selected = requested || "default";
   const shortlist = window.ClownfishModelShortlist;
   const models = shortlist.taskModels(modelConnectionState, selected);
-  select.title = "仅显示常用型号；更多型号可在设置中手动指定。切换会发送少量测试请求，可能产生模型费用；通过后才切换";
-  select.innerHTML = '<option value="default">跟随默认 · ' + esc(modelConnectionState.model) + ' · ' + esc(shortlist.checkLabel(modelConnectionState.modelChecks?.[modelConnectionState.model])) + '</option>'
-    + models.map((item) => '<option value="' + esc(item.id) + '"' + (item.missing ? ' disabled' : '') + '>' + esc(shortlist.label(item, modelConnectionState)) + '</option>').join("");
+  select.title = "仅显示默认、常用和当前连接已验证的型号；切换本身不会发起模型请求。";
+  select.innerHTML = '<option value="default">跟随默认 · ' + esc(modelConnectionState.model) + ' · ' + esc(shortlist.checkLabel(modelConnectionState.modelChecks?.[modelConnectionState.model], modelConnectionState)) + '</option>'
+    + models.map((item) => '<option value="' + esc(item.id) + '"' + (item.missing || item.check?.chat !== 'passed' ? ' disabled' : '') + '>' + esc(shortlist.label(item, modelConnectionState)) + '</option>').join("");
   select.value = selected;
   window.ClownfishModelPicker?.sync(select, modelConnectionState, {
     effort: node?.config?.reasoningEffort || "auto",
@@ -7168,7 +7168,7 @@ function renderModelConnectionStatus(state, hydrateForm = false) {
   const catalog = $("#modelCatalog");
   if (catalog) catalog.innerHTML = models.map((item) => '<option value="' + esc(item.id) + '">' + esc(item.displayName || item.id) + '</option>').join("");
   const catalogHint = $("#modelCatalogHint");
-  if (catalogHint) catalogHint.textContent = models.length ? "仅展示 " + models.length + " 个常用型号；更多型号在设置中查看，仍可手动填写。" : "保存时读取目录；不提供目录的服务可手动填写。";
+  if (catalogHint) catalogHint.textContent = models.length ? "仅展示 " + models.length + " 个默认、常用或已验证型号；完整目录在设置中查看。" : "可手动填写任意合法模型 ID；保存不会读取目录或检查能力。";
   syncTaskModelSelector();
   if (!hydrateForm) return;
   const providerSelect = $("#modelProvider");
@@ -7176,7 +7176,7 @@ function renderModelConnectionStatus(state, hydrateForm = false) {
   providerSelect.value = state.provider || "zhipu";
   const preset = modelPreset(providerSelect.value) || modelPreset("zhipu");
   $("#modelName").value = state.model || preset?.model || "";
-  $("#modelSelectionMode").value = state.live ? state.selectionMode || "manual" : "auto";
+  $("#modelSelectionMode").value = "manual";
   $("#modelBaseUrl").value = state.baseUrl || preset?.baseUrl || "";
   $("#modelProtocol").value = state.protocol || preset?.protocol || "openai-compatible";
   $("#modelKey").value = "";
@@ -7194,18 +7194,17 @@ function updateModelFormHints() {
   $("#modelKeyHint").textContent = sameProvider && modelConnectionState?.hasKey
     ? "已保存密钥；留空会继续使用原密钥。新密钥会替换旧密钥。"
     : "密钥会使用当前 Windows 用户加密，仅保存在本机。";
-  $("#modelNote").textContent = preset?.note || "保存前会先测试连接，不会保存无法使用的配置。";
+  $("#modelNote").textContent = (preset?.note || "使用当前协议适配器。") + " 保存只记录连接与所选型号；能力需在设置中显式检查。";
 }
 function applyModelPreset(providerId) {
   const preset = modelPreset(providerId);
   if (!preset) return;
-  $("#modelName").value = preset.model;
-  $("#modelSelectionMode").value = "auto";
+  $("#modelSelectionMode").value = "manual";
   $("#modelBaseUrl").value = preset.baseUrl;
   $("#modelProtocol").value = preset.protocol;
   $("#modelKey").value = "";
   $("#modelCatalog").innerHTML = "";
-  $("#modelCatalogHint").textContent = "提交该服务的 Key 后自动获取模型列表。";
+  $("#modelCatalogHint").textContent = "切换服务不会改写当前型号；保存后可在设置中主动刷新目录。";
   updateModelFormHints();
 }
 async function refreshLLMStatus(hydrateForm = false) {
@@ -7337,9 +7336,9 @@ $("#modelForm").onsubmit = async (event) => {
   event.preventDefault();
   const btn = $("#modelSave");
   btn.disabled = true;
-  btn.textContent = "正在获取…";
+  btn.textContent = "正在保存…";
   $("#llmstatus").className = "";
-  $("#llmstatus").textContent = "正在检查模型的文字回复、输出方式和工具往返…";
+  $("#llmstatus").textContent = "正在保存连接；不会读取目录或检查模型…";
   try {
     const state = await api("/api/llm-config", {
       provider: $("#modelProvider").value,
@@ -7351,14 +7350,14 @@ $("#modelForm").onsubmit = async (event) => {
     });
     renderModelConnectionStatus(state, true);
     $("#llmstatus").className = "success";
-    $("#llmstatus").textContent = "已保存 " + state.model + "。" + (state.check?.detail || "") + (state.catalogWarning || "");
+    $("#llmstatus").textContent = "已保存 " + state.model + "；当前为" + window.ClownfishModelShortlist.checkLabel(state.check, state) + "。" + (state.catalogWarning || "");
     await loadState();
   } catch (error) {
     $("#llmstatus").className = "error";
     $("#llmstatus").textContent = "连接失败：" + (error && error.message ? error.message : "请检查配置");
   } finally {
     btn.disabled = false;
-    btn.textContent = "测试并保存";
+    btn.textContent = "保存（不检查）";
   }
 };
 $("#modelOffline").onclick = async () => {
@@ -7384,22 +7383,14 @@ async function changeTaskModel(select) {
   if (!node) return;
   const requested = select.value;
   const status = select.id === "heroModelSelect" ? $("#heroModelStatus") : $("#taskModelStatus");
-  // A model that passed its probe within the last week switches instantly; only unknown or
-  // failed models block the picker while the server re-runs the connection check.
-  const cached = modelConnectionState?.modelChecks?.[requested];
-  const fresh = cached?.chat === "passed" && Date.now() - Date.parse(cached.checkedAt) < 7 * 24 * 60 * 60 * 1000;
-  if (requested !== "default" && !fresh) {
-    select.disabled = true;
-    status.textContent = "正在检查，完成前保留原模型…";
-  } else status.textContent = "";
+  const cached = requested === "default"
+    ? window.ClownfishModelShortlist.eligibleCheck(modelConnectionState, modelConnectionState?.model)
+    : window.ClownfishModelShortlist.eligibleCheck(modelConnectionState, requested);
+  status.textContent = "";
   try {
-    if (requested !== "default") {
-      const result = fresh ? { ok: true, checked: cached } : await api("/api/llm-model/check", { model: requested });
-      if (!fresh) renderModelConnectionStatus(result);
-      if (!result.ok) throw new Error(result.checked?.detail || "模型检查未通过");
-      status.textContent = result.checked.tools === "passed" ? "工具往返已验证" : "仅文字已验证，请关闭工具";
-      status.title = result.checked.detail;
-    }
+    if (!cached || cached.chat !== "passed") throw new Error("该型号尚未通过当前连接的文字检查；请到设置中显式点击“检查模型”。");
+    status.textContent = cached.tools === "passed" ? "文字与工具已验证" : "仅文字已验证，请关闭工具";
+    status.title = cached.detail;
     node.config = { ...(node.config || {}), model: requested };
     node.updatedAt = Date.now();
     saveConversationTrees();

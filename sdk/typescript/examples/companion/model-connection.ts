@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 export type CompanionModelProtocol = "openai-compatible" | "anthropic";
 
 export type CompanionModelProvider =
@@ -16,17 +18,25 @@ export interface CompanionModelConnection {
   model: string;
   apiKey: string;
   selectionMode?: "auto" | "manual";
+  /** Opaque local revision; it is never derived from or exposed with the API key. */
+  connectionRevision?: string;
+  /** User preference only. A favourite is not evidence that the model is usable. */
+  favoriteModels?: string[];
   /** Only checks made with this exact connection and credential belong here. */
   modelChecks?: Record<string, CompanionModelCheck>;
 }
 
 export interface CompanionModelCheck {
+  /** The connection revision on which this synthetic check was actually made. */
+  connectionRevision?: string;
   checkedAt: string;
   chat: "passed" | "failed";
   streaming: "passed" | "failed" | "buffered" | "not-tested";
   tools: "passed" | "failed" | "not-tested";
   detail: string;
 }
+
+export const COMPANION_MODEL_CHECK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class CompanionModelHttpError extends Error {
   constructor(readonly status: number, operation = "模型请求") {
@@ -125,8 +135,9 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
 ] as const;
 
 export function companionModelProviderPreset(provider: unknown): CompanionModelProviderPreset {
-  return COMPANION_MODEL_PROVIDER_PRESETS.find((item) => item.id === provider)
-    ?? COMPANION_MODEL_PROVIDER_PRESETS[0]!;
+  const preset = COMPANION_MODEL_PROVIDER_PRESETS.find((item) => item.id === provider);
+  if (!preset) throw new Error("不支持的模型服务商。请选择内置服务商，或使用“自定义服务”并明确协议和 API 地址。");
+  return preset;
 }
 
 export function defaultCompanionModelConnection(
@@ -146,7 +157,7 @@ export function defaultCompanionModelConnection(
 export function normalizeCompanionModelConnection(
   input: Partial<CompanionModelConnection>,
 ): CompanionModelConnection {
-  const preset = companionModelProviderPreset(input.provider);
+  const preset = companionModelProviderPreset(input.provider ?? "zhipu");
   const protocol = preset.id === "custom"
     ? normalizeProtocol(input.protocol)
     : preset.protocol;
@@ -160,8 +171,107 @@ export function normalizeCompanionModelConnection(
 
   return { provider: preset.id, protocol, baseUrl, model, apiKey,
     ...(input.selectionMode ? { selectionMode: input.selectionMode } : {}),
+    ...(isConnectionRevision(input.connectionRevision) ? { connectionRevision: input.connectionRevision } : {}),
+    ...(input.favoriteModels ? { favoriteModels: normalizeFavoriteModels(input.favoriteModels) } : {}),
     ...(input.modelChecks ? { modelChecks: input.modelChecks } : {}),
   };
+}
+
+/** A local opaque revision makes check reuse safe without hashing or retaining a credential. */
+export function createConnectionRevision(): string {
+  return randomUUID();
+}
+
+export function ensureConnectionRevision(connection: CompanionModelConnection): CompanionModelConnection {
+  return isConnectionRevision(connection.connectionRevision)
+    ? connection
+    : { ...connection, connectionRevision: createConnectionRevision() };
+}
+
+/**
+ * Preserve preferences and a selected ID, but never carry checks across an endpoint,
+ * protocol, provider, or credential change. Callers must separately mark catalogs stale.
+ */
+export function withConnectionRevision(
+  next: CompanionModelConnection,
+  previous?: CompanionModelConnection,
+  credentialChanged = false,
+): CompanionModelConnection {
+  const normalized = normalizeCompanionModelConnection(next);
+  const sameConnection = Boolean(previous)
+    && normalized.provider === previous!.provider
+    && normalized.protocol === previous!.protocol
+    && normalized.baseUrl === previous!.baseUrl
+    && !credentialChanged;
+  const connectionRevision = sameConnection && isConnectionRevision(previous!.connectionRevision)
+    ? previous!.connectionRevision!
+    : createConnectionRevision();
+  const favoriteModels = normalizeFavoriteModels(next.favoriteModels ?? previous?.favoriteModels ?? []);
+  const modelChecks = sameConnection
+    ? retainModelChecksForRevision(next.modelChecks ?? previous?.modelChecks, connectionRevision)
+    : {};
+  return { ...normalized, connectionRevision, favoriteModels, modelChecks };
+}
+
+export function bindModelChecksToRevision(
+  checks: CompanionModelConnection["modelChecks"] | undefined,
+  connectionRevision: string,
+): Record<string, CompanionModelCheck> {
+  if (!isConnectionRevision(connectionRevision)) return {};
+  const bound: Record<string, CompanionModelCheck> = {};
+  for (const [model, check] of Object.entries(checks ?? {})) {
+    if (!isModelId(model) || !check || typeof check !== "object") continue;
+    // Legacy v2/v3 checks belonged to the one saved connection. Bind only at migration;
+    // all future connection changes discard them through withConnectionRevision().
+    bound[model] = { ...check, connectionRevision };
+  }
+  return bound;
+}
+
+/** Normal operation never upgrades an unbound or mismatched check into a valid one. */
+export function retainModelChecksForRevision(
+  checks: CompanionModelConnection["modelChecks"] | undefined,
+  connectionRevision: string,
+): Record<string, CompanionModelCheck> {
+  if (!isConnectionRevision(connectionRevision)) return {};
+  const retained: Record<string, CompanionModelCheck> = {};
+  for (const [model, check] of Object.entries(checks ?? {})) {
+    if (isModelId(model) && check?.connectionRevision === connectionRevision) retained[model] = check;
+  }
+  return retained;
+}
+
+export function isModelCheckEligible(
+  connection: Pick<CompanionModelConnection, "connectionRevision">,
+  check: CompanionModelCheck | undefined,
+  capability: "chat" | "streaming" | "tools" = "chat",
+  now = Date.now(),
+): boolean {
+  const checkedAt = check ? Date.parse(check.checkedAt) : Number.NaN;
+  return Boolean(isConnectionRevision(connection.connectionRevision)
+    && check?.connectionRevision === connection.connectionRevision
+    && Number.isFinite(checkedAt)
+    && checkedAt <= now
+    && now - checkedAt <= COMPANION_MODEL_CHECK_TTL_MS
+    && check[capability] === "passed");
+}
+
+export function normalizeFavoriteModels(models: readonly unknown[]): string[] {
+  const seen = new Set<string>();
+  for (const candidate of models) {
+    const id = String(candidate ?? "").trim();
+    if (isModelId(id)) seen.add(id);
+    if (seen.size >= 50) break;
+  }
+  return [...seen];
+}
+
+function isConnectionRevision(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9-]{16,64}$/i.test(value);
+}
+
+function isModelId(value: string): boolean {
+  return Boolean(value) && value.length <= 160 && !/[\r\n]/.test(value);
 }
 
 export function modelConnectionEndpoint(connection: CompanionModelConnection): string {
@@ -176,13 +286,13 @@ export function usesOpenAIResponses(connection: Pick<CompanionModelConnection, "
     && /^gpt-6-astra(?:-|$)/i.test(connection.model);
 }
 
-const NON_CHAT_MODEL = /(?:embedding|moderation|whisper|transcri|speech|tts|dall-e|sora|image|realtime|audio)/i;
-
 export function sortCompanionModels(models: readonly CompanionModelInfo[]): CompanionModelInfo[] {
   const unique = new Map<string, CompanionModelInfo>();
   for (const item of models) {
     const id = String(item?.id || "").trim();
-    if (!id || id.length > 160 || /[\r\n]/.test(id) || NON_CHAT_MODEL.test(id)) continue;
+    // Keep every syntactically safe ID returned by the endpoint. Names are not a
+    // reliable capability signal; explicit checks decide chat/tool eligibility.
+    if (!id || id.length > 160 || /[\r\n]/.test(id)) continue;
     const created = Number(item.created);
     unique.set(id, {
       id,

@@ -5,10 +5,13 @@ import type { AgentTool } from "../../src/index.js";
 import { resolveLLM } from "../../examples/companion/llm.js";
 import {
   dailyChatModelForConnection,
+  ensureConnectionRevision,
   fetchCompanionModelCatalog,
+  isModelCheckEligible,
   modelConnectionEndpoint,
   normalizeCompanionModelConnection,
   selectCompanionConversationModel,
+  withConnectionRevision,
 } from "../../examples/companion/model-connection.js";
 
 test("model catalog fetch uses provider authentication and puts the newest chat model first", async () => {
@@ -28,7 +31,7 @@ test("model catalog fetch uses provider authentication and puts the newest chat 
       provider: "openai",
       apiKey: "test-key",
     }));
-    assert.deepEqual(models.map((item) => item.id), ["gpt-5.7", "gpt-5.6", "gpt-5.5"]);
+  assert.deepEqual(models.map((item) => item.id), ["text-embedding-4", "gpt-5.7", "gpt-5.6", "gpt-5.5"]);
   } finally {
     globalThis.fetch = previousFetch;
   }
@@ -73,6 +76,33 @@ test("model connection applies provider presets and protects remote transport", 
     baseUrl: "http://example.com/v1",
     model: "test-model",
   }), /远程 API 必须使用 HTTPS/);
+  assert.throws(() => normalizeCompanionModelConnection({ provider: "unknown-provider" as never }), /不支持的模型服务商/);
+});
+
+test("connection revisions preserve favourites but never reuse checks after an endpoint or credential change", () => {
+  const original = ensureConnectionRevision(normalizeCompanionModelConnection({
+    provider: "custom", baseUrl: "http://127.0.0.1:1234/v1", model: "any/model:id", favoriteModels: ["any/model:id", "  pinned  ", "pinned"],
+  }));
+  const checked = {
+    ...original,
+    modelChecks: { "any/model:id": { connectionRevision: original.connectionRevision, checkedAt: new Date().toISOString(), chat: "passed" as const, streaming: "passed" as const, tools: "passed" as const, detail: "fixture" } },
+  };
+  assert.equal(isModelCheckEligible(checked, checked.modelChecks["any/model:id"]), true);
+  const unchanged = withConnectionRevision(checked, checked);
+  assert.equal(unchanged.connectionRevision, checked.connectionRevision);
+  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"]), true);
+  const checkedAt = Date.parse(checked.modelChecks["any/model:id"].checkedAt);
+  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"], "chat", checkedAt + 7 * 24 * 60 * 60 * 1000), true);
+  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"], "chat", checkedAt + 7 * 24 * 60 * 60 * 1000 + 1), false);
+  const injected = withConnectionRevision({ ...checked, modelChecks: { "any/model:id": { ...checked.modelChecks["any/model:id"], connectionRevision: "00000000-0000-0000-0000-000000000000" } } }, checked);
+  assert.deepEqual(injected.modelChecks, {});
+  const changed = withConnectionRevision({ ...checked, baseUrl: "http://127.0.0.1:2345/v1" }, checked);
+  assert.notEqual(changed.connectionRevision, checked.connectionRevision);
+  assert.deepEqual(changed.favoriteModels, ["any/model:id", "pinned"]);
+  assert.deepEqual(changed.modelChecks, {});
+  const rotatedKey = withConnectionRevision(checked, checked, true);
+  assert.notEqual(rotatedKey.connectionRevision, checked.connectionRevision);
+  assert.deepEqual(rotatedKey.modelChecks, {});
 });
 
 test("daily conversations use provider chat models while experts and explicit overrides keep the main route", () => {

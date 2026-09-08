@@ -61,20 +61,26 @@ test("任务页不再展示任务记录与分支弹窗", () => {
   assert.match(chat, /id="heroModelSelect"/);
   assert.doesNotMatch(chat, /select.hidden = !taskMode/);
   assert.match(chat, /node\.config = \{ \.\.\.\(node\.config \|\| \{\}\), model: requested \}/);
-  assert.match(chat, /\/api\/llm-model\/check/);
+  assert.doesNotMatch(chat, /\/api\/llm-model\/check/);
+  assert.match(chat, /尚未通过当前连接的文字检查；请到设置中显式点击/);
   assert.match(chat, /\.\.\.conversationRequestOptions\(key\)/);
 });
 
-test("模型设置会获取并展示多个可选模型", () => {
+test("模型设置分开管理常用、完整目录和显式能力检查", () => {
   const html = readWeb("settings.html");
   const script = readWeb(join("assets", "settings-center.js"));
   const server = readFileSync(join(root, "server.ts"), "utf8");
-  assert.match(html, /id="modelCatalog"/);
+  assert.match(html, /id="modelCatalogPanel"/);
+  assert.match(html, /id="modelCatalogSearch"/);
+  assert.match(html, /id="modelCustomId"/);
   assert.match(html, /id="modelSelectionMode"/);
-  assert.match(html, /不读取聊天记录/);
+  assert.match(html, /可能产生费用/);
   assert.match(script, /renderModelCatalog/);
   assert.match(server, /fetchCompanionModelCatalog/);
-  assert.match(server, /selectCheckedCompanionModel\(next, nextCatalog, mode\)/);
+  assert.match(script, /\/api\/llm-model\/favorite/);
+  assert.match(script, /\/api\/llm-model\/catalog/);
+  assert.match(script, /\/api\/llm-model\/check/);
+  assert.doesNotMatch(server, /selectCheckedCompanionModel\(next, nextCatalog, mode\)/);
   assert.doesNotMatch(server, /model: nextCatalog\[0\]!\.id/);
 });
 

@@ -7,6 +7,7 @@ test('自主协作 HTTP 入口校验同意、保存规划和预算并完成文�
   const post=async(path:string,body:unknown)=>fetch(h.base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   try{
     const config=await post('/api/llm-config',{provider:'custom',protocol:'openai-compatible',baseUrl:h.modelBase+'/v1',model:'manual',selectionMode:'manual'});
+    await post('/api/llm-model/check',{model:'manual',force:true});
     assert.equal(config.ok,true);
     const info=await (await fetch(h.base+'/api/assistant-team')).json() as any;
     assert.equal(info.planningVersion,1);

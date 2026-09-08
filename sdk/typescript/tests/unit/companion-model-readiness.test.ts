@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { makeConnectionAgentModel } from "../../examples/companion/llm.js";
-import { checkCompanionModel, selectCheckedCompanionModel } from "../../examples/companion/model-readiness.js";
-import { CompanionModelHttpError, dailyChatModelForConnection, fetchCompanionModelCatalog, normalizeCompanionModelConnection,
+import { checkCompanionModel, checkSingleCompanionModel, selectCheckedCompanionModel } from "../../examples/companion/model-readiness.js";
+import { CompanionModelHttpError, dailyChatModelForConnection, ensureConnectionRevision, fetchCompanionModelCatalog, normalizeCompanionModelConnection,
   sortCompanionModels, type CompanionModelCheck } from "../../examples/companion/model-connection.js";
 
-const connection = normalizeCompanionModelConnection({ provider: "custom", baseUrl: "http://127.0.0.1:1234/v1", model: "chosen" });
-const passed: CompanionModelCheck = { checkedAt: "2026-09-06T00:00:00Z", chat: "passed", streaming: "passed", tools: "passed", detail: "fixture" };
+const connection = ensureConnectionRevision(normalizeCompanionModelConnection({ provider: "custom", baseUrl: "http://127.0.0.1:1234/v1", model: "chosen" }));
+const passed: CompanionModelCheck = { connectionRevision: connection.connectionRevision, checkedAt: "2026-09-06T00:00:00Z", chat: "passed", streaming: "passed", tools: "passed", detail: "fixture" };
 async function withFetch(mock: typeof fetch, run: () => Promise<void>) {
   const original = globalThis.fetch;
   globalThis.fetch = mock;
@@ -92,7 +92,7 @@ test("Anthropic native message/tool-result format is checked without claiming na
 for (const status of [401, 429, 503]) test(`HTTP ${status} stops automatic model retries and does not expose provider body`, async () => {
   let count = 0;
   await withFetch(async () => { count++; return new Response("fixture-secret-should-not-escape", { status }); }, async () => {
-    await assert.rejects(selectCheckedCompanionModel(connection, [{ id: "first" }, { id: "second" }], "auto"), (error: unknown) => {
+    await assert.rejects(checkSingleCompanionModel(connection, "first"), (error: unknown) => {
       assert.ok(error instanceof CompanionModelHttpError);
       assert.equal(error.status, status); assert.doesNotMatch(error.message, /secret/); return true;
     });
@@ -109,40 +109,45 @@ test("timeout cancels the in-flight probe without modifying the connection", asy
   });
 });
 
-test("automatic selection skips unavailable/newer chat-only candidates for verified tools", async () => {
-  const seen: string[] = [];
-  const result = await selectCheckedCompanionModel(connection, [{ id: "ready", created: 1 }, { id: "chat", created: 2 }, { id: "locked", created: 3 }], "auto", async (candidate) => {
-    seen.push(candidate.model);
-    return { ...passed, chat: candidate.model === "locked" ? "failed" : "passed", tools: candidate.model === "ready" ? "passed" : "failed" };
+test("automatic selection is local-only and never substitutes the user's model", async () => {
+  let probes = 0;
+  const checked = {
+    ...connection,
+    modelChecks: {
+      ready: { ...passed, tools: "passed" as const },
+      chat: { ...passed, tools: "failed" as const },
+      locked: { ...passed, chat: "failed" as const },
+    },
+  };
+  const result = await selectCheckedCompanionModel(checked, [{ id: "ready", created: 1 }, { id: "chat", created: 2 }, { id: "locked", created: 3 }], "auto", async () => {
+    probes++; return passed;
   });
-  assert.deepEqual(seen, ["locked", "chat", "ready"]); assert.equal(result.model, "ready");
-  assert.equal(result.modelChecks?.locked.chat, "failed"); assert.equal(result.selectionMode, "auto");
+  assert.equal(probes, 0); assert.equal(result.model, "chosen"); assert.equal(result.selectionMode, "auto");
 });
 
-test("automatic selection is bounded to three and retains the newest chat-only fallback", async () => {
-  let count = 0;
-  const result = await selectCheckedCompanionModel(connection, ["a", "b", "c", "d"].map((id) => ({ id })), "auto", async () => {
-    count++; return { ...passed, tools: "failed" };
+test("unknown or expired candidates remain selected but pending without a network probe", async () => {
+  let probes = 0;
+  const result = await selectCheckedCompanionModel(connection, [{ id: "newer", created: 999 }], "manual", async () => {
+    probes++; return passed;
   });
-  assert.equal(count, 3); assert.equal(result.model, "a"); assert.equal(result.modelChecks?.a.tools, "failed");
+  assert.equal(probes, 0); assert.equal(result.model, "chosen"); assert.equal(result.selectionMode, "manual");
 });
 
-test("manual selection is exact even when a newer model is available", async () => {
-  const seen: string[] = [];
-  const result = await selectCheckedCompanionModel(connection, [{ id: "newer", created: 999 }], "manual", async (candidate) => { seen.push(candidate.model); return passed; });
-  assert.deepEqual(seen, ["chosen"]); assert.equal(result.model, "chosen"); assert.equal(result.selectionMode, "manual");
-  assert.equal(connection.modelChecks, undefined);
+test("only an explicit single-model check invokes its probe and binds the current revision", async () => {
+  let probes = 0;
+  const result = await checkSingleCompanionModel(connection, "manual/any-id", async (candidate) => {
+    probes++; assert.equal(candidate.model, "manual/any-id"); return { ...passed, connectionRevision: undefined };
+  });
+  assert.equal(probes, 1); assert.equal(result.connectionRevision, connection.connectionRevision);
 });
 
-test("failed manual selection never silently substitutes another model", async () => {
-  let count = 0;
-  await assert.rejects(selectCheckedCompanionModel(connection, [{ id: "other" }], "manual", async () => { count++; return { ...passed, chat: "failed" }; }), /未改用其他模型/);
-  assert.equal(count, 1);
-});
-
-test("no passing candidate leaves the original connection unchanged", async () => {
-  await assert.rejects(selectCheckedCompanionModel(connection, [{ id: "bad" }], "auto", async () => ({ ...passed, chat: "failed" })), /没有通过/);
-  assert.equal(connection.model, "chosen"); assert.equal(connection.modelChecks, undefined);
+test("a revision-bound model rejects unverified chat and tools before any provider request", () => {
+  const unverified = ensureConnectionRevision(normalizeCompanionModelConnection({ provider: "custom", baseUrl: "http://127.0.0.1:1234/v1", model: "pending" }));
+  const model = makeConnectionAgentModel({ connection: unverified, model: "pending", stream: false, temperature: 0, maxTokens: 30 });
+  // The assertion is intentionally synchronous: authorization fails before the
+  // scheduler/adaptor can issue HTTP, not because a mocked provider says no.
+  assert.throws(() => model.complete({ messages: [{ role: "user", content: "hello" }], tools: [], signal: new AbortController().signal }), /尚未通过此连接的文字回复检查/);
+  assert.throws(() => model.complete({ messages: [{ role: "user", content: "hello" }], tools: [{ name: "read", description: "", inputSchema: {} }], signal: new AbortController().signal }), /尚未通过此连接的文字回复检查/);
 });
 
 test("endpoint normalization accepts pasted completions and IPv6 loopback without sending an empty bearer", async () => {

@@ -10,6 +10,9 @@ test("real isolated server forwards per-message effort for plain and streamed ch
     const configured: any = await config.json();
     assert.equal(config.status, 200, JSON.stringify(configured));
     assert.deepEqual(configured.reasoningEfforts["gpt-6-astra"], ["low", "medium", "high", "xhigh", "max"]);
+    const readiness = await post("/api/llm-model/check", { model: "gpt-6-astra" });
+    assert.equal(readiness.status, 200, await readiness.clone().text());
+    assert.equal((await readiness.json() as any).checked.chat, "passed");
     for (const [path, effort] of [["/api/chat", "high"], ["/api/chat/stream", "low"], ["/api/chat", "auto"]]) {
       const marker = "SYNTHETIC_EFFORT_" + effort;
       const result = await post(path, { text: marker, target: { kind: "persona", id: "clownfish" }, sessionId: marker, model: "default", reasoningEffort: effort, toolMode: "off", memoryWriteMode: "off" });
