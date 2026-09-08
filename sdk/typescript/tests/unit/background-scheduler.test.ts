@@ -99,6 +99,24 @@ test("跨时区、休眠后检查和停用计划保持正确边界，不补跑�
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("每日任务入队时固定下一次检查时间，轮次任务不伪造时间", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-07T01:00:00Z") });
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-scheduler-next-check-"));
+  try {
+    const runtime = runtimeAt(dir);
+    const task = daily(runtime, "09:00");
+    const queue = new FileAgentJobQueue(join(dir, "jobs.json"));
+    const job = enqueueScheduledCapabilities(runtime, queue, "me", "time").find((item) => item.payload.taskId === task.id)!;
+    assert.equal(job.payload.nextCheckAt, "2026-09-08T01:00:00.000Z");
+
+    const turns = runtime.createTask({ title: "turns", personaId: "clownfish", capabilityId: "decision-brief", instruction: "check",
+      enabled: true, schedule: { mode: "turns", everyTurns: 1 } });
+    runtime.recordPersonaTurn("clownfish");
+    const turnJob = enqueueScheduledCapabilities(runtime, queue, "me", "turn").find((item) => item.payload.taskId === turns.id)!;
+    assert.equal(turnJob.payload.nextCheckAt, undefined);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("真实队列落盘失败回滚内存，不留下可误认成功的幂等记录", () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-scheduler-disk-failure-"));
   try {

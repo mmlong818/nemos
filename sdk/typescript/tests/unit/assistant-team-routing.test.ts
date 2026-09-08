@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {routeAssistantTeam} from '../../examples/companion/assistant-team-routing.js';
 import {AssistantBotStore,normalizeTeamRequest,teamRequestHash,runAssistantTeam,type AssistantBot} from '../../examples/companion/assistant-team.js';
 
-const bot=(id:string,name:string,extra:Partial<AssistantBot>={}):AssistantBot=>({id,name,role:'worker',enabled:true,instructions:'只使用本次材料',revision:1,updatedAt:'2026-09-07',...extra});
+const bot=(id:string,name:string,extra:Partial<AssistantBot>={}):AssistantBot=>({id,name,role:'worker',enabled:true,instructions:'只使用本次材料',revision:1,updatedAt:'2026-09-07',visibility:'private',ruleVersion:{kind:'local',version:1},...extra});
 const bots=[bot('organizer','资料整理'),bot('meeting','会议纪要助理'),bot('translator','中英翻译'),bot('bot-reviewer','独立核验',{role:'reviewer'})];
 const request={requestId:'routing-test',objective:'整理会议纪要并核对日期',materials:'S1：合成会议记录',requiredFields:[],workerIds:[],reviewerId:'',model:'synthetic'};
 

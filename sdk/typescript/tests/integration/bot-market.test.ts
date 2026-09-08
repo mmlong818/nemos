@@ -17,6 +17,8 @@ test("Bot 市场 HTTP：无需模型浏览/添加、并发幂等、拒绝错误�
     const before = h.requests.length;
     const results = await Promise.all(Array.from({ length: 5 }, () => req("/import", body)));
     const bot = results[0].record; assert.ok(results.every((r) => r.record.id === bot.id));
+    assert.equal(bot.visibility, "private");
+    assert.deepEqual(bot.ruleVersion, { kind: "user-derived", version: 1, baseTemplateVersion: t.version });
     assert.equal((await req()).bots.length, 3); assert.equal((await req()).jobs.length, 0);
     assert.equal(h.requests.length, before); // adding is not a model invocation
     await req("/import", { id: t.id, version: 99 }, 409);
@@ -25,6 +27,7 @@ test("Bot 市场 HTTP：无需模型浏览/添加、并发幂等、拒绝错误�
     await req("/bot", { ...bot, instructions: "用户明确修改的规则", enabled: false, template: { id: "forged" } });
     const again = (await req("/import", body)).record;
     assert.equal(again.instructions, "用户明确修改的规则"); assert.equal(again.enabled, false); assert.equal(again.template.id, t.id);
+    assert.equal(again.visibility, "private"); assert.equal(again.ruleVersion.version, 2);
     await h.restart();
     assert.deepEqual((await req("/import", body)).record, again);
     assert.equal((await req()).jobs.length, 0);

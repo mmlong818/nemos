@@ -1,5 +1,6 @@
 import type { FileAgentJobQueue } from "../../src/index.js";
 import type { CapabilityRuntime } from "./capabilities.js";
+import type { FileScheduledTaskHandoffStore } from "./scheduled-task-handoff.js";
 
 /** Scheduling only enqueues work; the existing worker and authorization gates execute it. */
 export function enqueueScheduledCapabilities(
@@ -7,15 +8,27 @@ export function enqueueScheduledCapabilities(
   queue: FileAgentJobQueue,
   userId: string,
   trigger: "time" | "turn",
+  handoffs?: Pick<FileScheduledTaskHandoffStore, "get">,
+  connectionFingerprint?: string,
 ) {
   const existingByKey = new Map(queue.list({ limit: 1_000 })
     .filter((job) => job.idempotencyKey).map((job) => [job.idempotencyKey!, job]));
   return capabilities.dueTaskRuns(trigger).map((due) => {
     const idempotencyKey = `scheduled-capability:${due.occurrenceKey}`;
     // Failed/cancelled occurrences also need explicit user retry, not a timer retry.
+    const continuity = handoffs?.get(due.taskId);
+    const nextCheckAt = trigger === "time" ? capabilities.nextScheduledCheckAt(due.taskId) : undefined;
     const job = existingByKey.get(idempotencyKey) ?? queue.enqueue({
       type: "capability-task",
-      payload: { taskId: due.taskId, trigger },
+      // Persist only an opaque link in the queue. The bounded summary remains in
+      // the private handoff store and the worker validates this link before use.
+      payload: {
+        taskId: due.taskId,
+        trigger,
+        ...(continuity ? { previousRunJobId: continuity.sourceJobId } : {}),
+        ...(nextCheckAt ? { nextCheckAt } : {}),
+        ...(connectionFingerprint ? { connectionFingerprint } : {}),
+      },
       metadata: {
         userId, workTaskId: due.taskId, personaId: due.personaId,
         capabilityId: due.capabilityId, scheduled: "true",
