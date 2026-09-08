@@ -3,6 +3,8 @@
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let data = { bots:[],jobs:[],models:[],ready:false }, selected = new URLSearchParams(location.search).get('job') || '', detailKey = '', loading = false, timer;
   let requestId = '', requestBody = '', taskOptionsKey = '', submitting = false;
+  let steeringRequestId = '', steeringRequestBody = '';
+  let steeringFeedback = { jobId:'', text:'' };
   let templates = [], activeTemplate, currentJob;
   let handoff,materialUploads,routingUi,workflows,library,skills,historyView;
   function deps(){
@@ -63,7 +65,7 @@
     const facts=[['适用场景',contract.use],['输入材料',contract.input],['处理方法',contract.steps],['交付要求',contract.output],['工具与资料权限',contract.permissions],['限制',contract.limits],['如何核对',contract.check]];
     $('#botInfoContent').innerHTML=`<p class="bot-card-kind">${esc(contract.label)}${!workflow?' · '+(b.enabled?'已启用':'已停用'):''}</p><h2 id="botInfoTitle">${esc(b.name)}</h2><p>${esc(workflow?b.description:library.summary(b))}</p><dl class="bot-info-facts">${facts.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`+(workflow
       ? `<a class="wb-primary-link bot-info-start" href="${esc(b.href)}">准备任务 →</a>`
-      : `<details class="skill-original-rules"><summary>查看完整规则 · v${esc(b.revision)}</summary><p class="bot-full-rules">${esc(b.instructions)}</p>${b.template?`<p class="hint">原模板 v${esc(b.template.version)} · 设计参考 ${esc(b.template.source?.name||'本机模板')}${b.revision>1?' · 已编辑的个人版本':''}</p>`:''}</details>${recipeReceiptHtml(b)}<div class="team-detail-actions"><button data-use-bot="${esc(b.id)}" class="primary" ${b.enabled?'':'disabled'}>使用规则</button><button data-edit-bot="${esc(b.id)}">编辑规则</button></div>`);
+      : `<details class="skill-original-rules"><summary>查看完整规则 · 本地规则 v${esc(b.ruleVersion?.version||1)}</summary><p class="bot-full-rules">${esc(b.instructions)}</p>${b.template?`<p class="hint">来源：模板 v${esc(b.template.version)} · ${esc(b.template.source?.name||'本机模板')} · 本机派生规则 v${esc(b.ruleVersion?.version||1)} · 仅本机私有。模板更新不会自动覆盖你的规则。</p>`:`<p class="hint">本机私有规则 · 本地规则 v${esc(b.ruleVersion?.version||1)}。</p>`}</details>${recipeReceiptHtml(b)}<div class="team-detail-actions"><button data-use-bot="${esc(b.id)}" class="primary" ${b.enabled?'':'disabled'}>使用规则</button><button data-edit-bot="${esc(b.id)}">编辑规则</button></div>`);
     if(!workflow&&b.placement==='market') {
       $('#botInfoContent .team-detail-actions').innerHTML=`<button class="primary" data-add-team="${esc(b.id)}">添加到技能库</button>`;
     }
@@ -159,6 +161,7 @@
     const {job}=await api('/job?id='+encodeURIComponent(id)); if(id!==selected) return;
     currentJob=job;const key=JSON.stringify(job); if(key===detailKey) return; detailKey=key;
     window.ClownfishTaskDetail.mount($('#jobDetail'),window.ClownfishTaskDetail.botDetail(job),id);
+    if(steeringFeedback.jobId===id){const status=$('#jobDetail').querySelector('[data-steering-status]');if(status)status.textContent=steeringFeedback.text;}
   }
   function syncTaskOptions() {
     const f=$('#taskForm');
@@ -267,6 +270,20 @@
     }
     if(b.dataset.editBot)return openBot(b.dataset.editBot);
     if(b.dataset.useBot){const bot=data.bots.find((x)=>x.id===b.dataset.useBot);if(!bot?.enabled||bot.placement==='market')return;try{if(bot.template&&!templates.length)await loadTemplates();return openTask(templates.find((t)=>t.id===bot.template?.id),bot.id);}catch(error){toast(error.message);return;}}
+    if(b.hasAttribute('data-steering-send')){
+      const panel=b.closest('.team-steering'),status=panel?.querySelector('[data-steering-status]');
+      const text=panel?.querySelector('[data-steering-text]')?.value.trim()||'',mode=panel?.querySelector('[data-steering-mode]')?.value||'';
+      if(!text){if(status)status.textContent='请先写下要补充或转向的内容。';return;}
+      const key=JSON.stringify([selected,mode,text]);if(key!==steeringRequestBody){steeringRequestId=crypto.randomUUID();steeringRequestBody=key;}
+      b.disabled=true;if(status)status.textContent='正在确认是否还能纳入当前任务…';
+      try{
+        const result=await api('/message',{id:selected,messageId:steeringRequestId,mode,text});
+        steeringFeedback={jobId:selected,text:(result.record?.effective||'已接收')+'；这表示已记录，不代表已执行。'};
+        if(status)status.textContent=steeringFeedback.text;
+        steeringRequestId='';steeringRequestBody='';detailKey='';await load();
+      }catch(error){if(status)status.textContent=error.message;else toast(error.message);b.disabled=false;}
+      return;
+    }
     if(b.hasAttribute('data-copy-field')){const field=currentJob?.result?.data?.delivery?.fields[Number(b.dataset.copyField)];if(field)await copyText(field.value);return;}
     if(b.hasAttribute('data-copy-result')){if(currentJob?.result?.data?.delivery)await copyText(handoff.resultText(currentJob.result.data.delivery));return;}
     if(b.hasAttribute('data-download-result')){

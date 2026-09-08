@@ -136,6 +136,71 @@ test("取消和不响应信号的模型均不会卡死，超时不继续派发",
   } finally { f.store.close(); }
 });
 
+test("运行中合并消息只在下一阶段边界生效，并持久记录已消费版本", async () => {
+  const f = fixture();
+  const messages: any[] = [];
+  const inputs: any[] = [];
+  try {
+    const result = await runAssistantTeam(f.job, f.context, async (system, input, _model, _max, chatContext) => {
+      inputs.push(JSON.parse(input));
+      chatContext?.onModelAdmission?.("active");
+      if (inputs.length === 1) messages.push({ id: "m1", jobId: f.job.id, userId: "qa", mode: "merge", text: "补充 S2", revision: 1, acceptedAt: new Date().toISOString() });
+      chatContext?.onModelAdmission?.("released");
+      return system.includes("最终交付协议") ? final : "S1 回执";
+    }, { readSteering: () => structuredClone(messages) });
+    assert.deepEqual(inputs[0].steering, []);
+    assert.deepEqual(inputs[1].steering, [{ mode: "merge", text: "补充 S2", revision: 1 }]);
+    assert.deepEqual(result.data.receipts.map((receipt) => receipt.steeringRevision), [0, 1, 1]);
+    assert.ok(f.job.checkpoints.some((checkpoint) => (checkpoint.data as any)?.teamReceipt?.state === "executing"));
+    assert.ok(f.job.checkpoints.some((checkpoint) => (checkpoint.data as any)?.teamReceipt?.state === "verified"));
+  } finally { f.store.close(); }
+});
+
+test("合并不重跑已返回节点，转向会失效旧目标回执且不自动重放", async () => {
+  const merged = fixture(); let calls = 0;
+  try {
+    await assert.rejects(runAssistantTeam(merged.job, merged.context, async (system) => {
+      calls++; return system.includes("最终交付协议") ? '{"summary":"missing","fields":[]}' : "S1";
+    }), /必填字段/);
+    assert.equal(calls, 3);
+    const merge = [{ id: "m", jobId: merged.job.id, userId: "qa", mode: "merge" as const, text: "补充格式", revision: 1, acceptedAt: new Date().toISOString() }];
+    await runAssistantTeam(merged.job, merged.context, async () => { calls++; return final; }, { readSteering: () => merge });
+    assert.equal(calls, 4, "merge reuses already returned worker and reviewer receipts");
+  } finally { merged.store.close(); }
+
+  const redirected = fixture(); let redirectedCalls = 0;
+  try {
+    await runAssistantTeam(redirected.job, redirected.context, async (system) => { redirectedCalls++; return system.includes("最终交付协议") ? final : "old output"; });
+    const redirect = [{ id: "r", jobId: redirected.job.id, userId: "qa", mode: "redirect" as const, text: "改成新目标", revision: 1, acceptedAt: new Date().toISOString() }];
+    await runAssistantTeam(redirected.job, redirected.context, async (system, input) => {
+      redirectedCalls++; assert.match(input, /改成新目标/); return system.includes("最终交付协议") ? final : "new output";
+    }, { readSteering: () => redirect });
+    assert.equal(redirectedCalls, 6, "redirect invalidates every receipt returned for the old goal");
+  } finally { redirected.store.close(); }
+});
+
+test("回执复用仍校验冻结模型、规则、材料与依赖输出", async () => {
+  const f = fixture(); let calls = 0;
+  try {
+    await runAssistantTeam(f.job, f.context, async (system) => { calls++; return system.includes("最终交付协议") ? final : "S1"; });
+    assert.equal(calls, 3);
+    (f.job.payload.teamPlan as any).materials = "changed material";
+    await runAssistantTeam(f.job, f.context, async (system) => { calls++; return system.includes("最终交付协议") ? final : "changed"; });
+    assert.equal(calls, 6);
+  } finally { f.store.close(); }
+});
+
+test("阶段执行中收到转向会明确失败，不在同一次运行内重放", async () => {
+  const f = fixture(); let calls = 0; const messages: any[] = [];
+  try {
+    await assert.rejects(runAssistantTeam(f.job, f.context, async () => {
+      calls++; messages.push({ id: "late", jobId: f.job.id, userId: "qa", mode: "redirect", text: "新目标", revision: 1, acceptedAt: new Date().toISOString() }); return "old output";
+    }, { readSteering: () => structuredClone(messages) }), /本次未生效/);
+    assert.equal(calls, 1);
+    assert.equal((f.job.checkpoints.at(-1)?.data as any)?.teamReceipt?.state, "failed");
+  } finally { f.store.close(); }
+});
+
 test("主助理团队工具只共享本条用户请求，不能由模型参数注入私人材料", async () => {
   let submitted: any;
   const provider = createCompanionAgentToolProvider({ memory: () => ({} as Nemos), capabilities: () => ({} as CapabilityRuntime),

@@ -66,6 +66,21 @@ test('旧任务缺少可选字段也能查看，不虚构正文或模型',()=>{
   assert.match(html,/尚无回执/);assert.match(html,/模型：未记录/);assert.doesNotMatch(html,/data-copy-result/);
 });
 
+test('追加消息显示事实消费状态，待补充和受阻不误导为可原任务恢复',()=>{
+  const running:any=fixture('running');delete running.result;
+  running.steering=[{mode:'merge',revision:1,text:'<new>'},{mode:'redirect',revision:2,text:'new goal'}];
+  running.checkpoints.push({data:{teamReceipt:{stageId:'two',botName:'Bot',state:'received',steeringRevision:1,receivedAt:'2026-09-09'}}});
+  const html=detail.botDetail(running);
+  assert.match(html,/data-steering-send/);assert.match(html,/已纳入Bot阶段/);assert.match(html,/已接收，等待下一阶段/);
+  assert.match(html,/&lt;new&gt;/);assert.doesNotMatch(html,/<new>/);
+  for(const disposition of [{state:'waiting_input',question:'请提供日期'},{state:'blocked',blocker:'权限不足'}]){
+    const stopped:any=fixture('failed');stopped.disposition=disposition;
+    const stoppedHtml=detail.botDetail(stopped);
+    assert.ok(stoppedHtml.includes(disposition.state==='waiting_input'?'请提供日期':'权限不足'));
+    assert.doesNotMatch(stoppedHtml,/data-action="retry"/);assert.match(stoppedHtml,/新建任务/);
+  }
+});
+
 test('流程保留历史成果，但最新失败原因位于成果之前',()=>{
   const html=window.ClownfishUnifiedHistory.flowDetail({id:'t',title:'流程',instruction:'原始要求'},
     {artifacts:[{id:'old-result',taskId:'t',title:'旧成果'}]},

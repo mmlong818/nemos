@@ -20,6 +20,7 @@ test("助理团队 HTTP：配置、实际队列执行、自动收尾、回执恢
     assert.equal((await team()).bots.length, 2);
     await team("/start", payload, 409); // never claim offline echo is execution
     await request("/api/llm-config", { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual" });
+    await request("/api/llm-model/check", { model: "manual", force: true });
     let badFinal = false;
     h.state.replyFor = (body) => body.messages?.[0]?.content.includes("最终交付协议")
       ? JSON.stringify({ summary: "合成简报", fields: badFinal ? [] : [{ label: "日期", value: "10月6日", sources: ["S1"] }] }) : "[S1] 合成资料已核对";
@@ -73,6 +74,7 @@ test("进程中断后自动接续：复用已保存整理回执，不重做已�
   const read = async (id: string) => (await (await fetch(h.base + "/api/assistant-team/job?id=" + id)).json() as any).job;
   try {
     await post("/api/llm-config", { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual" });
+    await post("/api/llm-model/check", { model: "manual", force: true });
     h.state.replyFor = (body) => {
       const system = body.messages[0].content;
       if (system.includes("提取带来源的事实")) { h.state.delayMs = 3000; return "已保存的整理回执 S1"; }
@@ -98,5 +100,40 @@ test("进程中断后自动接续：复用已保存整理回执，不重做已�
     const organizerCalls = h.requests.filter((r) => String(r.body?.messages?.[0]?.content).includes("提取带来源的事实"));
     assert.equal(organizerCalls.length, 1);
     assert.equal(result.result.data.receipts.length, 3);
+  } finally { await h.stop(); }
+});
+
+test("运行中转向经 HTTP 原子记录并明确中止旧阶段，最终核验开始后不落盘", { timeout: 60000 }, async () => {
+  const h = await startModelHarness();
+  const request = async (path: string, body?: unknown, expected = 200) => {
+    const response = await fetch(h.base + path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await response.json() as any; assert.equal(response.status, expected, JSON.stringify(data)); return data;
+  };
+  const read = async (id: string) => (await request("/api/assistant-team/job?id=" + id)).job;
+  const waitFor = async (id: string, predicate: (job: any) => boolean) => {
+    for (let i = 0; i < 300; i++) { const job = await read(id); if (predicate(job)) return job; await new Promise((resolve) => setTimeout(resolve, 25)); }
+    throw new Error("assistant-team state did not arrive");
+  };
+  try {
+    await request("/api/llm-config", { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual" });
+    await request("/api/llm-model/check", { model: "manual", force: true });
+    h.state.replyFor = (body) => body.messages?.[0]?.content.includes("最终交付协议")
+      ? '{"summary":"done","fields":[]}' : "old stage output";
+    h.state.delayMs = 500;
+    const payload = { requestId: "steering-running", objective: "QA-STEERING", materials: "S1", requiredFields: [], workerIds: ["bot-organizer"], reviewerId: "" };
+    const id = (await request("/api/assistant-team/start", payload, 202)).record.id;
+    await waitFor(id, (job) => job.checkpoints.some((checkpoint: any) => checkpoint.data?.teamReceipt?.stageId === "work:bot-organizer" && ["received", "executing"].includes(checkpoint.data.teamReceipt.state)));
+    const accepted = await request("/api/assistant-team/message", { id, messageId: "redirect-live", mode: "redirect", text: "QA-NEW-GOAL" });
+    assert.match(accepted.record.effective, /尝试纳入/);
+    const failed = await waitFor(id, (job) => job.status === "failed");
+    assert.match(failed.error, /本次未生效/);
+    assert.equal(failed.steering[0].text, "QA-NEW-GOAL");
+
+    h.state.delayMs = 350;
+    const finalId = (await request("/api/assistant-team/start", { ...payload, requestId: "steering-final" }, 202)).record.id;
+    await waitFor(finalId, (job) => job.checkpoints.some((checkpoint: any) => checkpoint.data?.teamReceipt?.stageId === "final" && ["received", "executing"].includes(checkpoint.data.teamReceipt.state)));
+    const rejected = await request("/api/assistant-team/message", { id: finalId, messageId: "too-late", mode: "merge", text: "must not persist" }, 409);
+    assert.match(JSON.stringify(rejected), /未记录/);
+    assert.deepEqual((await read(finalId)).steering, []);
   } finally { await h.stop(); }
 });

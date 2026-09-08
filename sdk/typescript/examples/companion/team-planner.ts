@@ -47,6 +47,7 @@ export async function planTeamExecution(job: AgentJobRecord, context: AgentJobHa
           runId: `team/${job.id}/planner/${randomUUID()}`, sessionId: `team/${job.id}/planner`,
           userId: job.metadata?.userId || 'me', personaId: 'clownfish', instruction: input.objective,
           scope: `team:${job.id}`, memoryScopes: [], mode: 'task', surface: 'task', toolMode: 'off', signal: abort.signal,
+          llmPurpose: 'team_plan',
           onModelAdmission: (state) => context.checkpoint(state === 'waiting' ? '规划等待模型连接空闲' : state === 'active' ? '正在生成执行计划' : '规划模型请求已结束', undefined, {modelAdmission: {state, stageId: 'planner'}}),
           runtimeLimits: {maxRounds: 1, maxToolRounds: 0, maxTotalTokens: 16000, maxOutputChars: 16000},
         });
