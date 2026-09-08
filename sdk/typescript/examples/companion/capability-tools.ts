@@ -211,6 +211,10 @@ export class CapabilityToolRegistry {
       "- If a required connector is not configured, state the missing connector and provide the best verification entry point instead of inventing a confirmed result.",
       "- For OCR, document conversion, meeting minutes, and article polishing, preserve source facts and clearly mark missing attachments, unreadable text, unsupported binary conversion, or uncertain speaker attribution.",
       "- Save the final deliverable in the requested artifact format.",
+      // 不写死这一条，模型会把定量分析、审计结论和对比结果直接倒进聊天里的 markdown 表格：
+      // 内容对了，但用户拿不到一份能存、能再看、能发出去的产物。
+      "- When the result is a standalone artifact rather than an answer in conversation - quantitative analysis, audits, comparisons, timelines, tabular data, or anything data-heavy - deliver it through html-report or presentation-builder instead of dumping a markdown table into the reply. If you are about to write a markdown table of results, produce the artifact instead.",
+      "- A short answer, a judgement call, or a recap of the current conversation is not an artifact. Do not build a report for those.",
     ].join("\n");
   }
 

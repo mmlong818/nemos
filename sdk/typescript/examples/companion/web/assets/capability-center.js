@@ -1093,9 +1093,13 @@ function renderHistory() {
     const artifact = artifactFromJob(job);
     const open = artifactLinks(artifact);
     const installed = artifact?.metadata?.generatedAbilityId ? " · 已加入能力库" : "";
+    // 助理自报的没把握之处。显示条数而不是内容：状态行放不下，点开产物能看到全文；
+    // 但"有几处需要你自己判断"必须在列表上就看得见，否则用户不会知道要去看。
+    const openCount = artifact?.metadata?.openQuestions?.length || 0;
+    const openNote = openCount ? ` · <strong>${openCount} 处待你确认</strong>` : "";
     return `<article class="task-row">
       <span class="task-row-icon" aria-hidden="true" style="--cap-color:${ICON_TONES[item.id] || "#8f2f59"}">${iconSvg(item.icon)}</span>
-      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p>${jobMemoryUsage(job)}</div>
+      <div><h2>${escapeHtml(jobTitle(job))}</h2><p class="status-line"><span class="status-dot ${job.status}"></span>${STATUS_TEXT[job.status]} · ${item.name}${installed}${openNote} · ${artifactProofLabel(artifact)} · ${displayDate(job.completedAt || job.updatedAt)}${job.error ? ` · ${escapeHtml(job.error)}` : ""}</p>${jobMemoryUsage(job)}</div>
       <div class="task-actions">${job.status === "succeeded" ? `<button type="button" data-handoff-job="${escapeHtml(job.id)}">交给其他能力</button>` : ""}${job.status === "uncertain" ? `<a href="/runs">去核对</a>` : ""}${open}</div>
     </article>`;
   }).join("");
