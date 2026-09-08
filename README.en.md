@@ -5,7 +5,7 @@
 [中文](README.md) · **English**
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-v0.7.5-b33f72)](https://github.com/mmlong818/nemos/tree/v0.7.5)
+[![Version](https://img.shields.io/badge/version-v0.7.6-b33f72)](https://github.com/mmlong818/nemos/tree/v0.7.6)
 [![License](https://img.shields.io/badge/integration-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#quick-start)
 [![Status](https://img.shields.io/badge/status-Alpha-orange)](ROADMAP.md)

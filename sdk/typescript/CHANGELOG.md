@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.6
+
+- Made CI green on both Linux and Windows for the first time; the documentation and vendored-artifact checks had never actually run there, having always been preceded by a failing test step.
+- Integration tests that need Windows DPAPI to store a model key are now skipped by platform instead of failing on Linux, and the limitation is documented rather than left invisible: on Linux and macOS a model API key cannot be saved at all.
+- The documentation link checker now rejects link targets that escape the repository root. Previously a link could point anywhere on the author's disk and still pass locally while failing in CI.
+- `model-reasoning` no longer asserts on a total request count, which background activity could perturb; it now checks whether a specific text ever reached the model.
+- Corrected two inaccurate README claims: that Linux and macOS can run the web interface without noting that no model can be configured there, and that all 772 tests pass when some are skipped for missing Blender or DPAPI.
+
 ## 0.7.5
 
 - Added a failure registry: every failure carries a code, domain, retryability, consequence summary, and the single site that raises it; unregistered failures are reclassified and never leak the original text.
@@ -10,6 +18,8 @@
 - Added Bot recipes: templates may carry reusable skills and scheduled routines behind a two-step consent gate; routines are always created paused and a receipt records what landed.
 - Added a declarative outbound network policy with per-host allow and deny lists, evaluated before DNS resolution.
 - Restructured both root READMEs into open-source form and corrected stale claims about the Bot market, capability counts, and screenshots.
+- Deliverables now carry the assistant's least-confident judgements as structured metadata, produced by a separate cheap pass so a failure there costs an annotation rather than the deliverable; pure-conversion capabilities skip it.
+- Extensions that run outside the extension sandbox are announced once per version at startup, stating that file and network access is not bound by the read/write paths or the network policy.
 
 ## 0.5.5
 
