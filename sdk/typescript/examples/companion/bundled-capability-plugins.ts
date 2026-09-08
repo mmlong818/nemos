@@ -21,6 +21,22 @@ export interface BundledCapabilityPluginStatus {
   manifest: AgentExtensionManifest;
 }
 
+/**
+ * 这个插件会不会在**没有扩展沙箱**的情况下启动本机进程。
+ *
+ * 不复用 SDK 的 requiresUnsandboxedExecutionApproval：那个判定带一条
+ * `source.type !== "builtin"` 的总闸，而本文件里四个插件全是 builtin，
+ * 于是它对它们一律返回 false。用它来把安装确认门，门就永远不会关——
+ * 内置身份决定的是"随应用发布、不用下载"，不该顺带免掉"它不在沙箱里跑"这件事。
+ *
+ * 判定看三件事：是否 mcp 运行时（module 运行时在进程内跑，entry 是 `builtin:` 伪入口，
+ * 不启动任何东西）、有没有入口、有没有声明沙箱。只认 mcp 也与 SDK 自己的规则一致：
+ * 清单校验里写着"runtime.sandbox is only supported for MCP runtimes"。
+ */
+export function spawnsUnsandboxedProcess(manifest: AgentExtensionManifest): boolean {
+  return manifest.runtime?.type === "mcp" && Boolean(manifest.runtime.entry) && !manifest.runtime.sandbox;
+}
+
 export function bundledCapabilityPluginCatalog(input: {
   packageRoot: string;
   installedIds?: readonly string[];
