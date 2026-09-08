@@ -29,6 +29,10 @@ cd ..\..; node scripts\verify-docs.mjs
   会变成整文件 diff。收尾用 `git diff --stat <file>` 判断：只该有你改的那几行，整文件重写一眼可见。
   **不要用 `grep -qU $'\r'`**——Bash 工具里这段转义会被吃掉，退化成匹配字母 r，于是永远"命中"。
 - **heredoc**：bash heredoc 吃反斜杠，正则与转义序列被静默写坏。写脚本请用 Write 工具落文件。
+- **整合测试别用请求总数断言**：`assert.equal(h.requests.length, before)` 会被后台活动
+  （人格简介预热、例行任务调度、记忆整合）挟持，表现为偶发失败。判据要落到"这条内容有没有
+  到过模型"。`model-reasoning` 与 `buzz-adoption` 已改；`app-navigation`、`assistant-team`、
+  `autonomous-team`、`bot-market` 里还有同类写法未改。
 - **测试里切源码**：泛型函数名让字面量匹配失败（`readJsonFile<T>(` ≠ `"function readJsonFile("`），
   切片静默返回半个文件、断言**偶然通过**。
 

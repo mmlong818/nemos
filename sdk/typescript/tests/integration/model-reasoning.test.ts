@@ -19,10 +19,14 @@ test("real isolated server forwards per-message effort for plain and streamed ch
       assert.ok(calls.length > 0);
       assert.ok(calls.some(item => item.body.reasoning?.effort === (effort === "auto" ? undefined : effort)));
     }
-    const before = h.requests.length;
-    const invalid = await post("/api/chat", { text: "not sent", target: { kind: "persona", id: "clownfish" }, reasoningEffort: "none" });
+    // 判据是「这条文本有没有到过模型」，不是请求总数：后台活动（人格简介预热、例行任务
+    // 调度、记忆整合）会让 h.requests.length 变动，用总数断言等于让它被无关活动挟持。
+    // 这个测试就因此在 Windows 上偶发失败过一次（9 !== 8）——与 buzz-adoption 同一类错误。
+    const invalidMarker = "SYNTHETIC_INVALID_EFFORT";
+    const invalid = await post("/api/chat", { text: invalidMarker, target: { kind: "persona", id: "clownfish" }, reasoningEffort: "none" });
     assert.equal(invalid.status, 400);
-    assert.equal(h.requests.length, before);
+    const leaked = h.requests.filter((item) => JSON.stringify(item.body ?? "").includes(invalidMarker));
+    assert.equal(leaked.length, 0, "非法 effort 必须在调用模型之前被拒绝");
     const current: any = await (await fetch(h.base + "/api/llm")).json();
     assert.equal(current.model, "gpt-6-astra");
     assert.equal(current.reasoningEffort, undefined);
