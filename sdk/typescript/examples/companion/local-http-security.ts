@@ -3,6 +3,8 @@ import { request as httpRequest, type IncomingHttpHeaders } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 
+import { evaluateNetworkPolicy, networkPolicyRejection, type NetworkPolicy } from "./network-policy.js";
+
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function normalizeAddress(value: string): string {
@@ -62,14 +64,25 @@ export function isPrivateNetworkAddress(value: string): boolean {
   return address === "::" || address === "::1" || address.startsWith("fc") || address.startsWith("fd") || /^fe[89ab]/.test(address);
 }
 
-export async function assertPublicWebUrl(raw: string): Promise<URL> {
-  return (await resolvePublicWebTarget(raw)).url;
+export async function assertPublicWebUrl(raw: string, policy?: NetworkPolicy): Promise<URL> {
+  return (await resolvePublicWebTarget(raw, policy)).url;
 }
 
-async function resolvePublicWebTarget(raw: string): Promise<{ url: URL; address: string; family: 4 | 6 }> {
+/**
+ * 出站目标解析。两道判断顺序固定：
+ * 1. 主机名先过网络策略——策略是配置结论，不该为了得出结论去做 DNS 查询；
+ * 2. 再做地址级私网拦截。
+ *
+ * 反过来的话，被策略拒绝的域名仍然会被解析一次，等于向那台 DNS 泄露了访问意图。
+ */
+async function resolvePublicWebTarget(raw: string, policy?: NetworkPolicy): Promise<{ url: URL; address: string; family: 4 | 6 }> {
   const url = new URL(raw);
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("unsupported web protocol");
   const hostname = normalizeAddress(url.hostname);
+  if (policy) {
+    const verdict = evaluateNetworkPolicy(policy, url.hostname);
+    if (!verdict.allowed) throw new Error(networkPolicyRejection(url.hostname, verdict));
+  }
   if (hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".localhost")) {
     throw new Error("local web address is not allowed");
   }
@@ -96,8 +109,10 @@ export async function readPublicWebUrl(input: {
   signal?: AbortSignal;
   headers?: Record<string, string>;
   maxBytes: number;
+  /** 不传表示沿用旧行为（只拦私网）；传了则按主机名先过允许／拒绝名单。 */
+  policy?: NetworkPolicy;
 }): Promise<PublicWebResponse> {
-  const target = await resolvePublicWebTarget(input.url);
+  const target = await resolvePublicWebTarget(input.url, input.policy);
   const transport = target.url.protocol === "https:" ? httpsRequest : httpRequest;
   return new Promise((resolve, reject) => {
     const request = transport({
