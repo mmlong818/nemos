@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
-import { AgentOrchestrator, type AgentSubtaskRunInput } from "../../src/agent/index.js";
+import {
+  AgentJobWorker,
+  AgentOrchestrator,
+  FileAgentJobQueue,
+  type AgentSubtask,
+  type AgentSubtaskRunInput,
+} from "../../src/agent/index.js";
 
 test("runs independent subtasks in parallel and shares only dependency artifact references", async () => {
   let active = 0;
@@ -126,3 +135,67 @@ test("cancellation does not call a custom summarizer with an aborted signal", as
   assert.equal(result.tasks[0]?.status, "cancelled");
   assert.equal(summarized, false);
 });
+
+test("a queue event starts one authorized DAG which advances dependencies and persists its final summary", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "nemos-orchestration-event-"));
+  const file = join(dir, "jobs.json");
+  const queue = new FileAgentJobQueue(file);
+  const calls: Array<{ id: string; refs: string[] }> = [];
+  const orchestrator = new AgentOrchestrator(async (input) => {
+    calls.push({ id: input.task.id, refs: input.sharedArtifactRefs });
+    return { summary: `done:${input.task.id}`, artifactRefs: [`artifact:${input.task.id}`] };
+  }, { maxParallel: 2 });
+  const worker = new AgentJobWorker(queue, {
+    orchestration: async (job, context) => {
+      const result = await orchestrator.run({
+        sessionId: `orchestration-${job.id}`,
+        objective: String(job.payload.objective),
+        tasks: job.payload.tasks as AgentSubtask[],
+      }, { signal: context.signal });
+      return { summary: result.summary, artifactRefs: result.artifactRefs, data: result };
+    },
+  }, { pollIntervalMs: 60_000 });
+  try {
+    worker.start();
+    const input = {
+      type: "orchestration",
+      payload: {
+        objective: "research then synthesize",
+        tasks: [
+          { id: "research", title: "Research", instruction: "research" },
+          { id: "verify", title: "Verify", instruction: "verify" },
+          { id: "synthesis", title: "Final review", instruction: "synthesize", dependsOn: ["research", "verify"] },
+        ],
+      },
+      idempotencyKey: "authorized-plan:one",
+      sideEffectRisk: true,
+      maxAttempts: 1,
+    } as const;
+    const queued = queue.enqueue(input);
+    await waitFor(() => queue.get(queued.id)?.status === "succeeded");
+
+    const completed = new FileAgentJobQueue(file).get(queued.id)!;
+    const result = completed.result?.data as { quality: { status: string }; tasks: Array<{ id: string }> };
+    assert.equal(completed.attempts, 1);
+    assert.match(completed.result?.summary ?? "", /done:synthesis/);
+    assert.equal(result.quality.status, "passed");
+    assert.deepEqual(result.tasks.map((task) => task.id), ["research", "verify", "synthesis"]);
+    assert.deepEqual(calls.find((call) => call.id === "synthesis")?.refs.sort(), ["artifact:research", "artifact:verify"]);
+
+    const duplicate = queue.enqueue(input);
+    assert.equal(duplicate.id, queued.id);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(calls.length, 3);
+  } finally {
+    worker.stop();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("condition was not reached");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}

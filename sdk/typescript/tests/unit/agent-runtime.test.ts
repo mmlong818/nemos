@@ -65,6 +65,134 @@ test("runs a multi-round tool loop and preserves model call order", async () => 
   assert.deepEqual(toolMessages.map((message) => message.content), ["A", "B"]);
 });
 
+test("legacy text can complete without a file but an empty model turn is blocked", async () => {
+  const text = await new AgentRuntime(modelFrom([{ text: "A complete answer" }]), []).run({
+    sessionId: "legacy-text", systemPrompt: "system", prompt: "answer",
+  });
+  assert.equal(text.disposition.state, "completed");
+
+  const empty = await new AgentRuntime(modelFrom([{ text: "" }]), []).run({
+    sessionId: "legacy-empty", systemPrompt: "system", prompt: "answer",
+  });
+  assert.equal(empty.reason, "blocked");
+  assert.equal(empty.disposition.state, "blocked");
+});
+
+test("explicit task protocol records waiting input without keyword inference", async () => {
+  let calls = 0;
+  const model: AgentModel = {
+    complete: async (request) => {
+      calls++;
+      assert.equal(request.tools.some((item) => item.name === "finish_turn"), true);
+      return calls === 1
+        ? { text: "I need one choice." }
+        : { text: "", toolCalls: [{ id: "finish", name: "finish_turn", arguments: { state: "waiting_input", question: "Which format should I use?" } }] };
+    },
+  };
+  const result = await new AgentRuntime(model, [], { terminationProtocol: "explicit", maxRounds: 2 }).run({
+    sessionId: "explicit-wait", systemPrompt: "system", prompt: "prepare it",
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.reason, "waiting_input");
+  assert.deepEqual(result.disposition, { state: "waiting_input", question: "Which format should I use?" });
+});
+
+test("valid finish_turn is accepted at the token boundary without executing more business tools", async () => {
+  let businessCalls = 0;
+  const runtime = new AgentRuntime({
+    complete: async () => ({
+      text: "Final answer at the budget boundary.",
+      toolCalls: [{ id: "finish", name: "finish_turn", arguments: { state: "completed" } }],
+      inputTokens: 6,
+      outputTokens: 4,
+    }),
+  }, [tool("write_more", "write", async () => { businessCalls++; return { content: "written" }; })], {
+    terminationProtocol: "explicit",
+    maxTotalTokens: 10,
+  });
+  const result = await runtime.run({ sessionId: "finish-at-budget", systemPrompt: "system", prompt: "go" });
+  assert.equal(result.reason, "completed");
+  assert.equal(result.disposition.state, "completed");
+  assert.equal(businessCalls, 0);
+});
+
+test("mixed finish and business calls are all answered but no business action executes", async () => {
+  let calls = 0;
+  let executed = 0;
+  const model: AgentModel = {
+    complete: async (request) => {
+      calls++;
+      if (calls === 1) return {
+        text: "",
+        toolCalls: [
+          { id: "write", name: "write_more", arguments: {} },
+          { id: "finish", name: "finish_turn", arguments: { state: "completed" } },
+        ],
+      };
+      assert.deepEqual(
+        request.messages.filter((item) => item.role === "tool").map((item) => item.toolCallId),
+        ["write", "finish"],
+      );
+      return { text: "", toolCalls: [{ id: "wait", name: "finish_turn", arguments: { state: "waiting_input", question: "Confirm?" } }] };
+    },
+  };
+  const result = await new AgentRuntime(model, [tool("write_more", "write", async () => { executed++; return { content: "written" }; })], {
+    terminationProtocol: "explicit", maxRounds: 2,
+  }).run({ sessionId: "mixed-finish", systemPrompt: "system", prompt: "go" });
+  assert.equal(executed, 0);
+  assert.equal(result.disposition.state, "waiting_input");
+});
+
+test("cancellation after a model response wins over a completion declaration", async () => {
+  const controller = new AbortController();
+  const result = await new AgentRuntime({
+    complete: async () => {
+      controller.abort(new Error("user cancelled"));
+      return { text: "Finished", toolCalls: [{ id: "finish", name: "finish_turn", arguments: { state: "completed" } }] };
+    },
+  }, [], { terminationProtocol: "explicit" }).run({
+    sessionId: "cancel-wins", systemPrompt: "system", prompt: "go", signal: controller.signal,
+  });
+  assert.equal(result.reason, "cancelled");
+  assert.equal(result.disposition.state, "cancelled");
+});
+
+test("an authorized failed write is recorded as attempted while a denied write is not", async () => {
+  const responses: AgentModelResponse[] = [
+    { text: "", toolCalls: [{ id: "write-1", name: "write_remote", arguments: {} }] },
+    { text: "", toolCalls: [{ id: "finish-1", name: "finish_turn", arguments: { state: "blocked", blocker: "Write outcome is unknown" } }] },
+  ];
+  const attempted = await new AgentRuntime(
+    modelFrom(responses),
+    [tool("write_remote", "write", async () => { throw new Error("connection ended"); })],
+    { terminationProtocol: "explicit", authorizeTool: async () => ({ allowed: true }) },
+  ).run({ sessionId: "attempted-write", systemPrompt: "system", prompt: "write" });
+  assert.equal(attempted.disposition.state, "blocked");
+  assert.equal(attempted.disposition.state === "blocked" && attempted.disposition.evidence?.[0]?.kind, "tool_attempt");
+
+  const denied = await new AgentRuntime(
+    modelFrom(responses),
+    [tool("write_remote", "write", async () => ({ content: "should not run" }))],
+    { terminationProtocol: "explicit", authorizeTool: async () => ({ allowed: false, reason: "not approved" }) },
+  ).run({ sessionId: "denied-write", systemPrompt: "system", prompt: "write" });
+  assert.equal(denied.disposition.state === "blocked" ? denied.disposition.evidence : undefined, undefined);
+});
+
+test("cancelling an in-flight write preserves its attempted-write evidence", async () => {
+  const controller = new AbortController();
+  const runtime = new AgentRuntime(
+    modelFrom([{ text: "", toolCalls: [{ id: "write-cancel", name: "write_remote", arguments: {} }] }]),
+    [tool("write_remote", "write", async () => {
+      controller.abort(new Error("cancelled while writing"));
+      throw new Error("write outcome unknown");
+    })],
+    { terminationProtocol: "explicit", authorizeTool: async () => ({ allowed: true }) },
+  );
+  const result = await runtime.run({ sessionId: "cancelled-write", systemPrompt: "system", prompt: "write", signal: controller.signal });
+  assert.equal(result.disposition.state, "cancelled");
+  assert.equal(result.disposition.state === "cancelled" && result.disposition.evidence?.[0]?.kind, "tool_attempt");
+});
+
 test("serializes a turn containing a write tool", async () => {
   let active = 0;
   let maxActive = 0;

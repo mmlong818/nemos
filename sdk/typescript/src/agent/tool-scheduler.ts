@@ -101,6 +101,7 @@ export class ToolScheduler {
     const bounded = {
       ...result,
       content: boundText(result.content, this.options.maxResultChars),
+      ...(tool.definition.effect === "read" ? {} : { writeAttempted: true }),
     };
     if (bounded.isError && tool.definition.risk === "destructive" && this.options.destructiveState) {
       this.options.destructiveState.stopped = true;

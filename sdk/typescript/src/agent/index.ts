@@ -86,6 +86,7 @@ export type {
   FileAgentRunStoreOptions,
 } from "./run-store.js";
 export type {
+  AgentCompletionEvidence,
   AgentHandoffInput,
   AgentMessage,
   AgentModel,
@@ -110,4 +111,13 @@ export type {
   AgentToolRisk,
   AgentToolResult,
   AgentTokenUsage,
+  AgentTurnDisposition,
 } from "./types.js";
+export {
+  AgentTurnDispositionError,
+  FINISH_TURN_TOOL_NAME,
+  finishTurnToolDefinition,
+  legacyTurnDisposition,
+  parseTurnDisposition,
+  validateTurnCompletion,
+} from "./completion.js";

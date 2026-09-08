@@ -38,7 +38,24 @@ export interface AgentToolResult {
   content: string;
   isError?: boolean;
   data?: unknown;
+  /** Trusted artifact references produced by the tool implementation, never by model arguments. */
+  artifactRefs?: string[];
+  /** Set by the scheduler only after an authorized write enters execution. */
+  writeAttempted?: boolean;
 }
+
+export type AgentCompletionEvidence =
+  | { kind: "text"; ref: string }
+  | { kind: "artifact"; ref: string }
+  | { kind: "data"; ref: string }
+  | { kind: "tool_attempt"; ref: string; tool: string; effect: "write" }
+  | { kind: "tool_receipt"; ref: string; tool: string; effect: AgentToolEffect };
+
+export type AgentTurnDisposition =
+  | { state: "completed"; evidence: AgentCompletionEvidence[] }
+  | { state: "waiting_input"; question: string; partialOutput?: string; evidence?: AgentCompletionEvidence[] }
+  | { state: "blocked"; blocker: string; partialOutput?: string; evidence?: AgentCompletionEvidence[] }
+  | { state: "cancelled"; reason?: string; evidence?: AgentCompletionEvidence[] };
 
 export interface AgentToolContext {
   /** 本次模型—工具循环的唯一执行标识。 */
@@ -109,6 +126,8 @@ export type AgentRunEvent =
   | { type: "tool_start"; call: AgentToolCall }
   | { type: "tool_authorization"; call: AgentToolCall; allowed: boolean; reason?: string }
   | { type: "tool_end"; call: AgentToolCall; result: AgentToolResult }
+  | { type: "completion_rejected"; reason: string }
+  | { type: "turn_disposition"; disposition: AgentTurnDisposition }
   | { type: "handoff"; count: number; beforeChars: number; afterChars: number }
   | { type: "run_error"; message: string }
   | { type: "run_end"; reason: AgentStopReason; rounds: number };
@@ -124,6 +143,8 @@ export interface AgentRunObserver {
 
 export type AgentStopReason =
   | "completed"
+  | "waiting_input"
+  | "blocked"
   | "cancelled"
   | "max_rounds"
   | "token_budget_exhausted"
@@ -151,6 +172,8 @@ export interface AgentRuntimeConfig {
   createHandoff?: (input: AgentHandoffInput) => Promise<string>;
   /** 写工具默认拒绝；只有该回调明确允许后才会执行。 */
   authorizeTool?: (input: AgentToolAuthorizationInput) => Promise<AgentToolAuthorizationResult>;
+  /** Explicit finish protocol is opt-in for task paths whose model supports tools. */
+  terminationProtocol?: "legacy" | "explicit";
 }
 
 export interface AgentRunInput {
@@ -187,6 +210,8 @@ export interface AgentRunCheckpoint {
   usage?: AgentTokenUsage;
   /** 高风险操作失败后保持到恢复运行，避免进程重启绕过熔断。 */
   destructiveFailureStopped?: boolean;
+  /** Runtime-derived evidence survives a safe checkpoint/resume. */
+  completionEvidence?: AgentCompletionEvidence[];
 }
 
 export interface AgentRunResult {
@@ -198,4 +223,5 @@ export interface AgentRunResult {
   handoffs: number;
   messages: AgentMessage[];
   usage: AgentTokenUsage;
+  disposition: AgentTurnDisposition;
 }

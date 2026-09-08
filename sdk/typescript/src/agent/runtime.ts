@@ -1,5 +1,13 @@
 import { ToolScheduler } from "./tool-scheduler.js";
+import {
+  FINISH_TURN_TOOL_NAME,
+  finishTurnToolDefinition,
+  legacyTurnDisposition,
+  parseTurnDisposition,
+  validateTurnCompletion,
+} from "./completion.js";
 import type {
+  AgentCompletionEvidence,
   AgentMessage,
   AgentModel,
   AgentRunCheckpoint,
@@ -10,6 +18,7 @@ import type {
   AgentStopReason,
   AgentTool,
   AgentToolCall,
+  AgentTurnDisposition,
 } from "./types.js";
 
 const DEFAULTS = {
@@ -23,6 +32,7 @@ const DEFAULTS = {
   maxHistoryChars: 1_000_000,
   handoffThresholdChars: 700_000,
   maxHandoffs: 3,
+  terminationProtocol: "legacy" as const,
 };
 
 export class AgentRuntime {
@@ -49,6 +59,7 @@ export class AgentRuntime {
     const resume = input.resume ? cloneCheckpoint(input.resume) : undefined;
     let messages = resume ? resume.messages : initialMessages(input);
     let usage = normalizeTokenUsage(resume?.usage);
+    let completionEvidence = structuredClone(resume?.completionEvidence ?? []);
     const destructiveState = { stopped: resume?.destructiveFailureStopped === true, failedTool: undefined as string | undefined };
     const emit = (event: AgentRunEvent): void => {
       input.onEvent?.(event);
@@ -74,6 +85,7 @@ export class AgentRuntime {
         pendingToolCalls: pendingToolCalls ? pendingToolCalls.map((call) => structuredClone(call)) : undefined,
         usage: { ...usage },
         destructiveFailureStopped: destructiveState.stopped || undefined,
+        completionEvidence: structuredClone(completionEvidence),
       };
       observe(() => input.observer?.onCheckpoint?.(runId, checkpoint));
       return checkpoint;
@@ -83,8 +95,10 @@ export class AgentRuntime {
       rounds: number,
       handoffCount: number,
       output = "",
+      disposition: AgentTurnDisposition = dispositionForStop(reason, output, completionEvidence),
     ): AgentRunResult => {
-      const result = finish(runId, input.sessionId, reason, rounds, handoffCount, messages, usage, emit, output);
+      emit({ type: "turn_disposition", disposition });
+      const result = finish(runId, input.sessionId, reason, rounds, handoffCount, messages, usage, emit, output, disposition);
       observe(() => input.observer?.onComplete?.(runId, result));
       return result;
     };
@@ -110,7 +124,7 @@ export class AgentRuntime {
         if (controller.signal.aborted) {
           return complete("cancelled", completedRounds, handoffs);
         }
-        messages.push(...await this.executeTools(
+        const execution = await this.executeTools(
           runId,
           input.sessionId,
           calls,
@@ -118,7 +132,9 @@ export class AgentRuntime {
           emit,
           input.metadata,
           destructiveState,
-        ));
+        );
+        messages.push(...execution.messages);
+        completionEvidence.push(...execution.evidence);
         messages = trimHistory(messages, this.config.maxHistoryChars);
         completedRounds = resume.round;
         nextRound = resume.round + 1;
@@ -134,7 +150,7 @@ export class AgentRuntime {
 
       for (let round = nextRound; round <= this.config.maxRounds; round++) {
         if (controller.signal.aborted) {
-          return complete("cancelled", round - 1, handoffs);
+          return complete("cancelled", round - 1, handoffs, "", cancelledDisposition(controller.signal, completionEvidence));
         }
         if (usage.totalTokens >= this.config.maxTotalTokens) {
           emit({ type: "token_budget_exhausted", limit: this.config.maxTotalTokens, used: usage.totalTokens });
@@ -160,9 +176,7 @@ export class AgentRuntime {
         try {
           response = await this.model.complete({
             messages,
-            tools: round <= this.config.maxToolRounds
-              ? this.tools.map((tool) => tool.definition)
-              : [],
+            tools: this.modelTools(round <= this.config.maxToolRounds),
             signal: controller.signal,
             onTextDelta: input.onTextDelta,
             maxOutputTokens: remainingOutputTokenBudget(this.config.maxTotalTokens, usage.totalTokens),
@@ -172,6 +186,9 @@ export class AgentRuntime {
             return complete("cancelled", round - 1, handoffs);
           }
           throw error;
+        }
+        if (controller.signal.aborted) {
+          return complete("cancelled", round - 1, handoffs, "", cancelledDisposition(controller.signal, completionEvidence));
         }
         usage = addModelUsage(usage, response.inputTokens, response.outputTokens);
         const calls = (response.toolCalls ?? []).slice(0, this.config.maxToolCallsPerRound);
@@ -186,13 +203,56 @@ export class AgentRuntime {
           ...(response.providerState ? { providerState: response.providerState } : {}) });
         completedRounds = round;
 
+        const finishCalls = calls.filter((call) => call.name === FINISH_TURN_TOOL_NAME);
+        const businessCalls = calls.filter((call) => call.name !== FINISH_TURN_TOOL_NAME);
+        if (this.config.terminationProtocol === "explicit" && finishCalls.length > 0) {
+          if (finishCalls.length !== 1 || businessCalls.length > 0) {
+            const reason = "finish_turn must be the only tool call in its model response";
+            emit({ type: "completion_rejected", reason });
+            messages.push(...calls.map((call) => ({
+              role: "tool" as const,
+              name: call.name,
+              toolCallId: call.id,
+              content: call.name === FINISH_TURN_TOOL_NAME ? reason : `not executed: ${reason}`,
+            })));
+            continue;
+          }
+          const declaration = parseTurnDisposition(finishCalls[0]!);
+          if (!declaration) {
+            const reason = "finish_turn declaration is invalid";
+            emit({ type: "completion_rejected", reason });
+            messages.push({ role: "tool", name: FINISH_TURN_TOOL_NAME, toolCallId: finishCalls[0]!.id, content: reason });
+            continue;
+          }
+          const validation = validateTurnCompletion({ declaration, assistantText: response.text, trustedEvidence: completionEvidence });
+          if (!validation.accepted || !validation.disposition) {
+            const reason = validation.reason ?? "finish_turn declaration was rejected";
+            emit({ type: "completion_rejected", reason });
+            messages.push({ role: "tool", name: FINISH_TURN_TOOL_NAME, toolCallId: finishCalls[0]!.id, content: reason });
+            continue;
+          }
+          const disposition = validation.disposition;
+          const output = response.text.trim() || (disposition.state === "waiting_input" ? disposition.question : disposition.state === "blocked" ? disposition.blocker : "");
+          const reason = disposition.state === "completed" ? "completed" : disposition.state;
+          return complete(reason, round, handoffs, output, disposition);
+        }
+
         if (calls.length > 0 && usage.totalTokens >= this.config.maxTotalTokens) {
           emit({ type: "token_budget_exhausted", limit: this.config.maxTotalTokens, used: usage.totalTokens });
           return complete("token_budget_exhausted", round, handoffs, response.text);
         }
 
         if (calls.length === 0) {
-          return complete("completed", round, handoffs, response.text);
+          if (this.config.terminationProtocol === "explicit") {
+            const reason = "This task requires an explicit finish_turn call before the turn can end.";
+            emit({ type: "completion_rejected", reason });
+            messages.push({ role: "user", content: `[Turn protocol] ${reason}` });
+            continue;
+          }
+          const disposition = legacyTurnDisposition(response.text);
+          return disposition.state === "completed"
+            ? complete("completed", round, handoffs, response.text, disposition)
+            : complete("blocked", round, handoffs, "", disposition);
         }
         const repeat = repeatedCallState(calls, previousSignature, repeatedCount);
         previousSignature = repeat.signature;
@@ -209,7 +269,7 @@ export class AgentRuntime {
           repeatedCount,
           calls,
         );
-        messages.push(...await this.executeTools(
+        const execution = await this.executeTools(
           runId,
           input.sessionId,
           calls,
@@ -217,7 +277,9 @@ export class AgentRuntime {
           emit,
           input.metadata,
           destructiveState,
-        ));
+        );
+        messages.push(...execution.messages);
+        completionEvidence.push(...execution.evidence);
         messages = trimHistory(messages, this.config.maxHistoryChars);
         saveCheckpoint(
           "after_tools",
@@ -247,7 +309,7 @@ export class AgentRuntime {
     emit: (event: AgentRunEvent) => void,
     metadata?: Readonly<Record<string, string>>,
     destructiveState?: { stopped: boolean; failedTool?: string },
-  ): Promise<AgentMessage[]> {
+  ): Promise<{ messages: AgentMessage[]; evidence: AgentCompletionEvidence[] }> {
     const scheduler = new ToolScheduler(this.tools, {
       runId,
       sessionId,
@@ -260,7 +322,7 @@ export class AgentRuntime {
       destructiveState,
     });
     const results = await scheduler.execute(calls);
-    return results.map((result, index) => ({
+    const messages: AgentMessage[] = results.map((result, index) => ({
       role: "tool",
       name: calls[index]!.name,
       toolCallId: calls[index]!.id,
@@ -268,6 +330,27 @@ export class AgentRuntime {
         ? `${result.content}\n\n[Reflect] Identify the cause and change your approach before retrying.`
         : result.content,
     }));
+    const evidence = results.flatMap((result, index): AgentCompletionEvidence[] => {
+      const call = calls[index]!;
+      const tool = this.tools.find((item) => item.definition.name === call.name);
+      const receipts: AgentCompletionEvidence[] = tool?.definition.effect === "write" && result.writeAttempted
+        ? [result.isError
+          ? { kind: "tool_attempt", ref: `tool:${call.id}`, tool: call.name, effect: "write" }
+          : { kind: "tool_receipt", ref: `tool:${call.id}`, tool: call.name, effect: "write" }]
+        : [];
+      if (result.isError) return receipts;
+      for (const ref of result.artifactRefs ?? []) {
+        const clean = String(ref).trim();
+        if (clean) receipts.push({ kind: "artifact", ref: clean });
+      }
+      return receipts;
+    });
+    return { messages, evidence };
+  }
+
+  private modelTools(includeBusinessTools: boolean): AgentTool["definition"][] {
+    const tools = includeBusinessTools ? this.tools.map((tool) => tool.definition) : [];
+    return this.config.terminationProtocol === "explicit" ? [...tools, finishTurnToolDefinition()] : tools;
   }
 
   private async maybeHandoff(
@@ -399,9 +482,38 @@ function finish(
   usage: AgentRunResult["usage"],
   emit: (event: AgentRunEvent) => void,
   output = "",
+  disposition: AgentTurnDisposition = dispositionForStop(reason, output),
 ): AgentRunResult {
   emit({ type: "run_end", reason, rounds });
-  return { runId, sessionId, output, reason, rounds, handoffs, messages, usage: { ...usage } };
+  return { runId, sessionId, output, reason, rounds, handoffs, messages, usage: { ...usage }, disposition };
+}
+
+function dispositionForStop(
+  reason: AgentStopReason,
+  output: string,
+  evidence: readonly AgentCompletionEvidence[] = [],
+): AgentTurnDisposition {
+  if (reason === "cancelled") return { state: "cancelled", ...(evidence.length ? { evidence: evidence.map((item) => structuredClone(item)) } : {}) };
+  if (reason === "waiting_input") return { state: "waiting_input", question: output.trim() || "User input is required." };
+  if (reason === "completed") return legacyTurnDisposition(output);
+  return {
+    state: "blocked",
+    blocker: `The run stopped before a verified completion (${reason}).`,
+    ...(output.trim() ? { partialOutput: output.trim() } : {}),
+    ...(evidence.length ? { evidence: evidence.map((item) => structuredClone(item)) } : {}),
+  };
+}
+
+function cancelledDisposition(
+  signal: AbortSignal,
+  evidence: readonly AgentCompletionEvidence[] = [],
+): AgentTurnDisposition {
+  const reason = signal.reason instanceof Error ? signal.reason.message : String(signal.reason ?? "").trim();
+  return {
+    state: "cancelled",
+    ...(reason ? { reason } : {}),
+    ...(evidence.length ? { evidence: evidence.map((item) => structuredClone(item)) } : {}),
+  };
 }
 
 function normalizeMaxTotalTokens(value?: number): number {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { AgentJobWorker, FileAgentJobQueue, type AgentJobQueueEvent } from "../../src/agent/index.js";
+import { AgentJobWorker, AgentTurnDispositionError, FileAgentJobQueue, type AgentJobQueueEvent } from "../../src/agent/index.js";
 
 function temporaryQueue(options: ConstructorParameters<typeof FileAgentJobQueue>[1] = {}) {
   const dir = mkdtempSync(join(tmpdir(), "nemos-agent-jobs-"));
@@ -71,6 +71,74 @@ test("retries read-only failures but does not automatically replay side-effectin
     assert.throws(() => fixture.queue.retry(write!.id), /reconciled/);
     assert.equal(fixture.queue.reconcile(write!.id, "not_applied", "target record is absent").status, "failed");
     assert.equal(fixture.queue.retry(write!.id, { confirmSideEffect: true }).status, "queued");
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("cancelling an in-flight side-effecting job remains uncertain", () => {
+  const fixture = temporaryQueue();
+  try {
+    const queued = fixture.queue.enqueue({ type: "write", payload: {}, sideEffectRisk: true });
+    fixture.queue.claimNext("worker-a");
+    fixture.queue.cancel(queued.id);
+    const outcome = fixture.queue.fail(queued.id, "worker-a", new Error("cancelled during unknown write"));
+    assert.equal(outcome.status, "uncertain");
+    assert.equal(outcome.disposition?.state, "cancelled");
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("keeps semantic waiting and blocked outcomes separate from operational job status", async () => {
+  const fixture = temporaryQueue();
+  try {
+    fixture.queue.enqueue({ type: "waiting", payload: {}, maxAttempts: 3 });
+    const worker = new AgentJobWorker(fixture.queue, {
+      waiting: async () => { throw new AgentTurnDispositionError({ state: "waiting_input", question: "Which account?" }); },
+    }, { workerId: "worker-a" });
+    const waiting = await worker.runOnce();
+    assert.equal(waiting?.status, "failed");
+    assert.deepEqual(waiting?.disposition, { state: "waiting_input", question: "Which account?" });
+    assert.throws(() => fixture.queue.retry(waiting!.id), /cannot resume in place/);
+
+    fixture.queue.enqueue({ type: "blocked-write", payload: {}, sideEffectRisk: true });
+    const risky = fixture.queue.claimNext("worker-b")!;
+    const blocked = fixture.queue.settleDisposition(risky.id, "worker-b", {
+      state: "blocked",
+      blocker: "Remote state is not verifiable",
+      evidence: [{ kind: "tool_receipt", ref: "tool:write-1", tool: "write_remote", effect: "write" }],
+    });
+    assert.equal(blocked.status, "uncertain");
+    assert.equal(blocked.disposition?.state, "blocked");
+
+    fixture.queue.enqueue({ type: "not-started", payload: {}, sideEffectRisk: true });
+    const notStarted = fixture.queue.claimNext("worker-c")!;
+    const safeBlocked = fixture.queue.settleDisposition(notStarted.id, "worker-c", { state: "blocked", blocker: "Missing input before execution" });
+    assert.equal(safeBlocked.status, "failed");
+
+    fixture.queue.enqueue({ type: "attempted", payload: {}, sideEffectRisk: true });
+    const attempted = fixture.queue.claimNext("worker-d")!;
+    const unknown = fixture.queue.settleDisposition(attempted.id, "worker-d", {
+      state: "blocked",
+      blocker: "Write connection ended before a receipt",
+      evidence: [{ kind: "tool_attempt", ref: "tool:write-2", tool: "write_remote", effect: "write" }],
+    });
+    assert.equal(unknown.status, "uncertain");
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("job completion accepts structured data but rejects an evidence-free success", () => {
+  const fixture = temporaryQueue();
+  try {
+    const dataOnly = fixture.queue.enqueue({ type: "internal", payload: {} });
+    fixture.queue.claimNext("worker-a");
+    assert.equal(fixture.queue.complete(dataOnly.id, "worker-a", { summary: "", data: { ok: true } }).status, "succeeded");
+    const empty = fixture.queue.enqueue({ type: "empty", payload: {} });
+    fixture.queue.claimNext("worker-a");
+    assert.throws(() => fixture.queue.complete(empty.id, "worker-a", { summary: "" }), /requires non-empty text/);
   } finally {
     rmSync(fixture.dir, { recursive: true, force: true });
   }
@@ -233,3 +301,79 @@ test("deletes terminal jobs in one persisted operation but protects active jobs"
     rmSync(fixture.dir, { recursive: true, force: true });
   }
 });
+
+test("a started worker wakes on queue events and does not lose an enqueue while another job is active", async () => {
+  const fixture = temporaryQueue();
+  let releaseFirst!: () => void;
+  const firstMayFinish = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const handled: string[] = [];
+  const worker = new AgentJobWorker(fixture.queue, {
+    work: async (job) => {
+      handled.push(String(job.payload.name));
+      if (job.payload.name === "first") await firstMayFinish;
+      return { summary: String(job.payload.name) };
+    },
+  }, { pollIntervalMs: 60_000 });
+  try {
+    worker.start();
+    fixture.queue.enqueue({ type: "work", payload: { name: "first" } });
+    await waitUntil(() => handled.includes("first"));
+    fixture.queue.enqueue({ type: "work", payload: { name: "second" } });
+    releaseFirst();
+    await waitUntil(() => handled.includes("second"));
+    assert.deepEqual(handled, ["first", "second"]);
+    assert.deepEqual(fixture.queue.list().map((job) => job.status), ["succeeded", "succeeded"]);
+  } finally {
+    releaseFirst();
+    worker.stop();
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("a stopped worker unsubscribes from queue wake events", async () => {
+  const fixture = temporaryQueue();
+  let calls = 0;
+  const worker = new AgentJobWorker(fixture.queue, {
+    work: async () => { calls++; return { summary: "done" }; },
+  }, { pollIntervalMs: 60_000 });
+  try {
+    worker.start();
+    worker.stop();
+    fixture.queue.enqueue({ type: "work", payload: {} });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(calls, 0);
+    assert.equal(fixture.queue.list()[0]?.status, "queued");
+  } finally {
+    worker.stop();
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("event-driven worker honors retry backoff without waiting for its fallback poll", async () => {
+  const fixture = temporaryQueue({ retryBaseDelayMs: 10 });
+  let calls = 0;
+  const worker = new AgentJobWorker(fixture.queue, {
+    read: async () => {
+      calls++;
+      if (calls === 1) throw new Error("temporary");
+      return { summary: "recovered" };
+    },
+  }, { pollIntervalMs: 60_000 });
+  try {
+    worker.start();
+    const job = fixture.queue.enqueue({ type: "read", payload: {}, maxAttempts: 2 });
+    await waitUntil(() => fixture.queue.get(job.id)?.status === "succeeded");
+    assert.equal(calls, 2);
+  } finally {
+    worker.stop();
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("condition was not reached");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
