@@ -49,13 +49,19 @@ test("完整服务：无页面自动交付、状态接口只读、保存模型�
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw);
     modelRequests.push(body);
-    const reply = "本地模拟模型回复";
+    const last = body.messages.at(-1);
+    const probe = body.tools?.some((tool: any) => tool.function?.name === "clownfish_connection_probe") && last?.role !== "tool";
+    const finish = body.tools?.some((tool: any) => tool.function?.name === "finish_turn");
+    const reply = body.messages.at(-1)?.role === "tool" ? body.messages.at(-1).content : "本地模拟模型回复";
+    const tool = { id: "check-call", type: "function", function: { name: "clownfish_connection_probe", arguments: '{"value":7}' } };
+    const finishCall = { id: "finish-call", type: "function", function: { name: "finish_turn", arguments: '{"state":"completed"}' } };
     if (body.stream) {
       res.setHeader("content-type", "text/event-stream");
-      res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: reply }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
+      const delta = probe ? { tool_calls: [{ ...tool, index: 0 }] } : finish ? { content: reply, tool_calls: [{ ...finishCall, index: 0 }] } : { content: reply };
+      res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
     } else {
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: reply }, finish_reason: "stop" }] }));
+      res.end(JSON.stringify({ choices: [{ message: probe ? { role: "assistant", content: "", tool_calls: [tool] } : finish ? { role: "assistant", content: reply, tool_calls: [finishCall] } : { role: "assistant", content: reply }, finish_reason: "stop" }] }));
     }
   });
   try {
@@ -64,10 +70,7 @@ test("完整服务：无页面自动交付、状态接口只读、保存模型�
     const port = await listen(reservation);
     await new Promise<void>((done) => reservation.close(() => done()));
     const base = `http://127.0.0.1:${port}`;
-    const runtime = new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "未使用的测试入口", facts: [] }) });
-    const ability = runtime.createGeneratedAbility({ personaId: "clownfish", name: "自动交付回归", goal: "输出一段简短文字", defaultFormat: "md" });
-    const task = runtime.createTask({ title: "无页面自动任务", personaId: "clownfish", capabilityId: ability.id, instruction: "输出一段简短文字", format: "md", enabled: true,
-      schedule: { mode: "daily", time: "00:00", timezone: "Asia/Shanghai", days: [1, 2, 3, 4, 5, 6, 7] } });
+    let task: { id: string };
     const persistedJobs = () => {
       try { return (JSON.parse(readFileSync(join(dir, "agent-jobs.json"), "utf8")).jobs as Array<{ id: string; status: string; payload: { taskId?: string }; result?: unknown }>).filter((job) => job.payload.taskId === task.id); }
       catch { return []; }
@@ -86,10 +89,29 @@ test("完整服务：无页面自动交付、状态接口只读、保存模型�
       return data;
     };
     start();
+    await until(async () => { try { return (await fetch(base + "/api/runtime")).ok; } catch { return false; } }, "service startup");
+    const connection = { provider: "custom", protocol: "openai-compatible", baseUrl: `http://127.0.0.1:${modelPort}/v1`, model: "regression-model" };
+    await request("/api/llm-config", connection);
+    const checked = await request("/api/llm-model/check", { model: "regression-model" });
+    assert.equal(checked.checked.chat, "passed");
+    // Create the due task only after the verified connection is durable. This
+    // preserves the no-browser scheduler assertion without letting first boot
+    // consume the task under an intentionally offline default.
+    await stop(child);
+    const runtime = new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "未使用的测试入口", facts: [] }) });
+    const ability = runtime.createGeneratedAbility({ personaId: "clownfish", name: "自动交付回归", goal: "输出一段简短文字", defaultFormat: "md" });
+    task = runtime.createTask({ title: "无页面自动任务", personaId: "clownfish", capabilityId: ability.id, instruction: "输出一段简短文字", format: "md", enabled: true,
+      schedule: { mode: "daily", time: "00:00", timezone: "Asia/Shanghai", days: [1, 2, 3, 4, 5, 6, 7] } });
+    logs = "";
+    start();
+    await until(async () => { try { return (await fetch(base + "/api/runtime")).ok; } catch { return false; } }, "verified service restart");
     // No HTTP requests at all until the server itself has enqueued and delivered.
     await until(() => {
       if (child?.exitCode !== null) throw new Error("Service exited: " + logs);
-      return persistedJobs().some((job) => job.status === "succeeded");
+      const jobs = persistedJobs();
+      const failed = jobs.find((job) => job.status === "failed");
+      if (failed) throw new Error("Background task failed: " + JSON.stringify(failed));
+      return jobs.some((job) => job.status === "succeeded");
     }, "background task completes without a browser; " + logs);
     assert.equal(persistedJobs().length, 1);
     assert.ok(persistedJobs()[0].result);
@@ -102,8 +124,6 @@ test("完整服务：无页面自动交付、状态接口只读、保存模型�
     assert.equal(persistedJobs().length, 1);
     const connections = await request("/api/platform/readiness");
     assert.equal(connections.connectors.find((item: any) => item.id === "browser").state, "not-installed");
-    const connection = { provider: "custom", protocol: "openai-compatible", baseUrl: `http://127.0.0.1:${modelPort}/v1`, model: "regression-model" };
-    await request("/api/llm-config", connection);
     const send = (text: string, sessionId: string) => request("/api/chat", { text, sessionId, target: { kind: "persona", id: "clownfish" }, workMode: "task", toolMode: "off" });
     await send("CONTINUITY_HTTP_A_4731", "session-a");
     await send("CONTINUITY_HTTP_B_8822", "session-b");

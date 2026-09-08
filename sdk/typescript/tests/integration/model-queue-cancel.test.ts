@@ -16,6 +16,7 @@ test('三个任务排队，取消中间任务后其余交付，刷新与重启�
   };
   try {
     await post('/api/llm-config',{provider:'custom',protocol:'openai-compatible',baseUrl:h.modelBase+'/v1',model:'manual',selectionMode:'manual'});
+    await post('/api/llm-model/check',{model:'manual',force:true});
     h.state.beforeReply=()=>hold;h.state.replyFor=()=>'{"summary":"合成结果","fields":[]}';
     const ids:string[]=[];
     for(const name of ['A','B','C'])ids.push((await post('/api/assistant-team/start',{requestId:'multi-'+name,objective:'MULTI-QUEUE '+name,workerIds:[],reviewerId:''})).record.id);

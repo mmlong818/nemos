@@ -16,6 +16,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import {
   AgentExtensionRegistry,
+  AgentTurnDispositionError,
   AgentUserActionGateway,
   createMcpProviderFromManifest,
   getAgentExtensionExecutionSecurity,
@@ -55,17 +56,23 @@ import {
   planExpertTeam,
 } from "./expert-contracts.js";
 import { resolveLLM, searchWeb, type ResolvedLLM } from "./llm.js";
-import { checkCompanionModel, selectCheckedCompanionModel } from "./model-readiness.js";
+import { FileLlmCallLedger } from "./llm-call-ledger.js";
+import { checkSingleCompanionModel } from "./model-readiness.js";
 import { supportedReasoningEfforts, resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
 import {
   COMPANION_MODEL_PROVIDER_PRESETS,
-  CompanionModelHttpError,
   defaultCompanionModelConnection,
+  bindModelChecksToRevision,
+  ensureConnectionRevision,
   fetchCompanionModelCatalog,
   normalizeCompanionModelConnection,
+  normalizeFavoriteModels,
   publicModelConnection,
+  retainModelChecksForRevision,
   dailyChatModelForConnection,
   selectCompanionConversationModel,
+  withConnectionRevision,
+  isModelCheckEligible,
   type CompanionModelConnection,
   type CompanionModelInfo,
   type CompanionModelProvider,
@@ -141,9 +148,11 @@ import { appendCurrentUiEvidence } from "./ui-evidence.js";
 import { ProductReviewRunStore, type ProductReviewIssue } from "./product-review-runs.js";
 import { applyPendingDataRestore, normalizeSyncEndpoint, pullDataSync, pushDataSync, syncSettingsSummary, testDataSync, type DataSyncStoredSettings } from "./data-sync.js";
 import { recoverAgentJobStorage } from "./agent-job-storage-migration.js";
+import { RunningTaskSteeringError, RunningTaskSteeringStore } from "./running-task-steering.js";
 import { BackgroundScheduler, enqueueScheduledCapabilities } from "./background-scheduler.js";
+import { attachScheduledTaskHandoffProjection, FileScheduledTaskHandoffStore } from "./scheduled-task-handoff.js";
 import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
-import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery } from "./assistant-team.js";
+import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
 import { listBotMarket } from "./bot-market.js";
 import { isEmptyRecipe, normalizeBotRecipe, recipeConsentToken, BotRecipeError } from "./bot-recipe.js";
 import { appRoute, renderAppPage } from "./app-navigation.js";
@@ -212,8 +221,11 @@ const TOOL_SETTINGS_FILE = runtimePath("COMPANION_TOOL_SETTINGS", "tool-settings
 const DATA_SYNC_SETTINGS_FILE = runtimePath("COMPANION_DATA_SYNC_SETTINGS", "data-sync.dpapi.json");
 const USER_PROFILE_FILE = runtimePath("COMPANION_USER_PROFILE", "user-profile.json");
 const AGENT_RUNS_FILE = runtimePath("COMPANION_AGENT_RUNS", "agent-runs.json");
+const LLM_CALL_LEDGER_FILE = runtimePath("COMPANION_LLM_CALL_LEDGER", "llm-call-ledger.json");
 const AGENT_APPROVALS_FILE = runtimePath("COMPANION_AGENT_APPROVALS", "agent-approvals.json");
 const AGENT_JOBS_FILE = runtimePath("COMPANION_AGENT_JOBS", "agent-jobs.json");
+const RUNNING_TASK_STEERING_FILE = runtimePath("COMPANION_RUNNING_TASK_STEERING", "running-task-steering.json");
+const SCHEDULED_TASK_HANDOFFS_FILE = runtimePath("COMPANION_SCHEDULED_TASK_HANDOFFS", "scheduled-task-handoffs.json");
 const DELIVERY_OUTBOX_FILE = runtimePath("COMPANION_DELIVERY_OUTBOX", "delivery-outbox.json");
 const AGENT_EXTENSIONS_FILE = runtimePath("COMPANION_AGENT_EXTENSIONS", "agent-extensions.json");
 const WORK_GUIDELINES_FILE = runtimePath("COMPANION_WORK_GUIDELINES", "work-guidelines.json");
@@ -330,6 +342,7 @@ export function isFreshModelCheck(check: { chat: string; checkedAt: string } | u
 let modelConnectionUpdating = false;
 let modelCatalog = loadSavedLLMModelCatalog();
 let modelCatalogFetchedAt = loadSavedLLMModelCatalogFetchedAt();
+let modelCatalogConnectionRevision = loadSavedLLMModelCatalogConnectionRevision();
 loadSavedXToken();
 let userProfile = loadUserProfile();
 
@@ -338,6 +351,7 @@ let llm = resolveLLM(modelConnection);
 let mem = makeMem();
 let engine = makeEngine();
 const agentRunStore = new FileAgentRunStore(AGENT_RUNS_FILE);
+const llmCallLedger = new FileLlmCallLedger(LLM_CALL_LEDGER_FILE);
 const agentApprovalStore = new FileAgentApprovalStore(AGENT_APPROVALS_FILE, { onChange: broadcastApprovalEvent });
 const workGuidelineStore = new WorkGuidelineStore(WORK_GUIDELINES_FILE);
 /**
@@ -443,23 +457,38 @@ const capabilities = new CapabilityRuntime({
   })),
   toolRegistry: capabilityTools,
   knowledgeContext: (ids) => knowledgeLibrary.buildPromptBlock(ids),
+  projectMaterialSources: (ids, spaceId) => ids.flatMap((id) => {
+    const item = knowledgeLibrary.get(id);
+    return item && item.spaceId === spaceId
+      ? [{ name: item.fileName || item.title }]
+      : [];
+  }),
   counterpartContext: (counterpartId) => relationships.buildPromptBlock(counterpartId),
   toolBinding: (personaId) => personaToolBindings.get(personaId),
-  notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode, surface) => {
-    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, model: runtimeLimits?.model, reasoningEffort: runtimeLimits?.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability" });
+  notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode, surface, contextSources) => {
+    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, model: runtimeLimits?.model, reasoningEffort: runtimeLimits?.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability", ...contextSources });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
-  notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId, memoryMode, surface) => {
-    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, model: runtimeLimits?.model, reasoningEffort: runtimeLimits?.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability" });
+  notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId, memoryMode, surface, contextSources) => {
+    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, model: runtimeLimits?.model, reasoningEffort: runtimeLimits?.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability", ...contextSources });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
 });
+const scheduledTaskHandoffs = new FileScheduledTaskHandoffStore(SCHEDULED_TASK_HANDOFFS_FILE);
 const agentJobQueue = new FileAgentJobQueue(AGENT_JOBS_FILE, { onChange: broadcastAgentEvent });
+const runningTaskSteering = new RunningTaskSteeringStore(RUNNING_TASK_STEERING_FILE);
+attachScheduledTaskHandoffProjection(agentJobQueue, scheduledTaskHandoffs, {
+  onError: (error) => console.warn(`[scheduled-task-handoff] continuity unavailable: ${error instanceof Error ? error.message : String(error)}`),
+});
 
 function teamConnectionFingerprint(): string {
   return createHash("sha256").update(JSON.stringify(modelConnection ? {
     provider: modelConnection.provider, protocol: modelConnection.protocol, baseUrl: modelConnection.baseUrl, apiKey: modelConnection.apiKey,
   } : null)).digest("hex");
+}
+function hasActiveModelJobs(): boolean {
+  return agentJobQueue.list({ limit: 5000 }).some((job) => job.status === "running"
+    && ["assistant-team", "capability-task", "capability-adhoc", "orchestration"].includes(job.type));
 }
 function enqueueAssistantTeam(raw: Record<string, unknown>) {
   const request = normalizeTeamRequest(raw);
@@ -470,9 +499,10 @@ function enqueueAssistantTeam(raw: Record<string, unknown>) {
     return existing;
   }
   if (!llm.live || !modelConnection) throw new AssistantTeamError("请先在设置中保存可用模型；离线演示不能算协作成功", 409);
-  if (request.model && request.model !== modelConnection.model
-    && (!modelCatalog.some((m) => m.id === request.model) || modelConnection.modelChecks?.[request.model]?.chat !== "passed")) {
-    throw new AssistantTeamError("所选模型尚未通过当前连接检查，请先在设置中检查", 409);
+  const selectedModel = request.model || modelConnection.model;
+  if (modelConnection.connectionRevision
+    && !isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[selectedModel], "chat")) {
+    throw new AssistantTeamError("所选模型尚未通过当前连接的文字检查，请先在设置中显式检查；不会自动改用其他型号", 409);
   }
   const teamPlan = assistantBots.plan(USER, { ...request, model: request.model || modelConnection.model }, {planning: request.planningConsent === true});
   return agentJobQueue.enqueue({ type: "assistant-team",
@@ -544,8 +574,13 @@ function ensureJobDelivery(job: ReturnType<FileAgentJobQueue["get"]>): DeliveryR
   });
 }
 
-function jobWithDelivery(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): typeof job & { delivery: DeliveryRecord | null } {
-  return { ...job, delivery: deliveryOutbox.getBySource("agent-job", job.id) };
+function jobWithDelivery(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): typeof job & { delivery: DeliveryRecord | null; llmCallLedgerAssociated: false } {
+  return {
+    ...job,
+    delivery: deliveryOutbox.getBySource("agent-job", job.id),
+    // Do not infer that a generic queue job owns an LLM call. Explicit surfaces add a true association.
+    llmCallLedgerAssociated: false,
+  };
 }
 
 function projectDeliveredJob(jobId: string, delivery: DeliveryRecord): void {
@@ -587,6 +622,7 @@ const companionAgentTools = createCompanionAgentToolProvider({
         metadata: { ...task.metadata, surface: input.surface || "chat" },
       })),
       surface: input.surface || "chat",
+      connectionFingerprint: teamConnectionFingerprint(),
     },
     metadata: { userId: USER, requestedBy: APP_PERSONA_ID },
     deliveryRequired: !input.surface || input.surface === "chat",
@@ -647,7 +683,7 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     }
     // Capture this connection for the whole run. A settings edit must not switch providers mid-task.
     const chat = llm.chat;
-    return runAssistantTeam(job, context, chat);
+    return runAssistantTeam(job, context, chat, { readSteering: () => runningTaskSteering.snapshot(job.id, String(job.metadata?.userId || "")) });
   },
   "hk-reminder": async (job, context) => {
     const raw = job.payload.reminder;
@@ -670,11 +706,24 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     };
   },
   "capability-task": async (job, context) => {
+    if (!llm.live || !modelConnection || job.payload.connectionFingerprint !== teamConnectionFingerprint()) {
+      throw new Error("模型连接已改变或不可用；不会把排队任务发送到另一服务，请重新确认后新建任务。");
+    }
     const taskId = String(job.payload.taskId || "").trim();
     if (!taskId) throw new Error("Agent job is missing taskId");
     context.checkpoint("正在执行能力任务", 10);
     const trigger = String(job.payload.trigger || "agent-job");
-    const notification = await capabilities.runTask(taskId, trigger, context.signal, undefined, `agent-job/${job.id}`);
+    const previousRunContext = job.metadata?.scheduled === "true"
+      ? scheduledTaskHandoffs.contextFor(taskId, String(job.payload.previousRunJobId || ""))
+      : undefined;
+    const notification = await capabilities.runTask(
+      taskId,
+      trigger,
+      context.signal,
+      undefined,
+      `agent-job/${job.id}`,
+      previousRunContext,
+    );
     context.checkpoint("产物已保存", 100, { artifactId: notification.artifact.id });
     return {
       summary: notification.text,
@@ -683,6 +732,9 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     };
   },
   "capability-adhoc": async (job, context) => {
+    if (!llm.live || !modelConnection || job.payload.connectionFingerprint !== teamConnectionFingerprint()) {
+      throw new Error("模型连接已改变或不可用；不会把排队任务发送到另一服务，请重新确认后新建任务。");
+    }
     const personaId = normalizePersonaId(String(job.payload.personaId || "").trim());
     const capabilityId = String(job.payload.capabilityId || "").trim();
     const instruction = String(job.payload.instruction || "").trim();
@@ -759,6 +811,9 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     };
   },
   orchestration: async (job, context) => {
+    if (!llm.live || !modelConnection || job.payload.connectionFingerprint !== teamConnectionFingerprint()) {
+      throw new Error("模型连接已改变或不可用；不会把排队协作发送到另一服务，请重新确认后新建任务。");
+    }
     const objective = String(job.payload.objective || "").trim();
     const taskId = String(job.payload.taskId || "").trim();
     const tasks = Array.isArray(job.payload.tasks) ? job.payload.tasks : [];
@@ -817,7 +872,7 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
   },
 });
 function enqueueDueCapabilityTasks(trigger: "time" | "turn") {
-  return enqueueScheduledCapabilities(capabilities, agentJobQueue, USER, trigger);
+  return enqueueScheduledCapabilities(capabilities, agentJobQueue, USER, trigger, scheduledTaskHandoffs, teamConnectionFingerprint());
 }
 
 const backgroundScheduler = new BackgroundScheduler([
@@ -1124,6 +1179,7 @@ function wireAgentTools(target: ResolvedLLM): void {
     ];
   });
   target.configureAgentObserver(agentRunObserver);
+  target.configureCallLedger(llmCallLedger);
   // 准则先判，判不了才落到持久化审批：never 直接拒且不打扰用户，
   // allow-automatically 直接放行，ask-first 与无准则走原来的审批卡。
   target.configureAgentAuthorizer((input) => authorizeWithGuidelines(
@@ -1140,15 +1196,17 @@ async function rebuildLLM(
   next: CompanionModelConnection | undefined,
   catalog: readonly CompanionModelInfo[] = modelCatalog,
   fetchedAt = modelCatalogFetchedAt,
+  catalogConnectionRevision = modelCatalogConnectionRevision,
 ): Promise<void> {
   if (next) {
-    const normalized = normalizeCompanionModelConnection(next);
-    normalized.modelChecks ??= {};
+    const submitted = ensureConnectionRevision(normalizeCompanionModelConnection(next));
+    const normalized = withConnectionRevision(submitted, modelConnection, submitted.apiKey !== modelConnection?.apiKey);
     // Persist successfully before changing the active connection.
-    saveSavedLLMConnection(normalized, catalog, fetchedAt);
+    saveSavedLLMConnection(normalized, catalog, fetchedAt, catalogConnectionRevision);
     modelConnection = normalized;
     modelCatalog = [...catalog];
     modelCatalogFetchedAt = fetchedAt;
+    modelCatalogConnectionRevision = catalogConnectionRevision;
     if (modelConnection.provider === "zhipu") process.env.ZHIPU_API_KEY = modelConnection.apiKey;
     else delete process.env.ZHIPU_API_KEY;
   } else {
@@ -1157,6 +1215,7 @@ async function rebuildLLM(
     modelConnection = undefined;
     modelCatalog = [];
     modelCatalogFetchedAt = "";
+    modelCatalogConnectionRevision = "";
   }
   const old = mem;
   llm = resolveLLM(modelConnection);
@@ -1202,8 +1261,12 @@ type SavedLLMConnectionFile = {
   cipher?: string;
   models?: CompanionModelInfo[];
   modelsFetchedAt?: string;
+  /** Catalog identity is separate from its timestamp so stale data can be displayed safely. */
+  catalogConnectionRevision?: string;
+  connectionRevision?: string;
   selectionMode?: "auto" | "manual";
   modelChecks?: CompanionModelConnection["modelChecks"];
+  favoriteModels?: string[];
 };
 
 function loadSavedLLMConnection(): CompanionModelConnection | undefined {
@@ -1216,17 +1279,25 @@ function loadSavedLLMConnection(): CompanionModelConnection | undefined {
   if (!existsSync(LLM_KEY_FILE)) return undefined;
   try {
     const saved = JSON.parse(readFileSync(LLM_KEY_FILE, "utf8")) as SavedLLMConnectionFile;
-    if ((saved.version === 2 || saved.version === 3) && saved.provider) {
+    if ((saved.version === 2 || saved.version === 3 || saved.version === 4) && saved.provider) {
       const apiKey = saved.cipher ? unprotectSecret(saved.cipher).trim() : "";
-      return normalizeCompanionModelConnection({
+      const loaded = ensureConnectionRevision(normalizeCompanionModelConnection({
         provider: saved.provider as CompanionModelProvider,
         protocol: saved.protocol,
         baseUrl: saved.baseUrl,
         model: saved.model,
         apiKey,
         selectionMode: saved.selectionMode === "auto" ? "auto" : "manual",
-        modelChecks: saved.modelChecks,
-      });
+        favoriteModels: saved.favoriteModels,
+        connectionRevision: saved.connectionRevision,
+      }));
+      // v2/v3 had one saved connection file, so their existing checks can be bound
+      // once to that incumbent connection. v4 has an identity already: never
+      // rebind a mismatched value merely because the process restarted.
+      loaded.modelChecks = saved.version === 4
+        ? retainModelChecksForRevision(saved.modelChecks, loaded.connectionRevision!)
+        : bindModelChecksToRevision(saved.modelChecks, loaded.connectionRevision!);
+      return loaded;
     }
     // 兼容旧版仅保存智谱 Key 的文件，成功读取后会在下次保存时自动升级结构。
     if (saved.provider === "windows-dpapi" && saved.cipher) {
@@ -1246,31 +1317,48 @@ function readSavedLLMConnectionFile(): SavedLLMConnectionFile | undefined {
 function loadSavedLLMModelCatalog(): CompanionModelInfo[] {
   if (process.env.ZHIPU_API_KEY?.trim()) return [];
   const saved = readSavedLLMConnectionFile();
-  return saved?.version === 3 && Array.isArray(saved.models) ? saved.models : [];
+  return (saved?.version === 3 || saved?.version === 4) && Array.isArray(saved.models) ? saved.models : [];
 }
 
 function loadSavedLLMModelCatalogFetchedAt(): string {
   if (process.env.ZHIPU_API_KEY?.trim()) return "";
   const saved = readSavedLLMConnectionFile();
-  return saved?.version === 3 && typeof saved.modelsFetchedAt === "string" ? saved.modelsFetchedAt : "";
+  return (saved?.version === 3 || saved?.version === 4) && typeof saved.modelsFetchedAt === "string" ? saved.modelsFetchedAt : "";
+}
+
+function loadSavedLLMModelCatalogConnectionRevision(): string {
+  if (process.env.ZHIPU_API_KEY?.trim()) return "";
+  const saved = readSavedLLMConnectionFile();
+  if (!modelConnection?.connectionRevision) return "";
+  // v3's catalog was atomically saved with its single connection, so it is safe to
+  // bind during migration. Any subsequent connection change marks it stale.
+  return saved?.version === 4 && typeof saved.catalogConnectionRevision === "string"
+    ? saved.catalogConnectionRevision
+    : modelConnection.connectionRevision;
 }
 
 function saveSavedLLMConnection(
   connection: CompanionModelConnection,
   catalog: readonly CompanionModelInfo[] = modelCatalog,
   fetchedAt = modelCatalogFetchedAt,
+  catalogConnectionRevision = modelCatalogConnectionRevision,
 ): void {
   const serialized = JSON.stringify({
-    version: 3,
+    version: 4,
     encryption: "windows-dpapi",
     provider: connection.provider,
     protocol: connection.protocol,
     baseUrl: connection.baseUrl,
     model: connection.model,
     selectionMode: connection.selectionMode || "manual",
-    modelChecks: connection.modelChecks || {},
+    connectionRevision: connection.connectionRevision,
+    // Normal saves must not turn an unbound or mismatched check into a valid one.
+    // Only the v2/v3 load migration is allowed to bind legacy single-connection data.
+    modelChecks: retainModelChecksForRevision(connection.modelChecks, connection.connectionRevision || ""),
+    favoriteModels: connection.favoriteModels || [],
     models: catalog,
     modelsFetchedAt: fetchedAt,
+    catalogConnectionRevision,
     savedAt: new Date().toISOString(),
     ...(connection.apiKey ? { cipher: protectSecret(connection.apiKey) } : {}),
   }, null, 2);
@@ -1296,6 +1384,8 @@ function modelConnectionStatus(): Record<string, unknown> {
   const isZhipu = connection.provider === "zhipu";
   const isOpenAI = connection.provider === "openai"
     && connection.baseUrl === "https://api.openai.com/v1";
+  const activeChatReady = Boolean(modelConnection
+    && isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], "chat"));
   return {
     live: llm.live,
     label: llm.label,
@@ -1305,13 +1395,18 @@ function modelConnectionStatus(): Record<string, unknown> {
     models: modelCatalog,
     reasoningEfforts: Object.fromEntries([...new Set([connection.model, ...modelCatalog.map(item => item.id)])].map(id => [id, supportedReasoningEfforts(modelConnection, id)])),
     modelsFetchedAt: modelCatalogFetchedAt || null,
+    connectionRevision: modelConnection?.connectionRevision || null,
+    catalogConnectionRevision: modelCatalogConnectionRevision || null,
+    catalogStale: Boolean(modelCatalog.length && modelCatalogConnectionRevision !== modelConnection?.connectionRevision),
     selectionMode: modelConnection?.selectionMode || "manual",
     modelChecks: modelConnection?.modelChecks || {},
+    favoriteModels: modelConnection?.favoriteModels || [],
     check: modelConnection?.modelChecks?.[modelConnection.model] || null,
+    requiresVerification: Boolean(llm.live && modelConnection?.connectionRevision && !activeChatReady),
     savedConnection: savedLLMKeyExists(),
     savedKey: savedLLMKeyExists() && connection.hasKey,
     supports: {
-      tools: modelConnection?.modelChecks?.[modelConnection.model]?.tools === "passed",
+      tools: Boolean(modelConnection && isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], "tools")),
       vectorMemory: isZhipu || isOpenAI,
       webSearch: isZhipu,
       vision: isZhipu,
@@ -1368,15 +1463,17 @@ function currentPlatformConnectors() {
 
 function capabilityProviderSummaries(): CapabilityProviderSummary[] {
   const model = publicModelConnection(modelConnection);
+  const modelReady = Boolean(llm.live && modelConnection && (!modelConnection.connectionRevision
+    || isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], "chat")));
   const toolReadiness = new Map(capabilityTools.list().map((tool) => [tool.id, tool.available]));
   const builtins: CapabilityProviderSummary[] = [
     {
       id: model.provider || "offline",
       name: model.providerName,
       kind: "model",
-      available: llm.live,
+      available: modelReady,
       model: model.model || undefined,
-      detail: llm.live ? "主模型连接可用" : "尚未连接主模型",
+      detail: modelReady ? "主模型文字能力已验证" : llm.live ? "主模型已配置，能力尚未验证" : "尚未连接主模型",
     },
     {
       id: "web-search",
@@ -2803,6 +2900,7 @@ function conversationSendOptions(body: ChatBody): {
   model?: string;
   toolMode: "auto" | "read-only" | "off";
   memoryWriteMode: "default" | "archive-only" | "off";
+  taskAttachments?: Array<{ name: string; truncated?: boolean }>;
   systemAddendum?: string;
   surface: "task" | "education";
   runtimeLimits: { maxRounds: number; maxToolRounds: number; maxTotalTokens: number; maxOutputChars: number };
@@ -2815,12 +2913,25 @@ function conversationSendOptions(body: ChatBody): {
       : { maxRounds: 4, maxToolRounds: 2, maxTotalTokens: 32_000, maxOutputChars: 10_000 };
   const model = String(body.model || "").trim();
   const requestedModel = model && model !== "default" ? model : undefined;
-  if (requestedModel) {
-    if (!modelConnection || (requestedModel !== modelConnection.model && !modelCatalog.some((item) => item.id === requestedModel))) {
-      throw new Error("所选模型已不在当前连接中，请重新选择模型；不会自动改用其他型号。");
+  const toolMode = body.toolMode === "off" ? "off" : body.toolMode === "read-only" ? "read-only" : "auto";
+  const selectedModel = selectCompanionConversationModel({
+    connection: modelConnection,
+    requestedModel,
+    target: body.target,
+    expertPersonaIds: LONG_FORM_EXPERT_IDS,
+    instruction: body.text,
+    forceTaskModel: body.reasoning === "deep" || body.workMode === "task" || body.workMode === "study",
+  });
+  const selectedModelId = selectedModel || modelConnection?.model || "";
+  // Persisted connections use a server-owned revision. Request metadata cannot
+  // grant readiness, and a failed model is never silently replaced.
+  if (modelConnection?.connectionRevision) {
+    const check = modelConnection.modelChecks?.[selectedModelId];
+    if (!isModelCheckEligible(modelConnection, check, "chat")) {
+      throw new Error(`模型 ${selectedModelId} 尚未通过当前连接的文字检查，请到设置中显式检查；不会自动改用其他型号。`);
     }
-    if (requestedModel !== modelConnection.model && modelConnection.modelChecks?.[requestedModel]?.chat !== "passed") {
-      throw new Error("所选模型尚未通过连接检查，请在任务页面重新选择并检查该模型。");
+    if (toolMode !== "off" && !isModelCheckEligible(modelConnection, check, "tools")) {
+      throw new Error(`模型 ${selectedModelId} 尚未通过当前连接的工具检查，请关闭工具或显式检查；不会自动改用其他型号。`);
     }
   }
   const teacherCore = PERSONAS.find((persona) => persona.id === "teacher_lin")?.persona || "";
@@ -2829,16 +2940,12 @@ function conversationSendOptions(body: ChatBody): {
     sessionId: body.sessionId ? String(body.sessionId).slice(0, 120) : undefined,
     reasoningEffort: resolveReasoningEffort(modelConnection, requestedModel || modelConnection?.model || "", body.reasoningEffort),
     sourceMessageId: body.messageId && /^[a-z0-9:_-]{1,160}$/i.test(body.messageId) ? body.messageId : undefined,
-    model: selectCompanionConversationModel({
-      connection: modelConnection,
-      requestedModel,
-      target: body.target,
-      expertPersonaIds: LONG_FORM_EXPERT_IDS,
-      instruction: body.text,
-      forceTaskModel: body.reasoning === "deep" || body.workMode === "task" || body.workMode === "study",
-    }),
-    toolMode: body.toolMode === "off" ? "off" : body.toolMode === "read-only" ? "read-only" : "auto",
+    model: selectedModel,
+    toolMode,
     memoryWriteMode: conversationMemoryWriteMode(body),
+    taskAttachments: body.attachment?.name
+      ? [{ name: String(body.attachment.name).slice(0, 180), ...(body.attachment.truncated ? { truncated: true } : {}) }]
+      : undefined,
     systemAddendum: body.workMode === "study"
       ? [
           "你正在通过小丑鱼的学习辅导模式回应。不要主动介绍或虚构教师姓名、性别和现实身份；保持同一对话角色与记忆连续性。",
@@ -3431,7 +3538,7 @@ async function fetchSkillMarkdownFromUrl(url: string, signal?: AbortSignal): Pro
 
 function capabilityConversationOptions(body: ChatBody) {
   const opts = conversationSendOptions(body);
-  return { ...opts.runtimeLimits, model: opts.model, toolMode: opts.toolMode, reasoningEffort: opts.reasoningEffort };
+  return { ...opts.runtimeLimits, model: opts.model, toolMode: opts.toolMode, reasoningEffort: opts.reasoningEffort, taskAttachments: opts.taskAttachments };
 }
 
 async function maybeRunCapabilityTaskFromChat(b: ChatBody, text: string): Promise<ReturnType<typeof capabilityReply> | null> {
@@ -4088,6 +4195,19 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, runs });
       return;
     }
+    if (req.method === "GET" && url.split("?")[0] === "/api/llm-calls") {
+      const query = new URLSearchParams(url.split("?")[1] || "");
+      const taskId = query.get("taskId") || undefined;
+      const runId = query.get("runId") || undefined;
+      const limit = Number(query.get("limit") || 50);
+      // Read-only operational metadata: never expose prompts, outputs, endpoints, credentials or price guesses.
+      send(res, 200, {
+        ok: true,
+        calls: llmCallLedger.list({ taskId, runId, limit }),
+        summary: llmCallLedger.summarize({ taskId, runId }),
+      });
+      return;
+    }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/run") {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id") || "";
       const run = id ? agentRunStore.get(id) : null;
@@ -4414,7 +4534,7 @@ const server = createServer(async (req, res) => {
         execute: () => agentJobQueue.enqueue({
           type: body.kind!,
           payload: body.kind === "capability-task"
-            ? { taskId: body.taskId }
+            ? { taskId: body.taskId, connectionFingerprint: teamConnectionFingerprint() }
             : {
                 title: body.title,
                 personaId: capabilityPersonaId,
@@ -4431,6 +4551,7 @@ const server = createServer(async (req, res) => {
                 format: body.format,
                 memoryMode: body.memoryMode === "off" ? "off" : body.memoryMode === "preferences" ? "preferences" : "default",
                 appliedPreferences,
+                connectionFingerprint: teamConnectionFingerprint(),
               },
           metadata: {
             userId: USER,
@@ -4569,7 +4690,7 @@ const server = createServer(async (req, res) => {
         },
         execute: () => agentJobQueue.enqueue({
           type: "orchestration",
-          payload: { objective: body.objective!.trim(), tasks, taskId: body.taskId },
+          payload: { objective: body.objective!.trim(), tasks, taskId: body.taskId, connectionFingerprint: teamConnectionFingerprint() },
           metadata: { userId: USER, ...(body.taskId ? { workTaskId: body.taskId } : {}) },
           deliveryRequired: true,
           sideEffectRisk: true,
@@ -4734,6 +4855,7 @@ const server = createServer(async (req, res) => {
         bundledPlugins: bundledCapabilityPluginCatalog({
           packageRoot: resolve(__dirname, "..", ".."),
           installedIds: extensions.map((item) => item.manifest.id),
+          installedManifests: extensions.map((item) => item.manifest),
         }).map(({ manifest: _manifest, ...item }) => item),
       });
       return;
@@ -4743,6 +4865,7 @@ const server = createServer(async (req, res) => {
       const catalog = bundledCapabilityPluginCatalog({
         packageRoot: resolve(__dirname, "..", ".."),
         installedIds: agentExtensions.list().map((item) => item.manifest.id),
+        installedManifests: agentExtensions.list().map((item) => item.manifest),
       });
       const item = catalog.find((candidate) => candidate.id === body.id);
       if (!item) { send(res, 400, { error: "未知的内置能力插件。" }); return; }
@@ -5957,7 +6080,7 @@ const server = createServer(async (req, res) => {
         arguments: { taskId: task.id, capabilityId: task.capabilityId, expertCount: assignments.length },
         execute: () => agentJobQueue.enqueue({
           type: "orchestration",
-          payload: { objective: collaborationObjective, tasks: [...expertTasks, finalTask], taskId: task.id },
+          payload: { objective: collaborationObjective, tasks: [...expertTasks, finalTask], taskId: task.id, connectionFingerprint: teamConnectionFingerprint() },
           metadata: {
             userId: USER,
             workTaskId: task.id,
@@ -5995,7 +6118,7 @@ const server = createServer(async (req, res) => {
         metadata: { personaId: task.personaId },
         execute: () => agentJobQueue.enqueue({
           type: "capability-task",
-          payload: { taskId: task.id, trigger: "manual" },
+          payload: { taskId: task.id, trigger: "manual", connectionFingerprint: teamConnectionFingerprint() },
           metadata: { userId: USER, workTaskId: task.id },
           deliveryRequired: true,
           sideEffectRisk: true,
@@ -6143,15 +6266,16 @@ const server = createServer(async (req, res) => {
       // A model that already passed the chat probe recently is reused as-is: re-probing on every
       // switch costs four model calls and freezes the picker for seconds. `force` re-runs the probe.
       const cached = modelConnection?.modelChecks?.[id];
-      if (modelConnection && cached && b.force !== true && isFreshModelCheck(cached) && modelCatalog.some((item) => item.id === id)) {
+      if (modelConnection && cached && b.force !== true && isFreshModelCheck(cached)
+        && isModelCheckEligible(modelConnection, cached, "chat")) {
         send(res, 200, { ok: true, ...modelConnectionStatus(), checkedModel: id, checked: cached, cached: true });
         return;
       }
       if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
       modelConnectionUpdating = true;
       try {
-        if (!modelConnection || !modelCatalog.some((item) => item.id === id)) throw new Error("请从当前连接的模型目录中选择型号。");
-        const check = await checkCompanionModel({ ...modelConnection, model: id });
+        if (!modelConnection) throw new Error("请先保存模型连接。");
+        const check = await checkSingleCompanionModel(modelConnection, id);
         const updated = { ...modelConnection, modelChecks: { ...modelConnection.modelChecks, [id]: check } };
         saveSavedLLMConnection(updated);
         // The active adapter shares this map; switching a task model need not rebuild memory.
@@ -6163,8 +6287,39 @@ const server = createServer(async (req, res) => {
       } finally { modelConnectionUpdating = false; }
       return;
     }
+    if (req.method === "POST" && url === "/api/llm-model/favorite") {
+      const b = (await readBody(req)) as { model?: string; favorite?: boolean };
+      if (!modelConnection) { send(res, 400, { error: "请先保存模型连接。", userMessage: "请先保存模型连接。" }); return; }
+      const id = normalizeFavoriteModels([b.model])[0];
+      if (!id) { send(res, 400, { error: "模型名称格式不正确。", userMessage: "模型名称格式不正确。" }); return; }
+      const favorites = new Set(modelConnection.favoriteModels || []);
+      if (b.favorite === false) favorites.delete(id); else favorites.add(id);
+      const updated = { ...modelConnection, favoriteModels: normalizeFavoriteModels([...favorites]) };
+      saveSavedLLMConnection(updated);
+      modelConnection = updated;
+      send(res, 200, { ok: true, ...modelConnectionStatus() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-model/catalog") {
+      if (!modelConnection) { send(res, 400, { error: "请先保存模型连接。", userMessage: "请先保存模型连接。" }); return; }
+      if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在读取模型目录，请稍后重试。" }); return; }
+      modelConnectionUpdating = true;
+      try {
+        const catalog = await discoverCompanionModels(modelConnection);
+        modelCatalog = catalog;
+        modelCatalogFetchedAt = new Date().toISOString();
+        modelCatalogConnectionRevision = modelConnection.connectionRevision || "";
+        saveSavedLLMConnection(modelConnection, catalog, modelCatalogFetchedAt, modelCatalogConnectionRevision);
+        send(res, 200, { ok: true, ...modelConnectionStatus() });
+      } catch (error) {
+        const detail = modelConnectionUserMessage(error instanceof Error ? error.message : String(error));
+        send(res, 400, { error: detail, userMessage: detail });
+      } finally { modelConnectionUpdating = false; }
+      return;
+    }
     if (req.method === "POST" && url === "/api/llm-config") {
       if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
+      if (hasActiveModelJobs()) { send(res, 409, { error: "model_jobs_active", userMessage: "有模型任务正在执行；为避免中途切换连接，请等待任务结束后再保存设置。" }); return; }
       modelConnectionUpdating = true;
       try {
       const b = (await readBody(req)) as {
@@ -6189,9 +6344,10 @@ const server = createServer(async (req, res) => {
               model: b.model,
               apiKey: key,
             });
-        let nextCatalog = modelCatalog;
-        let nextCatalogFetchedAt = modelCatalogFetchedAt;
-        let catalogWarning = "";
+        const nextCatalog = modelCatalog;
+        const nextCatalogFetchedAt = modelCatalogFetchedAt;
+        const nextCatalogRevision = modelCatalogConnectionRevision;
+        let catalogWarning = "连接已保存；请按需刷新目录，并显式检查要执行的模型。";
         if (next) {
           const connectionChanged = !modelConnection
             || modelConnection.provider !== next.provider
@@ -6199,21 +6355,11 @@ const server = createServer(async (req, res) => {
             || modelConnection.baseUrl !== next.baseUrl;
           // Never forward a saved secret to a different endpoint, even for the same provider.
           if (connectionChanged && !submittedKey) next = normalizeCompanionModelConnection({ ...next, apiKey: "" });
-          const mode = b.selectionMode === "auto" || b.selectionMode === "manual" ? b.selectionMode
-            : !connectionChanged && (modelConnection?.selectionMode === "manual" || next.model !== modelConnection?.model) ? "manual" : "auto";
-          next.modelChecks = !connectionChanged && key === modelConnection?.apiKey ? { ...modelConnection.modelChecks } : {};
-          try {
-            nextCatalog = await discoverCompanionModels(next);
-            nextCatalogFetchedAt = new Date().toISOString();
-          } catch (error) {
-            if (!(error instanceof CompanionModelHttpError) || ![404, 405, 501].includes(error.status)) throw error;
-            if (mode !== "manual" || !String(b.model || "").trim()) throw new Error("该服务不提供模型目录，请选择手动指定并填写模型名称后重试。");
-            nextCatalog = [];
-            nextCatalogFetchedAt = "";
-            catalogWarning = "服务未提供模型目录，仅验证了手动填写的型号。";
-          }
-          if (mode === "manual" && !nextCatalog.some((item) => item.id === next!.model)) nextCatalog = [...nextCatalog, { id: next.model }];
-          next = await selectCheckedCompanionModel(next, nextCatalog, mode);
+          next.selectionMode = "manual";
+          next.favoriteModels = normalizeFavoriteModels(modelConnection?.favoriteModels || []);
+          next.modelChecks = { ...(modelConnection?.modelChecks || {}) };
+          next = withConnectionRevision(next, modelConnection, key !== modelConnection?.apiKey);
+          if (!connectionChanged && key === modelConnection?.apiKey) catalogWarning = "连接与目录保持不变；未发起模型检查。";
         }
         const action = await agentUserActions.execute({
           name: "llm_connection_update",
@@ -6222,7 +6368,7 @@ const server = createServer(async (req, res) => {
             ? { provider: next.provider, protocol: next.protocol, baseUrl: next.baseUrl, model: next.model, keyUpdated: Boolean(b.key) }
             : { offline: true },
           execute: async () => {
-            await rebuildLLM(next, next ? nextCatalog : [], next ? nextCatalogFetchedAt : "");
+            await rebuildLLM(next, next ? nextCatalog : [], next ? nextCatalogFetchedAt : "", next ? nextCatalogRevision : "");
             return modelConnectionStatus();
           },
           summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider, model: value.model }),
@@ -6237,6 +6383,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url === "/api/llm-key") {
       if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
+      if (hasActiveModelJobs()) { send(res, 409, { error: "model_jobs_active", userMessage: "有模型任务正在执行；为避免中途切换连接，请等待任务结束后再保存设置。" }); return; }
       modelConnectionUpdating = true;
       try {
       // 兼容旧客户端：该入口仍按智谱连接处理。
@@ -6244,13 +6391,11 @@ const server = createServer(async (req, res) => {
       const key = String(b.key ?? "").trim();
         const action = await agentUserActions.execute({
           name: "llm_key_update",
-          description: key ? "验证并保存用户提交的智谱 Key" : "清除用户保存的模型连接",
+        description: key ? "保存旧客户端提交的智谱 Key（等待显式模型检查）" : "清除用户保存的模型连接",
           arguments: { configured: Boolean(key) },
           execute: async () => {
-            const next = key ? defaultCompanionModelConnection("zhipu", key) : undefined;
-            const catalog = next ? await discoverCompanionModels(next) : [];
-            const selected = next ? await selectCheckedCompanionModel(next, catalog, "auto") : undefined;
-            await rebuildLLM(selected, catalog, selected ? new Date().toISOString() : "");
+            const next = key ? withConnectionRevision(defaultCompanionModelConnection("zhipu", key), modelConnection, key !== modelConnection?.apiKey) : undefined;
+            await rebuildLLM(next, next ? modelCatalog : [], next ? modelCatalogFetchedAt : "", next ? modelCatalogConnectionRevision : "");
             return modelConnectionStatus();
           },
           summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider }),
@@ -6326,8 +6471,11 @@ const server = createServer(async (req, res) => {
               const state = (job.checkpoints.at(-1)?.data as {modelAdmission?: {state?: unknown}} | undefined)?.modelAdmission?.state;
               return state === "waiting" || state === "active" ? state : undefined;
             })() : undefined,
-          })), model: modelConnection?.model || "", ready: llm.live && !!modelConnection,
-            models: modelCatalog.filter((m) => m.id === modelConnection?.model || modelConnection?.modelChecks?.[m.id]?.chat === "passed").map((m) => m.id) });
+          })), model: modelConnection?.model || "", ready: Boolean(llm.live && modelConnection
+            && (!modelConnection.connectionRevision
+              || isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], "chat"))),
+            models: modelConnection ? normalizeFavoriteModels(Object.keys(modelConnection.modelChecks || {}).filter((id) =>
+              isModelCheckEligible(modelConnection!, modelConnection!.modelChecks?.[id], "chat"))) : [] });
           return;
         }
           if (req.method === "GET" && pathname === "/api/assistant-team/export") {
@@ -6348,7 +6496,16 @@ const server = createServer(async (req, res) => {
           const job = ownJobs().find((j) => j.id === id);
           if (!job) throw new AssistantTeamError("协作任务不存在", 404);
           const { connectionFingerprint: _fingerprint, ...payload } = job.payload;
-          send(res, 200, { job: { ...job, payload } }); return;
+          send(res, 200, {
+            job: {
+              ...job,
+              payload,
+              steering: runningTaskSteering.snapshot(job.id, USER),
+              // Team calls carry a real team/<job-id>/… run id. Other job kinds are not inferred.
+              llmCallLedgerAssociated: true,
+              llmCallSummary: llmCallLedger.summarize({ taskId: job.id }),
+            },
+          }); return;
         }
         if (req.method === "POST" && pathname === "/api/assistant-team/plan-preview") {
           const input = await readBody(req) as Record<string, unknown>;
@@ -6356,7 +6513,7 @@ const server = createServer(async (req, res) => {
           const plan = assistantBots.plan(USER, { requestId: "preview", objective: input.objective, assignmentMode: "auto" });
           send(res, 200, { routing: plan.routing, maxModelCalls: plan.workers.length + (plan.reviewer ? 1 : 0) + 1 }); return;
         }
-        if (req.method !== "POST" || !["/api/assistant-team/bot", "/api/assistant-team/import", "/api/assistant-team/start", "/api/assistant-team/cancel", "/api/assistant-team/retry"].includes(pathname)) {
+        if (req.method !== "POST" || !["/api/assistant-team/bot", "/api/assistant-team/import", "/api/assistant-team/start", "/api/assistant-team/cancel", "/api/assistant-team/retry", "/api/assistant-team/message"].includes(pathname)) {
           send(res, 404, { error: "unknown_team_action" }); return;
         }
         const body = await readBody(req) as Record<string, unknown>;
@@ -6374,6 +6531,15 @@ const server = createServer(async (req, res) => {
             if (pathname.endsWith("/start")) return enqueueAssistantTeam(body);
             const job = ownJobs().find((j) => j.id === body.id);
             if (!job) throw new AssistantTeamError("协作任务不存在", 404);
+            if (pathname.endsWith("/message")) {
+              const latest = job.checkpoints.map((item) => (item.data as { teamReceipt?: TeamReceipt } | undefined)?.teamReceipt).filter(Boolean).at(-1);
+              const mode = body.mode === "redirect" ? "redirect" : body.mode === "merge" ? "merge" : undefined;
+              if (!mode) throw new AssistantTeamError("请选择合并补充或转向新目标");
+              const accepted = runningTaskSteering.accept({ id: String(body.messageId || ""), jobId: job.id, userId: USER, mode, text: String(body.text || "") }, {
+                status: job.status, stage: latest ? { id: latest.stageId, name: latest.botName, state: latest.state } : undefined,
+              });
+              return { ...accepted.message, effective: accepted.effective };
+            }
             if (pathname.endsWith("/cancel")) {
               if (!["queued", "running"].includes(job.status)) throw new AssistantTeamError("任务已结束，无需取消", 409);
               return agentJobWorker.cancel(job.id);
@@ -6386,7 +6552,7 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         // 配方同意门的拒绝理由（要先预览 / 内容已变化 / 勾选了没展示过的条目）必须原样到达
         // 用户，否则会退化成一句通用失败文案，用户不知道下一步该做什么。
-        const known = error instanceof AssistantTeamError || error instanceof BotRecipeError;
+        const known = error instanceof AssistantTeamError || error instanceof BotRecipeError || error instanceof RunningTaskSteeringError;
         send(res, known ? error.status : 500, { error: "assistant_team_failed",
           userMessage: known ? error.message : "助理团队暂时无法处理请求，原有记录保留。" });
       }
@@ -6868,7 +7034,13 @@ const server = createServer(async (req, res) => {
         if (scheduledJobs.length) ev({ type: "status", text: `已将 ${scheduledJobs.length} 个轮次任务放入后台` });
         saveFam();
       } catch (e) {
-        ev({ type: "error", text: e instanceof Error ? e.message : String(e) });
+        if (e instanceof AgentTurnDispositionError) {
+          const disposition = e.disposition;
+          ev({ type: "error", disposition: disposition.state, text: e.message,
+            ...(disposition.state === "waiting_input" ? { question: disposition.question }
+              : disposition.state === "blocked" ? { blocker: disposition.blocker }
+              : disposition.reason ? { reason: disposition.reason } : {}) });
+        } else ev({ type: "error", text: e instanceof Error ? e.message : String(e) });
       }
       res.end();
       return;
@@ -6936,6 +7108,14 @@ const server = createServer(async (req, res) => {
     }
     send(res, 404, { error: "not found" });
   } catch (e) {
+    if (e instanceof AgentTurnDispositionError) {
+      const disposition = e.disposition;
+      send(res, 409, { error: "agent_turn_incomplete", disposition: disposition.state, userMessage: e.message,
+        ...(disposition.state === "waiting_input" ? { question: disposition.question }
+          : disposition.state === "blocked" ? { blocker: disposition.blocker }
+          : disposition.reason ? { reason: disposition.reason } : {}) });
+      return;
+    }
     if (e instanceof RelationshipMemoryUnavailableError) {
       send(res, 503, { error: e.code, code: e.code, userMessage: e.message });
       return;

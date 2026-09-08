@@ -60,3 +60,29 @@ body[data-ui] #heroModelStatus:not(:empty) { order: 3; flex-basis: 100%; font-si
   body[data-ui] button.cf-model-trigger .cf-model-trigger-tag { font-size: 10px; }
 }
 @media (prefers-reduced-motion: reduce) { body[data-ui] button.cf-model-trigger { transition: none; } }
+
+.model-catalog-panel { background: var(--cf-surface, #fff); border: 1px solid var(--cf-line, #dfe5e2); border-radius: 16px; padding: 16px; box-shadow: 0 18px 48px rgba(23, 45, 37, .12); }
+.model-catalog-panel > header, .model-custom-row, .model-catalog-row, .model-catalog-actions { display: flex; align-items: center; gap: 10px; }
+.model-catalog-panel > header { justify-content: space-between; margin-bottom: 12px; }
+.model-catalog-panel header small { display: block; color: var(--cf-ink-soft, #66746f); margin-top: 3px; }
+.model-custom-row { align-items: end; flex-wrap: wrap; margin-block: 12px; }
+.model-custom-row .field { flex: 1 1 240px; }
+.model-catalog-results { display: grid; gap: 6px; max-height: min(32vh, 280px); overflow: auto; padding-right: 2px; }
+.model-catalog-row { justify-content: space-between; padding: 7px 10px; border: 1px solid var(--cf-line, #dfe5e2); border-radius: 12px; background: var(--cf-surface, #fff); }
+.model-catalog-row[data-current="true"] { background: var(--cf-coral-soft, #e8f1ed); }
+.model-catalog-copy { min-width: 0; flex: 1; }
+.model-catalog-copy strong, .model-catalog-copy small { display: block; overflow-wrap: anywhere; }
+.model-catalog-copy small { color: var(--cf-ink-soft, #66746f); margin-top: 3px; }
+.model-catalog-actions { flex: 0 0 auto; flex-wrap: wrap; justify-content: end; }
+.model-catalog-actions button { padding: 6px 9px; font-size: 12px; }
+.model-catalog-more { margin-top: 10px; }
+.model-catalog-more > summary { color: var(--cf-ink-soft, #66746f); cursor: pointer; font-weight: 700; }
+@media (min-width: 681px) {
+  .model-catalog-panel { position: fixed; z-index: 40; top: 104px; left: max(240px, calc(50vw - 450px)); width: min(900px, calc(100vw - 280px)); max-height: calc(100vh - 136px); overflow: auto; }
+}
+@media (max-width: 680px) {
+  .model-catalog-panel { position: fixed; z-index: 40; inset: 12px; width: auto; max-height: calc(100vh - 24px); overflow: auto; padding: 12px; border-radius: 12px; }
+  .model-catalog-row { align-items: stretch; flex-direction: column; }
+  .model-catalog-actions { justify-content: stretch; }
+  .model-catalog-actions button { flex: 1 1 auto; }
+}

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import type {
   AgentExtensionManifest,
   AgentExtensionProvider,
@@ -16,6 +16,8 @@ export interface BundledCapabilityPluginStatus {
   description: string;
   installed: boolean;
   installable: boolean;
+  runtimeState: "dependencies-ready" | "configured-unverified" | "needs-configuration" | "missing-dependency";
+  runtimeSummary: string;
   dependencySummary: string;
   reason?: string;
   manifest: AgentExtensionManifest;
@@ -40,33 +42,131 @@ export function spawnsUnsandboxedProcess(manifest: AgentExtensionManifest): bool
 export function bundledCapabilityPluginCatalog(input: {
   packageRoot: string;
   installedIds?: readonly string[];
+  installedManifests?: readonly AgentExtensionManifest[];
+  browserExecutablePath?: string | null;
+  mediaConfigured?: boolean;
 }): BundledCapabilityPluginStatus[] {
   const installed = new Set(input.installedIds ?? []);
+  const installedManifests = new Map((input.installedManifests ?? []).map((manifest) => [manifest.id, manifest]));
   const playwrightCli = resolve(input.packageRoot, "node_modules", "@playwright", "mcp", "cli.js");
+  const browserExecutable = input.browserExecutablePath === undefined
+    ? findBrowserExecutable()
+    : input.browserExecutablePath && isBrowserExecutable(input.browserExecutablePath)
+      ? input.browserExecutablePath
+      : undefined;
+  const mediaConfigured = input.mediaConfigured ?? Boolean(
+    String(process.env.NEMOS_MEDIA_API_BASE || "").trim() &&
+    String(process.env.NEMOS_MEDIA_API_KEY || process.env.OPENAI_API_KEY || "").trim(),
+  );
   const manifests = [
-    browserManifest(playwrightCli),
+    browserManifest(playwrightCli, browserExecutable),
     safeAnalysisManifest(),
     productivityManifest(),
     mediaManifest(),
   ];
   return manifests.map((manifest) => {
-    const dependencyReady = manifest.id !== "browser.playwright" || existsSync(playwrightCli);
+    const installedManifest = installedManifests.get(manifest.id);
+    const browserCliReady = existsSync(playwrightCli);
+    const installedBrowserExecutable = installedManifest?.id === "browser.playwright"
+      ? browserExecutableForManifest(installedManifest)
+      : undefined;
+    const effectiveBrowserExecutable = installedManifest?.id === "browser.playwright"
+      ? installedBrowserExecutable
+      : browserExecutable;
+    const dependencyReady = manifest.id !== "browser.playwright" || (browserCliReady && Boolean(effectiveBrowserExecutable));
     const dependencySummary = manifest.id === "browser.playwright"
-      ? "依赖随应用安装的 Playwright MCP 和本机 Chrome；不需要云端账号。"
+      ? "需要随应用安装的 Playwright MCP，以及本机已有的 Chrome、Edge 或 Chromium；不会自动下载浏览器。"
       : manifest.id === "media.generate"
-        ? "需要用户自己的 OpenAI 兼容媒体 API 地址和密钥。"
+        ? "需要用户自己的 OpenAI 兼容媒体 API 地址和密钥；实际使用可能产生服务费用。"
+        : manifest.id === "productivity.communication-files"
+          ? "完全在本机解析用户明确提供的 EML／ICS 文件，不连接在线邮箱或日历账号。"
         : "完全在本机运行，不需要外部服务或账号。";
+    const runtimeState = manifest.id === "browser.playwright"
+      ? dependencyReady ? "dependencies-ready" : "missing-dependency"
+      : manifest.id === "media.generate"
+        ? mediaConfigured ? "configured-unverified" : "needs-configuration"
+        : "dependencies-ready";
+    const runtimeSummary = manifest.id === "browser.playwright"
+      ? dependencyReady
+        ? `依赖已就绪：已找到本机 ${browserDisplayName(effectiveBrowserExecutable!)}；尚未自动执行浏览器验证。`
+        : !browserCliReady
+          ? "缺少随应用安装的 Playwright MCP。"
+          : installedManifest
+            ? "已安装配置绑定的浏览器当前不存在；不会自动改写已有配置，需要重新安装或更新后再验证。"
+            : "缺少可运行的 Chrome、Edge 或 Chromium；请先自行安装浏览器。"
+      : manifest.id === "media.generate"
+        ? mediaConfigured
+          ? "媒体服务地址和密钥已配置，但尚未验证兼容性、权限或余额。"
+          : "需要先配置媒体服务地址和密钥；安装本身不会完成服务配置。"
+        : "本地依赖已就绪；安装后仍以实际任务结果为准。";
     return {
       id: manifest.id as BundledCapabilityPluginId,
       name: manifest.name,
       description: manifest.description,
       installed: installed.has(manifest.id),
       installable: dependencyReady,
+      runtimeState,
+      runtimeSummary,
       dependencySummary,
-      reason: dependencyReady ? undefined : "缺少官方 @playwright/mcp 依赖",
+      reason: dependencyReady
+        ? undefined
+        : browserCliReady
+          ? "缺少本机浏览器可执行文件"
+          : "缺少官方 @playwright/mcp 依赖",
       manifest,
     };
   });
+}
+
+function findBrowserExecutable(): string | undefined {
+  const candidates = process.platform === "win32"
+    ? [
+        process.env.LOCALAPPDATA && resolve(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+        process.env.PROGRAMFILES && resolve(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
+        process.env["PROGRAMFILES(X86)"] && resolve(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
+        process.env.PROGRAMFILES && resolve(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe"),
+        process.env["PROGRAMFILES(X86)"] && resolve(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe"),
+      ]
+    : process.platform === "darwin"
+      ? [
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+          "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+          "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        ]
+      : ["/usr/bin/google-chrome", "/usr/bin/microsoft-edge", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
+  return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+}
+
+function findDefaultChromeExecutable(): string | undefined {
+  const candidates = process.platform === "win32"
+    ? [
+        process.env.LOCALAPPDATA && resolve(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+        process.env.PROGRAMFILES && resolve(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
+        process.env["PROGRAMFILES(X86)"] && resolve(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
+      ]
+    : process.platform === "darwin"
+      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+      : ["/usr/bin/google-chrome"];
+  return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+}
+
+function browserExecutableForManifest(manifest: AgentExtensionManifest): string | undefined {
+  const args = manifest.runtime?.args ?? [];
+  const explicitIndex = args.indexOf("--executable-path");
+  if (explicitIndex >= 0) {
+    const explicit = args[explicitIndex + 1];
+    return explicit && isBrowserExecutable(explicit) ? explicit : undefined;
+  }
+  return findDefaultChromeExecutable();
+}
+
+function isBrowserExecutable(path: string): boolean {
+  return /^(?:chrome|msedge|chromium)(?:\.exe)?$/i.test(basename(path)) && existsSync(path);
+}
+
+function browserDisplayName(path: string): string {
+  const file = basename(path).toLowerCase();
+  return file.includes("edge") ? "Edge" : file.includes("chromium") ? "Chromium" : "Chrome";
 }
 
 export function createBundledCapabilityProvider(
@@ -79,7 +179,7 @@ export function createBundledCapabilityProvider(
   return undefined;
 }
 
-function browserManifest(playwrightCli: string): AgentExtensionManifest {
+function browserManifest(playwrightCli: string, browserExecutable?: string): AgentExtensionManifest {
   return {
     schemaVersion: 1,
     id: "browser.playwright",
@@ -91,7 +191,12 @@ function browserManifest(playwrightCli: string): AgentExtensionManifest {
     runtime: {
       type: "mcp",
       entry: process.execPath,
-      args: [playwrightCli, "--browser", "chrome", "--isolated", "--headless", "--caps", "pdf"],
+      args: [
+        playwrightCli,
+        "--browser", "chrome",
+        ...(browserExecutable ? ["--executable-path", browserExecutable] : []),
+        "--isolated", "--headless", "--caps", "pdf",
+      ],
       requestTimeoutMs: 120_000,
       sessionIdleMs: 300_000,
       maxSessions: 2,
@@ -129,9 +234,9 @@ function productivityManifest(): AgentExtensionManifest {
   return {
     schemaVersion: 1,
     id: "productivity.communication-files",
-    name: "邮件与日历文件",
+    name: "邮件／日历文件解析",
     version: "1.0.0",
-    description: "读取用户提供的 EML 邮件与 ICS 日历文本，提取发件人、主题、时间、参与者和日程冲突；不连接或修改在线账号。",
+    description: "只解析用户明确提供的 EML 邮件文件与 ICS 日历文件，提取发件人、主题、时间、参与者和日程冲突；不连接或修改在线账号。",
     kind: "connector",
     source: { type: "builtin", location: "builtin:productivity.communication-files" },
     runtime: { type: "module", entry: "builtin:productivity.communication-files", requestTimeoutMs: 15_000 },

@@ -1,12 +1,5 @@
 "use strict";
 (() => {
-  // Reviewed against official model documentation on 2026-09-07. This is a
-  // presentation shortlist, not a claim of availability or a retirement list.
-  const roles = Object.freeze({
-    "gpt-6-astra": "主力 · 复杂任务",
-    "gpt-5.6-terra": "均衡 · 日常工作",
-    "gpt-5.6-luna": "轻量 · 简单整理",
-  });
   const specialized = /(?:audio|realtime|transcrib|tts|whisper|image|dall-e|sora|embedding|moderation|codex|deep-research|search-preview)/i;
   const snapshot = /(?:\d{4}-\d{2}-\d{2}|-(?:preview|\d{4})$)/i;
   function catalog(state) {
@@ -14,41 +7,52 @@
       .filter(item => item && typeof item.id === "string" && item.id)
       .map(item => [item.id, item])).values()];
   }
-  function checkLabel(check) {
-    return !check ? "未检查" : check.chat !== "passed" ? "连接检查未通过" :
-      check.tools === "passed" ? "工具已验证" : "仅文字已验证";
+  function catalogState(state) {
+    return state?.connectionRevision && state?.catalogConnectionRevision && state.connectionRevision !== state.catalogConnectionRevision ? "stale" : "current";
+  }
+  function eligibleCheck(state, id) {
+    const check = state?.modelChecks?.[id];
+    if (!check) return undefined;
+    if (state?.connectionRevision && check.connectionRevision !== state.connectionRevision) return undefined;
+    const checkedAt = Date.parse(check.checkedAt || "");
+    if (!Number.isFinite(checkedAt) || checkedAt > Date.now() || Date.now() - checkedAt > 7 * 24 * 60 * 60 * 1000) return undefined;
+    return check;
+  }
+  function checkLabel(check, state) {
+    if (!check) return "未验证";
+    if (state?.connectionRevision && check.connectionRevision !== state.connectionRevision) return "检查已过期";
+    const checkedAt = Date.parse(check.checkedAt || "");
+    if (!Number.isFinite(checkedAt) || checkedAt > Date.now() || Date.now() - checkedAt > 7 * 24 * 60 * 60 * 1000) return "检查已过期";
+    return check.chat !== "passed" ? "当前任务用途未通过" : check.tools === "passed" ? "文字与工具已验证" : "仅文字已验证";
+  }
+  function recommendation(item) {
+    const id = String(item?.id || "");
+    if (specialized.test(id)) return "名称显示可能是专用模型；以实际能力检查为准";
+    if (snapshot.test(id)) return "名称显示可能是固定版本；可用于需要版本锁定的任务";
+    return "通用候选；目录名称不代表能力已验证";
+  }
+  function decorate(state, id, extra = {}) {
+    const found = catalog(state).find(item => item.id === id);
+    const favorites = new Set(Array.isArray(state?.favoriteModels) ? state.favoriteModels : []);
+    return { ...(found || { id }), ...extra, current: id === state?.model, favorite: favorites.has(id), directory: !!found,
+      catalogStale: catalogState(state) === "stale", check: eligibleCheck(state, id) };
   }
   function shortlist(state) {
-    const all = catalog(state);
-    const result = [];
-    const add = item => { if (item && !result.some(value => value.id === item.id)) result.push(item); };
-    // Never silently replace an explicitly configured default, even if its last
-    // check failed or a provider no longer includes it in its directory.
-    if (state?.model) add(all.find(item => item.id === state.model) || { id: state.model });
-    for (const id of Object.keys(roles)) {
-      if (result.length >= 3) break;
-      const check = state?.modelChecks?.[id];
-      if (!check || check.chat === "passed") add(all.find(item => item.id === id));
-    }
-    // Unknown providers: prefer locally checked general models, not guesses
-    // about release dates, prices, or vendor-specific names.
-    for (const item of all) {
-      if (result.length >= 3) break;
-      if (!specialized.test(item.id) && !snapshot.test(item.id) && state?.modelChecks?.[item.id]?.chat === "passed") add(item);
-    }
+    const result = [], seen = new Set();
+    const add = (id, extra) => { if (typeof id !== "string" || !id || seen.has(id)) return; seen.add(id); result.push(decorate(state, id, extra)); };
+    add(state?.model);
+    for (const id of Array.isArray(state?.favoriteModels) ? state.favoriteModels : []) add(id);
+    for (const id of Object.keys(state?.modelChecks || {})) if (eligibleCheck(state, id)?.chat === "passed") add(id);
     return result;
   }
   function taskModels(state, selected = "default") {
     const items = shortlist(state).filter(item => item.id !== state?.model || item.id === selected);
-    if (selected !== "default" && !items.some(item => item.id === selected)) {
-      const existing = catalog(state).find(item => item.id === selected);
-      items.push({ ...(existing || { id: selected }), pinned: true, missing: !existing });
-    }
+    if (selected !== "default" && !items.some(item => item.id === selected)) items.push(decorate(state, selected, { pinned: true, missing: !catalog(state).some(item => item.id === selected) }));
     return items;
   }
   function label(item, state) {
-    return [item.displayName || item.id, item.pinned ? "当前会话固定" : roles[item.id],
-      item.missing ? "已不在目录" : checkLabel(state?.modelChecks?.[item.id])].filter(Boolean).join(" · ");
+    const sources = [item.current ? "当前默认" : "", item.favorite ? "用户添加" : "", item.check?.chat === "passed" ? "已验证" : ""].filter(Boolean);
+    return [item.displayName || item.id, sources.join(" + "), item.missing ? "已不在目录" : item.catalogStale ? "目录已过期" : "", checkLabel(state?.modelChecks?.[item.id], state)].filter(Boolean).join(" · ");
   }
-  window.ClownfishModelShortlist = Object.freeze({ catalog, shortlist, taskModels, label, checkLabel });
+  window.ClownfishModelShortlist = Object.freeze({ catalog, catalogState, eligibleCheck, shortlist, taskModels, label, checkLabel, recommendation });
 })();

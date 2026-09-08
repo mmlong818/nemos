@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { AgentMessage, AgentToolDefinition } from "../../src/index.js";
-import { makeConnectionAgentModel } from "./llm.js";
+import { makeReadinessProbeAgentModel } from "./llm.js";
 import {
   CompanionModelHttpError,
-  sortCompanionModels,
   usesOpenAIResponses,
   type CompanionModelCheck,
   type CompanionModelConnection,
@@ -19,12 +18,13 @@ export async function checkCompanionModel(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const check: CompanionModelCheck = {
+    ...(connection.connectionRevision ? { connectionRevision: connection.connectionRevision } : {}),
     checkedAt: new Date().toISOString(), chat: "failed", streaming: "not-tested", tools: "not-tested",
     detail: "文字回复检查未通过。",
   };
   const maxTokens = usesOpenAIResponses(connection) ? 1024 : 512;
   const complete = (messages: AgentMessage[], stream: boolean, tools: AgentToolDefinition[] = []) =>
-    makeConnectionAgentModel({ connection, model: connection.model, maxTokens, temperature: 0, stream })
+    makeReadinessProbeAgentModel({ connection, model: connection.model, maxTokens, temperature: 0, stream })
       .complete({ messages, tools, signal: controller.signal, maxOutputTokens: maxTokens });
   const ping: AgentMessage[] = [{ role: "user", content: "Connection check. Reply only OK." }];
   // Auth, quota, outages and network failures should not trigger paid retries on other models.
@@ -81,27 +81,34 @@ export async function checkCompanionModel(
   } finally { clearTimeout(timeout); }
 }
 
-/** At most three candidates, latest catalog timestamp first; manual means exact. */
+/**
+ * Lower-level synthetic probe primitive. Product routes must invoke it only via
+ * an explicit user-initiated single-model check; saving, switching and listing
+ * are deliberately pure local operations.
+ */
+export async function checkSingleCompanionModel(
+  connection: CompanionModelConnection,
+  model: string,
+  probe: (connection: CompanionModelConnection) => Promise<CompanionModelCheck> = checkCompanionModel,
+): Promise<CompanionModelCheck> {
+  const id = model.trim();
+  if (!id || id.length > 160 || /[\r\n]/.test(id)) throw new Error("模型名称格式不正确。");
+  const checked = await probe({ ...connection, model: id });
+  return connection.connectionRevision && checked.connectionRevision !== connection.connectionRevision
+    ? { ...checked, connectionRevision: connection.connectionRevision }
+    : checked;
+}
+
+/**
+ * Compatibility export for older callers. It deliberately neither probes nor
+ * substitutes a catalog candidate: a save must preserve the user's model ID.
+ * Use checkSingleCompanionModel from an explicit user action.
+ */
 export async function selectCheckedCompanionModel(
   connection: CompanionModelConnection,
-  catalog: readonly CompanionModelInfo[],
+  _catalog: readonly CompanionModelInfo[],
   mode: "auto" | "manual",
-  probe: (connection: CompanionModelConnection) => Promise<CompanionModelCheck> = checkCompanionModel,
+  _probe?: (connection: CompanionModelConnection) => Promise<CompanionModelCheck>,
 ): Promise<CompanionModelConnection> {
-  const candidates = mode === "manual" ? [connection.model] : sortCompanionModels(catalog).slice(0, 3).map((item) => item.id);
-  const checks = { ...connection.modelChecks };
-  let chatFallback: string | undefined;
-  for (const id of candidates) {
-    const check = await probe({ ...connection, model: id });
-    checks[id] = check;
-    if (check.chat !== "passed") continue;
-    chatFallback ??= id;
-    if (check.tools === "passed" || mode === "manual") {
-      return { ...connection, model: id, selectionMode: mode, modelChecks: checks };
-    }
-  }
-  if (chatFallback) return { ...connection, model: chatFallback, selectionMode: mode, modelChecks: checks };
-  throw new Error(mode === "manual"
-    ? "指定模型的文字回复检查未通过，未改用其他模型。请检查模型名称、权限或服务兼容性；原连接未更改。"
-    : "前 3 个候选中没有通过文字回复检查的模型；原连接未更改。请手动填写账号可用的模型名称再试。");
+  return { ...connection, selectionMode: mode };
 }

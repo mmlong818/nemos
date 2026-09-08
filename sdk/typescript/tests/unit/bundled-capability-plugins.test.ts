@@ -14,7 +14,7 @@ import { platformConnectorStatuses } from "../../examples/companion/product-plat
 const packageRoot = resolve(__dirname, "../..");
 
 test("内置能力目录提供浏览器、数据、邮件日历和媒体四类可安装插件", () => {
-  const catalog = bundledCapabilityPluginCatalog({ packageRoot });
+  const catalog = bundledCapabilityPluginCatalog({ packageRoot, browserExecutablePath: null, mediaConfigured: false });
   assert.deepEqual(catalog.map((item) => item.id), [
     "browser.playwright",
     "analysis.safe-table",
@@ -23,20 +23,68 @@ test("内置能力目录提供浏览器、数据、邮件日历和媒体四类�
   ]);
   assert.equal(catalog.every((item) => validateAgentExtensionManifest(item.manifest).length === 0), true);
   assert.equal(catalog.every((item) => item.dependencySummary.length > 0), true);
-  assert.equal(catalog.find((item) => item.id === "browser.playwright")?.installable, true);
+  assert.equal(catalog.find((item) => item.id === "browser.playwright")?.installable, false);
+  assert.equal(catalog.find((item) => item.id === "browser.playwright")?.runtimeState, "missing-dependency");
   assert.match(catalog.find((item) => item.id === "analysis.safe-table")!.dependencySummary, /不需要外部服务/);
+  assert.equal(catalog.find((item) => item.id === "productivity.communication-files")?.name, "邮件／日历文件解析");
+  assert.match(catalog.find((item) => item.id === "productivity.communication-files")!.dependencySummary, /EML／ICS.*不连接在线/);
   assert.match(catalog.find((item) => item.id === "media.generate")!.dependencySummary, /API/);
+  assert.equal(catalog.find((item) => item.id === "media.generate")?.installable, true);
+  assert.equal(catalog.find((item) => item.id === "media.generate")?.runtimeState, "needs-configuration");
+  assert.equal(bundledCapabilityPluginCatalog({ packageRoot, browserExecutablePath: null })
+    .find((item) => item.id === "browser.playwright")?.runtimeState, "missing-dependency");
+  assert.equal(bundledCapabilityPluginCatalog({ packageRoot, browserExecutablePath: null })
+    .find((item) => item.id === "browser.playwright")?.installable, false);
+  assert.equal(bundledCapabilityPluginCatalog({ packageRoot, browserExecutablePath: null, mediaConfigured: true })
+    .find((item) => item.id === "media.generate")?.runtimeState, "configured-unverified");
 });
 
-test("官方 Playwright MCP 可以真实启动并发现受控浏览器工具", { timeout: 30_000 }, async () => {
+test("已安装浏览器按持久清单检查且不会被新目录路径冒充就绪", () => {
+  const fresh = bundledCapabilityPluginCatalog({ packageRoot }).find((item) => item.id === "browser.playwright")!;
+  const installed = structuredClone(fresh.manifest);
+  const args = installed.runtime?.args ?? [];
+  const explicitIndex = args.indexOf("--executable-path");
+  installed.runtime!.args = explicitIndex >= 0
+    ? [...args.slice(0, explicitIndex), "--executable-path", resolve(tmpdir(), "missing-browser", "msedge.exe"), ...args.slice(explicitIndex + 2)]
+    : [...args, "--executable-path", resolve(tmpdir(), "missing-browser", "msedge.exe")];
+  const status = bundledCapabilityPluginCatalog({
+    packageRoot,
+    installedIds: [installed.id],
+    installedManifests: [installed],
+  }).find((item) => item.id === installed.id)!;
+
+  assert.equal(status.installed, true);
+  assert.equal(status.runtimeState, "missing-dependency");
+  assert.match(status.runtimeSummary, /不会自动改写已有配置/);
+});
+
+test("官方 Playwright MCP 使用已探测浏览器真实打开并读取本机页面", { timeout: 30_000 }, async (t) => {
   const item = bundledCapabilityPluginCatalog({ packageRoot }).find((candidate) => candidate.id === "browser.playwright")!;
+  if (!item.installable) {
+    t.skip(item.reason || "本机没有可运行的浏览器依赖");
+    return;
+  }
+  const local = createServer((_request, response) => {
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    response.end("<!doctype html><title>能力验收</title><h1>本机浏览器能力可用</h1>");
+  });
+  await new Promise<void>((resolve) => local.listen(0, "127.0.0.1", resolve));
+  const address = local.address();
+  assert.equal(typeof address, "object");
   const provider = createMcpProviderFromManifest(item.manifest)!;
   try {
     const tools = await provider.discover("browser playwright", AbortSignal.timeout(20_000));
     assert.equal(tools.some((tool) => tool.name === "browser_navigate"), true);
     assert.equal(tools.some((tool) => tool.name === "browser_take_screenshot"), true);
+    const context = { runId: "browser-test", sessionId: "browser-test", signal: AbortSignal.timeout(20_000) };
+    const navigate = await provider.loadTool("browser_navigate", context.signal);
+    const navigated = await navigate.execute({ url: `http://127.0.0.1:${(address as { port: number }).port}` }, context);
+    assert.doesNotMatch(navigated.content, /### Error/);
+    const snapshot = await (await provider.loadTool("browser_snapshot", context.signal)).execute({}, context);
+    assert.match(snapshot.content, /本机浏览器能力可用/);
   } finally {
     await provider.close?.();
+    await new Promise<void>((resolve) => local.close(() => resolve()));
   }
 });
 

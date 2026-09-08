@@ -10,34 +10,36 @@ const shortlist = browser.ClownfishModelShortlist;
 const ids = (items: any[]) => Array.from(items, item => item.id);
 const model = "gpt-6-astra";
 const recommended = [model, "gpt-5.6-terra", "gpt-5.6-luna"];
+const checkedAt = new Date().toISOString();
 const fixture = () => ({
-  live: true, model, provider: "openai",
-  models: [...recommended, ...Array.from({ length: 84 }, (_, i) => `old-model-${i}`)].map(id => ({ id })),
-  modelChecks: Object.fromEntries(recommended.map(id => [id, { chat: "passed", tools: "failed" }])),
+  live: true, model, provider: "openai", connectionRevision: "revision-1", catalogConnectionRevision: "revision-1",
+  favoriteModels: ["my-private-model", "gpt-5.6-terra", "favorite-four", "favorite-five"],
+  models: [...recommended, "image-special", ...Array.from({ length: 83 }, (_, i) => `old-model-${i}`)].map(id => ({ id })),
+  modelChecks: Object.fromEntries(recommended.map(id => [id, { chat: "passed", tools: "failed", connectionRevision: "revision-1", checkedAt }])),
 });
 
-test("87 candidates become three common models without mutating provider metadata", () => {
+test("provider catalog stays separate from unlimited favorites and verified daily candidates", () => {
   const state = fixture();
   const before = JSON.stringify(state);
-  assert.deepEqual(ids(shortlist.shortlist(state)), recommended);
+  assert.deepEqual(ids(shortlist.shortlist(state)), [model, "my-private-model", "gpt-5.6-terra", "favorite-four", "favorite-five", "gpt-5.6-luna"]);
   assert.equal(JSON.stringify(state), before);
   assert.equal(shortlist.catalog(state).length, 87);
-  assert.deepEqual(ids(shortlist.taskModels(state)), recommended.slice(1));
+  assert.deepEqual(ids(shortlist.taskModels(state)), ["my-private-model", "gpt-5.6-terra", "favorite-four", "favorite-five", "gpt-5.6-luna"]);
+  assert.equal(shortlist.shortlist(state).some((item:any)=>item.id === "old-model-0"), false);
 });
 
 test("failed connections are excluded; failed tools are not mislabeled as unavailable models", () => {
   const state = fixture();
   state.modelChecks["gpt-5.6-terra"].chat = "failed";
-  assert.deepEqual(ids(shortlist.shortlist(state)), [model, "gpt-5.6-luna"]);
+  assert.ok(ids(shortlist.shortlist(state)).includes("gpt-5.6-terra"), "a failed favorite remains visible with its failure state");
   assert.equal(shortlist.checkLabel(state.modelChecks[model]), "仅文字已验证");
-  assert.equal(shortlist.checkLabel(undefined), "未检查");
+  assert.equal(shortlist.checkLabel(undefined), "未验证");
 });
 
-test("explicit default remains visible even if failed or absent from the directory", () => {
-  const state = { ...fixture(), model: "my-private-model", modelChecks: { "my-private-model": { chat: "failed" } } };
-  assert.equal(shortlist.shortlist(state)[0].id, "my-private-model");
-  assert.equal(shortlist.shortlist(state).length, 3);
-  assert.equal(shortlist.checkLabel(state.modelChecks["my-private-model"]), "连接检查未通过");
+test("explicit default and manually added IDs remain visible even when unverified or absent from directory", () => {
+  const state = { ...fixture(), model: "outside-default", favoriteModels: ["outside-favorite"], modelChecks: {} };
+  assert.deepEqual(ids(shortlist.shortlist(state)), ["outside-default", "outside-favorite"]);
+  assert.match(shortlist.label(shortlist.shortlist(state)[1], state), /用户添加.*未验证/);
 });
 
 test("fixed conversations preserve old, missing, and fixed-default selections", () => {
@@ -47,10 +49,18 @@ test("fixed conversations preserve old, missing, and fixed-default selections", 
   assert.equal(ids(shortlist.taskModels(state, model)).filter(id => id === model).length, 1);
 });
 
-test("other providers retain checked general models, not snapshots or specialized models", () => {
+test("names only recommend a purpose and never hide a verified or favorited model", () => {
   const names = ["local-main", "local-general", "local-audio", "local-codex", "local-2026-01-01", "local-preview", "unverified"];
-  const state = { model: names[0], models: names.map(id => ({ id })), modelChecks: Object.fromEntries(names.slice(0, -1).map(id => [id, { chat: "passed" }])) };
-  assert.deepEqual(ids(shortlist.shortlist(state)), names.slice(0, 2));
+  const state = { model: names[0], connectionRevision:"revision-2", catalogConnectionRevision:"revision-2", favoriteModels:["unverified"], models: names.map(id => ({ id })), modelChecks: Object.fromEntries(names.slice(0, -1).map(id => [id, { chat: "passed", connectionRevision:"revision-2", checkedAt }])) };
+  assert.deepEqual(ids(shortlist.shortlist(state)), [names[0], "unverified", ...names.slice(1, -1)]);
+  assert.match(shortlist.recommendation({id:"local-audio"}), /可能/);
+});
+
+test("stale catalog and checks stay visible but cannot qualify a model", () => {
+  const state = fixture(); state.connectionRevision="new";
+  assert.equal(shortlist.catalogState(state), "stale");
+  assert.equal(shortlist.checkLabel(state.modelChecks[model], state), "检查已过期");
+  assert.deepEqual(ids(shortlist.shortlist({...state,favoriteModels:[]})), [model]);
 });
 
 test("empty and duplicate directories are safe", () => {
@@ -58,7 +68,7 @@ test("empty and duplicate directories are safe", () => {
   assert.deepEqual(ids(shortlist.catalog({ models: [null, {}, { id: "a" }, { id: "a" }] })), ["a"]);
 });
 
-test("actual task selector renders only three options and preserves a fixed old model", () => {
+test("actual task selector renders every added or verified candidate and preserves a fixed old model", () => {
   const source = read("index.html");
   const fn = source.slice(source.indexOf("function syncTaskModelSelector()"), source.indexOf("function setActiveWorkMode("));
   for (const selected of ["default", "old-model-0", model, "missing"]) {
@@ -71,33 +81,39 @@ test("actual task selector renders only three options and preserves a fixed old 
     for (const select of Object.values(elements) as any[]) {
       assert.equal(select.value, selected);
       assert.equal(select.hidden, false);
-      assert.equal((select.innerHTML.match(/<option /g) || []).length, selected === "default" ? 3 : 4);
+      assert.equal((select.innerHTML.match(/<option /g) || []).length, selected === "default" ? 6 : 7);
       assert.match(select.innerHTML, /仅文字已验证/);
     }
   }
 });
 
-test("advanced directory toggling does not submit, change input values, or reuse another provider", () => {
+test("search opens the full provider directory without changing selection or making requests", () => {
   const source = read("assets/settings-center.js");
   const fn = source.slice(source.indexOf("function renderModelCatalog("), source.indexOf("function renderModel(state"));
-  const attrs: any = { "aria-pressed": "false" };
+  const attrs: any = {};
+  const body: any = { appendChild: (element: any) => { element.parentElement = body; } };
   const elements: any = {
-    "#modelCatalog": {}, "#modelCatalogHint": {}, "#modelProvider": { value: "openai" },
-    "#modelCatalogToggle": { getAttribute: (key: string) => attrs[key], setAttribute: (key: string, value: string) => attrs[key] = value },
+    "#modelCatalogSearch": { value: "old-model", focus() {} }, "#modelCatalogSummary": {}, "#modelCatalogHint": {},
+    "#modelCatalogResults": {}, "#modelCatalogPanel": { hidden: true },
+    "#modelCatalogToggle": {}, "#modelCatalogClose": {},
+    "#modelChoiceOpen": { setAttribute: (key: string, value: string) => attrs[key] = value, focus() {} },
   };
   runInNewContext(fn + "\nrenderModelCatalog(modelState);", {
     window: browser, modelState: fixture(), $: (id: string) => elements[id], escapeHtml: (s: any) => String(s),
+    modelCheckLabel: (check: any, state: any) => shortlist.checkLabel(check, state),
+    document: { body },
     fetch: () => assert.fail("must not call APIs"),
   });
-  const count = () => (elements["#modelCatalog"].innerHTML.match(/<option /g) || []).length;
-  assert.equal(count(), 3);
+  const count = () => (elements["#modelCatalogResults"].innerHTML.match(/<article /g) || []).length;
+  assert.equal(count(), 83);
   elements["#modelCatalogToggle"].onclick();
-  assert.equal(count(), 87);
-  elements["#modelCatalogToggle"].onclick();
-  assert.equal(count(), 3);
-  elements["#modelProvider"].value = "other";
-  elements["#modelCatalogToggle"].onclick();
-  assert.equal(attrs["aria-pressed"], "false");
+  assert.equal(elements["#modelCatalogPanel"].hidden, false);
+  assert.equal(elements["#modelCatalogSearch"].value, "");
+  assert.equal(count(), 6);
+  elements["#modelCatalogSearch"].value = "old-model";
+  elements["#modelCatalogSearch"].oninput();
+  assert.equal(count(), 83);
+  assert.equal(attrs["aria-expanded"], "true");
 });
 
 test("both pages load the shared policy before its consumers", () => {

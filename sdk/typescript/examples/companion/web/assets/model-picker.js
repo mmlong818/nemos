@@ -50,7 +50,7 @@
       const title = element("span", "cf-model-title", names[id] || id);
       if (option.value === "default") title.append(element("span", "cf-model-tag", "跟随默认"));
       copy.append(title, element("span", "cf-model-purpose", purposes[id] || "当前会话固定的型号"));
-      copy.append(element("span", "cf-model-check", option.disabled ? "已不在当前目录" : window.ClownfishModelShortlist.checkLabel(state.modelChecks?.[id])));
+      copy.append(element("span", "cf-model-check", option.disabled ? window.ClownfishModelShortlist.checkLabel(state.modelChecks?.[id], state) + " · 请到设置中检查" : window.ClownfishModelShortlist.checkLabel(state.modelChecks?.[id], state)));
       const mark = element("span", "cf-model-selected", option.value === select.value ? "✓" : "");
       mark.setAttribute("aria-hidden", "true");
       row.append(copy, mark);
@@ -148,7 +148,7 @@
     button.replaceChildren(element("span", "cf-model-name", name), element("span", "cf-model-trigger-tag", select.disabled ? "检查中…" : effort.supported.length ? effortLabel : "默认"), element("span", "cf-model-chevron", "⌄"));
     button.setAttribute("aria-label", "切换模型与思考强度，当前 " + name + (select.disabled ? "，正在检查" : "，思考强度" + effortLabel));
     button.setAttribute("aria-busy", String(select.disabled));
-    button.title = name + " · " + window.ClownfishModelShortlist.checkLabel(state?.modelChecks?.[id]);
+    button.title = name + " · " + window.ClownfishModelShortlist.checkLabel(state?.modelChecks?.[id], state);
   }
   document.addEventListener("pointerdown", event => { if (active && !active.panel.contains(event.target) && !active.button.contains(event.target)) close(); });
   document.addEventListener("focusin", event => { if (active && !active.panel.contains(event.target) && !active.button.contains(event.target)) close(); });
