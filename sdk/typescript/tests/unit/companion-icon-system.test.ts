@@ -6,6 +6,15 @@ import test from "node:test";
 
 const webRoot = join(process.cwd(), "examples", "companion", "web");
 
+function pngDimensions(image: Buffer): { width: number; height: number; colorType: number } {
+  assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  return {
+    width: image.readUInt32BE(16),
+    height: image.readUInt32BE(20),
+    colorType: image.readUInt8(25),
+  };
+}
+
 test("聊天、能力、办公文件和工作页共用同一套主导航图标", () => {
   const icons = readFileSync(join(webRoot, "assets", "app-icons.js"), "utf8");
   const pages = ["index.html", "capabilities.html", "office.html", "work.html"]
@@ -31,7 +40,9 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
   const pages = ["index.html", "capabilities.html", "office.html", "work.html"]
     .map((file) => readAppHtml(file));
   const navigation = readFileSync(join(webRoot, "assets", "app-navigation-labels.css"), "utf8");
-  const brandMark = readFileSync(join(webRoot, "assets", "brand", "clownfish-mark.svg"), "utf8");
+  const brandMark = readFileSync(join(webRoot, "assets", "brand", "clownfish-mark.png"));
+  const faviconPages = ["bots.html", "capabilities.html", "index.html", "matters.html", "office.html", "overview.html", "settings.html", "work.html"]
+    .map((file) => readAppHtml(file));
 
   for (const page of pages) {
     assert.match(page, /\/assets\/app-navigation-labels\.css/);
@@ -48,8 +59,38 @@ test("桌面左侧主导航同时显示图标和中文名称", () => {
   assert.match(navigation, /--app-nav-width: 60px/);
   assert.match(navigation, /--app-nav-gap: 4px/);
   assert.match(navigation, /--app-icon-size: 20px/);
-  assert.match(brandMark, /<rect width="64" height="64" rx="15"/);
-  assert.doesNotMatch(brandMark, /\sstroke=/);
+  assert.ok(faviconPages.every((page) => page.includes('<link rel="icon" href="/assets/brand/clownfish-mark.png"')));
+  assert.ok(pages.every((page) => page.includes('/assets/brand/clownfish-mark.png')));
+  assert.deepEqual(pngDimensions(brandMark), { width: 512, height: 512, colorType: 6 });
+});
+
+test("图标生成器只接受透明方形 PNG 并产出 Web、客户端 PNG 与多尺寸 ICO", () => {
+  const clientRoot = join(process.cwd(), "examples", "companion", "client");
+  const iconGenerator = readFileSync(join(clientRoot, "Update-Clownfish-Icons.ps1"), "utf8");
+  const clientPng = readFileSync(join(clientRoot, "assets", "clownfish-icon.png"));
+  const clientIco = readFileSync(join(clientRoot, "assets", "clownfish.ico"));
+
+  assert.match(iconGenerator, /GetExtension\(\$source\) -ne "\.png"/);
+  assert.match(iconGenerator, /\$parts\[0\] -ne "PNG"/);
+  assert.match(iconGenerator, /\$width -ne \$height/);
+  assert.match(iconGenerator, /必须包含实际透明像素/);
+  assert.match(iconGenerator, /clownfish-mark\.png/);
+  assert.match(iconGenerator, /clownfish-icon\.png/);
+  assert.match(iconGenerator, /clownfish\.ico/);
+  assert.match(iconGenerator, /\@\(16, 24, 32, 48, 64, 128, 256\)/);
+  assert.match(iconGenerator, /Assert-TransparentPng/);
+  assert.match(iconGenerator, /Assert-MultiSizeIco/);
+  assert.match(iconGenerator, /\.backup/);
+
+  assert.deepEqual(pngDimensions(clientPng), { width: 256, height: 256, colorType: 6 });
+  assert.equal(clientIco.readUInt16LE(0), 0);
+  assert.equal(clientIco.readUInt16LE(2), 1);
+  const frameCount = clientIco.readUInt16LE(4);
+  const frameSizes = Array.from({ length: frameCount }, (_, index) => {
+    const encodedWidth = clientIco.readUInt8(6 + index * 16);
+    return encodedWidth === 0 ? 256 : encodedWidth;
+  }).sort((a, b) => a - b);
+  assert.deepEqual(frameSizes, [16, 24, 32, 48, 64, 128, 256]);
 });
 
 test("角色使用功能徽记，右上角只保留对话操作", () => {
