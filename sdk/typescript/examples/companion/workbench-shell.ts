@@ -54,7 +54,7 @@ export function renderWorkbenchNavigation(path: string): string {
     { href: "/runs", label: "运行日志", icon: "·" },
   ];
   const toolsOpen = tools.some((item) => item.href.split("?")[0] === path) ? " open" : "";
-  return `<aside class="rail app-nav" aria-label="主导航" id="wbNavigation" data-product-navigation="true"><a class="brand wb-brand" href="/overview" aria-label="小丑鱼总览"><img src="/assets/brand/clownfish-mark.svg" alt="" width="36" height="36"><span>小丑鱼<small>个人助理工作台</small></span></a><button class="wb-search" id="wbSearch" type="button">搜索或跳转 <kbd>Ctrl K</kbd></button><nav aria-label="主要页面">${primary.map(link).join("")}<details class="wb-tools"${toolsOpen}><summary>管理</summary>${tools.map(link).join("")}</details><div hidden data-legacy-navigation>${legacy.map(link).join("")}</div></nav><div class="wb-bottom">${link({ href: "/settings", label: "设置", icon: "⚙", id: "settingsbtn", productKey: "settings" })}<small>本地数据 · 由你掌控</small></div></aside>`;
+  return `<aside class="rail app-nav" aria-label="主导航" id="wbNavigation" data-product-navigation="true"><a class="brand wb-brand" href="/overview" aria-label="小丑鱼总览"><img src="/assets/brand/clownfish-mark.png" alt="" width="36" height="36"><span>小丑鱼<small>个人助理工作台</small></span></a><button class="wb-search" id="wbSearch" type="button">搜索或跳转 <kbd>Ctrl K</kbd></button><nav aria-label="主要页面">${primary.map(link).join("")}<details class="wb-tools"${toolsOpen}><summary>管理</summary>${tools.map(link).join("")}</details><div hidden data-legacy-navigation>${legacy.map(link).join("")}</div></nav><div class="wb-bottom">${link({ href: "/settings", label: "设置", icon: "⚙", id: "settingsbtn", productKey: "settings" })}<small>本地数据 · 由你掌控</small></div></aside>`;
 }
 
 export function renderWorkbenchBar(): string {
