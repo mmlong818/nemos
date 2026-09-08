@@ -29,6 +29,8 @@ const ROUTES: RouteRule[] = [
   { capabilityId: "market-briefing", catalogId: "marketBrief", patterns: [/港股|股票|行情|公告|财报|盘前|盘后|自选|持仓|HKEX/i], reason: "目标需要整理市场与证券资料" },
   { capabilityId: "product-design", catalogId: "product", patterns: [/产品|界面|交互|原型|用户体验|功能设计|用户路径|操作流程|能力页|文件工作流|工作台设计/i], reason: "目标是设计产品流程或界面" },
   { capabilityId: "business-deal", catalogId: "business", patterns: [/商务|合作|销售|客户|谈判|成交|跟进/i], reason: "目标是推进商务合作" },
+  { capabilityId: "topic-evaluation", catalogId: "topic", patterns: [/选题|题材判断|内容排期/i], reason: "目标是判断哪些选题值得做" },
+  { capabilityId: "video-script", catalogId: "videoScript", patterns: [/(?:短视频|视频|口播|分镜).{0,6}脚本|脚本.{0,4}(?:分镜|口播)|口播稿/i], reason: "目标交付物是可开拍的视频脚本" },
   { capabilityId: "decision-brief", catalogId: "decision", patterns: [/决策|比较|选择|取舍|评估|该不该/i], reason: "目标是比较方案并作出判断" },
   { capabilityId: "market-opportunity", catalogId: "market", patterns: [/市场|赛道|机会|定位|竞品|增长/i], reason: "目标是评估市场机会" },
   { capabilityId: "research-brief", catalogId: "research", patterns: [/研究|调研|资料|调查|行业|搜集|分析报告|核验|威胁建模|提示注入|安全审计|隐私风险/i], reason: "目标需要检索和核验资料" },

@@ -16,7 +16,7 @@
   { id: "business", backendId: "business-deal", name: "推进商务合作", icon: "handshake", summary: "建立关键人、异议和跟进工作台", description: "梳理双方价值、关键人、异议、谈判边界和跟进动作，话术可以直接复制使用。", use: "合作、销售、谈判、跟进", deliverable: "可执行商务推进台", format: "html", detail: "准备合作策略、异议处理与跟进动作" },
   { id: "market", backendId: "market-opportunity", name: "模拟市场机会", icon: "trend", summary: "用多种情景检验机会是否成立", description: "从用户、竞争、执行和不确定性出发，调整权重比较不同情景，形成机会判断和低成本验证计划。", use: "市场洞察、机会评估、定位", deliverable: "可调节情景模拟台", format: "html", detail: "比较需求、竞争和执行情景，明确失效条件" },
   { id: "topic", backendId: "topic-evaluation", name: "评估选题", icon: "lightbulb", summary: "把一批候选选题排出优先级并说明取舍", description: "对你或「深度研究」给出的候选逐条判断做还是不做，写清理由、受众、难点和放弃的原因。不抓平台热搜，也不声称掌握实时热度。", use: "内容排期、选题取舍、二创判断", deliverable: "带排序依据的选题判断", format: "md", detail: "逐条判断、理由、受众、难点与排序依据" },
-  { id: "videoScript", backendId: "video-script", name: "写短视频脚本", icon: "document", summary: "把一个选题写成可直接开拍的脚本", description: "输出 3 个开头备选、带时间轴的分段口播与画面提示、一个结尾动作，并列出用到的平台、时长、受众、目标假设。", use: "口播视频、短视频、图文转视频", deliverable: "可照读的分段脚本", format: "md", detail: "开头备选、分段口播、画面提示与参数假设" },
+  { id: "videoScript", backendId: "video-script", name: "写短视频脚本", icon: "mic", summary: "把一个选题写成可直接开拍的脚本", description: "输出 3 个开头备选、带时间轴的分段口播与画面提示、一个结尾动作，并列出用到的平台、时长、受众、目标假设。", use: "口播视频、短视频、图文转视频", deliverable: "可照读的分段脚本", format: "md", detail: "开头备选、分段口播、画面提示与参数假设" },
   { id: "ability", backendId: "ability-builder", name: "扩展构建（高级）", icon: "branch", summary: "构建并验证本机技能扩展，不是创建文字", description: "高级工具：先判断是否值得沉淀，再生成触发边界、输入、步骤、异常路径和测试；通过检查后加入本机技能库。只需编辑文字工作规则时，请到技能库。", use: "本机技能扩展与触发测试", deliverable: "已验证并安装的本机技能", format: "html", detail: "资格判断、触发测试、技能生成和本机安装" },
 ];
   const identities = {

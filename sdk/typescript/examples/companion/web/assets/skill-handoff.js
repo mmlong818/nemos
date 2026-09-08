@@ -10,7 +10,8 @@
     ['meeting',/整理.{0,12}(?:会议|纪要)|生成.{0,12}会议纪要/],
     ['web',/(?:做|生成|制作).{0,15}(?:网页报告|html|独立网页)/i],
     ['decision',/比较方案|方案比较|对比方案/],
-    ['business',/推进商务|商务合作|谈判方案/],['market',/市场机会|机会评估/]
+    ['business',/推进商务|商务合作|谈判方案/],['market',/市场机会|机会评估/],
+    ['topic',/选题|题材判断|内容排期/],['videoScript',/(?:短视频|视频|口播|分镜).{0,6}脚本|口播稿/]
   ];
   function suggest(objective,catalog){
     // Match requested work, not instructions in attachments; negative clauses are excluded.
