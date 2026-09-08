@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.5
+
+- Added a failure registry: every failure carries a code, domain, retryability, consequence summary, and the single site that raises it; unregistered failures are reclassified and never leak the original text.
+- Collected the agent budget bounds into one source, replacing two drifting copies in the chat and resume paths.
+- Added work guidelines: user-readable natural-language rules with a `never > ask-first > allow-automatically` precedence, an evidence bar for derived rules, and an "always allow" approval that persists as an editable rule.
+- Scheduled tasks now auto-pause after repeated unread results and never resume on their own.
+- Added a presence contract so in-flight background work is described as evidence rather than instructions, with delivery separated from completion.
+- Added Bot recipes: templates may carry reusable skills and scheduled routines behind a two-step consent gate; routines are always created paused and a receipt records what landed.
+- Added a declarative outbound network policy with per-host allow and deny lists, evaluated before DNS resolution.
+- Restructured both root READMEs into open-source form and corrected stale claims about the Bot market, capability counts, and screenshots.
+
 ## 0.5.5
 
 - Unified the personal assistant workbench across tasks, Bots, capabilities, files, memory, and model settings.
