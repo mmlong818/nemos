@@ -32,7 +32,7 @@ test("task workspace groups active and attention items before ended jobs without
 
 test("filters preserve all Bots and separate text, workflows and disabled items without mutations", () => {
   const before = JSON.stringify(bots);
-  assert.equal(library.filter(bots, workflows, "all", "").workflows.length, 11);
+  assert.equal(library.filter(bots, workflows, "all", "").workflows.length, 13);
   assert.equal(library.filter(bots, workflows, "text", "").bots.length, 2);
   assert.equal(library.filter(bots, workflows, "text", "").workflows.length, 0);
   assert.equal(library.filter(bots, workflows, "workflow", "").bots.length, 0);

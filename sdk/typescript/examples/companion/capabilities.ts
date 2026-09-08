@@ -14,6 +14,7 @@ import { buildSourceConnectorGuide, listSourceConnectors, type SourceConnector }
 import { buildSourceVerificationReport, sourceVerificationMarkdown, sourceVerificationPromptBlock, type SourceVerificationReport } from "./source-verification.js";
 import { buildPrivateSourcePromptBlock } from "./private-source-connectors.js";
 import { BUNDLED_SKILLS } from "./bundled-skills.js";
+import { topicEvaluationPrompt, videoScriptPrompt } from "./media-capability-prompts.js";
 import {
   buildImagePromptRepairPrompt,
   IMAGE_PROMPT_CAPABILITY_ID,
@@ -2986,6 +2987,24 @@ const BUILTIN_ABILITIES: Capability[] = [
       "Output: trigger, required inputs, roles, ordered steps, decision points, tools or sources, output contract, checks, exception paths, handoff, and review cadence.",
       "Keep the workflow as simple as the task allows and identify which steps are safe to automate versus which need human confirmation.",
     ].join("\n"),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "topic-evaluation",
+    name: "选题评估",
+    description: "把一批候选选题排出优先级，逐条说明理由、受众、难点和不做的原因。",
+    kind: "builtin",
+    defaultFormat: "md",
+    prompt: topicEvaluationPrompt(),
+    createdAt: BUILTIN_CREATED_AT,
+  },
+  {
+    id: "video-script",
+    name: "短视频脚本",
+    description: "把一个选题写成可直接开拍的脚本：开头备选、分段口播、画面提示和结尾动作。",
+    kind: "builtin",
+    defaultFormat: "md",
+    prompt: videoScriptPrompt(),
     createdAt: BUILTIN_CREATED_AT,
   },
 ];

@@ -34,9 +34,9 @@ test('旧规则只投影、不改名称、身份、版本或正文，不从模�
   assert.equal(skills.rule({...record,placement:'market'}).enabled,false);
   assert.equal(skills.rule({...record,enabled:false}).enabled,false);
 });
-test('11 项执行技能保留原后端、格式与白名单准备地址，不升级规则权限',()=>{
+test('13 项执行技能保留原后端、格式与白名单准备地址，不升级规则权限',()=>{
   const workflows=window.ClownfishWorkflowCatalog.workflows;
-  assert.equal(workflows.length,11);
+  assert.equal(workflows.length,13);
   for(const item of workflows){const skill=skills.workflow(item);
     assert.equal(skill.backendId,item.backendId);assert.equal(skill.href,item.href);
     assert.equal(skill.execution,'capability-workflow');

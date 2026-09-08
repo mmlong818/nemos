@@ -490,7 +490,7 @@ test("能力中心页面包含独立对话、手动归档和受保护删除", ()
   assert.doesNotMatch(html, /class="view-tabs"/);
   assert.match(html, /id="capabilityArchiveList"/);
   assert.match(html, /id="capabilityArchiveSection"/);
-  assert.equal([...script.matchAll(/backendId:/g)].length, 15);
+  assert.equal([...script.matchAll(/backendId:/g)].length, 17);
   assert.doesNotMatch(script, /project-development/);
   assert.match(script, /memoryMode:[^\n]+"preferences"/);
   assert.match(script, /\/api\/agent\/job/);
