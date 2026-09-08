@@ -1,16 +1,16 @@
 # 小丑鱼能力地图
 
 状态：当前实现说明
-更新：2026-08-15
+更新：2026-09-08
 
-## 1. 面向用户的 16 项能力
+## 1. 面向用户的 15 项能力
 
 | 用户名称 | 内部能力 | 默认结果 | 主要用途 |
 |---|---|---|---|
 | 做 PPT | presentation-builder | PPTX | 汇报、提案、课程和路演 |
 | 写正式文档 | document-draft | DOCX | 方案、说明、总结和长文 |
 | 深度研究 | research-brief | HTML | 搜索、核验与可追溯结论 |
-| 查港股资料 | market-briefing | Markdown | 公告、关注列表与行情快照 |
+| 查港股资料 | market-briefing | HTML | 公告、关注列表与行情快照 |
 | 梳理复杂问题 | thinking-workbench | HTML | 事实、假设、矛盾和验证 |
 | 设计产品界面 | product-design | HTML | 用户流程、页面和验收 |
 | 整理会议纪要 | meeting-minutes | DOCX | 决定、行动项、责任与风险 |
@@ -21,7 +21,7 @@
 | 比较方案 | decision-brief | Markdown | 证据、收益、代价与失效条件 |
 | 推进商务合作 | business-deal | HTML | 关键人、异议、边界和跟进 |
 | 模拟市场机会 | market-opportunity | HTML | 需求、竞争、情景和失效条件 |
-| 生成新能力 | ability-builder | HTML | 把重复流程沉淀为本机能力 |
+| 扩展构建（高级） | ability-builder | HTML | 把重复流程沉淀为本机能力 |
 
 用户名称应稳定、直白。内部编号只用于代码、接口和测试。
 
