@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import { AgentTurnDispositionError } from "./completion.js";
+import type { AgentCompletionEvidence, AgentTurnDisposition } from "./types.js";
 
 export type AgentJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "uncertain";
 
@@ -56,6 +58,8 @@ export interface AgentJobRecord extends AgentJobInput {
   deliveredAt?: string;
   uncertainAt?: string;
   reconciliation?: AgentJobReconciliation;
+  /** Semantic task outcome; kept separate from lease/retry status. */
+  disposition?: AgentTurnDisposition;
 }
 
 export interface FileAgentJobQueueOptions {
@@ -87,6 +91,7 @@ export class FileAgentJobQueue {
   private readonly options: Required<Omit<FileAgentJobQueueOptions, "onChange">>;
   private readonly onChange?: FileAgentJobQueueOptions["onChange"];
   private readonly jobs = new Map<string, AgentJobRecord>();
+  private readonly listeners = new Set<(event: AgentJobQueueEvent) => void>();
 
   constructor(private readonly file: string, options: FileAgentJobQueueOptions = {}) {
     this.options = {
@@ -176,9 +181,12 @@ export class FileAgentJobQueue {
 
   complete(id: string, workerId: string, result: AgentJobResult): AgentJobRecord {
     const job = this.requireRunning(id, workerId);
+    const evidence = jobResultEvidence(result);
+    if (!evidence.length) throw new Error("A successful Agent job requires non-empty text, an artifact, or structured result data");
     const now = new Date().toISOString();
     job.status = "succeeded";
     job.result = sanitizeValue(result);
+    job.disposition = { state: "completed", evidence };
     job.updatedAt = now;
     job.completedAt = now;
     delete job.leaseUntil;
@@ -193,7 +201,7 @@ export class FileAgentJobQueue {
     job.error = redactText(error instanceof Error ? error.message : String(error));
     job.updatedAt = now.toISOString();
     delete job.leaseUntil;
-    if (!job.cancellationRequested && job.sideEffectRisk) {
+    if (job.sideEffectRisk) {
       job.status = "uncertain";
       job.uncertainAt = now.toISOString();
       delete job.completedAt;
@@ -203,6 +211,7 @@ export class FileAgentJobQueue {
       job.availableAt = new Date(now.getTime() + delay).toISOString();
     } else {
       job.status = job.cancellationRequested ? "cancelled" : "failed";
+      if (job.cancellationRequested) job.disposition = { state: "cancelled", reason: job.error };
       job.completedAt = now.toISOString();
     }
     this.save();
@@ -214,6 +223,7 @@ export class FileAgentJobQueue {
     const job = this.require(id);
     const now = new Date().toISOString();
     job.cancellationRequested = true;
+    job.disposition = { state: "cancelled", reason: "Agent job cancelled" };
     job.updatedAt = now;
     if (job.status === "queued") {
       job.status = "cancelled";
@@ -226,6 +236,9 @@ export class FileAgentJobQueue {
 
   retry(id: string, options: { confirmSideEffect?: boolean } = {}): AgentJobRecord {
     const job = this.require(id);
+    if (job.disposition?.state === "waiting_input" || job.disposition?.state === "blocked") {
+      throw new Error("This semantic outcome cannot resume in place; create a new Agent job with the required input or changed conditions");
+    }
     if (job.status !== "failed" && job.status !== "cancelled") {
       if (job.status === "uncertain") throw new Error("Uncertain jobs must be reconciled before retry");
       throw new Error("Only failed or cancelled jobs can be retried");
@@ -247,6 +260,7 @@ export class FileAgentJobQueue {
     delete job.error;
     delete job.uncertainAt;
     delete job.reconciliation;
+    delete job.disposition;
     this.save();
     this.emitChange("retried", job);
     return structuredClone(job);
@@ -262,6 +276,10 @@ export class FileAgentJobQueue {
     if (job.status !== "uncertain") throw new Error("Only uncertain jobs can be reconciled");
     const cleanNote = redactText(note.trim());
     if (!cleanNote) throw new Error("A reconciliation note is required");
+    const successfulEvidence = outcome === "succeeded" ? jobResultEvidence(result ?? job.result ?? { summary: "" }) : [];
+    if (outcome === "succeeded" && !successfulEvidence.length) {
+      throw new Error("A reconciled successful Agent job requires a deliverable result");
+    }
     const now = new Date().toISOString();
     job.reconciliation = { outcome, note: cleanNote, reconciledAt: now };
     job.updatedAt = now;
@@ -269,7 +287,10 @@ export class FileAgentJobQueue {
     delete job.leaseUntil;
     if (outcome === "succeeded") {
       job.status = "succeeded";
-      if (result) job.result = sanitizeValue(result);
+      if (result) {
+        job.result = sanitizeValue(result);
+      }
+      job.disposition = { state: "completed", evidence: successfulEvidence };
       delete job.error;
     } else {
       job.status = "failed";
@@ -277,6 +298,36 @@ export class FileAgentJobQueue {
     }
     this.save();
     this.emitChange("reconciled", job);
+    return structuredClone(job);
+  }
+
+  settleDisposition(
+    id: string,
+    workerId: string,
+    disposition: Exclude<AgentTurnDisposition, { state: "completed" }>,
+  ): AgentJobRecord {
+    const job = this.requireRunning(id, workerId);
+    const now = new Date().toISOString();
+    job.disposition = sanitizeValue(disposition);
+    job.error = disposition.state === "waiting_input"
+      ? disposition.question
+      : disposition.state === "blocked"
+        ? disposition.blocker
+        : disposition.reason || "Agent job cancelled";
+    job.updatedAt = now;
+    delete job.leaseUntil;
+    const observedWrite = disposition.evidence?.some((item) =>
+      (item.kind === "tool_receipt" || item.kind === "tool_attempt") && item.effect === "write") === true;
+    if (observedWrite) {
+      job.status = "uncertain";
+      job.uncertainAt = now;
+      delete job.completedAt;
+    } else {
+      job.status = disposition.state === "cancelled" ? "cancelled" : "failed";
+      job.completedAt = now;
+    }
+    this.save();
+    this.emitChange(job.status === "uncertain" ? "uncertain" : "failed", job);
     return structuredClone(job);
   }
   recoverStale(now = new Date(), includeUnexpired = false): number {
@@ -321,6 +372,12 @@ export class FileAgentJobQueue {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, limit)
       .map((job) => structuredClone(job));
+  }
+
+  /** Subscribe to in-process durable queue changes. The returned function is idempotent. */
+  subscribe(listener: (event: AgentJobQueueEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
   listPendingDeliveries(options: { limit?: number } = {}): AgentJobRecord[] {
@@ -406,10 +463,15 @@ export class FileAgentJobQueue {
   }
 
   private emitChange(action: AgentJobQueueEvent["action"], job: AgentJobRecord): void {
+    const event = { action, job: { id: job.id, status: job.status, updatedAt: job.updatedAt } } satisfies AgentJobQueueEvent;
     try {
-      this.onChange?.({ action, job: { id: job.id, status: job.status, updatedAt: job.updatedAt } });
+      this.onChange?.(event);
     } catch {
       // 进度订阅失败不能影响持久队列。
+    }
+    for (const listener of this.listeners) {
+      try { listener(event); }
+      catch { /* One observer cannot suppress other queue observers. */ }
     }
   }
 }
@@ -435,6 +497,9 @@ export class AgentJobWorker {
   private readonly active = new Map<string, AbortController>();
   private timer?: ReturnType<typeof setTimeout>;
   private stopped = true;
+  private executing = false;
+  private wakeRequested = false;
+  private unsubscribe?: () => void;
 
   constructor(
     private readonly queue: FileAgentJobQueue,
@@ -442,19 +507,29 @@ export class AgentJobWorker {
     options: AgentJobWorkerOptions = {},
   ) {
     this.workerId = options.workerId ?? `worker-${randomUUID()}`;
-    this.pollIntervalMs = Math.max(50, options.pollIntervalMs ?? 500);
+    // Queue events provide normal wakeups. This is only a bounded safety net for
+    // changes written by code that does not share this queue instance.
+    this.pollIntervalMs = Math.max(50, options.pollIntervalMs ?? 30_000);
   }
 
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
+    this.unsubscribe = this.queue.subscribe((event) => {
+      if (event.action !== "enqueued" && event.action !== "retried" && event.action !== "recovered") return;
+      if (this.executing) this.wakeRequested = true;
+      else this.schedule(0);
+    });
     this.schedule(0);
   }
 
   stop(): void {
     this.stopped = true;
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
+    this.wakeRequested = false;
   }
 
   async runOnce(): Promise<AgentJobRecord | null> {
@@ -475,6 +550,9 @@ export class AgentJobWorker {
       if (controller.signal.aborted) throw controller.signal.reason ?? new Error("cancelled");
       return this.queue.complete(job.id, this.workerId, result);
     } catch (error) {
+      if (error instanceof AgentTurnDispositionError) {
+        return this.queue.settleDisposition(job.id, this.workerId, error.disposition);
+      }
       return this.queue.fail(job.id, this.workerId, error);
     } finally {
       clearTimeout(timeout);
@@ -490,16 +568,39 @@ export class AgentJobWorker {
 
   private schedule(delay: number): void {
     if (this.stopped) return;
+    if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(async () => {
+      this.timer = undefined;
+      this.executing = true;
       try {
         const job = await this.runOnce();
-        this.schedule(job ? 0 : this.pollIntervalMs);
+        const retryDelay = job?.status === "queued"
+          ? Math.max(0, Date.parse(job.availableAt) - Date.now())
+          : 0;
+        const nextDelay = this.wakeRequested ? 0 : job ? retryDelay : this.pollIntervalMs;
+        this.wakeRequested = false;
+        this.executing = false;
+        this.schedule(nextDelay);
       } catch {
-        this.schedule(this.pollIntervalMs);
+        this.executing = false;
+        const nextDelay = this.wakeRequested ? 0 : this.pollIntervalMs;
+        this.wakeRequested = false;
+        this.schedule(nextDelay);
       }
     }, delay);
     this.timer.unref?.();
   }
+}
+
+function jobResultEvidence(result: AgentJobResult): AgentCompletionEvidence[] {
+  const evidence: AgentCompletionEvidence[] = [];
+  if (String(result.summary ?? "").trim()) evidence.push({ kind: "text", ref: "job:summary" });
+  for (const ref of result.artifactRefs ?? []) {
+    const clean = String(ref).trim();
+    if (clean) evidence.push({ kind: "artifact", ref: clean });
+  }
+  if (result.data !== undefined && result.data !== null) evidence.push({ kind: "data", ref: "job:data" });
+  return evidence;
 }
 
 function sanitizeValue<T>(value: T): T {

@@ -17,6 +17,7 @@ import type {
   AgentRunResult,
   AgentStopReason,
   AgentToolCall,
+  AgentTurnDisposition,
 } from "./types.js";
 
 export type AgentStoredRunStatus = AgentStopReason | "running" | "failed" | "interrupted";
@@ -49,6 +50,7 @@ export interface AgentStoredRun {
   handoffs: number;
   usage: AgentRunResult["usage"];
   output: string;
+  disposition?: AgentTurnDisposition;
   messages: AgentMessage[];
   events: AgentStoredEvent[];
   checkpoint?: AgentStoredCheckpoint;
@@ -425,6 +427,7 @@ export class FileAgentRunStore implements AgentRunObserver {
       run.handoffs = record.payload.result.handoffs;
       run.usage = normalizeUsage(record.payload.result.usage);
       run.output = record.payload.result.output;
+      run.disposition = record.payload.result.disposition;
       run.messages = record.payload.result.messages;
       return;
     }
@@ -641,6 +644,7 @@ function sanitizeResult(
     ...result,
     output: bounded(redactText(result.output), options.maxMessageChars),
     messages: sanitizeMessages(result.messages, options),
+    disposition: sanitizeDisposition(result.disposition, options),
   };
 }
 
@@ -655,6 +659,8 @@ function sanitizeCheckpoint(
       ...call,
       arguments: sanitizeObject(call.arguments),
     })),
+    completionEvidence: checkpoint.completionEvidence?.map((item) =>
+      sanitizeObject(item as unknown as Record<string, unknown>) as unknown as typeof item),
   };
 }
 
@@ -724,7 +730,27 @@ function sanitizeEvent(
   }
   if (event.type === "run_start") return { ...event, metadata: sanitizeMetadata(event.metadata) };
   if (event.type === "run_error") return { ...event, message: redactText(event.message) };
+  if (event.type === "turn_disposition") {
+    return { ...event, disposition: sanitizeDisposition(event.disposition, options) };
+  }
   return { ...event };
+}
+
+function sanitizeDisposition(
+  disposition: AgentTurnDisposition,
+  options: Required<FileAgentRunStoreOptions>,
+): AgentTurnDisposition {
+  const sanitized = sanitizeObject(disposition as unknown as Record<string, unknown>) as unknown as AgentTurnDisposition;
+  if (sanitized.state === "waiting_input") {
+    return { ...sanitized, question: bounded(sanitized.question, options.maxMessageChars), partialOutput: sanitized.partialOutput ? bounded(sanitized.partialOutput, options.maxMessageChars) : undefined };
+  }
+  if (sanitized.state === "blocked") {
+    return { ...sanitized, blocker: bounded(sanitized.blocker, options.maxMessageChars), partialOutput: sanitized.partialOutput ? bounded(sanitized.partialOutput, options.maxMessageChars) : undefined };
+  }
+  if (sanitized.state === "cancelled" && sanitized.reason) {
+    return { ...sanitized, reason: bounded(sanitized.reason, options.maxMessageChars) };
+  }
+  return sanitized;
 }
 
 function sanitizeMetadata(value?: Readonly<Record<string, string>>): Record<string, string> | undefined {
