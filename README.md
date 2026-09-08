@@ -25,7 +25,8 @@
 
 ## 快速开始
 
-需要 **Node.js ≥ 22.19**。Windows 优先支持（本机 Edge 渲染、文件关联、盘符/UNC 路径），Linux 与 macOS 可运行网页界面。
+需要 **Node.js ≥ 22.19**。Windows 优先支持（本机 Edge 渲染、文件关联、盘符/UNC 路径）。
+Linux 与 macOS 可运行网页界面，但**保存不了模型密钥**——落盘加密用的是 Windows DPAPI，见[已知限制](docs/model-key-storage-non-windows-2026-09-08.md)。
 
 ```powershell
 git clone https://github.com/mmlong818/nemos.git
@@ -169,7 +170,7 @@ docker compose up -d --build
 
 截至 2026-09-08：
 
-- 构建和类型检查通过，772 项自动化测试全部通过（CI 在 Linux 与 Windows 双平台运行）；
+- 构建和类型检查通过，772 项自动化测试无失败（CI 在 Linux 与 Windows 双平台运行；依赖 Blender 或 Windows DPAPI 的少数用例在缺少这些条件时按平台跳过）；
 - 核心工作台、模型调度、Bot 市场、自主协作和文件流程均有单元及隔离集成测试；
 - 官方 Playwright MCP 已完成真实进程发现；媒体连接器完成本机模拟 API 的生成、查询和下载闭环；
 - 文档转换、Office 导出、任务恢复和加密同步均有自动化验证。

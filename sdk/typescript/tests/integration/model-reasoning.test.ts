@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { startModelHarness } from "../fixtures/companion-model-harness.js";
+import { DPAPI_ONLY, startModelHarness } from "../fixtures/companion-model-harness.js";
 
-test("real isolated server forwards per-message effort for plain and streamed chat; rejects invalid efforts before calls", { timeout: 60_000 }, async () => {
+test("real isolated server forwards per-message effort for plain and streamed chat; rejects invalid efforts before calls", { timeout: 60_000, skip: DPAPI_ONLY }, async () => {
   const h = await startModelHarness();
   const post = (path: string, body: unknown) => fetch(h.base + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   try {

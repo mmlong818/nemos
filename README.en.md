@@ -25,7 +25,8 @@ Data stays on the machine by default (`~/.clownfish`), and the HTTP service list
 
 ## Quick start
 
-Requires **Node.js ≥ 22.19**. Windows is the primary target (local Edge rendering, file associations, drive/UNC paths); Linux and macOS can run the web interface.
+Requires **Node.js ≥ 22.19**. Windows is the primary target (local Edge rendering, file associations, drive/UNC paths).
+Linux and macOS can run the web interface but **cannot save a model API key** — at-rest encryption uses Windows DPAPI; see the [known limitation](docs/model-key-storage-non-windows-2026-09-08.md).
 
 ```powershell
 git clone https://github.com/mmlong818/nemos.git
@@ -169,7 +170,7 @@ The memory core is not in this repository: it lives in [nemos-memory](https://gi
 
 As of 2026-09-08:
 
-- build and type checking pass. All 772 automated tests pass, on both Linux and Windows in CI;
+- build and type checking pass. 772 automated tests with no failures, on both Linux and Windows in CI (the few cases that need Blender or Windows DPAPI are skipped where those are unavailable);
 - workbench, model scheduling, Bot market, autonomous collaboration, and file workflows have unit and isolated integration coverage;
 - official Playwright MCP tool discovery and the media connector lifecycle are covered by executable tests;
 - document conversion, Office export, task recovery, and encrypted sync have automated coverage.

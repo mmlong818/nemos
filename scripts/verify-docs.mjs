@@ -63,8 +63,11 @@ if (!companionReadme.includes(`当前能力页提供 ${publicCapabilityCount} �
 
 const rootReadme = readFileSync(join(root, "README.md"), "utf8");
 const englishReadme = readFileSync(join(root, "README.en.md"), "utf8");
-const zhTests = rootReadme.match(/(\d+) 项自动化测试全部通过/)?.[1];
-const enTests = englishReadme.match(/All (\d+) automated tests pass/)?.[1];
+// 措辞跟着 README 走：这两条正则只负责"中英说的是同一个数"，不负责句子怎么写。
+// 改 README 里这句话时必须同步改这里——否则匹配不到，zhTests 变 undefined，守卫会直接报错
+// （这是好的失效方向：宁可报错，也不要静默跳过校验）。
+const zhTests = rootReadme.match(/(\d+) 项自动化测试无失败/)?.[1];
+const enTests = englishReadme.match(/(\d+) automated tests with no failures/)?.[1];
 if (!zhTests || zhTests !== enTests) fail("中英文 README 的测试数量不一致");
 /**
  * 每个界面当前应使用的截图，逐项登记。
