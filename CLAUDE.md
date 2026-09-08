@@ -29,6 +29,10 @@ cd ..\..; node scripts\verify-docs.mjs
   会变成整文件 diff。收尾用 `git diff --stat <file>` 判断：只该有你改的那几行，整文件重写一眼可见。
   **不要用 `grep -qU $'\r'`**——Bash 工具里这段转义会被吃掉，退化成匹配字母 r，于是永远"命中"。
 - **heredoc**：bash heredoc 吃反斜杠，正则与转义序列被静默写坏。写脚本请用 Write 工具落文件。
+- **加一项能力要同步八处**：能力表、工作流目录、服务端 `ROUTES`、前端 `MATCH_RULES`、
+  `EXAMPLE_PROMPTS`、`ICON_TONES`、Bot 页图标表、`skill-handoff` 建议。漏登记不会让测试变红，
+  只会图标落兜底、占位文案为空、目标被路到别的能力。`tests/unit/catalog-registration.test.ts`
+  现在逐张表钉住全部目录项——**加能力时先跑它**。
 - **整合测试别用请求总数断言**：`assert.equal(h.requests.length, before)` 会被后台活动
   （人格简介预热、例行任务调度、记忆整合）挟持，表现为偶发失败。判据要落到"这条内容有没有
   到过模型"。`model-reasoning` 与 `buzz-adoption` 已改；`app-navigation`、`assistant-team`、

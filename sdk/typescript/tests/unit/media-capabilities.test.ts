@@ -109,22 +109,6 @@ test("脚本要求 3 个开头备选、带时间轴的分段和单一结尾动�
   assert.match(prompt, /时间轴总长必须与设定的时长一致/);
 });
 
-// 加能力时最容易漏的不是能力本身，而是这些按目录 id 建的映射表：漏一个就是图标空白、
-// 示例文案为空、或者目标被路到别的能力上。探针用的是既有的 marketBrief。
-test("按目录 id 建的映射表都登记了这两项", () => {
-  const script = readFileSync("examples/companion/web/assets/capability-center.js", "utf8");
-  const team = readFileSync("examples/companion/web/assets/assistant-team.js", "utf8");
-  const handoff = readFileSync("examples/companion/web/assets/skill-handoff.js", "utf8");
-  for (const id of ["topic", "videoScript"]) {
-    // capability-center.js 里有三张表：目标匹配规则、目标示例、卡片色。
-    assert.ok(script.includes(`["${id}", /`), `目标匹配规则缺 ${id}`);
-    assert.ok(script.includes(`  ${id}: "例如`) || script.includes(`  ${id}: "把`), `目标示例缺 ${id}`);
-    assert.ok(script.includes(`  ${id}: "#`), `卡片色缺 ${id}`);
-    assert.ok(team.includes(`${id}:"`), `Bot 页图标表缺 ${id}`);
-    assert.ok(handoff.includes(`['${id}',`), `聊天建议缺 ${id}`);
-  }
-});
-
 test("目标路由：选题不再被「评估」吃到方案比较，脚本也不再无人认领", () => {
   // 加这两条之前：「评估这几个选题」命中 decision-brief 的 /评估/，脚本则谁都不命中。
   assert.equal(routeCapability({ goal: "评估这几个选题里哪个值得做" }).capabilityId, "topic-evaluation");
