@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AgentJobRecord, AgentJobHandlerContext } from "../../src/agent/job-queue.js";
 import type { ChatFn } from "./engine.js";
 import { listBotMarket, type BotMarketTemplate } from "./bot-market.js";
+import { applyRecipe, isEmptyRecipe, normalizeBotRecipe, planRecipeImport, type RecipeConsent, type RecipeHost, type RecipeReceipt } from "./bot-recipe.js";
+import { APP_PERSONA_ID } from "./identity.js";
 import { routeAssistantTeam, type TeamRouting } from "./assistant-team-routing.js";
 import { validateExecutionPlan } from "./execution-plan.js";
 import { planTeamExecution } from "./team-planner.js";
@@ -16,6 +18,12 @@ export interface AssistantBot {
   placement?: "team" | "market";
   marketListed?: true;
   template?: { id: string; version: number; source: BotMarketTemplate["source"]; adaptation: "independent-native" };
+  /**
+   * 这个 Bot 的配方落地收据：装了什么、装到哪、哪些用户没要。
+   * 保存它是为了让用户事后仍能回答「这个 Bot 往我这里装了什么」——
+   * 只在导入时弹一次对话框，第二天就没人记得了。
+   */
+  recipeReceipt?: RecipeReceipt;
 }
 export interface TeamRequest {
   planningBudget?: number;
@@ -90,22 +98,58 @@ export class AssistantBotStore {
     if (!row) throw new AssistantTeamError("Bot 不存在或不属于当前用户", 404);
     return JSON.parse(row.payload);
   }
-  /** Atomic and idempotent per user/template; never overwrite an edited or disabled Bot. */
-  importTemplate(user: string, input: Record<string, unknown>): AssistantBot {
+  /**
+   * 添加市场模板。按用户与模板幂等，永不覆盖用户已编辑或已停用的 Bot。
+   * 带配方的模板必须附上预览阶段发放的同意令牌，见 bot-recipe。
+   *
+   * 配方在 Bot 记录写入之后才落地：落地会调用宿主安装技能、建定时任务，这些是
+   * SQLite 事务管不到的文件写入。放在事务里的话，一次技能安装失败会回滚整条 Bot
+   * 记录，但已经写进磁盘的技能文件回不来——用户就得到一个「Bot 没了但技能还在」的
+   * 状态。所以顺序是：先落 Bot，再落配方，失败逐条记在收据里。
+   */
+  importTemplate(user: string, input: Record<string, unknown>, host?: RecipeHost): AssistantBot {
     const template = listBotMarket().find((t) => t.id === input.id);
     if (!template) throw new AssistantTeamError("市场模板不存在", 404);
     if (input.version !== template.version) throw new AssistantTeamError("模板版本已变化，请刷新后重新查看", 409);
-    return this.db.transaction(() => {
+    const consent = input.consent as Partial<RecipeConsent> | undefined;
+    const wantsRecipe = !isEmptyRecipe(template.recipe)
+      && ((consent?.skills?.length ?? 0) + (consent?.routines?.length ?? 0)) > 0;
+    // 先判有没有宿主，再验令牌：没有宿主时装不了任何东西，这时候拿令牌不匹配去回答用户
+    // 只会把人引向「重新预览」这条走不通的路。
+    if (wantsRecipe && !host) {
+      throw new AssistantTeamError("当前入口无法安装这个 Bot 携带的内容，请在能力页添加", 409);
+    }
+    const plan = wantsRecipe
+      ? planRecipeImport({
+        templateId: template.id,
+        templateVersion: template.version,
+        // 必须用归一化后的配方算令牌，与预览端点保持同一个输入。
+        recipe: normalizeBotRecipe(template.recipe, host!.capabilityIds()),
+      }, consent)
+      : undefined;
+    const created = this.db.transaction(() => {
       const bots = this.list(user);
       const existing = bots.find((b) => b.template?.id === template.id);
-      if (existing) return existing;
+      if (existing) return { bot: existing, isNew: false };
       if (bots.length >= 40) throw new AssistantTeamError("最多保留 40 个 Bot", 409);
       const bot: AssistantBot = { id: `bot-${randomUUID()}`, revision: 1, name: template.name,
         role: template.role, instructions: template.instructions, enabled: true, updatedAt: new Date().toISOString(),
         template: { id: template.id, version: template.version, source: template.source, adaptation: template.adaptation } };
       this.db.prepare("INSERT INTO assistant_bots VALUES(?,?,?)").run(user, bot.id, JSON.stringify(bot));
-      return bot;
+      return { bot, isNew: true };
     })();
+    // 重复添加不重装配方：已有的 Bot 说明上次已经问过一轮，再装一遍会产生重复任务。
+    // 空计划也不写收据——「有收据」应当等价于「真的装过东西」，一份 items 为空却带着
+    // 落地时间的收据只会让用户以为发生过什么。
+    if (!created.isNew || !plan || !host || (!plan.skills.length && !plan.routines.length)) return created.bot;
+    const receipt = applyRecipe(
+      { templateId: template.id, templateVersion: template.version, personaId: APP_PERSONA_ID, plan },
+      host,
+    );
+    const withReceipt: AssistantBot = { ...created.bot, recipeReceipt: receipt };
+    this.db.prepare("UPDATE assistant_bots SET payload=? WHERE user_id=? AND id=?")
+      .run(JSON.stringify(withReceipt), user, withReceipt.id);
+    return withReceipt;
   }
   save(user: string, input: Record<string, unknown>): AssistantBot {
     return this.db.transaction(() => {
@@ -122,7 +166,10 @@ export class AssistantBotStore {
         instructions: text(merged.instructions, "工作规则", 4000, true), enabled: merged.enabled !== false,
         ...(merged.placement ? { placement: merged.placement as "team" | "market" } : {}),
         ...(old?.marketListed || merged.placement === "market" ? { marketListed: true as const } : {}),
-        updatedAt: new Date().toISOString(), ...(old?.template ? { template: old.template } : {}) };
+        updatedAt: new Date().toISOString(), ...(old?.template ? { template: old.template } : {}),
+        // 收据和来源一样不可由请求体改写：它是「这个 Bot 往我这里装了什么」的唯一记录，
+        // 编辑名称或规则不该把它清掉。
+        ...(old?.recipeReceipt ? { recipeReceipt: old.recipeReceipt } : {}) };
       this.db.prepare("INSERT INTO assistant_bots VALUES(?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET payload=excluded.payload").run(user, id, JSON.stringify(bot));
       return bot;
     })();

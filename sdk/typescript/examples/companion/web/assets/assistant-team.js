@@ -48,6 +48,14 @@
     $('#marketBotList').innerHTML=marketBots.map(b=>`<article class="bot-library-card" data-market-bot="${esc(b.id)}"><header><span class="bot-mark" data-app-icon="${library.icon(b)}" aria-hidden="true"></span><div><span class="bot-card-kind">规则模板 · 本机预览</span><h3><button data-inspect-bot="${esc(b.id)}">${esc(b.name)}</button></h3></div></header><p class="bot-card-summary">${esc(library.summary(b))}</p><footer><span class="bot-card-output">只处理本次文字 · 不调用工具</span>${b.placement==='market'?`<button class="bot-use-action" data-add-team="${esc(b.id)}">添加到技能库</button>`:'<span class="bot-card-output">已在技能库</span>'}</footer></article>`).join('');
     window.ClownfishIcons.hydrate();
   }
+  /** 配方落地收据：这个 Bot 往本机装过什么。没装过东西时不显示这一块。 */
+  function recipeReceiptHtml(bot) {
+    const view=library.recipeReceipt(bot);
+    if(!view)return '';
+    const rows=view.items.map(item=>`<li><strong>${esc(item.name)}</strong><span class="skill-receipt-kind">${esc(item.kind)}</span><span class="skill-receipt-state">${esc(item.state)}</span>${item.detail?`<span class="skill-receipt-detail">${esc(item.detail)}</span>`:''}</li>`).join('');
+    const notes=[view.pausedNote,view.declinedCount?`你当时没有选择的 ${view.declinedCount} 项没有落地。`:'',view.trustNote].filter(Boolean);
+    return `<details class="skill-recipe-receipt"><summary>这个 Bot 装了什么（${view.items.length} 项）</summary><ul class="skill-receipt-list">${rows}</ul>${notes.map(note=>`<p class="hint">${esc(note)}</p>`).join('')}</details>`;
+  }
   function inspectBot(id, workflow=false) {
     const b=(workflow?workflows:data.bots).find(item=>item.id===id);
     if(!b)return;
@@ -55,7 +63,7 @@
     const facts=[['适用场景',contract.use],['输入材料',contract.input],['处理方法',contract.steps],['交付要求',contract.output],['工具与资料权限',contract.permissions],['限制',contract.limits],['如何核对',contract.check]];
     $('#botInfoContent').innerHTML=`<p class="bot-card-kind">${esc(contract.label)}${!workflow?' · '+(b.enabled?'已启用':'已停用'):''}</p><h2 id="botInfoTitle">${esc(b.name)}</h2><p>${esc(workflow?b.description:library.summary(b))}</p><dl class="bot-info-facts">${facts.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`+(workflow
       ? `<a class="wb-primary-link bot-info-start" href="${esc(b.href)}">准备任务 →</a>`
-      : `<details class="skill-original-rules"><summary>查看完整规则 · v${esc(b.revision)}</summary><p class="bot-full-rules">${esc(b.instructions)}</p>${b.template?`<p class="hint">原模板 v${esc(b.template.version)} · 设计参考 ${esc(b.template.source?.name||'本机模板')}${b.revision>1?' · 已编辑的个人版本':''}</p>`:''}</details><div class="team-detail-actions"><button data-use-bot="${esc(b.id)}" class="primary" ${b.enabled?'':'disabled'}>使用规则</button><button data-edit-bot="${esc(b.id)}">编辑规则</button></div>`);
+      : `<details class="skill-original-rules"><summary>查看完整规则 · v${esc(b.revision)}</summary><p class="bot-full-rules">${esc(b.instructions)}</p>${b.template?`<p class="hint">原模板 v${esc(b.template.version)} · 设计参考 ${esc(b.template.source?.name||'本机模板')}${b.revision>1?' · 已编辑的个人版本':''}</p>`:''}</details>${recipeReceiptHtml(b)}<div class="team-detail-actions"><button data-use-bot="${esc(b.id)}" class="primary" ${b.enabled?'':'disabled'}>使用规则</button><button data-edit-bot="${esc(b.id)}">编辑规则</button></div>`);
     if(!workflow&&b.placement==='market') {
       $('#botInfoContent .team-detail-actions').innerHTML=`<button class="primary" data-add-team="${esc(b.id)}">添加到技能库</button>`;
     }
