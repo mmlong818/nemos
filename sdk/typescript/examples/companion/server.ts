@@ -37,6 +37,14 @@ import {
   type AgentTokenUsage,
 } from "../../src/index.js";
 import { FileDeliveryOutbox, type DeliveryRecord } from "./delivery-outbox.js";
+import {
+  WorkGuidelineStore,
+  authorizeWithGuidelines,
+  userGuideline,
+  type GuidelineBehavior,
+} from "./work-guidelines.js";
+import { type InFlightWork } from "./presence-contract.js";
+import { failureShapeByName } from "./failure-registry.js";
 import { CompanionEngine, personaNamespace } from "./engine.js";
 import { PERSONAS, RELATIONSHIPS, DEFAULT_RELATIONSHIP } from "./personas.js";
 import { LONG_FORM_EXPERT_IDS } from "./experts.js";
@@ -116,10 +124,11 @@ import { OfficeWorkbenchRevisionConflict, OfficeWorkbenchStateStore } from "./of
 import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { AgentExtensionUpdateService } from "./agent-extension-updates.js";
-import { bundledCapabilityPluginCatalog, createBundledCapabilityProvider, type BundledCapabilityPluginId } from "./bundled-capability-plugins.js";
+import { bundledCapabilityPluginCatalog, createBundledCapabilityProvider, spawnsUnsandboxedProcess, type BundledCapabilityPluginId } from "./bundled-capability-plugins.js";
 import { buildReviewQueue, groupReviewQueue, capabilityPackStatuses, extensionRuntimeReady, platformConnectorStatuses } from "./product-platform.js";
 import { routeCapability } from "./capability-router.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
+import { defaultNetworkPolicy, normalizeNetworkPolicy, NetworkPolicyError } from "./network-policy.js";
 import {
   importWeChatPrivateSource,
   loadPrivateSourcesConfig,
@@ -136,6 +145,7 @@ import { BackgroundScheduler, enqueueScheduledCapabilities } from "./background-
 import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery } from "./assistant-team.js";
 import { listBotMarket } from "./bot-market.js";
+import { isEmptyRecipe, normalizeBotRecipe, recipeConsentToken, BotRecipeError } from "./bot-recipe.js";
 import { appRoute, renderAppPage } from "./app-navigation.js";
 
 const PORT = Number(process.env.PORT || 8787);
@@ -206,6 +216,11 @@ const AGENT_APPROVALS_FILE = runtimePath("COMPANION_AGENT_APPROVALS", "agent-app
 const AGENT_JOBS_FILE = runtimePath("COMPANION_AGENT_JOBS", "agent-jobs.json");
 const DELIVERY_OUTBOX_FILE = runtimePath("COMPANION_DELIVERY_OUTBOX", "delivery-outbox.json");
 const AGENT_EXTENSIONS_FILE = runtimePath("COMPANION_AGENT_EXTENSIONS", "agent-extensions.json");
+const WORK_GUIDELINES_FILE = runtimePath("COMPANION_WORK_GUIDELINES", "work-guidelines.json");
+const NETWORK_POLICY_FILE = runtimePath("COMPANION_NETWORK_POLICY", "network-policy.json");
+const UNSANDBOXED_NOTICE_FILE = runtimePath("COMPANION_UNSANDBOXED_NOTICE", "unsandboxed-notice.json");
+/** 投递用尽重试的编号；从注册表取，避免编号在两处各写一遍。 */
+const DELIVERY_EXHAUSTED_CODE = failureShapeByName("deliveryAttemptsExhausted")!.code;
 const X_OAUTH_REDIRECT = `http://127.0.0.1:${PORT}/api/sources/x/oauth/callback`;
 const TOOL_ZHIPU_CHAT_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const TOOL_ZHIPU_ASR_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/audio/transcriptions";
@@ -256,7 +271,7 @@ function readManifest(): Record<string, unknown> {
   const fallback = {
     appId: "clownfish",
     name: "小丑鱼",
-    version: "0.5.5",
+    version: "0.7.5",
     channel: "local",
     schemaVersion: 1,
   };
@@ -324,6 +339,23 @@ let mem = makeMem();
 let engine = makeEngine();
 const agentRunStore = new FileAgentRunStore(AGENT_RUNS_FILE);
 const agentApprovalStore = new FileAgentApprovalStore(AGENT_APPROVALS_FILE, { onChange: broadcastApprovalEvent });
+const workGuidelineStore = new WorkGuidelineStore(WORK_GUIDELINES_FILE);
+/**
+ * 出站网络策略。启动时读一次，改动后立刻生效。
+ *
+ * 落盘内容被改坏时退回默认（放行 + 私网拦截），而不是退回拒绝：一份坏文件
+ * 让所有网页读取静默失效，用户看到的只是"读不出来"，排查不到原因。
+ * 坏文件的事实记在 networkPolicyLoadError 里，接口会一并返回。
+ */
+let networkPolicy = defaultNetworkPolicy();
+let networkPolicyLoadError = "";
+try {
+  if (existsSync(NETWORK_POLICY_FILE)) {
+    networkPolicy = normalizeNetworkPolicy(JSON.parse(readFileSync(NETWORK_POLICY_FILE, "utf8").replace(/^﻿/, "")));
+  }
+} catch (error) {
+  networkPolicyLoadError = error instanceof Error ? error.message : "网络策略文件无法读取";
+}
 const agentRunObserver: AgentRunObserver = {
   onStart: (input, messages) => {
     agentRunStore.onStart(input, messages);
@@ -790,6 +822,8 @@ function enqueueDueCapabilityTasks(trigger: "time" | "turn") {
 
 const backgroundScheduler = new BackgroundScheduler([
   { name: "personal-matters", run: () => { personalWork.tick(USER); } },
+  // 先暂停再入队：否则本轮还会为已经该停的任务排一次没人看的执行。
+  { name: "unread-routines", run: () => { capabilities.pauseUnreadScheduledTasks(); } },
   { name: "capabilities", run: () => { enqueueDueCapabilityTasks("time"); } },
   { name: "hk-reminders", run: () => { enqueueDueHkReminderJobs(); } },
 ]);
@@ -979,13 +1013,94 @@ function makeMem(): Nemos {
     worker: { pollIntervalMs: 400, maxAttempts: 6 },
   });
 }
+/** 读上一次整合的状态；读取本身失败不能连带打挂待处理队列。 */
+/**
+ * 无沙箱扩展的启动提示。
+ *
+ * 安装时确认过一次，但那一次确认可能是几个月前、也可能是别人替这台机器做的
+ * （比如把便携包发给别人用）。所以每次启动再提示一次：哪个扩展在无沙箱状态下运行、
+ * 这意味着什么。
+ *
+ * 确认按「扩展 id + 版本」记录：插件升版后重新提示，因为新版本能做的事可能不同。
+ */
+function unsandboxedNotice(): {
+  items: Array<{ id: string; name: string; version: string }>;
+  acknowledged: boolean;
+} {
+  const items = agentExtensions.list()
+    .filter((extension) => extension.enabled && spawnsUnsandboxedProcess(extension.manifest))
+    .map((extension) => ({
+      id: extension.manifest.id,
+      name: extension.manifest.name,
+      version: extension.manifest.version,
+    }));
+  if (!items.length) return { items, acknowledged: true };
+  const acknowledged = new Set(readJsonFile<string[]>(UNSANDBOXED_NOTICE_FILE, []));
+  return { items, acknowledged: items.every((item) => acknowledged.has(`${item.id}@${item.version}`)) };
+}
+
+function readJsonFile<T>(file: string, fallback: T): T {
+  try {
+    if (!existsSync(file)) return fallback;
+    const parsed = JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")) as unknown;
+    return Array.isArray(fallback) === Array.isArray(parsed) ? (parsed as T) : fallback;
+  } catch {
+    // 读不出就当没确认过：多提示一次是可接受的，漏提示不是。
+    return fallback;
+  }
+}
+
+function memoryConsolidationStatus(): ReturnType<CompanionEngine["memoryConsolidationState"]> | { unavailable: true } {
+  try {
+    return engine.memoryConsolidationState(USER);
+  } catch {
+    return { unavailable: true };
+  }
+}
+
 function makeEngine(): CompanionEngine {
   return new CompanionEngine(mem, PERSONAS, llm.chat, {
     asyncIngest: true,
     chatStream: llm.chatStream ?? undefined,
     userProfile: () => userProfile,
     capabilityContext: (personaId) => capabilityContextForPersona(personaId),
+    inFlightWork: (personaId) => inFlightWorkForPersona(personaId),
   });
+}
+
+/**
+ * 汇总这个角色名下还没落地的活，供在场契约注入。
+ *
+ * 「跑完但结果还没送达」必须单独成一态：任务队列说 succeeded、投递外发箱还没
+ * delivered 时，事情对用户来说并没有办完，助理不该说已经好了。
+ */
+function inFlightWorkForPersona(personaId: string): InFlightWork[] {
+  const pendingApprovalRuns = new Set(
+    agentApprovalStore.list({ status: "pending", limit: 200 }).map((item) => item.runId),
+  );
+  return agentJobQueue.list({ limit: 200 })
+    .filter((job) => !job.metadata?.personaId || job.metadata.personaId === personaId)
+    .flatMap((job): InFlightWork[] => {
+      const title = String(job.metadata?.workTaskId || job.type);
+      if (job.status === "queued") return [{ title, state: "queued", startedAt: job.createdAt }];
+      if (job.status === "running") {
+        return [{
+          title,
+          state: pendingApprovalRuns.has(job.id) ? "awaiting-approval" : "running",
+          startedAt: job.startedAt ?? job.createdAt,
+        }];
+      }
+      if (job.status !== "succeeded" || !job.deliveryRequired || job.deliveredAt) return [];
+      const delivery = deliveryOutbox.getBySource("agent-job", job.id);
+      if (delivery?.status === "delivered") return [];
+      return [{
+        title,
+        state: "done-undelivered" as const,
+        startedAt: job.startedAt ?? job.createdAt,
+        ...(delivery?.status === "failed" ? { lastFailureCode: DELIVERY_EXHAUSTED_CODE } : {}),
+      }];
+    })
+    .slice(0, 12);
 }
 
 function wireAgentTools(target: ResolvedLLM): void {
@@ -1009,7 +1124,15 @@ function wireAgentTools(target: ResolvedLLM): void {
     ];
   });
   target.configureAgentObserver(agentRunObserver);
-  target.configureAgentAuthorizer((input) => agentApprovalStore.authorize(input));
+  // 准则先判，判不了才落到持久化审批：never 直接拒且不打扰用户，
+  // allow-automatically 直接放行，ask-first 与无准则走原来的审批卡。
+  target.configureAgentAuthorizer((input) => authorizeWithGuidelines(
+    workGuidelineStore,
+    input,
+    (next) => agentApprovalStore.authorize(next),
+    (reason) => ({ allowed: false, reason }),
+    (reason) => ({ allowed: true, reason }),
+  ));
 }
 
 // 运行时切换模型连接：复用同一数据库重建记忆和对话引擎。
@@ -3023,6 +3146,7 @@ async function readWebPageContext(url: string): Promise<WebPageContext> {
           "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.3",
         },
         maxBytes: 1_000_000,
+        policy: networkPolicy,
       });
       if (![301, 302, 303, 307, 308].includes(resp.status)) break;
       const location = resp.headers.location;
@@ -3274,6 +3398,7 @@ async function fetchSkillMarkdownFromUrl(url: string, signal?: AbortSignal): Pro
           "Accept": "text/markdown,text/plain,text/html;q=0.5,*/*;q=0.2",
         },
         maxBytes: 512 * 1024,
+        policy: networkPolicy,
       });
       if (![301, 302, 303, 307, 308].includes(resp.status)) break;
       const location = resp.headers.location;
@@ -3997,13 +4122,30 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/agent/approval/decision") {
-      const body = (await readBody(req)) as { id?: string; allowed?: boolean; reason?: string };
+      const body = (await readBody(req)) as { id?: string; allowed?: boolean; reason?: string; always?: boolean };
       if (!body.id || typeof body.allowed !== "boolean") {
         send(res, 400, { error: "missing approval id or decision" });
         return;
       }
       const before = agentApprovalStore.get(body.id);
       const approval = agentApprovalStore.decide(body.id, body.allowed, body.reason);
+      // 「以后总是允许」不做成黑盒开关：落成一条用户能读、能改、能删的准则，
+      // 并且点名它只适用于这一个工具，不会顺手放开其它动作。
+      let guideline: ReturnType<typeof userGuideline> | undefined;
+      let guidelineError: string | undefined;
+      if (body.always === true && before) {
+        try {
+          guideline = workGuidelineStore.add(userGuideline({
+            text: `自动允许「${before.tool.name}」，无需每次询问。`,
+            behavior: body.allowed ? "allow-automatically" : "never",
+            match: [before.tool.name],
+            conversationId: before.sessionId,
+          }));
+        } catch (error) {
+          // 准则写入失败不能影响这次审批决定本身——它已经生效了。
+          guidelineError = error instanceof Error ? error.message : "工作准则未能保存";
+        }
+      }
       let resumeScheduled = false;
       let resumeReason: string | undefined;
       if (body.allowed && before && !before.active) {
@@ -4016,7 +4158,100 @@ const server = createServer(async (req, res) => {
         approval,
         resumeScheduled,
         resumeReason,
+        guideline,
+        guidelineError,
       });
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/unsandboxed-notice") {
+      send(res, 200, { ok: true, ...unsandboxedNotice() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/unsandboxed-notice/acknowledge") {
+      const notice = unsandboxedNotice();
+      const keys = [...new Set(notice.items.map((item) => `${item.id}@${item.version}`))];
+      const temp = `${UNSANDBOXED_NOTICE_FILE}.${process.pid}.tmp`;
+      writeFileSync(temp, JSON.stringify(keys, null, 2), "utf8");
+      renameSync(temp, UNSANDBOXED_NOTICE_FILE);
+      send(res, 200, { ok: true, acknowledged: keys });
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/network-policy") {
+      send(res, 200, {
+        ok: true,
+        policy: networkPolicy,
+        loadError: networkPolicyLoadError || undefined,
+        // 说清边界：这条策略只约束应用自身的出站读取，不约束被 spawn 的 MCP 子进程。
+        scope: "应用自身的网页读取；被 spawn 的 MCP 子进程仍只受扩展沙箱的 network 两档约束",
+      });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/network-policy") {
+      const body = (await readBody(req)) as unknown;
+      try {
+        const next = normalizeNetworkPolicy(body);
+        // 先落盘再切换：写失败时仍按旧策略工作，不会出现"重启后策略变回去了"。
+        const temp = `${NETWORK_POLICY_FILE}.${process.pid}.tmp`;
+        writeFileSync(temp, JSON.stringify(next, null, 2), "utf8");
+        renameSync(temp, NETWORK_POLICY_FILE);
+        networkPolicy = next;
+        networkPolicyLoadError = "";
+        send(res, 200, { ok: true, policy: networkPolicy });
+      } catch (error) {
+        send(res, error instanceof NetworkPolicyError ? 400 : 500, {
+          error: error instanceof NetworkPolicyError ? error.message : "网络策略无法保存",
+        });
+      }
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/agent/guidelines") {
+      send(res, 200, { ok: true, guidelines: workGuidelineStore.list() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/agent/guideline") {
+      const body = (await readBody(req)) as {
+        id?: string;
+        text?: string;
+        behavior?: GuidelineBehavior;
+        match?: string[];
+        enabled?: boolean;
+      };
+      try {
+        if (body.id) {
+          send(res, 200, {
+            ok: true,
+            guideline: workGuidelineStore.update(body.id, {
+              text: body.text,
+              behavior: body.behavior,
+              enabled: body.enabled,
+            }),
+          });
+          return;
+        }
+        if (!body.text || !body.behavior) {
+          send(res, 400, { error: "missing guideline text or behavior" });
+          return;
+        }
+        send(res, 200, {
+          ok: true,
+          guideline: workGuidelineStore.add(userGuideline({
+            text: body.text,
+            behavior: body.behavior,
+            match: Array.isArray(body.match) ? body.match : [],
+          })),
+        });
+      } catch (error) {
+        send(res, 400, { error: error instanceof Error ? error.message : "工作准则无法保存" });
+      }
+      return;
+    }
+    if (req.method === "DELETE" && url.split("?")[0] === "/api/agent/guideline") {
+      const id = new URLSearchParams(url.split("?")[1] || "").get("id") || "";
+      if (!id) {
+        send(res, 400, { error: "missing guideline id" });
+        return;
+      }
+      send(res, 200, { ok: true, removed: workGuidelineStore.remove(id) });
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/jobs") {
@@ -4513,8 +4748,16 @@ const server = createServer(async (req, res) => {
       if (!item) { send(res, 400, { error: "未知的内置能力插件。" }); return; }
       if (item.installed) { send(res, 409, { error: "这个能力插件已经安装。" }); return; }
       if (!item.installable) { send(res, 409, { error: item.reason || "这个能力插件当前无法安装。" }); return; }
-      if (item.manifest.id === "browser.playwright" && body.confirmExecutable !== true) {
-        send(res, 409, { error: "浏览器操作会启动隔离的 Chrome 进程，需要明确确认。", requiresConfirmation: true });
+      // 无沙箱的可执行扩展必须由用户确认，而且确认文案要说清它是无沙箱的。
+      // 原来这里只说"会启动隔离的 Chrome 进程"，用户确认的是一件风险没被说明的事；
+      // 而下面的 allowUnsandboxed 曾按插件 id 硬编码豁免，等于代码替用户做了决定。
+      const needsUnsandboxed = spawnsUnsandboxedProcess(item.manifest);
+      if (needsUnsandboxed && body.confirmExecutable !== true) {
+        send(res, 409, {
+          error: `${item.name} 会启动本机进程，并且不在扩展沙箱内运行：它对文件和网络的访问不受读写路径与网络策略限制。确认后才会安装。`,
+          requiresConfirmation: true,
+          unsandboxed: true,
+        });
         return;
       }
       const action = await agentUserActions.execute({
@@ -4524,7 +4767,8 @@ const server = createServer(async (req, res) => {
         execute: () => agentExtensions.install(
           item.manifest,
           createExtensionProvider(item.manifest),
-          { allowUnsandboxed: item.manifest.id === "browser.playwright" },
+          // 由这次请求带来的用户确认决定，不再按插件 id 豁免。
+          { allowUnsandboxed: needsUnsandboxed && body.confirmExecutable === true },
         ),
         summarizeResult: (extension) => ({ extensionId: extension.manifest.id, enabled: extension.enabled }),
       });
@@ -4602,6 +4846,9 @@ const server = createServer(async (req, res) => {
         items,
         groups: groupReviewQueue(items),
         relationshipMemory: relationships.getReadStatus(),
+        // 自动整合由内核自己触发、不经过应用代码，失败时这里是唯一的观察点。
+        // 不放进"需要处理"的话，记忆停止沉淀是完全静默的：用户只会觉得它最近不记事。
+        memoryConsolidation: memoryConsolidationStatus(),
         personalReminders: personalWork.reminders(USER),
       });
       return;
@@ -5515,6 +5762,34 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
     }
+    if (req.method === "POST" && url === "/api/capabilities/task/reviewed") {
+      const b = (await readBody(req)) as { id?: string };
+      if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
+      try {
+        send(res, 200, { ok: true, task: capabilities.markTaskReviewed(b.id) });
+      } catch (error) {
+        send(res, 404, { error: error instanceof Error ? error.message : "未知任务" });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/capabilities/task/resume") {
+      const b = (await readBody(req)) as { id?: string };
+      if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
+      // 恢复一个会自己跑的任务是真实动作，走和任务编辑同一条审计路径。
+      const action = await agentUserActions.execute({
+        name: "capability_task_resume",
+        description: "恢复因结果无人查看而自动暂停的计划任务",
+        arguments: { taskId: b.id },
+        execute: () => capabilities.resumeAutoPausedTask(b.id!),
+        summarizeResult: (task) => ({ ok: true, taskId: task.id }),
+      });
+      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/tasks/awaiting-resume") {
+      send(res, 200, { ok: true, tasks: capabilities.tasksAwaitingResumeDecision() });
+      return;
+    }
     if (req.method === "POST" && url === "/api/capabilities/space") {
       const b = (await readBody(req)) as {
         id?: string;
@@ -6018,6 +6293,31 @@ const server = createServer(async (req, res) => {
         if (req.method === "GET" && pathname === "/api/assistant-team/templates") {
           send(res, 200, { templates: listBotMarket() }); return;
         }
+        // 配方预览：这里是同意令牌唯一的发放点，也是唯一不改变任何状态的一步。
+        // 客户端拿不到令牌就装不了任何配方内容，因此「先看过再决定」是结构保证，
+        // 而不是靠界面顺序或提示词约束。
+        if (req.method === "GET" && pathname === "/api/assistant-team/template-recipe") {
+          const id = new URLSearchParams(url.split("?")[1] || "").get("id") || "";
+          const template = listBotMarket().find((item) => item.id === id);
+          if (!template) throw new AssistantTeamError("市场模板不存在", 404);
+          const recipe = normalizeBotRecipe(template.recipe, capabilities.listAbilities().map((item) => item.id));
+          send(res, 200, {
+            ok: true,
+            templateId: template.id,
+            templateVersion: template.version,
+            recipe,
+            empty: isEmptyRecipe(recipe),
+            consentToken: isEmptyRecipe(recipe)
+              ? null
+              : recipeConsentToken({ templateId: template.id, templateVersion: template.version, recipe }),
+            notes: [
+              "这些内容来自模板作者，添加后仍按未经核实处理。",
+              "定时任务一律先建成暂停，由你在计划面板里显式打开。",
+              "不勾选的条目不会落地。",
+            ],
+          });
+          return;
+        }
         if (req.method === "GET" && pathname === "/api/assistant-team") {
           send(res, 200, { routingVersion: 1, planningVersion: 1, bots: assistantBots.list(USER), jobs: ownJobs().slice(0, 40).map((job) => ({
             id: job.id, title: job.payload.title, status: job.status, updatedAt: job.updatedAt,
@@ -6066,7 +6366,11 @@ const server = createServer(async (req, res) => {
           arguments: { action: pathname, id: typeof body.id === "string" ? body.id : undefined },
           execute: () => {
             if (pathname.endsWith("/bot")) return assistantBots.save(USER, body);
-            if (pathname.endsWith("/import")) return assistantBots.importTemplate(USER, body);
+            if (pathname.endsWith("/import")) return assistantBots.importTemplate(USER, body, {
+              capabilityIds: () => capabilities.listAbilities().map((item) => item.id),
+              installSkill: (input) => capabilities.installSkill(input),
+              createTask: (input) => capabilities.createTask(input),
+            });
             if (pathname.endsWith("/start")) return enqueueAssistantTeam(body);
             const job = ownJobs().find((j) => j.id === body.id);
             if (!job) throw new AssistantTeamError("协作任务不存在", 404);
@@ -6080,8 +6384,11 @@ const server = createServer(async (req, res) => {
         });
         send(res, pathname.endsWith("/start") ? 202 : 200, { ok: true, record: action.value });
       } catch (error) {
-        send(res, error instanceof AssistantTeamError ? error.status : 500, { error: "assistant_team_failed",
-          userMessage: error instanceof AssistantTeamError ? error.message : "助理团队暂时无法处理请求，原有记录保留。" });
+        // 配方同意门的拒绝理由（要先预览 / 内容已变化 / 勾选了没展示过的条目）必须原样到达
+        // 用户，否则会退化成一句通用失败文案，用户不知道下一步该做什么。
+        const known = error instanceof AssistantTeamError || error instanceof BotRecipeError;
+        send(res, known ? error.status : 500, { error: "assistant_team_failed",
+          userMessage: known ? error.message : "助理团队暂时无法处理请求，原有记录保留。" });
       }
       return;
     }
