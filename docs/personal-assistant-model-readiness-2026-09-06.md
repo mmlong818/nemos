@@ -58,13 +58,15 @@
 
 回归结束后，隔离浏览器、模拟服务和测试应用均已停止；本轮浏览器测试的临时数据目录已清理，截图保留。未改动运行中的正式客户端资料。
 
-截图记录：
+截图记录在工作区 `outputs/model-readiness-2026-09-06/`：`settings-checked.png`（设置页验证结果）、
+`manual-failure.png`（手动型号失败提示）、`task-selected.png`（已有任务选模）、
+`new-task-model.png`（新建任务选模）、`task-reply.png`（实际发送与回复）。
 
-- [设置页验证结果](../../outputs/model-readiness-2026-09-06/settings-checked.png)
-- [手动型号失败提示](../../outputs/model-readiness-2026-09-06/manual-failure.png)
-- [已有任务选模](../../outputs/model-readiness-2026-09-06/task-selected.png)
-- [新建任务选模](../../outputs/model-readiness-2026-09-06/new-task-model.png)
-- [实际发送与回复](../../outputs/model-readiness-2026-09-06/task-reply.png)
+这些是本机工作区文件，**不作为仓库资产**——与本仓库其余各份验收文档同一处理。
+原先这里写的是 markdown 链接，指向 `../../outputs/…`——从 `docs/` 算起，那是**仓库外面**
+（仓库父目录下的 `outputs/`）。文件在作者机器上确实存在，所以本地链接检查一直通过，而 CI
+上没有这些文件就报失效；这个失效还一直被测试失败挡在后面，直到文档核验第一次真正在 CI 上
+跑起来才暴露。`verify-docs.mjs` 已补上"链接目标不得越出仓库根"的检查。
 
 ## 尚未声称完成的部分
 

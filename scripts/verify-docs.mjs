@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,7 +34,14 @@ for (const file of markdownFiles) {
     target = target.split(/\s+["']/)[0];
     if (!target || /^(?:https?:|mailto:|data:|#)/i.test(target)) continue;
     const localPath = decodeURIComponent(target.split("#")[0].split("?")[0]);
-    if (localPath && !existsSync(resolve(dirname(file), localPath))) {
+    if (!localPath) continue;
+    const resolved = resolve(dirname(file), localPath);
+    // 越出仓库根的链接一律失败，即使那个文件在作者机器上真的存在。
+    // 这类链接在本机静默通过、只在 CI 上失效——`../../outputs/…` 就这么骗过检查很久，
+    // 直到文档核验第一次真正在 CI 上跑起来。存在性检查必须先确认目标在仓库里。
+    if (resolved !== root && !resolved.startsWith(root + sep)) {
+      fail(`链接越出仓库根：${file.slice(root.length + 1)} -> ${target}`);
+    } else if (!existsSync(resolved)) {
       fail(`失效链接：${file.slice(root.length + 1)} -> ${target}`);
     }
   }
