@@ -113,7 +113,9 @@ test("能力运行把任务、能力和文件上下文传给各自的 Agent 表�
     });
     await runtime.runTask(reusable.id, "manual");
 
-    assert.deepEqual(surfaces, ["task", "capability", "office", "task"]);
+    // 末尾多出的 "task" 是交付物之后的「待确认判断」追问：它属于同一个任务，
+    // 因此沿用同一个表面。
+    assert.deepEqual(surfaces, ["task", "capability", "office", "task", "task"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

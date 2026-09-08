@@ -6,6 +6,9 @@ import type { AgentExtensionManifest } from "../../src/index.js";
 import type { CapabilityToolRegistry, CapabilityToolSummary, PersonaToolBinding } from "./capability-tools.js";
 import { capabilityToolFilterForSurface } from "./capability-system-registry.js";
 import { buildCapabilityRoadmap, type CapabilityRoadmap } from "./capability-roadmap.js";
+import { ROUTINE_LIMITS } from "./runtime-limits.js";
+import { openQuestionsPrompt, parseOpenQuestions, skipsOpenQuestions, type OpenQuestion } from "./deliverable-alignment.js";
+import { failureShapeByName } from "./failure-registry.js";
 import { buildDemandIntakeReport, type DemandIntakeReport } from "./demand-intake.js";
 import { buildSourceConnectorGuide, listSourceConnectors, type SourceConnector } from "./source-connectors.js";
 import { buildSourceVerificationReport, sourceVerificationMarkdown, sourceVerificationPromptBlock, type SourceVerificationReport } from "./source-verification.js";
@@ -162,6 +165,9 @@ export interface CapabilitySpace {
   updatedAt: string;
 }
 
+/** 自动暂停使用的失败编号；从注册表取，避免编号在两处各写一遍。 */
+const UNREAD_ROUTINE_PAUSE_CODE = failureShapeByName("routinePausedUnread")!.code;
+
 export interface CapabilityTask {
   id: string;
   title: string;
@@ -186,6 +192,15 @@ export interface CapabilityTask {
   oneOff?: boolean;
   /** 用户主动收起后的时间；未设置时继续显示在能力页首页。 */
   archivedAt?: string;
+  /**
+   * 连续产出了多少次结果还没被人看过。查看结果会归零。
+   * 计划任务在无人读结果时继续跑，只是在稳定地花模型额度换没人看的产物——
+   * 这个计数是自动暂停的依据。
+   */
+  unreadRuns?: number;
+  lastReviewedAt?: string;
+  /** 自动暂停的原因编号（见 failure-registry）。用户显式恢复后清空。 */
+  autoPausedCode?: string;
   storyline: CapabilityTaskStoryline;
 }
 
@@ -224,6 +239,8 @@ export interface CapabilityArtifact {
     presentationVisualReview?: import("./presentation-visual-review.js").PresentationVisualReview;
     lineage?: { version: number; previousArtifactId?: string };
     professionalReceipt?: ProfessionalArtifactReceipt;
+    /** 助理自报的最没把握的判断；交付物产出后单独追问一次得到，拿不到就没有这项。 */
+    openQuestions?: OpenQuestion[];
   };
   proof?: CapabilityArtifactProof;
   verification?: SourceVerificationReport;
@@ -1230,6 +1247,62 @@ export class CapabilityRuntime {
     this.saveTasks();
   }
 
+  /** 用户看过这个任务的结果。未读计数归零，自动暂停的倒计时重新开始。 */
+  markTaskReviewed(taskId: string, at = new Date()): CapabilityTask {
+    const task = this.requireTask(taskId);
+    if (!task.unreadRuns && task.lastReviewedAt) return task;
+    task.unreadRuns = 0;
+    task.lastReviewedAt = at.toISOString();
+    this.saveTasks();
+    return task;
+  }
+
+  /**
+   * 连续多次结果无人查看的计划任务自动暂停。
+   *
+   * 只暂停会自己跑的任务（daily / turns）：手动任务本来就要用户点，暂停它毫无意义。
+   * 暂停后不自行恢复——定时器一恢复就等于没暂停过，必须由用户在计划面板显式打开。
+   */
+  pauseUnreadScheduledTasks(threshold = ROUTINE_LIMITS.unreadRunsBeforePause): CapabilityTask[] {
+    const paused: CapabilityTask[] = [];
+    for (const task of this.tasks) {
+      if (!task.enabled || task.schedule.mode === "manual") continue;
+      if ((task.unreadRuns ?? 0) < threshold) continue;
+      task.enabled = false;
+      task.autoPausedCode = UNREAD_ROUTINE_PAUSE_CODE;
+      task.storyline.status = "paused";
+      task.storyline.nextAction = "连续几次结果没人看，已自动暂停。确认还需要它时再打开。";
+      task.updatedAt = new Date().toISOString();
+      this.appendTaskStorylineEvent(task, {
+        type: "progress",
+        text: `${UNREAD_ROUTINE_PAUSE_CODE}：连续 ${task.unreadRuns} 次结果无人查看，已自动暂停以免继续消耗模型额度。`,
+        personaId: task.personaId,
+      });
+      paused.push(task);
+    }
+    if (paused.length) this.saveTasks();
+    return paused;
+  }
+
+  /** 自动暂停后等用户答复的任务。界面据此主动问「要不要恢复」，而不是让用户自己发现。 */
+  tasksAwaitingResumeDecision(): CapabilityTask[] {
+    return this.tasks.filter((task) => !task.enabled && task.autoPausedCode === UNREAD_ROUTINE_PAUSE_CODE);
+  }
+
+  /** 用户显式恢复。清掉未读计数与暂停原因，否则下一次执行会立刻再次触发暂停。 */
+  resumeAutoPausedTask(taskId: string): CapabilityTask {
+    const task = this.requireTask(taskId);
+    task.enabled = true;
+    task.unreadRuns = 0;
+    task.lastReviewedAt = new Date().toISOString();
+    delete task.autoPausedCode;
+    task.storyline.status = "active";
+    task.storyline.nextAction = "等待下一次自动执行。";
+    task.updatedAt = task.lastReviewedAt;
+    this.saveTasks();
+    return task;
+  }
+
   dueTaskRuns(trigger: "time" | "turn", now = new Date()): CapabilityDueTaskRun[] {
     return this.tasks
       .filter((task) => this.isDue(task, trigger, now))
@@ -1266,7 +1339,8 @@ export class CapabilityRuntime {
       const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task));
       this.markSkillUsed(ability);
       const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId, surface: capabilityAgentSurface(task) });
-      return this.finishTaskRun(task, ability, persona, reply);
+      const openQuestions = await this.collectOpenQuestions(task, ability, reply, signal, limits, runId);
+      return this.finishTaskRun(task, ability, persona, reply, openQuestions.length ? { openQuestions } : undefined);
     } catch (error) {
       this.appendTaskStorylineEvent(task, { type: "error", text: "本次执行未完成，可从运行记录查看原因", personaId: task.personaId });
       this.saveTasks();
@@ -1290,11 +1364,48 @@ export class CapabilityRuntime {
       if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
       this.markSkillUsed(ability);
       const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId, surface: capabilityAgentSurface(task) });
-      return this.finishTaskRun(task, ability, persona, reply);
+      const openQuestions = await this.collectOpenQuestions(task, ability, reply, signal, limits, runId);
+      return this.finishTaskRun(task, ability, persona, reply, openQuestions.length ? { openQuestions } : undefined);
     } catch (error) {
       this.appendTaskStorylineEvent(task, { type: "error", text: "本次执行未完成，可从运行记录查看原因", personaId: task.personaId });
       this.saveTasks();
       throw error;
+    }
+  }
+
+  /**
+   * 交付物产出之后单独追问一次「你最没把握的判断是哪几个」。
+   *
+   * 这一步是**尽力而为**：失败、超时、格式不对都只是少一段附注，绝不影响已经完成的
+   * 交付物。所以整段包在 try/catch 里，也不写任务脉络事件——一条"追问失败"的事件
+   * 对用户没有任何可行动信息。
+   *
+   * 调用刻意收紧：不带工具（`toolMode: "off"`）、不读长期记忆也不写事实
+   * （`memoryMode: "off"`）、单轮、输出短。它是对已完成结果的机械追问，不是第二次创作。
+   */
+  private async collectOpenQuestions(
+    task: CapabilityTask,
+    ability: Capability,
+    reply: string,
+    signal?: AbortSignal,
+    limits?: CapabilityRunOptions,
+    runId?: string,
+  ): Promise<OpenQuestion[]> {
+    if (skipsOpenQuestions(ability.id) || !reply.trim()) return [];
+    if (signal?.aborted) return [];
+    try {
+      const result = await this.opts.notify(
+        task.personaId,
+        openQuestionsPrompt({ capabilityName: ability.name, title: task.title, deliverable: reply }),
+        signal,
+        { ...limits, maxRounds: 1, maxToolRounds: 0, maxOutputChars: 2_000, toolMode: "off" } as CapabilityRunOptions,
+        runId,
+        "off",
+        capabilityAgentSurface(task),
+      );
+      return parseOpenQuestions(result.reply);
+    } catch {
+      return [];
     }
   }
 
@@ -1319,6 +1430,7 @@ export class CapabilityRuntime {
     }
     task.lastRunAt = artifact.createdAt;
     task.lastRunKey = runKey(task, new Date());
+    task.unreadRuns = (task.unreadRuns ?? 0) + 1;
     if (task.schedule.mode === "turns") task.schedule.lastTurnRun = task.schedule.turnCount ?? 0;
     task.updatedAt = artifact.createdAt;
     this.appendTaskStorylineEvent(task, {

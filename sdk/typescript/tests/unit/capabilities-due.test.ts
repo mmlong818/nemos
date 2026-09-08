@@ -41,7 +41,9 @@ test("due task discovery is read-only and produces a stable occurrence key", asy
     assert.equal(notifications, 0);
 
     await runtime.runTask(task.id, "time");
-    assert.equal(notifications, 1);
+    // 一次交付物 + 一次「待确认判断」追问。数字本身不是本条测试的重点，
+    // 但它仍然钉住"到期发现没有自己触发运行"——那会让计数变成 4。
+    assert.equal(notifications, 2);
     assert.equal(runtime.dueTaskRuns("time").some((item) => item.taskId === task.id), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
