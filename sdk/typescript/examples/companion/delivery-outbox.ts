@@ -2,6 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+// 脱敏规则与失败上报共用一份：两处各写一遍就会漂移（一边补了 refresh_token，另一边还漏着）。
+import { redactFailureDetail as redact } from "./failure-registry.js";
+
 export type DeliveryStatus = "pending" | "leased" | "delivered" | "failed";
 
 export interface DeliveryRecord {
@@ -242,13 +245,6 @@ function hash(value: unknown): string {
 
 function sanitize<T>(value: T): T {
   return JSON.parse(redact(JSON.stringify(value))) as T;
-}
-
-function redact(value: string): string {
-  return value
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED]")
-    .replace(/(["']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)["']?\s*[:=]\s*["'])[^"']+(["'])/gi, "$1[REDACTED]$2");
 }
 
 function required(value: string, name: string): string {
