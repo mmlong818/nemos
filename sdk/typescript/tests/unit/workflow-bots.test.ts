@@ -9,8 +9,8 @@ runInNewContext(read("workflow-catalog.js"), { window: browser });
 const catalog = browser.ClownfishWorkflowCatalog;
 const script = read("capability-center.js");
 
-test("15 个原能力分为 11 个内置流程 Bot 与 4 个工具，无重复、遗漏或权限提升", () => {
-  assert.equal(catalog.workflows.length, 11);
+test("17 个原能力分为 13 个内置流程 Bot 与 4 个工具，无重复、遗漏或权限提升", () => {
+  assert.equal(catalog.workflows.length, 13);
   assert.equal(catalog.tools.length, 4);
   assert.deepEqual(new Set([...catalog.workflows, ...catalog.tools].map((item: any) => item.id)), new Set(catalog.capabilities.map((item: any) => item.id)));
   for (const bot of catalog.workflows) {
