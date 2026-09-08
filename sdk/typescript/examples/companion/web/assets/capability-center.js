@@ -51,6 +51,8 @@ const MATCH_RULES = [
   ["marketBrief", /港股|股票|行情|公告|财报|盘前|盘后|自选|持仓|HKEX/i],
   ["market", /市场|赛道|机会|定位|竞品|增长/i],
   ["research", /研究|调研|资料|调查|行业|搜集|分析报告|核验|威胁建模|提示注入|安全审计|隐私风险/i],
+  ["topic", /选题|题材判断|内容排期/i],
+  ["videoScript", /(?:短视频|视频|口播|分镜).{0,6}脚本|脚本.{0,4}(?:分镜|口播)|口播稿/i],
   ["decision", /决策|比较|选择|取舍|评估|该不该/i],
   ["ability", /流程|自动化|重复工作|SOP|工作流/i],
   ["web", /网页|HTML|页面|网站|可视化/i],
@@ -74,6 +76,8 @@ const EXAMPLE_PROMPTS = {
   business: "例如：为这次客户合作准备关键人、异议处理和下一步跟进话术",
   market: "例如：用乐观、中性和保守情景检验这个市场机会是否成立",
   ability: "例如：把每周资料简报沉淀成可重复运行的能力",
+  topic: "例如：这 8 个候选选题里哪几个值得做，面向刚入门的读者",
+  videoScript: "例如：把「新手第一次配显卡」写成抖音 60 秒口播脚本",
 };
 
 const ICON_TONES = {
@@ -92,6 +96,8 @@ const ICON_TONES = {
   business: "#9a6138",
   market: "#4f7b4b",
   ability: "#a24f58",
+  topic: "#6f7a35",
+  videoScript: "#4a5f8f",
 };
 
 const STATUS_TEXT = { queued: "等待开始", running: "正在执行", succeeded: "已完成", failed: "执行失败", cancelled: "已取消", uncertain: "等待核对" };

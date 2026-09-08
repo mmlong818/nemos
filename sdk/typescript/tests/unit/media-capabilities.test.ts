@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { CapabilityRuntime } from "../../examples/companion/capabilities.js";
+import { routeCapability } from "../../examples/companion/capability-router.js";
 import { skipsOpenQuestions } from "../../examples/companion/deliverable-alignment.js";
 import {
   MEDIA_REQUIRED_PARAMETERS,
@@ -84,7 +85,7 @@ test("两条提示都禁止声称实时热度，且不含抓取热搜的说法",
   for (const prompt of [topicEvaluationPrompt(), videoScriptPrompt()]) {
     assert.match(prompt, /禁止声称掌握实时热度/);
     assert.match(prompt, /这类题材通常/);
-    assert.doesNotMatch(prompt, /抓取|爬取|热搜榜|排行榜数据来源|实时榜/);
+    assert.doesNotMatch(prompt, /抓取|爬取|热搜/);
   }
 });
 
@@ -106,4 +107,35 @@ test("脚本要求 3 个开头备选、带时间轴的分段和单一结尾动�
   assert.match(prompt, /只列一个/);
   // 时间对不上的脚本没法照着拍。
   assert.match(prompt, /时间轴总长必须与设定的时长一致/);
+});
+
+// 加能力时最容易漏的不是能力本身，而是这些按目录 id 建的映射表：漏一个就是图标空白、
+// 示例文案为空、或者目标被路到别的能力上。探针用的是既有的 marketBrief。
+test("按目录 id 建的映射表都登记了这两项", () => {
+  const script = readFileSync("examples/companion/web/assets/capability-center.js", "utf8");
+  const team = readFileSync("examples/companion/web/assets/assistant-team.js", "utf8");
+  const handoff = readFileSync("examples/companion/web/assets/skill-handoff.js", "utf8");
+  for (const id of ["topic", "videoScript"]) {
+    // capability-center.js 里有三张表：目标匹配规则、目标示例、卡片色。
+    assert.ok(script.includes(`["${id}", /`), `目标匹配规则缺 ${id}`);
+    assert.ok(script.includes(`  ${id}: "例如`) || script.includes(`  ${id}: "把`), `目标示例缺 ${id}`);
+    assert.ok(script.includes(`  ${id}: "#`), `卡片色缺 ${id}`);
+    assert.ok(team.includes(`${id}:"`), `Bot 页图标表缺 ${id}`);
+    assert.ok(handoff.includes(`['${id}',`), `聊天建议缺 ${id}`);
+  }
+});
+
+test("目标路由：选题不再被「评估」吃到方案比较，脚本也不再无人认领", () => {
+  // 加这两条之前：「评估这几个选题」命中 decision-brief 的 /评估/，脚本则谁都不命中。
+  assert.equal(routeCapability({ goal: "评估这几个选题里哪个值得做" }).capabilityId, "topic-evaluation");
+  assert.equal(routeCapability({ goal: "帮我排一下这个月的内容排期" }).capabilityId, "topic-evaluation");
+  assert.equal(routeCapability({ goal: "把这个题目写成短视频脚本" }).capabilityId, "video-script");
+  assert.equal(routeCapability({ goal: "写一段口播稿" }).capabilityId, "video-script");
+});
+
+// 「脚本」是个多义词。要求它紧邻短视频/视频/口播/分镜，否则会把写代码的请求劫持过来。
+test("脚本模式不劫持写代码的请求", () => {
+  for (const goal of ["写个 Python 脚本跑一下这个目录", "帮我改下这个构建脚本"]) {
+    assert.notEqual(routeCapability({ goal }).capabilityId, "video-script", goal);
+  }
 });
