@@ -149,6 +149,13 @@ body[data-ui] #botInfoDialog { position:fixed; inset:0 0 0 auto; margin:0; width
 #skillRawRules[hidden],#skillRecipeFields[hidden] { display:none!important; }
 .skill-original-rules { margin:20px 0; font-size:13px; line-height:1.8; }
 .skill-original-rules summary { cursor:pointer; color:var(--cf-ink-soft); }
+.skill-recipe-receipt { margin:20px 0; font-size:13px; line-height:1.8; }
+.skill-recipe-receipt summary { cursor:pointer; color:var(--cf-ink-soft); }
+.skill-receipt-list { margin:10px 0 4px; padding:0; list-style:none; display:grid; gap:8px; }
+.skill-receipt-list li { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; padding:10px 12px; border:1px solid rgba(124,92,255,.14); border-radius:10px; background:var(--cf-surface,#fff); }
+.skill-receipt-kind,.skill-receipt-state { font-size:12px; color:var(--cf-ink-soft); }
+.skill-receipt-state { margin-left:auto; }
+.skill-receipt-detail { flex-basis:100%; font-size:12px; color:var(--cf-coral,#d1495b); overflow-wrap:anywhere; }
 .bot-info-facts dd { white-space:pre-wrap; overflow-wrap:anywhere; }
 .team-main :is(button,a,summary):focus-visible,#botInfoDialog :is(button,a):focus-visible { outline:2px solid var(--cf-coral); outline-offset:4px; }
 @media(max-width:900px) { .bot-section-note { display:none; } }

@@ -81,3 +81,50 @@ test("both card types escape user content and retain separate start/edit routes"
   assert.match(html, /data-use-bot="one"[^>]*disabled/);
   assert.match(read("bots.html"), /id="botInfoDialog"[^>]*aria-labelledby="botInfoTitle"/);
 });
+
+// 收据在导入时写入并长期保存；界面必须能回答「这个 Bot 往我这里装了什么」。
+test("配方收据：装上的给出状态，失败的说原因，未采纳的单独计数", () => {
+  assert.equal(library.recipeReceipt(bots[0]), null, "没有收据时不显示这一块");
+  assert.equal(library.recipeReceipt({ ...bots[0], recipeReceipt: { items: [], declined: { skills: ["a"], routines: [] } } }), null,
+    "一项都没装上时也不显示，避免让用户以为发生过什么");
+
+  const view = library.recipeReceipt({
+    ...bots[0],
+    recipeReceipt: {
+      trust: "untrusted",
+      items: [
+        { kind: "skill", key: "a", localId: "skill-1", name: "阻塞升级判断" },
+        { kind: "routine", key: "b", localId: "task-1", name: "待决事项汇总", enabled: false },
+        { kind: "skill", key: "c", localId: "", name: "装不上的", error: "安装能力未通过准入检查" },
+      ],
+      declined: { skills: ["d"], routines: ["e"] },
+    },
+  });
+  assert.equal(view.items.length, 3);
+  assert.deepEqual(view.items.map((item: any) => item.state), ["已添加", "已添加 · 暂停中", "未装上"]);
+  assert.deepEqual(view.items.map((item: any) => item.kind), ["可复用流程", "定时任务", "可复用流程"]);
+  assert.match(view.items[2].detail, /准入检查/);
+  assert.equal(view.declinedCount, 2);
+  assert.match(view.pausedNote, /先建成暂停/);
+  assert.match(view.trustNote, /未经核实/);
+});
+
+test("配方收据渲染：转义用户内容，没装过东西时不产生区块", () => {
+  const source = read("assets/assistant-team.js");
+  const fn = source.slice(source.indexOf("function recipeReceiptHtml("), source.indexOf("function inspectBot("));
+  const esc = (s: unknown) => String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  const render = (bot: unknown) => runInNewContext(fn + "\nrecipeReceiptHtml(bot);", { library, esc, bot });
+
+  assert.equal(render(bots[0]), "");
+  const html = render({
+    ...bots[0],
+    recipeReceipt: {
+      trust: "untrusted",
+      items: [{ kind: "skill", key: "a", localId: "s1", name: '<img src=x onerror=alert(1)>' }],
+      declined: { skills: [], routines: [] },
+    },
+  }) as string;
+  assert.ok(!html.includes("<img"), "模板作者提供的名称必须转义");
+  assert.match(html, /装了什么（1 项）/);
+  assert.match(html, /未经核实/);
+});

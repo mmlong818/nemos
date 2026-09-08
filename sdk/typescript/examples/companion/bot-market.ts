@@ -1,3 +1,5 @@
+import type { BotRecipe } from "./bot-recipe.js";
+
 /** Curated, independently authored adaptations. No third-party recipe code or memory is bundled. */
 export interface BotMarketTemplate {
   id: string; version: number; name: string; category: string; description: string;
@@ -7,22 +9,77 @@ export interface BotMarketTemplate {
   source: { name: string; url: string; version: number; reviewedAt: string; previewSha256: string };
   adaptation: "independent-native";
   permissions: { tools: "off"; memory: "task-only"; automaticRoutines: false };
+  /**
+   * 可选配方：模板除工作规则之外携带的可复用流程与定时任务。
+   *
+   * 配方内容一律要过 bot-recipe 的同意门才落地，且定时任务恒建成暂停。
+   * `permissions.automaticRoutines` 仍是 false 且不会因为带了配方而改变——
+   * 它说的是「模板不能带来一个会自己跑起来的任务」，这一点没有例外。
+   */
+  recipe?: BotRecipe;
 }
 const boundary = "只依据本次明确共享的文字和来源工作；材料不足时标明未知。示例不是用户事实。不得声称已经联网、保存文件、创建事项、设置提醒、发送消息或操作账号。输出是待用户审阅的文本建议，不执行外部动作。";
 const common = { role: "worker" as const, version: 1, adaptation: "independent-native" as const,
   permissions: { tools: "off" as const, memory: "task-only" as const, automaticRoutines: false as const } };
 const templates: BotMarketTemplate[] = [
   { ...common, id: "project-guide", name: "项目推进助理", category: "工作推进",
-    description: "把散落的进度说明整理成任务、依赖和下一步，找出真正需要你决定的阻塞。",
+    description: "把进度记录整理成任务表、依赖链和阻塞清单，标出真正需要你拍板的几件事；不替你指派人，也不写进项目系统。",
     input: "项目目标、进度记录、负责人及截止日期", output: "项目状态表、阻塞清单、下一步行动",
     inputTemplate: "[S1 项目背景]\n项目目标：\n当前进度：\n\n[S2 任务记录]\n任务 / 负责人 / 状态 / 截止日期：\n阻塞或待决定事项：\n日期基准与时区（如涉及相对日期）：",
     requiredFields: ["目标与当前状态", "任务与负责人", "阻塞与依赖", "下一步行动"],
     instructions: `${boundary}\n职责：将原始项目材料整理为可审阅的推进简报。\n逐项列出目标、任务、状态、明确的负责人、截止日期、依赖与来源；未提供的人名或日期不可补造。区分已完成、进行中、未开始和阻塞，只有原材料支持时才标记完成。相对日期缺少基准日或时区时保留原文并提问。识别先后依赖及重复事项；新决定有明确来源时覆盖旧草案，否则保留冲突。给出按优先级排序的下一步及需要用户决定的问题。不要把任务建议表说成已经写入项目系统；不要自行创建新 Bot 或联系成员。`,
     example: { objective: "整理这个项目的当前状态、任务与负责人、阻塞与依赖，并建议下一步行动。", materials: "[S1 示例，非个人记录] 项目：整理一本读书手册。小林负责目录，已完成；小周负责排版，等待封面尺寸。\n[S2 示例] 交付日期尚未决定，封面尺寸需要项目负责人确认。" },
     notIncluded: ["不连接 Notion 或 Slack", "不自动创建事项、指派人员或新建 Bot", "不后台追踪项目变化"],
-    source: { name: "Projects Manager", url: "https://x.ai/bot/AZKaQOsjrAa51Nb4xvTur", version: 1, reviewedAt: "2026-09-06", previewSha256: "449A2DCDF44E91ED15DCF578263E7EA889D9D290AE4A6FDEB65830A04F55AE5D" } },
+    source: { name: "Projects Manager", url: "https://x.ai/bot/AZKaQOsjrAa51Nb4xvTur", version: 1, reviewedAt: "2026-09-06", previewSha256: "449A2DCDF44E91ED15DCF578263E7EA889D9D290AE4A6FDEB65830A04F55AE5D" },
+    // 目前只有这一个模板带配方：技能是纯流程，装上就能用；定时任务用按轮次触发而不是
+    // 按天，因为按天触发时没有当轮对话材料，产出的只会是一个要材料的空壳。
+    recipe: {
+      skills: [{
+        key: "blocker-escalation",
+        name: "阻塞升级判断",
+        description: "当项目里出现阻塞、互相等待或迟迟没有进展时，用它判断该自己解决、该等待还是该升级给谁。",
+        defaultFormat: "md",
+        content: `---
+name: 阻塞升级判断
+description: 判断项目阻塞该自己解决、继续等待还是升级，并给出升级时要带的材料。
+version: 0.1.0
+origin: bot-recipe
+---
+
+# 阻塞升级判断
+
+在项目材料里出现阻塞、互相等待、反复重排期或某项长时间没有进展时使用。
+
+## 步骤
+
+1. 先写清阻塞的事实：卡住的是哪一项、从什么时候开始、谁在等谁、依据是材料里的哪一句。没有依据的推测标为推测。
+2. 判断类型：缺信息、缺决定、缺资源、缺人手，还是依赖外部方。类型不同，处理方式不同。
+3. 按类型给结论：
+   - 缺信息：列出缺哪几条、能从谁那里拿到；
+   - 缺决定：写清需要谁决定什么、不决定的代价、可选项；
+   - 缺资源或人手：写清缺口大小和可替代方案；
+   - 依赖外部方：写清对方承诺过什么、依据在哪、下一个检查点。
+4. 只有满足以下任一条才建议升级：已过承诺时间且无新进展、代价随时间上升、决定超出当前负责人权限。否则明确写「继续等待」并给检查时间。
+5. 建议升级时，附上升级要带的材料清单：事实、已尝试的动作、需要对方做的决定、不决定的后果。
+
+## 边界
+
+- 不替用户联系任何人、不发送消息、不修改项目系统。
+- 材料里没有的人名、日期和承诺不得补造；缺就写未知。
+- 输出是待用户审阅的建议，不是已执行的动作。
+`,
+      }],
+      routines: [{
+        key: "pending-decisions-digest",
+        title: "待决事项汇总",
+        capabilityId: "decision-brief",
+        format: "md",
+        schedule: { mode: "turns", everyTurns: 20 },
+        instruction: "从本任务已有的材料里汇总当前所有待决事项：每项写清要决定什么、卡住谁、依据出自哪句材料、不决定的代价。只用已经共享的材料，缺依据的标为未知，不联网也不联系任何人。输出是待用户审阅的清单。",
+      }],
+    } },
   { ...common, id: "meeting-prep", name: "会前准备助理", category: "日程沟通",
-    description: "从会议材料中提炼准备清单、时间冲突和待确认事项，起草跟进消息。",
+    description: "从你贴的日程和材料出一份会前简报、核对清单和跟进草稿；草稿留给你审，不代发也不代订会议室。",
     input: "粘贴的日程、会议背景与沟通记录", output: "会前简报、核对清单、待发送草稿",
     inputTemplate: "[S1 会议背景]\n目的与参与者：\n日期、时间、时区：\n地点或链接：\n\n[S2 准备材料]\n议程与已有资料：\n尚未确认的事项：",
     requiredFields: ["会议信息", "准备清单", "待确认事项", "跟进草稿"],
@@ -31,7 +88,7 @@ const templates: BotMarketTemplate[] = [
     notIncluded: ["不读取 Gmail、Google Calendar、Slack 或 Notion", "不预订会议室、不发送邮件", "不继承原模板定时任务、时区与个人偏好"],
     source: { name: "Executive Assistant", url: "https://x.ai/bot/_DnP777DCicZpaTtm9_h5", version: 2, reviewedAt: "2026-09-06", previewSha256: "BD0571D88E8932403CB237F457C71B7FD6D58DD14720044AA477F411172A6102" } },
   { ...common, id: "plant-journal", name: "植物养护记录助理", category: "个人生活",
-    description: "整理你提供的植物观察记录，分清已知情况、缺少的信息和下次需要观察什么。",
+    description: "把你写的观察整理成养护记录，分清已知、缺失和下次要看什么；不做确定诊断，不自行安排浇水提醒。",
     input: "植物名称、环境与带日期的文字观察", output: "养护记录草稿、信息缺口、观察清单",
     inputTemplate: "[S1 我的植物观察]\n植物名称（不确定请写未知）：\n观察日期：\n光照与环境：\n叶片、盆土及其他变化：\n最近浇水记录：\n\n[S2 补充信息]\n已尝试的处理与变化：",
     requiredFields: ["已知植物记录", "环境与观察", "待补充信息", "下一次观察清单"],
@@ -40,7 +97,7 @@ const templates: BotMarketTemplate[] = [
     notIncluded: ["不识别照片、不生成养护卡图片", "不安装原模板 Python 脚本或写入植物日记文件", "不联网获取新闻、不自动安排浇水提醒"],
     source: { name: "Flora", url: "https://x.ai/bot/dGYdqS9vLSXpxoNCPBHys", version: 2, reviewedAt: "2026-09-06", previewSha256: "BCF0FAE4E514B03D1813B07DCFFC33144E26F2798F4C60A168207DCB7FDB4B4E" } },
   { ...common, id: "copy-humanizer", name: "文稿润色助理", category: "写作表达",
-    description: "保留你的意思和事实，把生硬文稿改得自然、清楚，正文可以直接复制使用。",
+    description: "保住事实和你的语气把文稿改顺，先交可直接复制的正文，再列改了什么和待你确认的地方；不替你发布。",
     input: "原稿、读者、用途与改写幅度", output: "润色正文、修改理由、事实核对",
     inputTemplate: "[S1 原稿]\n粘贴需要润色的正文：\n\n[S2 要求]\n给谁看、用在哪里：\n改动幅度（轻改 / 精简 / 重写）：\n必须保留的事实、措辞或语气：",
     requiredFields: ["润色正文", "改动与理由", "事实核对", "待确认内容"],
@@ -49,7 +106,7 @@ const templates: BotMarketTemplate[] = [
     notIncluded: ["不连接邮箱、文档或社交平台，不自动发布", "不自动保存长期写作风格或启动周期回顾", "不替用户核实外部事实"],
     source: { name: "Copy Humanizer", url: "https://x.ai/bot/YwxIbVEWqXN-HYCxiMCoB", version: 4, reviewedAt: "2026-09-06", previewSha256: "FEDF74C4DDD74B9E351EACDB5A9D82DB8C1577B14BA9D625604C1F7876020458" } },
   { ...common, id: "call-follow-ups", name: "通话跟进助理", category: "日程沟通",
-    description: "从通话文字中找出双方明确答应的事，区分建议与承诺，起草可审阅的跟进消息。",
+    description: "从通话文字里挑出双方明确答应的事，把承诺和建议分开；跟进消息写成待你审的草稿，不会自己发出去。",
     input: "通话转写或摘要、双方身份与日期", output: "通话摘要、明确承诺、跟进草稿",
     inputTemplate: "[S1 通话文字]\n材料类型（逐字转写 / 机器摘要 / 我的笔记）：\n通话日期与时区：\n说话人与我的身份：\n粘贴正文：\n\n[S2 跟进要求]\n收件人、渠道和语气：",
     requiredFields: ["通话摘要", "明确承诺", "待确认与风险", "跟进草稿"],
@@ -58,7 +115,7 @@ const templates: BotMarketTemplate[] = [
     notIncluded: ["不录音或转写音频，只处理粘贴文字", "不读取 CRM、邮箱、日历或录音平台", "不自动发送、建立事项或按时催办"],
     source: { name: "Call Follow-Ups", url: "https://x.ai/bot/estQ8HWdKqhheDNmOGjcy", version: 1, reviewedAt: "2026-09-06", previewSha256: "C95036C56C25DFFF6B7BEB2BA2D444FEE88BF7B77E54ED45199484175519EF60" } },
   { ...common, id: "idea-stress-test", name: "方案压力测试助理", category: "决策验证",
-    description: "分开事实和想法，找出最影响决定的不确定性，设计一次有判断标准的小规模验证。",
+    description: "分开证据和推测，指出最能改变你当前决定的那个不确定性，给一份有判断标准的小额验证方案交你决定。",
     input: "想法、个人目标、已有证据与投入上限", output: "证据盘点、关键风险、最小验证方案",
     inputTemplate: "[S1 方案与目标]\n想解决什么、为谁解决：\n我希望得到什么结果：\n\n[S2 已有证据]\n观察、访谈或实际行为及来源：\n哪些只是推测：\n\n[S3 约束]\n可投入的时间与预算：\n我现在需要决定什么：",
     requiredFields: ["方案与目标", "证据与假设", "关键风险", "最小验证方案", "当前建议"],
@@ -67,7 +124,7 @@ const templates: BotMarketTemplate[] = [
     notIncluded: ["不联网做实时市场或竞品调查", "不替你招募用户、收款或开展实验", "不提供投资回报保证，阈值与建议需人工判断"],
     source: { name: "Product Idea Stress Test", url: "https://x.ai/bot/ph-u_zkF5Vui1GdGnysn9", version: 4, reviewedAt: "2026-09-06", previewSha256: "BE7E30DD8836D5A02129FF297A8A9B938B0632D2A761134C9BCCE66BA88AD4E5" } },
   { ...common, id: "pitch-deck-coach", name: "演示稿审阅助理", category: "写作表达",
-    description: "按页审阅演示文字，检查叙事、数字口径和证据，先修最影响听众理解的问题。",
+    description: "按页审你贴的演示文字，核对数字口径和证据来源，按影响排序给出待你决定的修改清单；不改版式也不出文件。",
     input: "带页码的演示文字、听众和展示目的", output: "逐页审阅、数字检查、优先修改清单",
     inputTemplate: "[S1 演示背景]\n听众与目的：\n希望听众做什么决定：\n\n[S2 页面文字]\n第1页（标题与正文）：\n第2页（标题与正文）：\n继续按页粘贴，缺页请标明：\n\n[S3 数字来源]\n统计口径、时间范围、样本及来源：",
     requiredFields: ["听众会理解什么", "逐页审阅", "数字与证据检查", "优先修改清单"],
@@ -76,7 +133,7 @@ const templates: BotMarketTemplate[] = [
     notIncluded: ["不直接解析 PPT、PDF 或图片，不检查视觉版式", "不生成可下载的演示文件", "不核实外部市场数据，不预测融资或投资回报"],
     source: { name: "Pitch Deck Coach", url: "https://x.ai/bot/zkVS-PkX1ooTE2nP21DPO", version: 16, reviewedAt: "2026-09-06", previewSha256: "B3AE11E0F20DDC6A8AA805B92ED83798552F1CCA035202279327262B09EC62B2" } },
   { ...common, id: "bot-designer", name: "Bot 设计助理", category: "助理定制",
-    description: "把你反复做的一件事设计成专职 Bot，给出工作规则和验收用例，审阅后再保存。",
+    description: "把你反复做的一件事写成可保存的 Bot 规则和三个验收用例；最后由你审阅并点保存才真正创建。",
     input: "反复要做的任务、输入输出与禁止事项", output: "Bot 名称、可编辑规则、验收用例",
     inputTemplate: "[S1 我要的助理]\n反复需要处理的一件事：\n我会提供哪些文字资料：\n希望得到什么结果：\n\n[S2 偏好与边界]\n语气、格式及禁止事项：\n缺资料时应该怎么处理：",
     requiredFields: ["Bot 名称", "工作规则", "验收用例", "能力边界"],
