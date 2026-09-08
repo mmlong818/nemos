@@ -82,6 +82,14 @@ test("both card types escape user content and retain separate start/edit routes"
   assert.match(read("bots.html"), /id="botInfoDialog"[^>]*aria-labelledby="botInfoTitle"/);
 });
 
+test("派生模板详情明确显示来源、独立规则版本与本机私有边界", () => {
+  const source = read("assets/assistant-team.js");
+  assert.match(source, /查看完整规则 · 本地规则 v/);
+  assert.match(source, /来源：模板 v/);
+  assert.match(source, /本机派生规则 v/);
+  assert.match(source, /仅本机私有。模板更新不会自动覆盖你的规则/);
+});
+
 // 收据在导入时写入并长期保存；界面必须能回答「这个 Bot 往我这里装了什么」。
 test("配方收据：装上的给出状态，失败的说原因，未采纳的单独计数", () => {
   assert.equal(library.recipeReceipt(bots[0]), null, "没有收据时不显示这一块");

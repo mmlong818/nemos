@@ -19,6 +19,13 @@ import { isCurrentUserMemory, userMemoryEvidence, userMemoryPrompt, userMemoryTe
 import { presenceContextBlock, type InFlightWork } from "./presence-contract.js";
 import { COMPANION_MEMORY_SCOPE, MEMORY_ANCHOR_CAP } from "./memory-config.js";
 import { describeFailure, type FailureReport } from "./failure-registry.js";
+import { resolveAgentBudget } from "./runtime-limits.js";
+import {
+  assembleUnifiedTaskContext,
+  renderUnifiedTaskContext,
+  type TaskContextSource,
+  type UnifiedTaskContext,
+} from "./unified-task-context.js";
 
 export interface Persona {
   id: string;
@@ -63,6 +70,10 @@ export interface ChatAgentContext {
     maxTotalTokens: number;
     maxOutputChars: number;
   };
+  /** The exact admitted source/boundary snapshot for this run; persisted for safe resume. */
+  taskContext?: UnifiedTaskContext;
+  /** Product-owned call classification; never derived from model text or prompt contents. */
+  llmPurpose?: "task_turn" | "team_plan" | "team_worker" | "team_review" | "team_final" | "memory_extract" | "completion_verify" | "other";
 }
 
 /** 人格“开口回复”用的 LLM。与 SDK 的抽取 LLM 分开。model/maxTokens 可按角色覆盖。 */
@@ -113,6 +124,10 @@ export interface SendOptions {
    * archive-only 只保留可恢复的对话原文，不把测试、附件或虚构材料抽取成长期用户事实。
    */
   memoryWriteMode?: "default" | "archive-only" | "off";
+  /** Files explicitly attached to this task. Their contents remain in the user message. */
+  taskAttachments?: readonly Omit<TaskContextSource, "kind">[];
+  /** Only callers with an explicit project association may populate this list. */
+  projectMaterials?: readonly Omit<TaskContextSource, "kind">[];
 }
 
 /**
@@ -409,8 +424,9 @@ export class CompanionEngine {
 
     const count = this.bumpTurns(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode, opts.sessionId);
+    const taskContext = this.taskContext(userId, personaId, text, context, persona.maxReplyTokens, opts);
     const system = [
-      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text),
+      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text, taskContext),
       opts.systemAddendum,
     ].filter(Boolean).join("\n\n");
     const reply = await this.chat(
@@ -418,7 +434,7 @@ export class CompanionEngine {
       this.buildUserTurns(this.recent.get(recentKey) ?? [], text, !!opts.voice),
       opts.model || persona.chatModel,
       persona.maxReplyTokens,
-      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
+      this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort, taskContext),
     );
 
     if (opts.memoryWriteMode !== "off") await this.ingestPersonaReply(personaId, scope, reply, opts);
@@ -443,8 +459,9 @@ export class CompanionEngine {
     await this.ingestUtterance(userId, scope, text, opts);
     const count = this.bumpTurns(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode, opts.sessionId);
+    const taskContext = this.taskContext(userId, personaId, text, context, persona.maxReplyTokens, opts);
     const system = [
-      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text),
+      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text, taskContext),
       opts.systemAddendum,
     ].filter(Boolean).join("\n\n");
     const userMsg = this.buildUserTurns(this.recent.get(recentKey) ?? [], text, !!opts.voice);
@@ -456,7 +473,7 @@ export class CompanionEngine {
         cb,
         opts.model || persona.chatModel,
         persona.maxReplyTokens,
-        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort, taskContext),
       );
     } else {
       reply = await this.chat(
@@ -464,7 +481,7 @@ export class CompanionEngine {
         userMsg,
         opts.model || persona.chatModel,
         persona.maxReplyTokens,
-        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
+        this.agentContext(userId, personaId, text, scope, "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort, taskContext),
       );
       cb.onToken(reply);
     }
@@ -502,7 +519,7 @@ export class CompanionEngine {
     userId: string,
     personaId: string,
     text: string,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface" | "toolMode" | "reasoningEffort"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface" | "toolMode" | "reasoningEffort" | "taskAttachments" | "projectMaterials"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
@@ -510,17 +527,19 @@ export class CompanionEngine {
     if (!isolatedSurface) await this.ensureRecentHistory(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
+    const maxTokens = workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens;
+    const taskContext = this.taskContext(userId, personaId, text, context, maxTokens, opts);
     const recent = isolatedSurface ? [] : (this.recent.get(this.rkey(userId, personaId)) ?? []);
     const reply = await this.chat(
       workMode
-        ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), text)
-        : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false, text),
+        ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), text, taskContext)
+        : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false, text, taskContext),
       workMode
         ? this.buildWorkUser(recent, text)
         : this.buildProactiveUser(recent, text),
       opts.model || persona.chatModel,
-      workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens,
-      this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
+      maxTokens,
+      this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort, taskContext),
     );
 
     if (!workMode) {
@@ -536,7 +555,7 @@ export class CompanionEngine {
     personaId: string,
     text: string,
     cb: StreamCb,
-    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface" | "toolMode" | "reasoningEffort"> = {},
+    opts: Pick<SendOptions, "signal" | "runtimeLimits" | "runId" | "sessionId" | "memoryMode" | "model" | "surface" | "toolMode" | "reasoningEffort" | "taskAttachments" | "projectMaterials"> = {},
   ): Promise<CompanionReply> {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
@@ -544,14 +563,15 @@ export class CompanionEngine {
     if (!isolatedSurface) await this.ensureRecentHistory(userId, personaId);
     const context = await this.recall(userId, personaId, text, opts.memoryMode);
     const workMode = WORK_PROMPT_MARKER.test(text);
+    const maxTokens = workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens;
+    const taskContext = this.taskContext(userId, personaId, text, context, maxTokens, opts);
     const recent = isolatedSurface ? [] : (this.recent.get(this.rkey(userId, personaId)) ?? []);
     const system = workMode
-      ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), text)
-      : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false, text);
+      ? this.buildWorkSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), text, taskContext)
+      : this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), this.turnsOf(userId, personaId), false, text, taskContext);
     const userMsg = workMode
       ? this.buildWorkUser(recent, text)
       : this.buildProactiveUser(recent, text);
-    const maxTokens = workMode ? Math.max(persona.maxReplyTokens ?? 0, WORK_MAX_REPLY_TOKENS) : persona.maxReplyTokens;
     const reply = this.opts.chatStream
       ? await this.opts.chatStream(
           system,
@@ -559,14 +579,14 @@ export class CompanionEngine {
           cb,
           opts.model || persona.chatModel,
           maxTokens,
-          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
+          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort, taskContext),
         )
       : await this.chat(
           system,
           userMsg,
           opts.model || persona.chatModel,
           maxTokens,
-          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort),
+          this.agentContext(userId, personaId, text, scope, workMode ? "task" : "chat", opts.signal, opts.runtimeLimits, opts.runId, opts.sessionId, opts.toolMode, opts.surface, opts.memoryMode, opts.reasoningEffort, taskContext),
         );
     if (!this.opts.chatStream) cb.onToken(reply);
 
@@ -883,6 +903,7 @@ export class CompanionEngine {
     surface?: ChatAgentContext["surface"],
     memoryMode?: SendOptions["memoryMode"],
     reasoningEffort?: ChatAgentContext["reasoningEffort"],
+    taskContext?: UnifiedTaskContext,
   ): ChatAgentContext {
     return {
       userId,
@@ -898,7 +919,32 @@ export class CompanionEngine {
       toolMode,
       runtimeLimits,
       reasoningEffort,
+      taskContext,
     };
+  }
+
+  private taskContext(
+    userId: string,
+    personaId: string,
+    instruction: string,
+    recalled: RecallResult,
+    requestedMaxTokens: number | undefined,
+    opts: Pick<SendOptions, "memoryMode" | "toolMode" | "runtimeLimits" | "taskAttachments" | "projectMaterials">,
+  ): UnifiedTaskContext {
+    const evidence = recalled.memoryEvidence ?? [];
+    const preferences = evidence.map((item) => item.content).filter(isDeliveryPreferenceMemory);
+    return assembleUnifiedTaskContext({
+      taskInput: instruction,
+      personalPreferences: preferences,
+      taskAttachments: opts.taskAttachments,
+      projectMaterials: opts.projectMaterials,
+      memoryMode: opts.memoryMode,
+      memoryScopes: opts.memoryMode === "off" || opts.memoryMode === "preferences"
+        ? []
+        : this.visibleScopes(userId, personaId),
+      toolMode: opts.toolMode,
+      budget: resolveAgentBudget(opts.runtimeLimits, requestedMaxTokens),
+    });
   }
 
   private isAppAgent(persona: Persona): boolean {
@@ -934,6 +980,7 @@ export class CompanionEngine {
     turnCount = 0,
     crisis = false,
     instruction = "",
+    taskContext?: UnifiedTaskContext,
   ): string {
     return [
       ...(crisis ? [SAFETY_PREAMBLE] : []), // 危机信号 → 顶置强制安全指令，凌驾人设
@@ -947,6 +994,7 @@ export class CompanionEngine {
       `【当前时间】${currentTimeBlock()}`,
       `涉及日期、星期、今天/明天/下周、截止时间或预约时间时，以这里的本机时间为准。`,
       `如果 ta 没给具体日期，不要凭空假设某个星期几；要么问清楚，要么明确写"日期待确认"。`,
+      ...(taskContext ? [``, renderUnifiedTaskContext(taskContext)] : []),
       ...this.capabilityContextBlock(persona, instruction),
       ...this.presenceBlock(persona),
       ``,
@@ -985,7 +1033,7 @@ export class CompanionEngine {
     ].join("\n");
   }
 
-  private buildWorkSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined, instruction = ""): string {
+  private buildWorkSystem(persona: Persona, ctx: RecallResult, relSetting: string | undefined, instruction = "", taskContext?: UnifiedTaskContext): string {
     return [
       persona.persona,
       ``,
@@ -1002,6 +1050,7 @@ export class CompanionEngine {
       `Do not invent weekdays, dates, deadlines, booking times, or recurrence limits. If the user did not specify a date/time, mark it as missing or ask for it.`,
       `If reliable access is unavailable, downgrade clearly, give verification links or integration steps, and do not fabricate.`,
       `If information is incomplete, still deliver a useful version based on known constraints and list the gaps.`,
+      ...(taskContext ? [``, renderUnifiedTaskContext(taskContext)] : []),
       ...this.capabilityContextBlock(persona, instruction),
       ...this.presenceBlock(persona),
       ...(relSetting ? [``, `Relationship context: ${relSetting}`] : []),

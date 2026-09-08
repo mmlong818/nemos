@@ -361,13 +361,20 @@ export interface SkillAudit {
 
 type CapabilityAgentSurface = "task" | "capability" | "office";
 
+export interface CapabilityTaskContextSources {
+  taskAttachments?: Array<{ name: string; truncated?: boolean }>;
+  projectMaterials?: Array<{ name: string; truncated?: boolean }>;
+}
+
 export interface CapabilityRuntimeOptions {
   dataDir: string;
-  notify: (personaId: string, text: string, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface) => Promise<{ reply: string; facts: string[] }>;
-  notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface) => Promise<{ reply: string; facts: string[] }>;
+  notify: (personaId: string, text: string, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface, contextSources?: CapabilityTaskContextSources) => Promise<{ reply: string; facts: string[] }>;
+  notifyStream?: (personaId: string, text: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string, memoryMode?: "default" | "preferences" | "off", surface?: CapabilityAgentSurface, contextSources?: CapabilityTaskContextSources) => Promise<{ reply: string; facts: string[] }>;
   personas: () => CapabilityPersona[];
   toolRegistry?: CapabilityToolRegistry;
   knowledgeContext?: (ids: string[]) => string;
+  /** Only return knowledge explicitly associated with the task's project/space. */
+  projectMaterialSources?: (ids: string[], spaceId: string) => Array<{ name: string; truncated?: boolean }>;
   /** v0.8：按沟通对象取关系档案提示块；没有档案时返回空串。 */
   counterpartContext?: (counterpartId: string) => string;
   /** v0.8：取某个角色的后台工具绑定；返回 undefined 表示不限制。 */
@@ -386,6 +393,8 @@ export interface CapabilityRunOptions extends CapabilityRuntimeLimits {
   reasoningEffort?: import("./model-reasoning.js").ReasoningEffort;
   model?: string;
   toolMode?: "auto" | "read-only" | "off";
+  /** Explicit files attached to this invocation; never inferred from prompt text. */
+  taskAttachments?: Array<{ name: string; truncated?: boolean }>;
 }
 
 export interface CapabilityStreamCb {
@@ -1317,6 +1326,21 @@ export class CapabilityRuntime {
       }));
   }
 
+  /** Next wall-clock check for a daily task; turn schedules have no honest ISO timestamp. */
+  nextScheduledCheckAt(taskId: string, after = new Date()): string | undefined {
+    const task = this.requireTask(taskId);
+    if (task.schedule.mode !== "daily") return undefined;
+    const targetMinute = timeToMinute(task.schedule.time || "09:00");
+    const days = task.schedule.days || DEFAULT_DAYS;
+    const start = Math.floor(after.getTime() / 60_000) * 60_000;
+    for (let offset = 1; offset <= 8 * 24 * 60; offset++) {
+      const candidate = new Date(start + offset * 60_000);
+      const local = nowInTimezone(task.schedule.timezone || "Asia/Shanghai", candidate);
+      if (days.includes(local.weekday) && local.minuteOfDay === targetMinute) return candidate.toISOString();
+    }
+    return undefined;
+  }
+
   async runDue(trigger: "time" | "turn"): Promise<CapabilityNotification[]> {
     const due = this.tasks.filter((task) => this.isDue(task, trigger));
     const out: CapabilityNotification[] = [];
@@ -1330,14 +1354,21 @@ export class CapabilityRuntime {
     return out;
   }
 
-  async runTask(id: string, trigger: string, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string): Promise<CapabilityNotification> {
+  async runTask(
+    id: string,
+    trigger: string,
+    signal?: AbortSignal,
+    limits?: CapabilityRunOptions,
+    runId?: string,
+    previousRunContext?: string,
+  ): Promise<CapabilityNotification> {
     const task = this.requireTask(id);
     const ability = this.requireAbility(task.capabilityId);
     const persona = this.persona(task.personaId);
     this.appendTaskStorylineEvent(task, { type: "handoff", text: `${persona.name}开始处理`, personaId: task.personaId });
     this.saveTasks();
     try {
-      const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task));
+      const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger, previousRunContext), signal, limits, runId, undefined, capabilityAgentSurface(task), this.contextSources(task, limits));
       this.markSkillUsed(ability);
       const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId, surface: capabilityAgentSurface(task) });
       const openQuestions = await this.collectOpenQuestions(task, ability, reply, signal, limits, runId);
@@ -1360,8 +1391,8 @@ export class CapabilityRuntime {
         ? { onStatus: cb.onStatus, onToken: (_token: string) => undefined }
         : cb;
       const result = this.opts.notifyStream
-          ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), streamCb, signal, limits, runId, undefined, capabilityAgentSurface(task))
-          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task));
+          ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), streamCb, signal, limits, runId, undefined, capabilityAgentSurface(task), this.contextSources(task, limits))
+          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, trigger), signal, limits, runId, undefined, capabilityAgentSurface(task), this.contextSources(task, limits));
       if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
       this.markSkillUsed(ability);
       const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId, surface: capabilityAgentSurface(task) });
@@ -1461,7 +1492,7 @@ export class CapabilityRuntime {
     const { task, ability, persona } = this.createAdHocTask(input);
     try {
       input.onProgress?.("正在分析目标并生成结构", 20);
-      const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task));
+      const result = await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task), this.contextSources(task, limits));
       this.markSkillUsed(ability);
       const reply = await this.completeAbilityReply(task, ability, result.reply, undefined, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, onProgress: input.onProgress, surface: capabilityAgentSurface(task) });
       input.onProgress?.("正在生成并保存交付物", 85);
@@ -1479,8 +1510,8 @@ export class CapabilityRuntime {
         ? { onStatus: cb.onStatus, onToken: (_token: string) => undefined }
         : cb;
       const result = this.opts.notifyStream
-          ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), streamCb, signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task))
-          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task));
+          ? await this.opts.notifyStream(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), streamCb, signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task), this.contextSources(task, limits))
+          : await this.opts.notify(task.personaId, await this.buildRunPrompt(task, ability, persona, input.trigger || "chat"), signal, limits, input.runId, input.memoryMode, capabilityAgentSurface(task), this.contextSources(task, limits));
       if (!this.opts.notifyStream && !isNativeCapabilityId(ability.id)) cb.onToken(result.reply);
       this.markSkillUsed(ability);
       const reply = await this.completeAbilityReply(task, ability, result.reply, cb, { signal, limits, runId: input.runId, memoryMode: input.memoryMode, surface: capabilityAgentSurface(task) });
@@ -2117,7 +2148,23 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     return false;
   }
 
-  private async buildRunPrompt(task: CapabilityTask, ability: Capability, persona: CapabilityPersona, trigger: string): Promise<string> {
+  private contextSources(task: CapabilityTask, limits?: CapabilityRunOptions): CapabilityTaskContextSources {
+    const projectMaterials = task.spaceId
+      ? this.opts.projectMaterialSources?.(task.knowledgeIds || [], task.spaceId) ?? []
+      : [];
+    return {
+      ...(limits?.taskAttachments?.length ? { taskAttachments: limits.taskAttachments } : {}),
+      ...(projectMaterials.length ? { projectMaterials } : {}),
+    };
+  }
+
+  private async buildRunPrompt(
+    task: CapabilityTask,
+    ability: Capability,
+    persona: CapabilityPersona,
+    trigger: string,
+    previousRunContext?: string,
+  ): Promise<string> {
     const isOcr = ability.id === "ocr-extraction";
     const isImagePrompt = ability.id === IMAGE_PROMPT_CAPABILITY_ID;
     const nativeId = isNativeCapabilityId(ability.id) ? ability.id : null;
@@ -2202,6 +2249,7 @@ ${ability.prompt}`,
       `Trigger: ${trigger}`,
       `User request:
 ${task.instruction}`,
+      previousRunContext?.trim() || "",
       `Target artifact format: ${formatLabel(task.format)}`,
       "",
       executionRequirements,

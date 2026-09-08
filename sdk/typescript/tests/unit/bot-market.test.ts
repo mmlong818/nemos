@@ -21,21 +21,48 @@ test("精选市场：八种有来源的原生适配，声明实际边界，目�
   assert.notEqual(listBotMarket()[0].instructions, "forged"); assert.equal(listBotMarket()[0].permissions.tools, "off");
 });
 
-test("添加幂等、用户隔离、版本校验、不覆盖个人编辑、不接受伪造来源或权限", () => {
+test("添加幂等、用户隔离、版本校验、不覆盖个人派生规则、不接受伪造来源或权限", () => {
   const store = new AssistantBotStore(":memory:");
   try {
     const t = listBotMarket()[0]; const bot = store.importTemplate("one", { id: t.id, version: t.version, instructions: "evil", enabled: false, tools: "on" });
     assert.equal(bot.instructions, t.instructions); assert.equal(bot.enabled, true);
+    assert.equal(bot.visibility, "private");
+    assert.deepEqual(bot.ruleVersion, { kind: "user-derived", version: 1, baseTemplateVersion: t.version });
+    assert.deepEqual(bot.template, { id: t.id, version: t.version, source: t.source, adaptation: t.adaptation });
     assert.equal(store.importTemplate("one", t as any).id, bot.id); assert.equal(store.list("one").length, 1);
     assert.throws(() => store.importTemplate("one", { id: t.id, version: 0 }), /版本/);
     assert.throws(() => store.importTemplate("one", { id: "https://example.com/evil", version: 1 }), /不存在/);
     assert.throws(() => store.importTemplate("one", { id: t.id, version: "1" }), /版本/);
-    const updated = store.save("one", { ...bot, name: "我的项目助理", enabled: false, instructions: "我的规则", template: { id: "forged" } });
+    const updated = store.save("one", { ...bot, name: "我的项目助理", enabled: false, instructions: "我的规则",
+      template: { id: "forged", version: 999, source: { name: "forged" } }, ruleVersion: { kind: "local", version: 999 } });
     assert.deepEqual(updated.template, bot.template);
-    assert.deepEqual(store.importTemplate("one", { id: t.id, version: 1 }), updated);
+    assert.deepEqual(updated.ruleVersion, { kind: "user-derived", version: 2, baseTemplateVersion: t.version });
+    assert.equal(updated.visibility, "private");
+    const toggled = store.save("one", { id: updated.id, revision: updated.revision, enabled: true });
+    assert.deepEqual(toggled.ruleVersion, updated.ruleVersion, "表单的启用状态默认值不属于规则修改");
+    const whitespace = store.save("one", { id: toggled.id, revision: toggled.revision, name: ` ${toggled.name} `, instructions: ` ${toggled.instructions} ` });
+    assert.deepEqual(whitespace.ruleVersion, toggled.ruleVersion, "输入框首尾空白归一化后不虚增规则版本");
+    assert.throws(() => store.save("one", { ...whitespace, visibility: "public" }), /本机私有/);
+    assert.deepEqual(store.importTemplate("one", { id: t.id, version: 1 }), whitespace);
     const other = store.importTemplate("two", { id: t.id, version: 1 }); assert.notEqual(other.id, bot.id);
     assert.equal(other.instructions, t.instructions);
-    const plain = store.save("one", { name: "custom", role: "worker", instructions: "rules", template: bot.template }); assert.equal(plain.template, undefined);
+    const plain = store.save("one", { name: "custom", role: "worker", instructions: "rules", template: bot.template });
+    assert.equal(plain.template, undefined);
+    assert.deepEqual(plain.ruleVersion, { kind: "local", version: 1 }); assert.equal(plain.visibility, "private");
+  } finally { store.close(); }
+});
+
+test("旧模板记录在读取时保留来源，按用户派生规则版本解释且不写回用户数据", () => {
+  const store = new AssistantBotStore(":memory:");
+  try {
+    const t = listBotMarket()[0]; const imported = store.importTemplate("one", { id: t.id, version: t.version });
+    const legacy = { ...imported } as any; delete legacy.ruleVersion; delete legacy.visibility;
+    (store as any).db.prepare("UPDATE assistant_bots SET payload=? WHERE user_id=? AND id=?").run(JSON.stringify(legacy), "one", imported.id);
+    const read = store.get("one", imported.id);
+    assert.equal(read.visibility, "private");
+    assert.deepEqual(read.ruleVersion, { kind: "user-derived", version: 1, baseTemplateVersion: t.version });
+    const stored = JSON.parse((store as any).db.prepare("SELECT payload FROM assistant_bots WHERE user_id=? AND id=?").get("one", imported.id).payload);
+    assert.equal(stored.ruleVersion, undefined); assert.equal(stored.visibility, undefined);
   } finally { store.close(); }
 });
 
