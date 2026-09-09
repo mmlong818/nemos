@@ -192,6 +192,8 @@ As of 2026-09-08:
 | [Explicit completion, call ledger, and mid-run steering](docs/cumora-adoption-2026-09-09.md) | Turn disposition, purpose-level model call ledger, merge/redirect at phase boundaries |
 | [Unified context, handoff, and skill rule versions](docs/qm-adoption-2026-09-09.md) | Bounded context snapshot, scheduled-task handoff, template vs. local rule versions |
 | [Model catalog and eligibility checks](docs/model-catalog-adoption-2026-09-09.md) | Connection revision, stale catalog, explicit single-model checks with expiry |
+| [Outbound proxy](docs/outbound-proxy-2026-09-09.md) | Three modes, what it covers, loopback bypass, credential boundary |
+| [Outbound proxy](docs/outbound-proxy-2026-09-09.md) | Three modes, what it covers, loopback bypass, credential boundary |
 
 ## Contributing
 

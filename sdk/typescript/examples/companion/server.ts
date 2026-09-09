@@ -137,6 +137,15 @@ import { routeCapability } from "./capability-router.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
 import { defaultNetworkPolicy, normalizeNetworkPolicy, NetworkPolicyError } from "./network-policy.js";
 import {
+  defaultOutboundProxySettings,
+  normalizeOutboundProxySettings,
+  publicOutboundProxy,
+  resolveOutboundProxy,
+  OutboundProxyError,
+  type OutboundProxySettings,
+} from "./outbound-proxy.js";
+import { installOutboundProxy, outboundProxyInstalled } from "./proxy-dispatcher.js";
+import {
   importWeChatPrivateSource,
   loadPrivateSourcesConfig,
   privateSourcesSummary,
@@ -230,6 +239,7 @@ const DELIVERY_OUTBOX_FILE = runtimePath("COMPANION_DELIVERY_OUTBOX", "delivery-
 const AGENT_EXTENSIONS_FILE = runtimePath("COMPANION_AGENT_EXTENSIONS", "agent-extensions.json");
 const WORK_GUIDELINES_FILE = runtimePath("COMPANION_WORK_GUIDELINES", "work-guidelines.json");
 const NETWORK_POLICY_FILE = runtimePath("COMPANION_NETWORK_POLICY", "network-policy.json");
+const OUTBOUND_PROXY_FILE = runtimePath("COMPANION_OUTBOUND_PROXY", "outbound-proxy.json");
 const UNSANDBOXED_NOTICE_FILE = runtimePath("COMPANION_UNSANDBOXED_NOTICE", "unsandboxed-notice.json");
 /** 投递用尽重试的编号；从注册表取，避免编号在两处各写一遍。 */
 const DELIVERY_EXHAUSTED_CODE = failureShapeByName("deliveryAttemptsExhausted")!.code;
@@ -383,6 +393,30 @@ try {
 } catch (error) {
   networkPolicyLoadError = error instanceof Error ? error.message : "网络策略文件无法读取";
 }
+
+/**
+ * 出站代理设置。与网络策略同样处理坏文件：不阻断启动，把事实记在 loadError 里由接口返回。
+ * 解析不出代理时一个字节都不改全局 fetch，所以没有代理的用户行为完全不变。
+ */
+let outboundProxy: OutboundProxySettings = defaultOutboundProxySettings();
+let outboundProxyLoadError = "";
+try {
+  if (existsSync(OUTBOUND_PROXY_FILE)) {
+    outboundProxy = normalizeOutboundProxySettings(JSON.parse(readFileSync(OUTBOUND_PROXY_FILE, "utf8").replace(/^\ufeff/, "")));
+  }
+} catch (error) {
+  outboundProxyLoadError = error instanceof Error ? error.message : "代理设置文件无法读取";
+}
+
+/** 模型地址里的回环与私网主机要直连，否则配了代理的人用不了本机模型服务。 */
+function outboundProxyDirectHosts(): string[] {
+  return [modelConnection?.baseUrl || "", ...COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => preset.baseUrl)].filter(Boolean);
+}
+
+function applyOutboundProxy(): boolean {
+  return installOutboundProxy(resolveOutboundProxy(outboundProxy, process.env, outboundProxyDirectHosts()));
+}
+applyOutboundProxy();
 const agentRunObserver: AgentRunObserver = {
   onStart: (input, messages) => {
     agentRunStore.onStart(input, messages);
@@ -4334,6 +4368,47 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         send(res, error instanceof NetworkPolicyError ? 400 : 500, {
           error: error instanceof NetworkPolicyError ? error.message : "网络策略无法保存",
+        });
+      }
+      return;
+    }
+    if (req.method === "GET" && url.split("?")[0] === "/api/outbound-proxy") {
+      const resolved = resolveOutboundProxy(outboundProxy, process.env, outboundProxyDirectHosts());
+      send(res, 200, {
+        ok: true,
+        settings: { version: outboundProxy.version, mode: outboundProxy.mode, url: outboundProxy.url || "", noProxy: outboundProxy.noProxy },
+        status: { ...publicOutboundProxy(outboundProxy, resolved), installed: outboundProxyInstalled() },
+        loadError: outboundProxyLoadError || undefined,
+        // 说清边界，否则很容易被当成"整个应用都走代理"。
+        scope: "进程内基于 fetch 的出站调用（含模型调用）；网页读取走 node:https 并钉住解析地址，不经代理；被 spawn 的 MCP 子进程不受约束",
+        credentials: "显式地址不接受内嵌用户名密码；需要登录的代理请用跟随环境变量模式，凭据不会被本程序保存",
+      });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/outbound-proxy") {
+      const body = (await readBody(req)) as unknown;
+      try {
+        const next = normalizeOutboundProxySettings(body);
+        // 先落盘再切换，写失败时仍按旧设置工作。
+        const temp = `${OUTBOUND_PROXY_FILE}.${process.pid}.tmp`;
+        writeFileSync(temp, JSON.stringify(next, null, 2), "utf8");
+        renameSync(temp, OUTBOUND_PROXY_FILE);
+        outboundProxy = next;
+        outboundProxyLoadError = "";
+        const resolved = resolveOutboundProxy(outboundProxy, process.env, outboundProxyDirectHosts());
+        installOutboundProxy(resolved);
+        send(res, 200, {
+          ok: true,
+          settings: { version: next.version, mode: next.mode, url: next.url || "", noProxy: next.noProxy },
+          status: { ...publicOutboundProxy(outboundProxy, resolved), installed: outboundProxyInstalled() },
+        });
+      } catch (error) {
+        // 校验文案是我们自己写的、不含异常原文，因此显式透出；否则 send() 会换成通用提示，
+        // 而"地址不能内嵌密码，请改用环境变量模式"这类提示不透出就等于没有。
+        const detail = error instanceof OutboundProxyError ? error.message : "代理设置无法保存";
+        send(res, error instanceof OutboundProxyError ? 400 : 500, {
+          error: detail,
+          ...(error instanceof OutboundProxyError ? { userMessage: detail } : {}),
         });
       }
       return;
