@@ -1,4 +1,9 @@
 import { readAppHtml } from "../fixtures/render-app-page.js";
+import {
+  navigationIconNames,
+  navigationIconPath,
+  renderNavigationIcon,
+} from "../../examples/companion/navigation-icons.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -156,4 +161,39 @@ test("对话没有主对话特例并支持确认删除", () => {
   assert.match(page, /function deleteConversation\(id\)/);
   assert.match(page, /不会删除长期记忆或已经生成的文件/);
   assert.match(page, /if \(!remaining\.length\)[\s\S]*makeConversationNode\(\)/);
+});
+
+test("左栏图标全部来自图标系统，不用 Unicode 字符，且与浏览器那套逐字节一致", () => {
+  const pages = ["index.html", "capabilities.html", "office.html", "work.html", "overview.html"]
+    .map((file) => readAppHtml(file));
+  const icons = readFileSync(join(webRoot, "assets", "app-icons.js"), "utf8");
+
+  // 曾经用过的几何字符与占位点：它们来自三个不同形状家族，⌘ 还是 Mac 的 Command 键，
+  // 而界面字体栈根本不含这些字符，每个都由未声明的回退字体供给，粗细与基线各不相同。
+  for (const page of pages) {
+    for (const glyph of ["◫", "◌", "◉", "▦", "▧", "▤", "◇", "⌘", "⚙"]) {
+      assert.ok(!page.includes(glyph), `导航里不应再出现 ${glyph}`);
+    }
+    assert.ok(!page.includes('aria-hidden="true">·<'), "占位点不是图标");
+    // 每个导航项的图标都必须是图标系统直出的内联 SVG，服务端渲染，不依赖页面脚本。
+    assert.ok(!/<span aria-hidden="true">(?!<svg class="app-icon")/.test(page),
+      "导航图标必须是 app-icon 内联 SVG");
+  }
+
+  // 服务端那份与浏览器那份同名图标的路径数据必须完全相同，否则同一个名字会画出两个样子。
+  for (const name of navigationIconNames()) {
+    const key = name.includes("-") ? `"${name}"` : name;
+    const match = new RegExp(`${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: '((?:[^'\\\\]|\\\\.)*)'`).exec(icons);
+    assert.ok(match, `app-icons.js 缺少导航图标 ${name}`);
+    assert.equal(navigationIconPath(name), match![1], `${name} 的路径数据两处不一致`);
+  }
+
+  // 未登记的名字必须报错，不能静默兜底成通用图形：那会让写错的入口"看起来有图标"。
+  assert.throws(() => renderNavigationIcon("not-registered" as never), /未登记的导航图标/);
+
+  const rendered = renderNavigationIcon("settings");
+  assert.match(rendered, /viewBox="0 0 24 24"/);
+  assert.match(rendered, /stroke-width="2"/);
+  assert.match(rendered, /aria-hidden="true"/);
+  assert.match(rendered, /width="18" height="18"/);
 });
