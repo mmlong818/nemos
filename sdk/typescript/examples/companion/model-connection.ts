@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ReasoningEffort } from "./model-reasoning.js";
 
 export type CompanionModelProtocol = "openai-compatible" | "anthropic";
 
@@ -29,6 +30,8 @@ export interface CompanionModelConnection {
 export interface CompanionModelCheck {
   /** The connection revision on which this synthetic check was actually made. */
   connectionRevision?: string;
+  /** The transport this check actually exercised. A check never speaks for another one. */
+  transport?: CompanionModelTransport;
   checkedAt: string;
   chat: "passed" | "failed";
   streaming: "passed" | "failed" | "buffered" | "not-tested";
@@ -242,14 +245,17 @@ export function retainModelChecksForRevision(
 }
 
 export function isModelCheckEligible(
-  connection: Pick<CompanionModelConnection, "connectionRevision">,
+  connection: Pick<CompanionModelConnection, "connectionRevision" | "provider" | "protocol">,
   check: CompanionModelCheck | undefined,
+  model: string,
   capability: "chat" | "streaming" | "tools" = "chat",
   now = Date.now(),
 ): boolean {
   const checkedAt = check ? Date.parse(check.checkedAt) : Number.NaN;
+  const checkedOver = check?.transport ?? legacyCheckTransport(connection, model);
   return Boolean(isConnectionRevision(connection.connectionRevision)
     && check?.connectionRevision === connection.connectionRevision
+    && checkedOver === modelTransport(connection, model)
     && Number.isFinite(checkedAt)
     && checkedAt <= now
     && now - checkedAt <= COMPANION_MODEL_CHECK_TTL_MS
@@ -280,10 +286,61 @@ export function modelConnectionEndpoint(connection: CompanionModelConnection): s
   return `${connection.baseUrl}${suffix}`;
 }
 
-/** Astra's tools require Responses, including the result-only continuation round. */
+/** Which wire protocol a model is actually reached over. One source for adapter choice and checks. */
+export type CompanionModelTransport = "openai-responses" | "openai-chat-completions" | "anthropic-messages";
+
+/**
+ * OpenAI reasoning families, matched by prefix so a dated snapshot inherits its family.
+ * Official model pages checked 2026-09-09. This one table decides both the offered
+ * thinking efforts and the transport: chat completions rejects function tools for these
+ * models unless reasoning is off, so their tool rounds must go through Responses.
+ */
+export const OPENAI_REASONING_FAMILIES: readonly { prefix: string; efforts: readonly ReasoningEffort[] }[] = [
+  { prefix: "gpt-6-astra", efforts: ["low", "medium", "high", "xhigh", "max"] },
+  { prefix: "gpt-5.6-terra", efforts: ["none", "low", "medium", "high", "xhigh", "max"] },
+  { prefix: "gpt-5.6-luna", efforts: ["none", "low", "medium", "high", "xhigh", "max"] },
+];
+
+/** Prefix match without a regex: family IDs contain dots that a pattern would treat as wildcards. */
+function inModelFamily(model: string, prefix: string): boolean {
+  const id = model.trim().toLowerCase();
+  const family = prefix.toLowerCase();
+  return id === family || id.startsWith(`${family}-`);
+}
+
+export function openAIReasoningFamily(
+  connection: Pick<CompanionModelConnection, "provider" | "protocol"> | undefined,
+  model: string,
+): { prefix: string; efforts: readonly ReasoningEffort[] } | undefined {
+  if (connection?.provider !== "openai" || connection.protocol !== "openai-compatible") return undefined;
+  return OPENAI_REASONING_FAMILIES.find((family) => inModelFamily(model, family.prefix));
+}
+
+export function modelTransport(
+  connection: Pick<CompanionModelConnection, "provider" | "protocol">,
+  model: string,
+): CompanionModelTransport {
+  if (connection.protocol === "anthropic") return "anthropic-messages";
+  return openAIReasoningFamily(connection, model) ? "openai-responses" : "openai-chat-completions";
+}
+
 export function usesOpenAIResponses(connection: Pick<CompanionModelConnection, "provider" | "protocol" | "model">): boolean {
-  return connection.provider === "openai" && connection.protocol === "openai-compatible"
-    && /^gpt-6-astra(?:-|$)/i.test(connection.model);
+  return modelTransport(connection, connection.model) === "openai-responses";
+}
+
+/**
+ * Checks stored before the transport was recorded were made under the previous routing,
+ * where only the astra family used Responses. Reconstructing that keeps an astra check
+ * valid and correctly retires a terra/luna check that only ever exercised chat completions.
+ */
+function legacyCheckTransport(
+  connection: Pick<CompanionModelConnection, "provider" | "protocol">,
+  model: string,
+): CompanionModelTransport {
+  if (connection.protocol === "anthropic") return "anthropic-messages";
+  return inModelFamily(model, "gpt-6-astra") && connection.provider === "openai"
+    ? "openai-responses"
+    : "openai-chat-completions";
 }
 
 export function sortCompanionModels(models: readonly CompanionModelInfo[]): CompanionModelInfo[] {

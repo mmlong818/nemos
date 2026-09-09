@@ -39,7 +39,7 @@ import {
   isModelCheckEligible,
   modelConnectionEndpoint,
   normalizeCompanionModelConnection,
-  usesOpenAIResponses,
+  modelTransport,
   type CompanionModelConnection,
 } from "./model-connection.js";
 
@@ -790,19 +790,20 @@ function makeConnectionAgentModelInternal(options: ConnectionAgentModelOptions, 
   const storedCheck = options.connection.modelChecks?.[options.model];
   const check = storedCheck?.connectionRevision === options.connection.connectionRevision ? storedCheck : undefined;
   const effective = check?.streaming === "failed" ? { ...options, stream: false } : options;
-  const adapter = options.connection.protocol === "anthropic"
+  const transport = modelTransport(options.connection, options.model);
+  const adapter = transport === "anthropic-messages"
     ? makeAnthropicAgentModel(effective)
-    : usesOpenAIResponses({ ...options.connection, model: options.model })
+    : transport === "openai-responses"
       ? makeOpenAIResponsesAgentModel(effective)
       : makeOpenAICompatibleAgentModel(effective);
   return { complete: (request) => {
     if (check?.chat === "failed") throw new Error("当前模型连接检查未通过，请在设置中重新检查或选择其他模型。");
     // A resumed checkpoint is rebuilt through this same adapter. Its historical
     // model name never grants access after the current connection has changed.
-    if (!readinessProbe && options.connection.connectionRevision && !isModelCheckEligible(options.connection, check, "chat")) {
+    if (!readinessProbe && options.connection.connectionRevision && !isModelCheckEligible(options.connection, check, options.model, "chat")) {
       throw new Error("当前模型尚未通过此连接的文字回复检查，请在设置中明确检查后再使用。");
     }
-    if (request.tools.length && !readinessProbe && options.connection.connectionRevision && !isModelCheckEligible(options.connection, check, "tools")) {
+    if (request.tools.length && !readinessProbe && options.connection.connectionRevision && !isModelCheckEligible(options.connection, check, options.model, "tools")) {
       throw new Error("当前模型的工具调用检查未通过。请选择已验证工具调用的模型，或关闭工具后仅进行文字对话。");
     }
     return modelScheduler.run(modelResourceKey(options.connection), request.signal, async () => {

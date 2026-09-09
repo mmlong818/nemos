@@ -3,6 +3,7 @@ import type { AgentMessage, AgentToolDefinition } from "../../src/index.js";
 import { makeReadinessProbeAgentModel } from "./llm.js";
 import {
   CompanionModelHttpError,
+  modelTransport,
   usesOpenAIResponses,
   type CompanionModelCheck,
   type CompanionModelConnection,
@@ -19,6 +20,7 @@ export async function checkCompanionModel(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const check: CompanionModelCheck = {
     ...(connection.connectionRevision ? { connectionRevision: connection.connectionRevision } : {}),
+    transport: modelTransport(connection, connection.model),
     checkedAt: new Date().toISOString(), chat: "failed", streaming: "not-tested", tools: "not-tested",
     detail: "文字回复检查未通过。",
   };

@@ -501,7 +501,7 @@ function enqueueAssistantTeam(raw: Record<string, unknown>) {
   if (!llm.live || !modelConnection) throw new AssistantTeamError("请先在设置中保存可用模型；离线演示不能算协作成功", 409);
   const selectedModel = request.model || modelConnection.model;
   if (modelConnection.connectionRevision
-    && !isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[selectedModel], "chat")) {
+    && !isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[selectedModel], selectedModel, "chat")) {
     throw new AssistantTeamError("所选模型尚未通过当前连接的文字检查，请先在设置中显式检查；不会自动改用其他型号", 409);
   }
   const teamPlan = assistantBots.plan(USER, { ...request, model: request.model || modelConnection.model }, {planning: request.planningConsent === true});
@@ -1385,7 +1385,7 @@ function modelConnectionStatus(): Record<string, unknown> {
   const isOpenAI = connection.provider === "openai"
     && connection.baseUrl === "https://api.openai.com/v1";
   const activeChatReady = Boolean(modelConnection
-    && isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], "chat"));
+    && isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], modelConnection.model, "chat"));
   return {
     live: llm.live,
     label: llm.label,
@@ -1406,7 +1406,7 @@ function modelConnectionStatus(): Record<string, unknown> {
     savedConnection: savedLLMKeyExists(),
     savedKey: savedLLMKeyExists() && connection.hasKey,
     supports: {
-      tools: Boolean(modelConnection && isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], "tools")),
+      tools: Boolean(modelConnection && isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], modelConnection.model, "tools")),
       vectorMemory: isZhipu || isOpenAI,
       webSearch: isZhipu,
       vision: isZhipu,
@@ -1464,7 +1464,7 @@ function currentPlatformConnectors() {
 function capabilityProviderSummaries(): CapabilityProviderSummary[] {
   const model = publicModelConnection(modelConnection);
   const modelReady = Boolean(llm.live && modelConnection && (!modelConnection.connectionRevision
-    || isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], "chat")));
+    || isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], modelConnection.model, "chat")));
   const toolReadiness = new Map(capabilityTools.list().map((tool) => [tool.id, tool.available]));
   const builtins: CapabilityProviderSummary[] = [
     {
@@ -2927,10 +2927,10 @@ function conversationSendOptions(body: ChatBody): {
   // grant readiness, and a failed model is never silently replaced.
   if (modelConnection?.connectionRevision) {
     const check = modelConnection.modelChecks?.[selectedModelId];
-    if (!isModelCheckEligible(modelConnection, check, "chat")) {
+    if (!isModelCheckEligible(modelConnection, check, selectedModelId, "chat")) {
       throw new Error(`模型 ${selectedModelId} 尚未通过当前连接的文字检查，请到设置中显式检查；不会自动改用其他型号。`);
     }
-    if (toolMode !== "off" && !isModelCheckEligible(modelConnection, check, "tools")) {
+    if (toolMode !== "off" && !isModelCheckEligible(modelConnection, check, selectedModelId, "tools")) {
       throw new Error(`模型 ${selectedModelId} 尚未通过当前连接的工具检查，请关闭工具或显式检查；不会自动改用其他型号。`);
     }
   }
@@ -6267,7 +6267,7 @@ const server = createServer(async (req, res) => {
       // switch costs four model calls and freezes the picker for seconds. `force` re-runs the probe.
       const cached = modelConnection?.modelChecks?.[id];
       if (modelConnection && cached && b.force !== true && isFreshModelCheck(cached)
-        && isModelCheckEligible(modelConnection, cached, "chat")) {
+        && isModelCheckEligible(modelConnection, cached, id, "chat")) {
         send(res, 200, { ok: true, ...modelConnectionStatus(), checkedModel: id, checked: cached, cached: true });
         return;
       }
@@ -6473,9 +6473,9 @@ const server = createServer(async (req, res) => {
             })() : undefined,
           })), model: modelConnection?.model || "", ready: Boolean(llm.live && modelConnection
             && (!modelConnection.connectionRevision
-              || isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], "chat"))),
+              || isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], modelConnection.model, "chat"))),
             models: modelConnection ? normalizeFavoriteModels(Object.keys(modelConnection.modelChecks || {}).filter((id) =>
-              isModelCheckEligible(modelConnection!, modelConnection!.modelChecks?.[id], "chat"))) : [] });
+              isModelCheckEligible(modelConnection!, modelConnection!.modelChecks?.[id], id, "chat"))) : [] });
           return;
         }
           if (req.method === "GET" && pathname === "/api/assistant-team/export") {

@@ -9,6 +9,7 @@ import {
   fetchCompanionModelCatalog,
   isModelCheckEligible,
   modelConnectionEndpoint,
+  modelTransport,
   normalizeCompanionModelConnection,
   selectCompanionConversationModel,
   withConnectionRevision,
@@ -87,13 +88,13 @@ test("connection revisions preserve favourites but never reuse checks after an e
     ...original,
     modelChecks: { "any/model:id": { connectionRevision: original.connectionRevision, checkedAt: new Date().toISOString(), chat: "passed" as const, streaming: "passed" as const, tools: "passed" as const, detail: "fixture" } },
   };
-  assert.equal(isModelCheckEligible(checked, checked.modelChecks["any/model:id"]), true);
+  assert.equal(isModelCheckEligible(checked, checked.modelChecks["any/model:id"], "any/model:id"), true);
   const unchanged = withConnectionRevision(checked, checked);
   assert.equal(unchanged.connectionRevision, checked.connectionRevision);
-  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"]), true);
+  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"], "any/model:id"), true);
   const checkedAt = Date.parse(checked.modelChecks["any/model:id"].checkedAt);
-  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"], "chat", checkedAt + 7 * 24 * 60 * 60 * 1000), true);
-  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"], "chat", checkedAt + 7 * 24 * 60 * 60 * 1000 + 1), false);
+  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"], "any/model:id", "chat", checkedAt + 7 * 24 * 60 * 60 * 1000), true);
+  assert.equal(isModelCheckEligible(unchanged, unchanged.modelChecks?.["any/model:id"], "any/model:id", "chat", checkedAt + 7 * 24 * 60 * 60 * 1000 + 1), false);
   const injected = withConnectionRevision({ ...checked, modelChecks: { "any/model:id": { ...checked.modelChecks["any/model:id"], connectionRevision: "00000000-0000-0000-0000-000000000000" } } }, checked);
   assert.deepEqual(injected.modelChecks, {});
   const changed = withConnectionRevision({ ...checked, baseUrl: "http://127.0.0.1:2345/v1" }, checked);
@@ -227,4 +228,32 @@ test("Anthropic connection keeps Companion tools available", async () => {
   } finally {
     globalThis.fetch = previousFetch;
   }
+});
+
+test("检查只为它实际走过的通道背书；改道后旧检查作废，未改道的仍然有效", () => {
+  const openai = (model: string) => ensureConnectionRevision(normalizeCompanionModelConnection({
+    provider: "openai", model, apiKey: "fixture-key",
+  }));
+  const record = (revision: string | undefined, extra: Record<string, unknown> = {}) => ({
+    connectionRevision: revision, checkedAt: new Date().toISOString(),
+    chat: "passed" as const, streaming: "passed" as const, tools: "passed" as const,
+    detail: "fixture", ...extra,
+  });
+
+  // 推理型号的工具往返只有 Responses 支持，所以 terra 一律走 Responses。
+  assert.equal(modelTransport(openai("gpt-5.6-terra"), "gpt-5.6-terra"), "openai-responses");
+  assert.equal(modelTransport(openai("gpt-4o"), "gpt-4o"), "openai-chat-completions");
+
+  // 没有 transport 字段的旧记录按改动前的路由还原：只有 astra 族走过 Responses。
+  const terra = openai("gpt-5.6-terra");
+  assert.equal(isModelCheckEligible(terra, record(terra.connectionRevision), "gpt-5.6-terra"), false,
+    "旧记录是在 chat completions 上做的，改道后不能继续为工具能力背书");
+  const astra = openai("gpt-6-astra");
+  assert.equal(isModelCheckEligible(astra, record(astra.connectionRevision), "gpt-6-astra"), true,
+    "astra 本来就走 Responses，旧记录不应被无故作废");
+
+  // 显式记录了通道的记录按字段判定，不再靠还原。
+  assert.equal(isModelCheckEligible(terra, record(terra.connectionRevision, { transport: "openai-responses" }), "gpt-5.6-terra"), true);
+  assert.equal(isModelCheckEligible(terra, record(terra.connectionRevision, { transport: "openai-chat-completions" }), "gpt-5.6-terra"), false);
+  assert.equal(isModelCheckEligible(terra, record(terra.connectionRevision, { transport: "anthropic-messages" }), "gpt-5.6-terra"), false);
 });
