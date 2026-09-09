@@ -31,6 +31,7 @@ test("模型保存不探测；显式检查、收藏、跨连接与重启严格�
     const checked = await request("/api/llm-model/check", { model: "manual" });
     assert.equal(checked.ok, true); assert.equal(checked.checkedModel, "manual");
     assert.equal(checked.checked.chat, "passed"); assert.equal(checked.checked.tools, "passed");
+    assert.equal(checked.checked.transport, "openai-chat-completions", "检查必须记下它实际走过的通道");
     assert.equal(modelRequests(), beforeCheck + 4, "one explicit check performs its four synthetic capability rounds");
     const unchanged = await request("/api/llm-config", config);
     assert.equal(unchanged.connectionRevision, checked.connectionRevision);

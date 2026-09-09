@@ -8,6 +8,7 @@ import { FileAgentRunStore } from "../../src/agent/run-store.js";
 import type { AgentTool, AgentMessage, AgentRunCheckpoint } from "../../src/agent/types.js";
 import { makeConnectionAgentModel } from "../../examples/companion/llm.js";
 import { normalizeCompanionModelConnection, usesOpenAIResponses } from "../../examples/companion/model-connection.js";
+import { supportedReasoningEfforts } from "../../examples/companion/model-reasoning.js";
 import { checkCompanionModel } from "../../examples/companion/model-readiness.js";
 
 const connection = normalizeCompanionModelConnection({ provider: "openai", model: "gpt-6-astra", apiKey: "fixture-key" });
@@ -45,7 +46,15 @@ function reply(body: any): Response {
 test("Astra and its snapshots route to Responses; unrelated providers and models do not change", () => {
   assert.equal(usesOpenAIResponses(connection), true);
   assert.equal(usesOpenAIResponses({ ...connection, model: "gpt-6-astra-2026-09-01" }), true);
+  assert.equal(usesOpenAIResponses({ ...connection, model: "gpt-5.6-terra" }), true);
+  assert.equal(usesOpenAIResponses({ ...connection, model: "gpt-5.6-luna" }), true);
+  assert.equal(usesOpenAIResponses({ ...connection, model: "gpt-5.6-terra-2026-08-01" }), true);
   assert.equal(usesOpenAIResponses({ ...connection, model: "gpt-5.6-sol" }), false);
+  assert.equal(usesOpenAIResponses({ ...connection, model: "gpt-5.6-terrarium" }), false);
+  // 同一张表同时决定思考强度：两者不能各自硬编码而后漂移。
+  assert.deepEqual(supportedReasoningEfforts(connection, "gpt-5.6-terra"), ["none", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(supportedReasoningEfforts(connection, "gpt-6-astra"), ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(supportedReasoningEfforts(connection, "gpt-5.6-sol"), []);
   assert.equal(usesOpenAIResponses({ ...connection, model: "gpt-6-astralis" }), false);
   assert.equal(usesOpenAIResponses({ ...connection, provider: "custom" }), false);
   assert.equal(normalizeCompanionModelConnection({ ...connection, baseUrl: "https://api.openai.com/v1/responses/" }).baseUrl, "https://api.openai.com/v1");
