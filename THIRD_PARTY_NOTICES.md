@@ -12,6 +12,7 @@
 | Microsoft WebView2 SDK | 1.0.4022.49 | Windows 桌面外壳 | Microsoft 软件许可条款 | [NuGet 包](https://www.nuget.org/packages/Microsoft.Web.WebView2/) |
 | Node.js | 主机版本及 26.5.0 沙箱版本 | 应用与隔离工具运行时 | MIT 及随附第三方条款 | [nodejs/node](https://github.com/nodejs/node) |
 | Python | 3.14.6 嵌入式版本 | 隔离工具运行时 | Python Software Foundation License | [python/cpython](https://github.com/python/cpython) |
+| undici | 8.10.2 | 出站代理 dispatcher | MIT | [nodejs/undici](https://github.com/nodejs/undici) |
 
 ## 纳入仓库的代码
 

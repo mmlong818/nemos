@@ -190,6 +190,8 @@ docker compose up -d --build
 | [四道门与提示指令预算](docs/agentic-workflow-2026-09-08.md) | 写代码前的对齐门、提示指令预算守卫 |
 | [统一上下文、交接与技能规则版本](docs/qm-adoption-2026-09-09.md) | 受限上下文快照、计划任务交接、模板与本地规则双版本 |
 | [模型目录与资格检查](docs/model-catalog-adoption-2026-09-09.md) | 连接 revision、目录 stale、显式单型号检查与过期 |
+| [出站代理](docs/outbound-proxy-2026-09-09.md) | 三种模式、覆盖范围、回环直连与凭据边界 |
+| [出站代理](docs/outbound-proxy-2026-09-09.md) | 三种模式、覆盖范围、回环直连与凭据边界 |
 
 ## 参与贡献
 
