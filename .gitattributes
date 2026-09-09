@@ -1,0 +1,43 @@
+# 仓库统一存 LF，检出也统一为 LF。
+#
+# 为什么需要这个文件：本仓库曾在系统级 core.autocrlf=true 下检出。autocrlf 的机制是
+# blob 存 LF、工作文件写 CRLF，索引里记的 stat 是那份 CRLF 文件的。后来仓库级把
+# core.autocrlf 设成 false，比较规则改成按原始字节比，但 git 仍然信任索引里的 stat
+# 缓存，于是 736 个跟踪文件里有 462 个在工作区是 CRLF、在仓库是 LF，而 git status
+# 一直报告干净。这类文件一旦被改到，diff 就会变成整文件重写，改动看不出来。
+#
+# .gitattributes 不依赖任何一台机器的 core.autocrlf，所以把规则钉在这里；
+# 全仓库当时没有任何一个文本 blob 含 CRLF，规范化不会破坏依赖 CRLF 的固件。
+* text=auto eol=lf
+
+# Windows 批处理对行尾敏感，保持 CRLF。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制一律不做行尾转换。text=auto 多数情况能自己认出来，这里显式写清，
+# 避免新增格式时靠启发式判断。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.svg text eol=lf
+*.ico binary
+*.icns binary
+*.pdf binary
+*.gz binary
+*.tgz binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.node binary
+*.wasm binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.blend binary
+*.mp3 binary
+*.mp4 binary
+*.wav binary
