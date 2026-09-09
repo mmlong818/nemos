@@ -134,4 +134,4 @@ await nemos.close();
 
 本包的本地 Agent 运行时代码采用 PolyForm Noncommercial 1.0.0；重新导出的 `@nemos/sdk` 来自独立 `nemos-memory` 仓库，并保留其自己的许可证声明。
 
-同目录下的 `examples/companion/`（小丑鱼应用）**不在**该许可证范围内，保留全部权利并另行授权；它不随本 npm 包发布（`files` 白名单仅含 `dist`）。完整授权结构见仓库根目录 [LICENSING.md](../../LICENSING.md)。
+同目录下的 `examples/companion/`（小丑鱼应用）自 2026-09-09 起同样采用 PolyForm Noncommercial 1.0.0；它不随本 npm 包发布（`files` 白名单仅含 `dist`）。完整授权结构见仓库根目录 [LICENSING.md](../../LICENSING.md)。

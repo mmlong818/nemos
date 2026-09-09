@@ -315,10 +315,6 @@ Get-ChildItem -LiteralPath (Join-Path $SdkRoot "examples\companion") -Directory 
 New-Item -ItemType Directory -Force -Path (Join-Path $PortableCompanion "client") | Out-Null
 Copy-Item -LiteralPath $Manifest -Destination (Join-Path $PortableCompanion "client") -Force
 
-$CompanionLicense = Join-Path $SdkRoot "examples\companion\LICENSE"
-if (Test-Path -LiteralPath $CompanionLicense) {
-  Copy-Item -LiteralPath $CompanionLicense -Destination (Join-Path $PortableLicenses "Clownfish-LICENSE.txt") -Force
-}
 
 $LauncherPath = Join-Path $PortableRoot "启动小丑鱼.cmd"
 [System.IO.File]::WriteAllLines($LauncherPath, @(
