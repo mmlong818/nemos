@@ -6,12 +6,12 @@
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/badge/version-v0.7.6-b33f72)](https://github.com/mmlong818/nemos/tree/v0.7.6)
-[![License](https://img.shields.io/badge/integration-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/repository%20code-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#quick-start)
 [![Status](https://img.shields.io/badge/status-Alpha-orange)](ROADMAP.md)
 
 > [!IMPORTANT]
-> **This repository as a whole is not a single OSI open-source project.** The integration layer and Agent runtime are **noncommercial** source-available (PolyForm Noncommercial 1.0.0), and the Clownfish application directory is licensed separately (all rights reserved). Read [LICENSING.md](LICENSING.md) before any commercial use.
+> **This repository is not an OSI-approved open-source project.** All code it owns, including the Clownfish application, is licensed under PolyForm Noncommercial 1.0.0: use, modify and redistribute it noncommercially, while **commercial use requires a separate license**. Bundled third-party components keep their own terms. Read [LICENSING.md](LICENSING.md) before any commercial use.
 
 ![Clownfish task workbench](docs/assets/readme/clownfish-task-current.png)
 
@@ -219,8 +219,8 @@ Start with the [contributing guide](CONTRIBUTING.md); see also the [code of cond
 | Part | License |
 | --- | --- |
 | TypeScript integration, Agent runtime, public research material | [PolyForm Noncommercial 1.0.0](LICENSE) (noncommercial) |
-| Clownfish application under `sdk/typescript/examples/companion/` | All rights reserved, see the [separate notice](sdk/typescript/examples/companion/LICENSE) |
+| Clownfish application under `sdk/typescript/examples/companion/` | [PolyForm Noncommercial 1.0.0](LICENSE) (noncommercial) |
 | Memory core `@nemos/sdk` | Per [its own repository](https://github.com/mmlong818/nemos-memory) license |
 | Bundled third-party components | Their own open-source or software terms, see [third-party notices](THIRD_PARTY_NOTICES.md) |
 
-To restate: this repository as a whole is not a single OSI open-source project. The integration layer is noncommercial source-available, the Clownfish application is licensed separately, and third-party components keep their own terms.
+To restate: PolyForm Noncommercial is not an OSI-approved open-source license. Code this repository owns may be used and modified noncommercially, commercial use requires a separate license, and third-party components keep their own terms.

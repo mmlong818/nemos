@@ -200,7 +200,7 @@ function startModelShim(options: { credentialProxyUrl: string; credentialProxyTo
    `easel skill <选题发现>`，确认 headless 可用、确认 skill 名称、确认输出形状与是否用流式。
    这会实际改动机器环境（数 GB 依赖），需要你同意。
 2. **确认许可边界**：本方案**只连接、不分发** Easel，因此不需要在 `THIRD_PARTY_NOTICES.md`
-   里加它，也不产生与 PolyForm Noncommercial / 应用目录保留全部权利的交叉。如果将来改成随包
+   里加它，也不产生与仓库 PolyForm Noncommercial 授权的交叉。如果将来改成随包
    分发，Apache 2.0 的 NOTICE 归属义务就要落实。
 
 

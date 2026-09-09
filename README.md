@@ -6,12 +6,12 @@
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
 [![版本](https://img.shields.io/badge/版本-v0.7.6-b33f72)](https://github.com/mmlong818/nemos/tree/v0.7.6)
-[![License](https://img.shields.io/badge/接入层-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/本仓库代码-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#快速开始)
 [![状态](https://img.shields.io/badge/状态-Alpha-orange)](ROADMAP.md)
 
 > [!IMPORTANT]
-> **本仓库整体不是单一 OSI 开源许可证项目。** 接入层与 Agent 运行时是**非商业**源码开放（PolyForm Noncommercial 1.0.0），小丑鱼应用目录另行授权（保留全部权利）。商业使用前请先读 [LICENSING.md](LICENSING.md)。
+> **本仓库不是 OSI 认证的开源项目。** 自有代码统一按 PolyForm Noncommercial 1.0.0 授权，包括小丑鱼应用：可非商业地使用、修改和分发，**商业用途需另行取得授权**。随包分发的第三方组件保留各自条款。商业使用前请先读 [LICENSING.md](LICENSING.md)。
 
 ![小丑鱼任务工作台](docs/assets/readme/clownfish-task-current.png)
 
@@ -219,8 +219,8 @@ docker compose up -d --build
 | 部分 | 许可 |
 | --- | --- |
 | TypeScript 接入层、Agent 运行时、公开研究资料 | [PolyForm Noncommercial 1.0.0](LICENSE)（非商业） |
-| 小丑鱼应用 `sdk/typescript/examples/companion/` | 保留全部权利，见[单独声明](sdk/typescript/examples/companion/LICENSE) |
+| 小丑鱼应用 `sdk/typescript/examples/companion/` | [PolyForm Noncommercial 1.0.0](LICENSE)（非商业） |
 | 记忆内核 `@nemos/sdk` | 以[其仓库](https://github.com/mmlong818/nemos-memory)许可证为准 |
 | 随包分发的第三方组件 | 各自的开源或软件许可条款，见[第三方软件声明](THIRD_PARTY_NOTICES.md) |
 
-再说明一次：本仓库整体不是单一 OSI 开源许可证项目。接入层是非商业源码开放，小丑鱼应用另行授权，第三方组件继续适用各自条款。
+再说明一次：PolyForm Noncommercial 不是 OSI 认证的开源许可证。自有代码可非商业地使用与修改，商业用途需另行取得授权；第三方组件继续适用各自条款。

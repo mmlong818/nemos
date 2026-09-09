@@ -79,9 +79,9 @@ docs: refresh current product guide
 
 ## 许可
 
-本仓库采用双授权结构：`sdk/typescript/src/` 等 SDK 部分对外按 PolyForm
-Noncommercial 1.0.0 提供，`sdk/typescript/examples/companion/`（小丑鱼应用）
-保留全部权利并另行授权。完整说明见 [LICENSING.md](LICENSING.md)。
+本仓库自有代码统一按 PolyForm Noncommercial 1.0.0 对外提供，包括
+`sdk/typescript/examples/companion/`（小丑鱼应用）。随包分发的第三方代码
+保留各自许可证。完整说明见 [LICENSING.md](LICENSING.md)。
 
 小丑鱼的打包产物内含 SDK 代码，因此提交贡献时需要一并给出商业再授权许可，
 否则该贡献将无法随应用分发。
