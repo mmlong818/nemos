@@ -330,6 +330,8 @@ function backupSummary(): { dir: string; count: number; latest: string | null } 
   }
 }
 
+/** Set when this process bound a pre-v4 file's checks; the migration must then be persisted. */
+let legacyConnectionFileMigrated = false;
 let modelConnection = loadSavedLLMConnection();
 if (modelConnection) modelConnection.modelChecks ??= {};
 /** Passed chat probes stay valid for a week; failures are always re-probed. */
@@ -343,6 +345,17 @@ let modelConnectionUpdating = false;
 let modelCatalog = loadSavedLLMModelCatalog();
 let modelCatalogFetchedAt = loadSavedLLMModelCatalogFetchedAt();
 let modelCatalogConnectionRevision = loadSavedLLMModelCatalogConnectionRevision();
+// Binding a v2/v3 file's checks is a one-time migration, so persist it as v4 now. Without
+// this write the file stays legacy and every restart mints a fresh revision and re-blesses
+// the same stale checks, which would defeat the revision guard entirely.
+if (modelConnection && legacyConnectionFileMigrated) {
+  try {
+    saveSavedLLMConnection(modelConnection, modelCatalog, modelCatalogFetchedAt, modelCatalogConnectionRevision);
+    legacyConnectionFileMigrated = false;
+  } catch (error) {
+    console.error(`[companion] 旧模型连接文件升级为 v4 失败，本次仍按迁移结果运行：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 loadSavedXToken();
 let userProfile = loadUserProfile();
 
@@ -1297,6 +1310,7 @@ function loadSavedLLMConnection(): CompanionModelConnection | undefined {
       loaded.modelChecks = saved.version === 4
         ? retainModelChecksForRevision(saved.modelChecks, loaded.connectionRevision!)
         : bindModelChecksToRevision(saved.modelChecks, loaded.connectionRevision!);
+      if (saved.version !== 4) legacyConnectionFileMigrated = true;
       return loaded;
     }
     // 兼容旧版仅保存智谱 Key 的文件，成功读取后会在下次保存时自动升级结构。
