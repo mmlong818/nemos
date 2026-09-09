@@ -19,9 +19,9 @@
 | 文件 | 用途 |
 | --- | --- |
 | [main.tex](main.tex) | 英文论文源码 |
-| [main.pdf](main.pdf) | 英文最终渲染 |
+| main.pdf | 英文最终渲染，由 `main.tex` 按 BUILD.md 生成，不入库 |
 | [main-zh.tex](main-zh.tex) | 中文论文源码 |
-| [main-zh.pdf](main-zh.pdf) | 中文最终渲染 |
+| main-zh.pdf | 中文最终渲染，由 `main-zh.tex` 按 BUILD.md 生成，不入库 |
 | [refs.bib](refs.bib) | 参考文献 |
 | [BUILD.md](BUILD.md) | 编译与核验方法 |
 | [ARXIV_SUBMIT.md](ARXIV_SUBMIT.md) | 投稿前检查清单 |
