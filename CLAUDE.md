@@ -25,9 +25,12 @@ cd ..\..; node scripts\verify-docs.mjs
 
 ## 陷阱
 
-- **行尾**：仓库存 LF、`core.autocrlf=false`。脚本写文件必须显式 `newline="\n"`，否则几十行改动
-  会变成整文件 diff。收尾用 `git diff --stat <file>` 判断：只该有你改的那几行，整文件重写一眼可见。
+- **行尾**：`.gitattributes` 里 `* text=auto eol=lf` 已把规则钉死，不再依赖各机器的
+  `core.autocrlf`（`*.bat`/`*.cmd` 例外，保持 CRLF）。脚本写文件仍要显式 `newline="\n"`。
+  收尾用 `git diff --stat <file>` 判断：只该有你改的那几行，整文件重写一眼可见。
   **不要用 `grep -qU $'\r'`**——Bash 工具里这段转义会被吃掉，退化成匹配字母 r，于是永远"命中"。
+  历史教训：本仓库曾在系统级 `autocrlf=true` 下检出，462 个文件在工作区是 CRLF、仓库是 LF，
+  而 `git status` 因 stat 缓存一直报告干净，改到哪个哪个就整文件 diff。已于 2026-09-09 规范化。
 - **heredoc**：bash heredoc 吃反斜杠，正则与转义序列被静默写坏。写脚本请用 Write 工具落文件。
 - **加一项能力要同步八处**：能力表、工作流目录、服务端 `ROUTES`、前端 `MATCH_RULES`、
   `EXAMPLE_PROMPTS`、`ICON_TONES`、Bot 页图标表、`skill-handoff` 建议。漏登记不会让测试变红，
