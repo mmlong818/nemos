@@ -35,3 +35,9 @@ xelatex main-zh.tex
 3. 把所有页面渲染成图片，逐页检查裁切、溢出、空白页、表格和中英文换行。
 4. 对源码、PDF 文本和 `arxiv-en.tar.gz` 做隐私扫描，排除私人邮箱、API Key 和本机绝对路径。
 5. 从当前 `main.tex`、`refs.bib`、`main.bbl` 重新生成投稿包，并检查压缩包文件清单。
+   `main.bbl` 由上面的 `bibtex main` 产生；投稿包不入库，每次投稿前重新打：
+
+   ```bash
+   tar -czf arxiv-en.tar.gz main.tex refs.bib main.bbl
+   tar -tzf arxiv-en.tar.gz
+   ```

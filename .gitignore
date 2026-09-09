@@ -70,5 +70,6 @@ coverage/
 # 本机 QA 产物（截图、录屏、审计报告），不进仓库
 outputs/
 
-# 论文渲染产物：由 paper/BUILD.md 的步骤从 .tex 重新生成
+# 论文的生成物：渲染 PDF 与 arXiv 投稿包，都按 paper/BUILD.md 的步骤重新生成
 paper/*.pdf
+paper/*.tar.gz

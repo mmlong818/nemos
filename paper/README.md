@@ -25,7 +25,7 @@
 | [refs.bib](refs.bib) | 参考文献 |
 | [BUILD.md](BUILD.md) | 编译与核验方法 |
 | [ARXIV_SUBMIT.md](ARXIV_SUBMIT.md) | 投稿前检查清单 |
-| arxiv-en.tar.gz | 由当前英文源码重新生成的投稿包 |
+| arxiv-en.tar.gz | arXiv 投稿包，由当前英文源码按 BUILD.md 生成，不入库 |
 
 ## 数字边界
 
