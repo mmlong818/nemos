@@ -86,9 +86,11 @@ if (!zhTests || zhTests !== enTests) fail("中英文 README 的测试数量不�
  * 一律视为过时残留，由下面那条统一拦下。
  */
 const currentScreenshots = {
-  task: "docs/assets/readme/clownfish-task-current.png",
+  overview: "docs/assets/readme/clownfish-overview-current.png",
   assistant: "docs/assets/readme/clownfish-assistant-current.png",
+  task: "docs/assets/readme/clownfish-task-current.png",
   memory: "docs/assets/readme/clownfish-memory-current.png",
+  models: "docs/assets/readme/clownfish-models-current.png",
 };
 for (const relativePath of Object.values(currentScreenshots)) {
   if (!existsSync(join(root, relativePath))) fail(`当前 README 截图不存在：${relativePath}`);
