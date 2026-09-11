@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readServerRouteSurface } from "../fixtures/server-route-surface.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,7 +15,7 @@ import { OFFICE_FILE_KINDS } from "../../examples/companion/office-file-parser.j
 const webRoot = join(__dirname, "..", "..", "examples", "companion", "web");
 const officeHtml = readFileSync(join(webRoot, "office.html"), "utf8");
 const officeJs = readFileSync(join(webRoot, "assets", "office-workbench.js"), "utf8");
-const server = readFileSync(join(__dirname, "..", "..", "examples", "companion", "server.ts"), "utf8");
+const server = readServerRouteSurface();
 
 test("每种可打开的格式都声明了真实能力", () => {
   const formats = OFFICE_FORMAT_CAPABILITIES.map((entry) => entry.format).sort();
