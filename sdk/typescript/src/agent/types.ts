@@ -32,6 +32,12 @@ export interface AgentToolDefinition {
   /** destructive 工具一旦执行失败，本次运行后续同类操作会立即熔断。 */
   risk?: AgentToolRisk;
   timeoutMs?: number;
+  /**
+   * 谁提供了这个工具：扩展 id，或不填表示宿主内置。
+   * 观察者据此分辨第三方 MCP 调用与内置调用，不必再去查一遍注册表——
+   * 靠工具名里有没有点号来猜是约定，不是事实。
+   */
+  source?: string;
 }
 
 export interface AgentToolResult {
@@ -117,15 +123,27 @@ export interface AgentModel {
   complete: (request: AgentModelRequest) => Promise<AgentModelResponse>;
 }
 
+/**
+ * 工具事件随身带的出处。原来事件里只有 call（名字 + 参数），
+ * 观察者想知道这次调用是读还是写、是不是高危、来自哪个扩展，
+ * 必须自己再查一遍工具注册表；调用未注册的工具时干脆查不到。
+ * 未知工具这三项都不填。
+ */
+export interface AgentToolProvenance {
+  effect?: AgentToolEffect;
+  risk?: AgentToolRisk;
+  source?: string;
+}
+
 export type AgentRunEvent =
   | { type: "run_start"; runId: string; sessionId: string; metadata?: Readonly<Record<string, string>> }
   | { type: "run_resume"; runId: string; sessionId: string; round: number }
   | { type: "round_start"; round: number }
   | { type: "model_end"; round: number; toolCallCount: number; inputTokens?: number; outputTokens?: number }
   | { type: "token_budget_exhausted"; limit: number; used: number }
-  | { type: "tool_start"; call: AgentToolCall }
-  | { type: "tool_authorization"; call: AgentToolCall; allowed: boolean; reason?: string }
-  | { type: "tool_end"; call: AgentToolCall; result: AgentToolResult }
+  | ({ type: "tool_start"; call: AgentToolCall } & AgentToolProvenance)
+  | ({ type: "tool_authorization"; call: AgentToolCall; allowed: boolean; reason?: string } & AgentToolProvenance)
+  | ({ type: "tool_end"; call: AgentToolCall; result: AgentToolResult } & AgentToolProvenance)
   | { type: "completion_rejected"; reason: string }
   | { type: "turn_disposition"; disposition: AgentTurnDisposition }
   | { type: "handoff"; count: number; beforeChars: number; afterChars: number }
