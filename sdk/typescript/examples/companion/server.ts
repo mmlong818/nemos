@@ -23,6 +23,7 @@ import {
   requiresUnsandboxedExecutionApproval,
   validateAgentExtensionManifest,
   FileAgentApprovalStore,
+  FileAgentExtensionStorage,
   describeAgentJobActivity,
   describeAgentOrchestrationActivity,
   describeAgentRunActivity,
@@ -465,11 +466,19 @@ const agentRunObserver: AgentRunObserver = {
   },
 };
 const agentUserActions = new AgentUserActionGateway(agentRunObserver);
-const agentExtensions = new AgentExtensionRegistry(AGENT_EXTENSIONS_FILE);
+// 扩展的托管存储：按扩展隔离、带配额，只有声明了 storage 权限的进程内扩展拿得到句柄。
+// 子进程扩展（MCP）不走这里——MCP 协议没有存储能力，那条路是宿主分配目录 + 沙箱授权。
+const agentExtensionStorage = new FileAgentExtensionStorage(join(DATA_DIR, "extension-data"));
+const agentExtensions = new AgentExtensionRegistry(AGENT_EXTENSIONS_FILE, { storage: agentExtensionStorage });
 const agentExtensionRuntimeErrors = new Map<string, string>();
 function createExtensionProvider(manifest: AgentExtensionManifest) {
   try {
-    const provider = createBundledCapabilityProvider(manifest, DATA_DIR) ?? createMcpProviderFromManifest(manifest);
+    // 声明了 storage 才分配目录；没声明就不建、也不放行。
+    const dataDir = manifest.permissions.includes("storage")
+      ? agentExtensionStorage.directoryFor(manifest.id)
+      : undefined;
+    const provider = createBundledCapabilityProvider(manifest, DATA_DIR)
+      ?? createMcpProviderFromManifest(manifest, dataDir ? { dataDir } : {});
     agentExtensionRuntimeErrors.delete(manifest.id);
     return provider;
   } catch (error) {
@@ -4612,6 +4621,10 @@ const server = createServer(async (req, res) => {
         extensions: agentExtensions.list().map((extension) => ({
           ...extension,
           runtimeError: agentExtensionRuntimeErrors.get(extension.manifest.id) ?? null,
+          // 用了用户的磁盘就要让用户看得到；没声明 storage 权限的扩展这里是 null。
+          storageUsage: extension.manifest.permissions.includes("storage")
+            ? agentExtensionStorage.usage(extension.manifest.id)
+            : null,
         })),
         runtimeSecurity: {
           mainNodeVersion: process.versions.node,

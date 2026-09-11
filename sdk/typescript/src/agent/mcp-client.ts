@@ -35,6 +35,14 @@ export interface StdioMcpClientAdapterOptions {
   requestTimeoutMs?: number;
   maxBufferSize?: number;
   sandbox?: AgentExtensionSandbox;
+  /**
+   * 宿主分配给这个扩展的数据目录。声明了 storage 权限才会有。
+   *
+   * MCP 的 client capabilities 只有 sampling / roots / elicitation，协议里没有存储，
+   * 宿主没法给子进程一个 KV 接口。能给的只有一块地方：路径经 NEMOS_EXTENSION_DATA_DIR
+   * 告诉子进程，并在沙箱里对这条路径放行读写——否则给了路径也写不进去。
+   */
+  dataDir?: string;
   sandboxNodeCommand?: string;
   sandboxNodeVersion?: string;
   sandboxHostCommand?: string;
@@ -240,6 +248,7 @@ export class StdioMcpClientAdapter implements McpClientAdapter {
       cwd: this.options.cwd,
       env: {
         ...inheritedEnvironment(this.options.env),
+        ...(this.options.dataDir ? { NEMOS_EXTENSION_DATA_DIR: this.options.dataDir } : {}),
         ...(credentialLease?.env ?? {}),
       },
       stderr: "ignore",
@@ -258,6 +267,7 @@ export class StdioMcpClientAdapter implements McpClientAdapter {
 
 export function createMcpProviderFromManifest(
   manifest: AgentExtensionManifest,
+  options: { dataDir?: string } = {},
 ): AgentExtensionProvider | undefined {
   if (manifest.kind !== "mcp" || manifest.runtime.type !== "mcp" || !manifest.runtime.entry) return undefined;
   const toolPolicy = Object.fromEntries(manifest.tools.map((tool) => [
@@ -276,6 +286,8 @@ export function createMcpProviderFromManifest(
     requestTimeoutMs: manifest.runtime.requestTimeoutMs,
     maxBufferSize: manifest.runtime.maxBufferSize,
     sandbox: manifest.runtime.sandbox,
+    // 没声明 storage 权限就不给目录，即使调用方传了——闸门只有一处。
+    ...(manifest.permissions.includes("storage") && options.dataDir ? { dataDir: options.dataDir } : {}),
     sandboxNodeCommand: process.env.NEMOS_MCP_SANDBOX_NODE,
     sandboxNodeVersion: process.env.NEMOS_MCP_SANDBOX_NODE_VERSION,
     sandboxHostCommand: process.env.NEMOS_MCP_SANDBOX_HOST,
@@ -347,6 +359,12 @@ function createNodePermissionProcessSpec(
   for (const path of sandbox.filesystemWrite ?? []) {
     args.push("--allow-fs-write=" + resolve(cwd, path));
   }
+  // 数据目录不在 manifest 的声明路径里——它由宿主分配，所以也由宿主放行。
+  if (options.dataDir) {
+    const dataDir = resolve(options.dataDir);
+    args.push("--allow-fs-read=" + dataDir);
+    args.push("--allow-fs-write=" + dataDir);
+  }
   if (sandbox.network === "unrestricted" && major >= 25) args.push("--allow-net");
   args.push("--", ...options.args);
   return { command, args };
@@ -370,6 +388,11 @@ function createWindowsAppContainerProcessSpec(
   const cwd = resolve(options.cwd ?? process.cwd());
   const readPaths = new Set((sandbox.filesystemRead ?? []).map((path) => resolve(cwd, path)));
   const writePaths = new Set((sandbox.filesystemWrite ?? []).map((path) => resolve(cwd, path)));
+  // 同上：宿主分配的数据目录由宿主放行。下面那轮存在性检查会把"目录没建好"挡在启动前。
+  if (options.dataDir) {
+    readPaths.add(resolve(options.dataDir));
+    writePaths.add(resolve(options.dataDir));
+  }
   let childCommand: string;
 
   if (options.command.trim().toLowerCase() === "nemos-python") {

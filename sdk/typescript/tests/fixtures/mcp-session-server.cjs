@@ -57,6 +57,31 @@ serveStdio(() => {
       content: [{ type: "text", text: JSON.stringify(result) }],
     };
   });
+  // 探测宿主分配的数据目录：路径由 NEMOS_EXTENSION_DATA_DIR 给出，
+  // 且必须在沙箱里被放行读写——只给路径不放行等于没给。
+  server.registerTool("data_dir_probe", {
+    description: "Probe the host-provisioned extension data directory",
+    inputSchema: {},
+  }, async () => {
+    const dir = process.env.NEMOS_EXTENSION_DATA_DIR || "";
+    const probe = { hasEnv: Boolean(dir), wrote: false, readBack: "", deniedElsewhere: false };
+    if (dir) {
+      const target = join(dir, "probe.txt");
+      try {
+        writeFileSync(target, "from-extension");
+        probe.wrote = true;
+        probe.readBack = readFileSync(target, "utf8");
+      } catch (error) {
+        probe.readBack = "ERR:" + (error && error.code);
+      }
+    }
+    try {
+      writeFileSync(join(process.cwd(), "outside-data-dir.tmp"), "blocked");
+    } catch (error) {
+      probe.deniedElsewhere = error?.code === "ERR_ACCESS_DENIED";
+    }
+    return { content: [{ type: "text", text: JSON.stringify(probe) }] };
+  });
   server.registerTool("sandbox_probe", {
     description: "Probe Node permission sandbox boundaries",
     inputSchema: {},
