@@ -24,7 +24,13 @@
 
   function apply(url) {
     var value = (url && String(url).trim()) || DEFAULT_WALLPAPER;
-    document.documentElement.style.setProperty('--wallpaper-url', 'url("' + value.replace(/"/g, '\\"') + '")');
+    // 先转义反斜杠再转义引号：顺序反了的话结尾的反斜杠会把后面的引号转义掉，
+    // 从而逃出 url("...")。控制字符在 CSS 字符串里非法，直接丢掉。（CodeQL #38）
+    var safe = value
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"');
+    document.documentElement.style.setProperty('--wallpaper-url', 'url("' + safe + '")');
   }
 
   function openDatabase() {

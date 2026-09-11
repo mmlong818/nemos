@@ -553,10 +553,12 @@ attachScheduledTaskHandoffProjection(agentJobQueue, scheduledTaskHandoffs, {
   onError: (error) => console.warn(`[scheduled-task-handoff] continuity unavailable: ${error instanceof Error ? error.message : String(error)}`),
 });
 
+// 指纹只需要回答「连接变没变」。原先是 sha256 覆盖 {provider, protocol, baseUrl, apiKey}
+// 并把结果写进任务 payload 落盘——四个字段里三个是公开可知的，等于给 apiKey 留了个可离线
+// 验证的摘要（CodeQL #43）。connectionRevision 本来就在这四项任一变化时铸新 UUID，
+// 语义等价且完全不碰密钥；model-scheduler.ts 那边早就用每进程 HMAC 盐避开同一问题了。
 function teamConnectionFingerprint(): string {
-  return createHash("sha256").update(JSON.stringify(modelConnection ? {
-    provider: modelConnection.provider, protocol: modelConnection.protocol, baseUrl: modelConnection.baseUrl, apiKey: modelConnection.apiKey,
-  } : null)).digest("hex");
+  return modelConnection?.connectionRevision || "";
 }
 function hasActiveModelJobs(): boolean {
   return agentJobQueue.list({ limit: 5000 }).some((job) => job.status === "running"
