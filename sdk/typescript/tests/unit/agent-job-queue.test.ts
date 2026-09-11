@@ -370,7 +370,10 @@ test("event-driven worker honors retry backoff without waiting for its fallback 
   }
 });
 
-async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+// 预算放到 5 秒：这几条测试要证明的是"不靠 60 秒的兜底轮询被唤醒"，5 秒仍有 12 倍余量
+// 足以说明问题，而 1 秒扛不住 CI runner 抖动——2026-09-10 的 main 就因此挂过一次
+// （ubuntu 失败、windows 同 commit 通过，失败耗时恰好 1001ms，是没等到而不是断言不符）。
+async function waitUntil(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!predicate()) {
     if (Date.now() >= deadline) throw new Error("condition was not reached");
