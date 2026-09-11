@@ -4,6 +4,7 @@ import type {
   AgentToolAuthorizationInput,
   AgentToolAuthorizationResult,
   AgentToolCall,
+  AgentToolProvenance,
   AgentToolResult,
 } from "./types.js";
 import { validateToolInput } from "./input-validation.js";
@@ -58,16 +59,24 @@ export class ToolScheduler {
   private async executeOne(call: AgentToolCall): Promise<AgentToolResult> {
     if (this.options.signal.aborted) return errorResult("cancelled");
     const tool = this.byName.get(call.name);
-    this.options.emit({ type: "tool_start", call });
+    // 出处随事件一起发，未注册的工具就空着——观察者不必再查注册表。
+    const provenance: AgentToolProvenance = tool
+      ? {
+          effect: this.effectOf(call),
+          ...(tool.definition.risk ? { risk: tool.definition.risk } : {}),
+          ...(tool.definition.source ? { source: tool.definition.source } : {}),
+        }
+      : {};
+    this.options.emit({ type: "tool_start", call, ...provenance });
     if (!tool) {
       const result = errorResult(`unknown tool: ${call.name}`);
-      this.options.emit({ type: "tool_end", call, result });
+      this.options.emit({ type: "tool_end", call, result, ...provenance });
       return result;
     }
     if (tool.definition.risk === "destructive" && this.options.destructiveState?.stopped) {
       const failedTool = this.options.destructiveState.failedTool;
       const result = errorResult(`destructive operation blocked after failure${failedTool ? `: ${failedTool}` : ""}; review the previous failure before continuing`);
-      this.options.emit({ type: "tool_end", call, result });
+      this.options.emit({ type: "tool_end", call, result, ...provenance });
       return result;
     }
     let validationErrors: string[];
@@ -75,12 +84,12 @@ export class ToolScheduler {
       validationErrors = validateToolInput(tool.definition.inputSchema, call.arguments);
     } catch (error) {
       const result = errorResult(`tool input validation failed: ${errorMessage(error)}`);
-      this.options.emit({ type: "tool_end", call, result });
+      this.options.emit({ type: "tool_end", call, result, ...provenance });
       return result;
     }
     if (validationErrors.length > 0) {
       const result = errorResult(`invalid tool input: ${validationErrors.join("; ")}`);
-      this.options.emit({ type: "tool_end", call, result });
+      this.options.emit({ type: "tool_end", call, result, ...provenance });
       return result;
     }
     if (tool.definition.effect !== "read") {
@@ -90,10 +99,11 @@ export class ToolScheduler {
         call,
         allowed: decision.allowed,
         reason: decision.reason,
+        ...provenance,
       });
       if (!decision.allowed) {
         const result = errorResult(`write tool authorization denied: ${decision.reason ?? "confirmation required"}`);
-        this.options.emit({ type: "tool_end", call, result });
+        this.options.emit({ type: "tool_end", call, result, ...provenance });
         return result;
       }
     }
@@ -107,7 +117,7 @@ export class ToolScheduler {
       this.options.destructiveState.stopped = true;
       this.options.destructiveState.failedTool = tool.definition.name;
     }
-    this.options.emit({ type: "tool_end", call, result: bounded });
+    this.options.emit({ type: "tool_end", call, result: bounded, ...provenance });
     return bounded;
   }
 

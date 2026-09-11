@@ -1,4 +1,5 @@
 import { readAppHtml } from "../fixtures/render-app-page.js";
+import { readServerRouteSurface } from "../fixtures/server-route-surface.js";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -541,7 +542,7 @@ test("任务页与能力页暂时保持运行记录隔离", () => {
   const capabilityScript = readFileSync(join(webDir, "assets", "capability-center.js"), "utf8");
   const officeScript = readFileSync(join(webDir, "assets", "office-workbench.js"), "utf8");
   const llmSource = readFileSync(join(process.cwd(), "examples", "companion", "llm.ts"), "utf8");
-  const serverSource = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
+  const serverSource = readServerRouteSurface();
   assert.match(chatHtml, /id="composerTool"[^>]*hidden/);
   assert.match(chatHtml, /id="sideDesktopTool"[^>]*hidden/);
 

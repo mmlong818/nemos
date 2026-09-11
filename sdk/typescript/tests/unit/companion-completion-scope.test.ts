@@ -1,4 +1,5 @@
 import { readAppHtml } from "../fixtures/render-app-page.js";
+import { readServerRouteSurface } from "../fixtures/server-route-surface.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +15,7 @@ test("工作分区恢复各自入口，自动化、项目、资料、成果和�
   const script = readFileSync(join(root, "assets", "work-center.js"), "utf8");
   const stability = readFileSync(join(root, "assets", "work-stability.css"), "utf8");
   const chat = readAppHtml("index.html");
-  const server = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
+  const server = readServerRouteSurface();
   const capabilityHtml = readAppHtml("capabilities.html");
   const capabilityScript = readFileSync(join(root, "assets", "capability-center.js"), "utf8");
 
@@ -60,7 +61,8 @@ test("工作分区恢复各自入口，自动化、项目、资料、成果和�
   assert.match(server, /body\.workMode === "task" \|\| body\.workMode === "study"/);
   assert.match(server, /systemAddendum: body\.workMode === "study"/);
   assert.match(server, /teacherCore\.split\("\\n\\n"\)\.slice\(1\)/);
-  assert.match(server, /url === "\/api\/conversation\/title"/);
+  // 断言端点存在，不绑定具体匹配写法：路由已从 if 链搬进路由表。
+  assert.match(server, /"\/api\/conversation\/title"/);
   assert.match(server, /function generateConversationTitle\(text: string\)/);
   assert.match(server, /dailyChatModelForConnection\(modelConnection\)/);
   assert.match(server, /toolMode: "off"/);

@@ -3,7 +3,7 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const workViews = new Set(["tasks", "spaces", "automations", "collaboration", "resources", "artifacts", "runs", "memory"]);
 const viewFromLocation = () => window.ClownfishNavigation.workView();
 let view;
-const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [], reviewGroups: [], approvals: [], relationshipMemory: null, productReviews: [], productReviewSummary: null };
+const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [], sources: null, platform: null, extensions: [], reviewQueue: [], reviewGroups: [], approvals: [], sessionGrants: [], relationshipMemory: null, productReviews: [], productReviewSummary: null };
 const loadedViews = new Set();
 let loadSequence = 0;
 let activeStoryTaskId = "";
@@ -135,7 +135,7 @@ async function load() {
     }
     if (requestedView === "runs") {
       const [jobs, runs, reviewQueue, productReviews, approvals] = await Promise.all([api("/api/agent/jobs?limit=1000"), api("/api/agent/runs?limit=500"), api("/api/review-queue"), api("/api/product-reviews"), api("/api/agent/approvals?status=pending&limit=500")]);
-      result = { jobs: jobs.jobs || [], runs: runs.runs || [], reviewQueue: reviewQueue.items || [], review: reviewQueue, approvals: approvals.approvals || [], productReviews: productReviews.runs || [], productReviewSummary: productReviews.summary || null };
+      result = { jobs: jobs.jobs || [], runs: runs.runs || [], reviewQueue: reviewQueue.items || [], review: reviewQueue, approvals: approvals.approvals || [], sessionGrants: approvals.sessionGrants || [], productReviews: productReviews.runs || [], productReviewSummary: productReviews.summary || null };
     }
     if (requestedView === "memory") result = (await api("/api/memory?who=me")).facts || [];
     if (sequence !== loadSequence || requestedView !== view) return;
@@ -168,6 +168,7 @@ async function load() {
       state.runs = result.runs;
       state.reviewQueue = result.reviewQueue;
       state.approvals = result.approvals;
+      state.sessionGrants = result.sessionGrants || [];
       state.productReviews = result.productReviews;
       state.productReviewSummary = result.productReviewSummary;
     }
@@ -853,12 +854,17 @@ function renderAttentionInbox(detailed) {
   const rows = groups.map((group) => `<div data-review-group="${escapeHtml(group.id)}">${group.items.map((item) => {
     const approval = state.approvals.find((entry) => entry.id === item.sourceId && item.kind === "approval");
     const action = detailed && approval
-      ? `<details><summary>查看具体操作并决定</summary><pre>${escapeHtml(JSON.stringify(approval.call, null, 2))}</pre><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true">允许这次操作</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="false">拒绝</button></details>`
+      ? `<details><summary>查看具体操作并决定</summary><pre>${escapeHtml(JSON.stringify(approval.call, null, 2))}</pre><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="once">允许这次操作</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="session">本次会话内都允许「${escapeHtml(approval.tool?.name || approval.call?.name || "这个操作")}」</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="false" data-scope="once">拒绝</button></details>`
       : `<a class="button" href="${detailed ? `#record-${encodeURIComponent(item.kind === "delivery" ? "job" : item.kind)}-${encodeURIComponent(item.sourceId)}` : `/runs#review-${encodeURIComponent(item.id)}`}">查看${detailed ? "记录" : "详情"}</a>`;
     return `<article class="compact-row" id="review-${escapeHtml(item.id)}"><div><span class="resource-kind">${labels[item.kind] || "待处理"}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.nextAction)}</p></div><div class="actions">${action}</div></article>`;
   }).join("")}</div>`).join("");
+  // 会话级放行是还在生效的授权，不是待办；但它必须和待办一起被看见，
+  // 否则就成了看不见也收不回的放行。
+  const grants = detailed && state.sessionGrants?.length
+    ? `<section class="platform-panel" aria-label="本会话内已放行的操作"><header><div><h2>已放行的操作</h2><p>这些操作在本会话内不再逐次询问，到期或撤销后恢复询问。</p></div></header><div class="compact-list">${(state.sessionGrants || []).map((grant) => `<article class="compact-row"><div><span class="resource-kind">会话内放行</span><h3>${escapeHtml(grant.tool)}</h3><p>${escapeHtml(date(grant.grantedAt))} 起 · ${escapeHtml(date(grant.expiresAt))} 到期</p></div><div class="actions"><button type="button" data-revoke-grant="${escapeHtml(grant.sessionId)}" data-revoke-tool="${escapeHtml(grant.tool)}">撤销</button></div></article>`).join("")}</div></section>`
+    : "";
   const warning = state.relationshipMemory?.state === "unavailable" ? '<p role="alert">关系记忆读取异常：已保护原文件并停止相关读写。请恢复 counterparts.json 后重启应用。</p>' : "";
-  return `<section class="platform-panel review-queue" aria-label="待你处理"><header><div><h2>待你处理</h2><p>集中查看待确认、异常和未送达的结果；不会自动重试或替你批准。</p></div><a class="button" href="/runs">${state.reviewGroups.length} 件事 · ${state.reviewQueue.length} 项</a></header>${warning}<div class="compact-list">${rows || '<div class="resource-empty">当前没有需要你处理的事项。</div>'}</div>${!detailed && state.reviewGroups.length > 5 ? '<a href="/runs">查看全部待处理事项</a>' : ""}</section>`;
+  return `<section class="platform-panel review-queue" aria-label="待你处理"><header><div><h2>待你处理</h2><p>集中查看待确认、异常和未送达的结果；不会自动重试或替你批准。</p></div><a class="button" href="/runs">${state.reviewGroups.length} 件事 · ${state.reviewQueue.length} 项</a></header>${warning}<div class="compact-list">${rows || '<div class="resource-empty">当前没有需要你处理的事项。</div>'}</div>${!detailed && state.reviewGroups.length > 5 ? '<a href="/runs">查看全部待处理事项</a>' : ""}</section>` + grants;
 }
 
 function renderRuns() {
@@ -878,6 +884,7 @@ function renderRuns() {
   jobs.forEach((job, index) => { $("#content .list")?.children[index]?.setAttribute("id", `record-job-${job.id}`); });
   $("#content").onclick = async (event) => {
     const decision = event.target.closest("[data-review-approval]");
+    const revoke = event.target.closest("[data-revoke-grant]");
     const cancel = event.target.closest("[data-cancel-job]");
     const retry = event.target.closest("[data-retry-job]");
     const reconcile = event.target.closest("[data-reconcile-job]");
@@ -886,11 +893,25 @@ function renderRuns() {
       if (decision) {
         decision.disabled = true;
         try {
-          const result = await api("/api/agent/approval/decision", { method: "POST", body: JSON.stringify({ id: decision.dataset.reviewApproval, allowed: decision.dataset.allowed === "true" }) });
+          const scope = decision.dataset.scope === "session" ? "session" : "once";
+          const result = await api("/api/agent/approval/decision", { method: "POST", body: JSON.stringify({ id: decision.dataset.reviewApproval, allowed: decision.dataset.allowed === "true", scope }) });
           if (result.resumeReason) toast(result.resumeReason, true);
-          else toast(decision.dataset.allowed === "true" ? "已允许这次操作" : "已拒绝");
+          else if (decision.dataset.allowed !== "true") toast("已拒绝");
+          else toast(scope === "session" ? "已允许；本次会话内同类操作不再询问" : "已允许这次操作");
           await load();
         } finally { decision.disabled = false; }
+        return;
+      }
+      if (revoke) {
+        revoke.disabled = true;
+        try {
+          await api("/api/agent/approval/session-grant/revoke", {
+            method: "POST",
+            body: JSON.stringify({ sessionId: revoke.dataset.revokeGrant, tool: revoke.dataset.revokeTool }),
+          });
+          toast("已撤销；该操作恢复逐次询问");
+          await load();
+        } finally { revoke.disabled = false; }
         return;
       }
       if (cancel) await api("/api/agent/job/cancel", { method: "POST", body: JSON.stringify({ id: cancel.dataset.cancelJob }) });

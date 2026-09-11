@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readServerRouteSurface } from "../fixtures/server-route-surface.js";
 import test from "node:test";
 import { COMPANION_MEMORY_SCOPE, MEMORY_ANCHOR_CAP } from "../../examples/companion/memory-config.js";
 import { failureShapeByName, listFailureShapes } from "../../examples/companion/failure-registry.js";
@@ -8,9 +9,8 @@ import { normalizeConsolidation } from "../../examples/companion/engine.js";
 // 整合状态按 (tenant, user, space) 存。makeMem() 当前两项都不传，所以这里必须是
 // SDK 的默认值；跟丢了会让状态读取命中不存在的行，返回空状态、永远报「没有失败」。
 test("整合状态的行键与 makeMem 传给内核的一致", async () => {
-  const { readFileSync } = await import("node:fs");
   assert.deepEqual(COMPANION_MEMORY_SCOPE, { tenantId: "default", spaceId: "global" });
-  const server = readFileSync("examples/companion/server.ts", "utf8");
+  const server = readServerRouteSurface();
   const makeMem = server.slice(server.indexOf("function makeMem("), server.indexOf("function makeEngine("));
   for (const key of ["tenantId", "defaultScope"]) {
     assert.equal(makeMem.includes(key), false,

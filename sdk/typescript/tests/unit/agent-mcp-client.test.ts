@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -300,4 +300,70 @@ test("manifest-backed MCP provider is attached and callable through the extensio
     tools[0]!.execute({}, { runId: "registry-session", sessionId: "registry-session", signal: new AbortController().signal }),
     /no longer active/,
   );
+});
+
+test("宿主分配的数据目录：子进程拿得到路径、写得进去，目录之外仍被拒", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "nemos-ext-datadir-"));
+  const adapter = new StdioMcpClientAdapter({
+    command: process.execPath,
+    args: [fixture],
+    // MCP 协议没有存储能力，宿主能给的只有这块地方；给了路径还必须在沙箱里放行。
+    dataDir,
+    sandbox: {
+      type: "node-permission",
+      network: "unrestricted",
+      filesystemRead: [dirname(fixture), join(process.cwd(), "node_modules")],
+    },
+    toolPolicy: { data_dir_probe: { effect: "read", tags: ["sandbox"] } },
+    requestTimeoutMs: 10_000,
+  });
+  try {
+    const probe = JSON.parse((await adapter.callTool(
+      "data_dir_probe",
+      {},
+      { runId: "datadir-run", sessionId: "datadir-session", signal: new AbortController().signal },
+    )).content);
+    assert.equal(probe.hasEnv, true, "路径要经 NEMOS_EXTENSION_DATA_DIR 告诉子进程");
+    assert.equal(probe.wrote, true, "数据目录必须可写，否则给了路径也没用");
+    assert.equal(probe.readBack, "from-extension");
+    assert.equal(probe.deniedElsewhere, true, "放行数据目录不能顺带放开别处");
+    assert.equal(readFileSync(join(dataDir, "probe.txt"), "utf8"), "from-extension");
+  } finally {
+    await adapter.close();
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("AppContainer 同样会把宿主分配的数据目录加进授权路径", () => {
+  const root = mkdtempSync(join(tmpdir(), "nemos-appcontainer-datadir-"));
+  const existing = join(root, "data");
+  mkdirSync(existing);
+  const base = {
+    command: process.execPath,
+    args: ["--version"],
+    cwd: process.cwd(),
+    sandbox: { type: "windows-appcontainer" as const, network: "deny" as const },
+    // 拿一个确实存在的可执行文件冒充沙箱宿主：这里要验的是路径集合怎么拼，
+    // 不是真去起 AppContainer（那需要 NEMOS_TEST_WINDOWS_SANDBOX_HOST，本机没配）。
+    sandboxHostCommand: process.execPath,
+  };
+  try {
+    if (process.platform !== "win32") {
+      assert.throws(() => new StdioMcpClientAdapter({ ...base, dataDir: existing }), /only available on Windows/);
+      return;
+    }
+    // 不存在的数据目录必须在启动前就被点名拦下——报错里出现这条路径，
+    // 就说明它确实进了授权路径集合（读检查先于写检查触发，两者都算）。
+    const missing = join(root, "missing");
+    assert.throws(
+      () => new StdioMcpClientAdapter({ ...base, dataDir: missing }),
+      (error: unknown) => error instanceof Error
+        && error.message.includes(missing)
+        && /path does not exist|must be an existing directory/.test(error.message),
+    );
+    // 存在就能过：宿主在分配时就把目录建好了。
+    assert.doesNotThrow(() => new StdioMcpClientAdapter({ ...base, dataDir: existing }));
+  } finally {
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 });
