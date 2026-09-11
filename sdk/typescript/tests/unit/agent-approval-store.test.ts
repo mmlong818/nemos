@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -253,6 +253,92 @@ test("默认仍是只批准一次：不传 scope 时同会话换参数照旧要�
     assert.ok(pending && pending.id !== id);
     store.decide(pending.id, false, "拒绝");
     assert.equal((await again).allowed, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+// —— 会话级授权的有效期与撤销 ——
+// 第一版实现里这两样都没有：唯一的移除路径是 500 条数量淘汰，而这个代码库
+// 根本没有"会话结束"这个信号（sessionId 是长期对话标识）。那等于一个看不见、
+// 收不回的永久放行，在治理上比 work-guidelines 的 allow-automatically 还差。
+
+test("会话级授权会到期，到期后重新询问", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "nemos-approval-ttl-"));
+  try {
+    const store = new FileAgentApprovalStore(join(dir, "approvals.json"), { sessionGrantTtlMs: 60_000 });
+    const first = store.authorize(sessionInput({ path: "a.md" }, "run-1"));
+    const id = await waitForPending(store);
+    store.decide(id, true, undefined, "session");
+    await first;
+
+    const grant = store.listSessionGrants()[0];
+    assert.ok(grant?.expiresAt, "授权必须带到期时间，否则就是永久放行");
+    assert.ok(Date.parse(grant.expiresAt) > Date.now());
+
+    // 把到期时间改到过去，模拟时间流逝。
+    const file = join(dir, "approvals.json");
+    const saved = JSON.parse(readFileSync(file, "utf8")) as { sessionGrants: Array<{ expiresAt: string }> };
+    saved.sessionGrants[0]!.expiresAt = new Date(Date.now() - 1_000).toISOString();
+    writeFileSync(file, JSON.stringify(saved));
+
+    const reopened = new FileAgentApprovalStore(file, { sessionGrantTtlMs: 60_000 });
+    assert.deepEqual(reopened.listSessionGrants(), [], "过期授权不该被载入");
+    const again = reopened.authorize(sessionInput({ path: "b.md" }, "run-2"));
+    assert.equal(await settledWithin(again, 500), "pending", "过期后必须重新询问");
+    const pending = reopened.list({ status: "pending" })[0];
+    assert.ok(pending);
+    reopened.decide(pending.id, false, "拒绝");
+    await again;
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("会话级授权可以撤销，撤销后恢复逐次询问", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "nemos-approval-revoke-"));
+  try {
+    const store = new FileAgentApprovalStore(join(dir, "approvals.json"));
+    const first = store.authorize(sessionInput({ path: "a.md" }, "run-1"));
+    const id = await waitForPending(store);
+    store.decide(id, true, undefined, "session");
+    await first;
+    assert.equal(store.listSessionGrants().length, 1);
+
+    assert.equal(store.revokeSessionGrant("approval-session", "nope"), false, "撤不存在的返回 false");
+    assert.equal(store.revokeSessionGrant("approval-session", "save_file"), true);
+    assert.deepEqual(store.listSessionGrants(), []);
+
+    const again = store.authorize(sessionInput({ path: "b.md" }, "run-2"));
+    assert.equal(await settledWithin(again, 500), "pending", "撤销后必须重新询问");
+    const pending = store.list({ status: "pending" })[0];
+    assert.ok(pending);
+    store.decide(pending.id, false, "拒绝");
+    await again;
+
+    // 撤销要落盘，不能只在内存里。
+    assert.deepEqual(new FileAgentApprovalStore(join(dir, "approvals.json")).listSessionGrants(), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("可以一次撤销某个会话的全部授权", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "nemos-approval-revoke-all-"));
+  try {
+    const store = new FileAgentApprovalStore(join(dir, "approvals.json"));
+    for (const [runId, tool] of [["run-1", "save_file"], ["run-2", "send_mail"]] as const) {
+      const input = { ...sessionInput({ path: "a.md" }, runId), call: { id: runId, name: tool, arguments: {} } };
+      input.tool = { ...input.tool, name: tool };
+      const pendingRun = store.authorize(input);
+      const id = await waitForPending(store);
+      store.decide(id, true, undefined, "session");
+      await pendingRun;
+    }
+    assert.equal(store.listSessionGrants("approval-session").length, 2);
+    assert.equal(store.revokeSessionGrants("approval-session"), 2);
+    assert.deepEqual(store.listSessionGrants(), []);
+    assert.equal(store.revokeSessionGrants("approval-session"), 0);
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
