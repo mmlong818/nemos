@@ -862,7 +862,9 @@ function saveWorkingCopy() {
 }
 
 function wordParagraphs(text) {
-  return String(text || "").split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter((paragraph) => paragraph && !/^(\s*#\s*)+$/.test(paragraph));
+  // 原 (\s*#\s*)+ 是嵌套量词，一长串空格加 # 会指数回溯（CodeQL #34）；
+  // 段落此前已 trim 且非空，[#\s]+ 与原判定等价但是线性的。
+  return String(text || "").split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter((paragraph) => paragraph && !/^[#\s]+$/.test(paragraph));
 }
 
 function applyWordAlignment(alignment) {

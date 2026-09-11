@@ -39,17 +39,20 @@ export function appendCurrentUiEvidence(instruction: string, webDir: string): st
   return `${instruction}\n\n${currentUiEvidencePacket(webDir)}`;
 }
 
-function textOf(value: string): string {
+/** 导出仅为可测：剥标签与实体解码的顺序是有讲究的，值得直接对行为下断言。 */
+export function textOf(value: string): string {
   return value
-    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    // 闭合标签允许尾随空白：</script > 也要剥掉，否则脚本正文会当成正文留下（CodeQL #33）
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&#39;/gi, "'")
     .replace(/&quot;/gi, '"')
+    // &amp; 必须最后解码：排在前面会把 &amp;lt; 二次解码成真的 <（CodeQL #32）
+    .replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ")
     .trim();
 }
