@@ -4078,7 +4078,28 @@ const server = createServer(async (req, res) => {
       const status = statuses.includes(rawStatus as AgentApprovalStatus) ? rawStatus as AgentApprovalStatus : undefined;
       const approvals = agentApprovalStore.list({ status, limit: Number(query.get("limit") || 50) })
         .filter((approval) => runVisibleOnSurface(agentRunStore.get(approval.runId)?.metadata?.surface, surface));
-      send(res, 200, { ok: true, approvals });
+      // 会话级放行是长期生效的授权，必须和待处理审批一起被看见——
+      // 看不见也收不回的放行，比多问几次危险得多。
+      send(res, 200, { ok: true, approvals, sessionGrants: agentApprovalStore.listSessionGrants() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/agent/approval/session-grant/revoke") {
+      const body = (await readBody(req)) as { sessionId?: string; tool?: string };
+      const sessionId = String(body.sessionId || "").trim();
+      if (!sessionId) {
+        send(res, 400, { error: "missing sessionId", userMessage: "缺少会话标识。" });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "approval_session_grant_revoke",
+        description: body.tool ? `撤销会话内对「${body.tool}」的放行` : "撤销该会话内的全部放行",
+        arguments: { sessionId, tool: body.tool ?? "" },
+        execute: () => body.tool
+          ? { revoked: agentApprovalStore.revokeSessionGrant(sessionId, String(body.tool)) ? 1 : 0 }
+          : { revoked: agentApprovalStore.revokeSessionGrants(sessionId) },
+        summarizeResult: (value) => ({ ok: true, revoked: value.revoked }),
+      });
+      send(res, 200, { ok: true, ...action.value, sessionGrants: agentApprovalStore.listSessionGrants(), auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/approval/decision") {

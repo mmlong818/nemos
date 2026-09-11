@@ -91,3 +91,26 @@ test('提交审批决定时把 scope 一起发出，未识别取值退回只此�
   assert.match(source,/JSON\.stringify\(\{ id: decision\.dataset\.reviewApproval, allowed: decision\.dataset\.allowed === "true", scope \}\)/);
   assert.doesNotMatch(source,/always: *true/);
 });
+
+test('会话内放行在界面上看得见、能撤销',()=>{
+  const render=source.slice(source.indexOf('function renderAttentionInbox('),source.indexOf('function renderRuns('));
+  const state:any={
+    reviewQueue:[],reviewGroups:[],relationshipMemory:null,approvals:[],
+    sessionGrants:[{sessionId:'s1',tool:'save_file',grantedAt:'2026-09-11T10:00:00.000Z',expiresAt:'2026-09-11T18:00:00.000Z'}],
+  };
+  const html=runInNewContext(render+'\nrenderAttentionInbox(true);',
+    {state,escapeHtml:(v:unknown)=>String(v),encodeURIComponent,date:(v:unknown)=>String(v)});
+  assert.match(html,/已放行的操作/);
+  assert.match(html,/save_file/);
+  assert.match(html,/data-revoke-grant="s1" data-revoke-tool="save_file"/);
+  assert.match(html,/到期/,'必须显示到期时间——没有期限的放行就是永久放行');
+  // 没有放行时不占版面
+  state.sessionGrants=[];
+  assert.doesNotMatch(runInNewContext(render+'\nrenderAttentionInbox(true);',
+    {state,escapeHtml:(v:unknown)=>String(v),encodeURIComponent,date:(v:unknown)=>String(v)}),/已放行的操作/);
+});
+
+test('撤销走专用接口，并且只撤指定的那一条',()=>{
+  assert.match(source,/api\("\/api\/agent\/approval\/session-grant\/revoke"/);
+  assert.match(source,/sessionId: revoke\.dataset\.revokeGrant, tool: revoke\.dataset\.revokeTool/);
+});
