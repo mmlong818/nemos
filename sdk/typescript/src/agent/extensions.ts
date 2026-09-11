@@ -386,7 +386,8 @@ export class AgentExtensionRegistry {
     tool: AgentTool,
   ): AgentTool {
     return {
-      definition: { ...tool.definition },
+      // 盖上来源：观察者与审计据此分辨第三方扩展调用，不靠工具名约定去猜。
+      definition: { ...tool.definition, source: record.manifest.id },
       execute: async (input, context) => {
         if (!record.enabled || record.provider !== provider) {
           throw new Error("Agent extension is no longer active: " + record.manifest.id);
