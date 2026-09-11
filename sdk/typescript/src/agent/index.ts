@@ -10,6 +10,12 @@ export {
   describeAgentRunActivity,
 } from "./activity.js";
 export type { AgentActivity, AgentActivityKind, AgentActivityStatus } from "./activity.js";
+export { AgentExtensionStorageError, FileAgentExtensionStorage } from "./extension-storage.js";
+export type {
+  AgentExtensionStorageUsage,
+  AgentExtensionStore,
+  FileAgentExtensionStorageOptions,
+} from "./extension-storage.js";
 export { FileAgentApprovalStore } from "./approval-store.js";
 export { AgentJobWorker, FileAgentJobQueue } from "./job-queue.js";
 export {

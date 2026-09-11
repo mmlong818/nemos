@@ -1,3 +1,5 @@
+import type { AgentExtensionStore } from "./extension-storage.js";
+
 export type AgentRole = "system" | "user" | "assistant" | "tool";
 
 export type AgentToolEffect = "read" | "write";
@@ -69,6 +71,11 @@ export interface AgentToolContext {
   /** 可跨多次运行复用的长期对话或任务会话标识。 */
   sessionId: string;
   signal: AbortSignal;
+  /**
+   * 宿主托管的存储，按扩展隔离且带配额。
+   * 只有声明了 storage 权限的进程内扩展才拿得到；宿主自己的内置工具不经由这里。
+   */
+  storage?: AgentExtensionStore;
 }
 
 export interface AgentTool {
