@@ -853,7 +853,7 @@ function renderAttentionInbox(detailed) {
   const rows = groups.map((group) => `<div data-review-group="${escapeHtml(group.id)}">${group.items.map((item) => {
     const approval = state.approvals.find((entry) => entry.id === item.sourceId && item.kind === "approval");
     const action = detailed && approval
-      ? `<details><summary>查看具体操作并决定</summary><pre>${escapeHtml(JSON.stringify(approval.call, null, 2))}</pre><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true">允许这次操作</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="false">拒绝</button></details>`
+      ? `<details><summary>查看具体操作并决定</summary><pre>${escapeHtml(JSON.stringify(approval.call, null, 2))}</pre><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="once">允许这次操作</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="session">本次会话内都允许「${escapeHtml(approval.tool?.name || approval.call?.name || "这个操作")}」</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="false" data-scope="once">拒绝</button></details>`
       : `<a class="button" href="${detailed ? `#record-${encodeURIComponent(item.kind === "delivery" ? "job" : item.kind)}-${encodeURIComponent(item.sourceId)}` : `/runs#review-${encodeURIComponent(item.id)}`}">查看${detailed ? "记录" : "详情"}</a>`;
     return `<article class="compact-row" id="review-${escapeHtml(item.id)}"><div><span class="resource-kind">${labels[item.kind] || "待处理"}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.nextAction)}</p></div><div class="actions">${action}</div></article>`;
   }).join("")}</div>`).join("");
@@ -886,9 +886,11 @@ function renderRuns() {
       if (decision) {
         decision.disabled = true;
         try {
-          const result = await api("/api/agent/approval/decision", { method: "POST", body: JSON.stringify({ id: decision.dataset.reviewApproval, allowed: decision.dataset.allowed === "true" }) });
+          const scope = decision.dataset.scope === "session" ? "session" : "once";
+          const result = await api("/api/agent/approval/decision", { method: "POST", body: JSON.stringify({ id: decision.dataset.reviewApproval, allowed: decision.dataset.allowed === "true", scope }) });
           if (result.resumeReason) toast(result.resumeReason, true);
-          else toast(decision.dataset.allowed === "true" ? "已允许这次操作" : "已拒绝");
+          else if (decision.dataset.allowed !== "true") toast("已拒绝");
+          else toast(scope === "session" ? "已允许；本次会话内同类操作不再询问" : "已允许这次操作");
           await load();
         } finally { decision.disabled = false; }
         return;

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readServerRouteSurface } from "../fixtures/server-route-surface.js";
 import test from "node:test";
 import {
   assertPublicWebUrl,
@@ -30,7 +29,7 @@ test("网页读取拒绝常见本机、内网和特殊用途地址", async () =>
 });
 
 test("Companion 服务固定监听回环地址并限制原始上传和网页响应", () => {
-  const source = readFileSync(join(process.cwd(), "examples", "companion", "server.ts"), "utf8");
+  const source = readServerRouteSurface();
   assert.match(source, /server\.listen\(PORT, "127\.0\.0\.1"/);
   assert.match(source, /isAllowedLocalRequest\(/);
   assert.match(source, /readRawBody\(req, 12 \* 1024 \* 1024\)/);

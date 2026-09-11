@@ -1,4 +1,5 @@
 import { readAppHtml } from "../fixtures/render-app-page.js";
+import { readServerRouteSurface } from "../fixtures/server-route-surface.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -10,7 +11,7 @@ const web = join(root, "web");
 const readWeb = (name: string) => name.endsWith(".html") ? readAppHtml(name) : readFileSync(join(web, name), "utf8");
 
 test("应用不再包含项目开发入口或开发引擎接口", () => {
-  const server = readFileSync(join(root, "server.ts"), "utf8");
+  const server = readServerRouteSurface();
   const catalog = readWeb(join("assets", "capability-center.js"));
   for (const file of ["index.html", "capabilities.html", "office.html", "work.html", "settings.html"]) {
     assert.doesNotMatch(readWeb(file), /href="\/develop"|project-development|\/api\/development/);
@@ -20,7 +21,7 @@ test("应用不再包含项目开发入口或开发引擎接口", () => {
 });
 
 test("设置中心仅保留模型、连接与本机数据", () => {
-  const server = readFileSync(join(root, "server.ts"), "utf8");
+  const server = readServerRouteSurface();
   const client = readFileSync(join(root, "client", "src", "ClownfishClient.cs"), "utf8");
   const html = readWeb("settings.html");
   const script = readWeb(join("assets", "settings-center.js"));
@@ -69,7 +70,7 @@ test("任务页不再展示任务记录与分支弹窗", () => {
 test("模型设置分开管理常用、完整目录和显式能力检查", () => {
   const html = readWeb("settings.html");
   const script = readWeb(join("assets", "settings-center.js"));
-  const server = readFileSync(join(root, "server.ts"), "utf8");
+  const server = readServerRouteSurface();
   assert.match(html, /id="modelCatalogPanel"/);
   assert.match(html, /id="modelCatalogSearch"/);
   assert.match(html, /id="modelCustomId"/);
