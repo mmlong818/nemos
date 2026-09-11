@@ -1,4 +1,5 @@
 import { readAppHtml } from "../fixtures/render-app-page.js";
+import { readServerRouteSurface } from "../fixtures/server-route-surface.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -13,7 +14,7 @@ const officeSourceJs = readFileSync(join(webRoot, "assets", "office-source-previ
 const officeCss = readFileSync(join(webRoot, "assets", "office-workbench.css"), "utf8");
 const capabilityHtml = readAppHtml("capabilities.html");
 const chatHtml = readAppHtml("index.html");
-const server = readFileSync(join(companionRoot, "server.ts"), "utf8");
+const server = readServerRouteSurface();
 
 test("Word 转换副本使用文档式编辑器而不是 Markdown 三栏源码界面", () => {
   assert.match(officeJs, /function isWordWorkingCopy/);

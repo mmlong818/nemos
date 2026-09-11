@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+import type { AgentExtensionStore, FileAgentExtensionStorage } from "./extension-storage.js";
+
 import type { AgentCredentialBinding } from "./credential-proxy.js";
 import { validateAgentCredentialBinding } from "./credential-proxy.js";
 import type { AgentTool, AgentToolContext, AgentToolEffect, AgentToolRisk } from "./types.js";
@@ -13,7 +15,9 @@ export type AgentExtensionPermission =
   | "memory-read"
   | "memory-write"
   | "process"
-  | "external-write";
+  | "external-write"
+  /** 使用宿主托管的、按扩展隔离且带配额的存储。不声明就拿不到句柄。 */
+  | "storage";
 
 export interface AgentExtensionToolHint {
   name: string;
@@ -123,15 +127,23 @@ interface ExtensionFile {
 
 export interface AgentExtensionRegistryOptions {
   maxToolsPerRequest?: number;
+  /**
+   * 托管存储。只有声明了 storage 权限的扩展才会拿到句柄；不配置就谁都没有。
+   * 只对进程内运行时（module / agent-app）有效——子进程扩展拿不到这个对象，
+   * MCP 协议里没有存储能力，它们那条路是宿主分配目录 + 沙箱 filesystemWrite 授权。
+   */
+  storage?: FileAgentExtensionStorage;
 }
 
 /** 可持久安装、停用、升级和审计的扩展注册表；工具定义只在请求命中后加载。 */
 export class AgentExtensionRegistry {
   private readonly entries = new Map<string, InternalExtensionRecord>();
   private readonly maxToolsPerRequest: number;
+  private readonly storage?: FileAgentExtensionStorage;
 
   constructor(private readonly stateFile?: string, options: AgentExtensionRegistryOptions = {}) {
     this.maxToolsPerRequest = Math.min(32, Math.max(1, options.maxToolsPerRequest ?? 8));
+    this.storage = options.storage;
     if (stateFile) {
       mkdirSync(dirname(stateFile), { recursive: true });
       this.load();
@@ -316,6 +328,8 @@ export class AgentExtensionRegistry {
     record.provider = undefined;
     this.entries.delete(id);
     if (provider) closeProvider(provider);
+    // 卸载要连数据一起清，否则同 id 重装会读到上一个扩展留下的东西。
+    this.storage?.clear(id);
     this.save();
     return publicRecord(record);
   }
@@ -380,13 +394,20 @@ export class AgentExtensionRegistry {
     }
   }
 
+  /** 没声明 storage 权限就没有句柄——安装审查里看得见的那条权限，就是这里的闸门。 */
+  private storeFor(record: InternalExtensionRecord): AgentExtensionStore | undefined {
+    if (!this.storage || !record.manifest.permissions.includes("storage")) return undefined;
+    return this.storage.forExtension(record.manifest.id);
+  }
+
   private auditedTool(
     record: InternalExtensionRecord,
     provider: AgentExtensionProvider,
     tool: AgentTool,
   ): AgentTool {
     return {
-      definition: { ...tool.definition },
+      // 盖上来源：观察者与审计据此分辨第三方扩展调用，不靠工具名约定去猜。
+      definition: { ...tool.definition, source: record.manifest.id },
       execute: async (input, context) => {
         if (!record.enabled || record.provider !== provider) {
           throw new Error("Agent extension is no longer active: " + record.manifest.id);
@@ -396,7 +417,9 @@ export class AgentExtensionRegistry {
         record.updatedAt = now;
         this.trimAudit(record);
         this.save();
-        return tool.execute(input, context);
+        // 句柄按 extensionId 创建后交给扩展：它拿不到别人的 id，也绕不过句柄碰底层文件。
+        const store = this.storeFor(record);
+        return tool.execute(input, store ? { ...context, storage: store } : context);
       },
     };
   }
@@ -467,7 +490,7 @@ export function validateAgentExtensionManifest(manifest: AgentExtensionManifest)
   const runtimeTypes = ["skill-markdown", "mcp", "module", "http"];
   const permissionTypes = [
     "network", "filesystem-read", "filesystem-write", "memory-read",
-    "memory-write", "process", "external-write",
+    "memory-write", "process", "external-write", "storage",
   ];
   if (manifest?.schemaVersion !== 1) errors.push("schemaVersion must be 1");
   if (!/^[a-z0-9][a-z0-9._-]{1,79}$/.test(manifest?.id ?? "")) errors.push("id has an invalid format");

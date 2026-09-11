@@ -11,6 +11,31 @@ import type {
 
 export type AgentApprovalStatus = "pending" | "approved" | "denied" | "consumed" | "expired" | "cancelled";
 
+/**
+ * 批准的作用范围。
+ *
+ * - `once`：只放行这一次调用（默认，与原有行为一致）。
+ * - `session`：同一会话内，同名工具的后续调用在授权有效期内不再询问。
+ *
+ * 注意这里说的是"有效期"而不是"直到会话结束"：这个代码库没有会话结束这个信号，
+ * sessionId 是长期对话标识，指望它自然消亡等于永不失效。所以授权带明确的到期时间，
+ * 并且可以随时撤销——否则它会变成一个看不见也收不回的永久放行，
+ * 在治理上比 work-guidelines 的 allow-automatically 更差（那个至少是一条能读能改能删的准则）。
+ *
+ * 更严格的 `never` 仍在准则层先判定，会话级授权到不了那里，挡不住它。
+ */
+export type AgentApprovalScope = "once" | "session";
+
+export interface AgentApprovalSessionGrant {
+  sessionId: string;
+  tool: string;
+  /** 产生这条授权的那次批准，用于溯源。 */
+  approvalId: string;
+  grantedAt: string;
+  /** 到期后自动失效，重新询问。 */
+  expiresAt: string;
+}
+
 export interface AgentApprovalRecord {
   id: string;
   fingerprint: string;
@@ -40,12 +65,18 @@ export interface AgentApprovalStoreEvent {
 export interface FileAgentApprovalStoreOptions {
   ttlMs?: number;
   maxApprovals?: number;
+  maxSessionGrants?: number;
+  /** 会话级授权的有效期。默认 8 小时——一个工作时段的量级，不是永久。 */
+  sessionGrantTtlMs?: number;
   onChange?: (event: AgentApprovalStoreEvent) => void;
 }
 
 interface ApprovalFile {
   version: 1;
   approvals: AgentApprovalRecord[];
+  // 会话级授权是后加的字段，故意不升 version：旧版本读到会忽略它、退回逐次询问，
+  // 那是偏保守的方向；升 version 反而让旧版本整份拒读，连待处理审批一起丢。
+  sessionGrants?: AgentApprovalSessionGrant[];
 }
 
 interface ApprovalWaiter {
@@ -55,18 +86,26 @@ interface ApprovalWaiter {
 
 const DEFAULT_TTL_MS = 10 * 60_000;
 const DEFAULT_MAX_APPROVALS = 1_000;
+const DEFAULT_MAX_SESSION_GRANTS = 500;
+const DEFAULT_SESSION_GRANT_TTL_MS = 8 * 60 * 60_000;
 
 /** 持久化工具审批。运行中等待用户决定，批准只允许匹配的调用执行一次。 */
 export class FileAgentApprovalStore {
   private readonly approvals = new Map<string, AgentApprovalRecord>();
   private readonly waiters = new Map<string, ApprovalWaiter>();
+  /** sessionId -> 工具名 -> 授权。 */
+  private readonly sessionGrants = new Map<string, Map<string, AgentApprovalSessionGrant>>();
   private readonly ttlMs: number;
   private readonly maxApprovals: number;
+  private readonly maxSessionGrants: number;
+  private readonly sessionGrantTtlMs: number;
   private readonly onChange?: FileAgentApprovalStoreOptions["onChange"];
 
   constructor(private readonly file: string, options: FileAgentApprovalStoreOptions = {}) {
     this.ttlMs = Math.min(60 * 60_000, Math.max(30_000, options.ttlMs ?? DEFAULT_TTL_MS));
     this.maxApprovals = Math.min(10_000, Math.max(10, options.maxApprovals ?? DEFAULT_MAX_APPROVALS));
+    this.maxSessionGrants = Math.min(5_000, Math.max(10, options.maxSessionGrants ?? DEFAULT_MAX_SESSION_GRANTS));
+    this.sessionGrantTtlMs = Math.min(7 * 24 * 60 * 60_000, Math.max(60_000, options.sessionGrantTtlMs ?? DEFAULT_SESSION_GRANT_TTL_MS));
     this.onChange = options.onChange;
     mkdirSync(dirname(file), { recursive: true });
     this.load();
@@ -75,6 +114,18 @@ export class FileAgentApprovalStore {
 
   authorize(input: AgentToolAuthorizationInput): Promise<AgentToolAuthorizationResult> {
     this.expireDue();
+    // 会话级授权优先于指纹匹配：指纹含 runId 与具体参数，只能让同一次调用免于重复询问，
+    // 覆盖不了"这个会话里这个工具换个参数再来一次"。
+    const granted = this.sessionGrants.get(input.sessionId)?.get(input.call.name);
+    if (granted && isExpired(granted)) {
+      this.revokeSessionGrant(input.sessionId, input.call.name);
+    } else if (granted) {
+      return Promise.resolve({
+        allowed: true,
+        approvalId: granted.approvalId,
+        reason: "allowed for this session by user",
+      });
+    }
     const fingerprint = approvalFingerprint(input);
     const reusable = [...this.approvals.values()].find((item) =>
       item.fingerprint === fingerprint && item.status === "approved" && !isExpired(item));
@@ -93,7 +144,7 @@ export class FileAgentApprovalStore {
     return this.wait(approval, input.signal);
   }
 
-  decide(id: string, allowed: boolean, reason?: string): AgentApprovalSummary {
+  decide(id: string, allowed: boolean, reason?: string, scope: AgentApprovalScope = "once"): AgentApprovalSummary {
     this.expireDue();
     const approval = this.require(id);
     if (approval.status !== "pending") throw new Error(`Approval is not pending: ${approval.status}`);
@@ -103,6 +154,7 @@ export class FileAgentApprovalStore {
     approval.updatedAt = now;
     approval.decidedAt = now;
     approval.reason = cleanText(reason || (allowed ? "approved by user" : "denied by user"));
+    if (allowed && scope === "session") this.grantSession(approval);
     this.save();
     this.emit(allowed ? "approved" : "denied", approval);
 
@@ -125,6 +177,56 @@ export class FileAgentApprovalStore {
     this.expireDue();
     const item = this.approvals.get(id);
     return item ? this.summary(item) : null;
+  }
+
+  /** 当前生效的会话级授权，新的在前。不传 sessionId 就返回全部。 */
+  listSessionGrants(sessionId?: string): AgentApprovalSessionGrant[] {
+    const all = [...this.sessionGrants.values()].flatMap((tools) => [...tools.values()]);
+    return all
+      .filter((grant) => !isExpired(grant))
+      .filter((grant) => !sessionId || grant.sessionId === sessionId)
+      .sort((a, b) => b.grantedAt.localeCompare(a.grantedAt));
+  }
+
+  /** 撤销一条会话级授权。撤掉之后该工具重新逐次询问。 */
+  revokeSessionGrant(sessionId: string, tool: string): boolean {
+    const tools = this.sessionGrants.get(sessionId);
+    if (!tools?.delete(tool)) return false;
+    if (tools.size === 0) this.sessionGrants.delete(sessionId);
+    this.save();
+    return true;
+  }
+
+  /** 撤销某个会话的全部会话级授权，返回撤掉几条。 */
+  revokeSessionGrants(sessionId: string): number {
+    const count = this.sessionGrants.get(sessionId)?.size ?? 0;
+    if (!count) return 0;
+    this.sessionGrants.delete(sessionId);
+    this.save();
+    return count;
+  }
+
+  private grantSession(approval: AgentApprovalRecord): void {
+    const tools = this.sessionGrants.get(approval.sessionId) ?? new Map<string, AgentApprovalSessionGrant>();
+    tools.set(approval.call.name, {
+      sessionId: approval.sessionId,
+      tool: approval.call.name,
+      approvalId: approval.id,
+      grantedAt: approval.updatedAt,
+      expiresAt: new Date(Date.now() + this.sessionGrantTtlMs).toISOString(),
+    });
+    this.sessionGrants.set(approval.sessionId, tools);
+    this.pruneSessionGrants();
+  }
+
+  private pruneSessionGrants(): void {
+    const ordered = this.listSessionGrants();
+    if (ordered.length <= this.maxSessionGrants) return;
+    for (const stale of ordered.slice(this.maxSessionGrants)) {
+      const tools = this.sessionGrants.get(stale.sessionId);
+      tools?.delete(stale.tool);
+      if (tools && tools.size === 0) this.sessionGrants.delete(stale.sessionId);
+    }
   }
 
   private create(input: AgentToolAuthorizationInput, fingerprint: string): AgentApprovalRecord {
@@ -205,7 +307,17 @@ export class FileAgentApprovalStore {
     this.emit("cancelled", approval);
   }
 
+  private expireSessionGrants(): void {
+    for (const [sessionId, tools] of this.sessionGrants) {
+      for (const [tool, grant] of tools) {
+        if (isExpired(grant)) tools.delete(tool);
+      }
+      if (tools.size === 0) this.sessionGrants.delete(sessionId);
+    }
+  }
+
   private expireDue(): void {
+    this.expireSessionGrants();
     let changed = false;
     for (const approval of this.approvals.values()) {
       if ((approval.status === "pending" || approval.status === "approved") && isExpired(approval)) {
@@ -247,6 +359,14 @@ export class FileAgentApprovalStore {
     try {
       const parsed = JSON.parse(readFileSync(this.file, "utf8")) as ApprovalFile;
       if (parsed.version !== 1 || !Array.isArray(parsed.approvals)) return;
+      for (const grant of Array.isArray(parsed.sessionGrants) ? parsed.sessionGrants : []) {
+        // 缺 expiresAt 的是加到期之前写下的旧记录：按过期处理，重新询问。偏保守的方向。
+        if (!grant?.sessionId || !grant.tool || !grant.approvalId || !grant.expiresAt) continue;
+        if (isExpired(grant)) continue;
+        const tools = this.sessionGrants.get(grant.sessionId) ?? new Map<string, AgentApprovalSessionGrant>();
+        tools.set(grant.tool, grant);
+        this.sessionGrants.set(grant.sessionId, tools);
+      }
       for (const item of parsed.approvals) {
         if (!item?.id) continue;
         const normalized = {
@@ -263,7 +383,12 @@ export class FileAgentApprovalStore {
   private save(): void {
     this.prune();
     const temp = `${this.file}.${process.pid}.tmp`;
-    writeFileSync(temp, JSON.stringify({ version: 1, approvals: [...this.approvals.values()] }, null, 2));
+    const payload: ApprovalFile = {
+      version: 1,
+      approvals: [...this.approvals.values()],
+      sessionGrants: this.listSessionGrants(),
+    };
+    writeFileSync(temp, JSON.stringify(payload, null, 2));
     renameSync(temp, this.file);
   }
 
@@ -331,6 +456,6 @@ function cleanText(value: string): string {
     .replace(/(["']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)["']?\s*[:=]\s*["'])[^"']+(["'])/gi, "$1[REDACTED]$2");
 }
 
-function isExpired(item: AgentApprovalRecord): boolean {
+function isExpired(item: { expiresAt: string }): boolean {
   return Date.parse(item.expiresAt) <= Date.now();
 }

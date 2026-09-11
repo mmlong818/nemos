@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readServerRouteSurface } from "../fixtures/server-route-surface.js";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -6,7 +7,7 @@ import { runInNewContext } from "node:vm";
 import { bundledCapabilityPluginCatalog, spawnsUnsandboxedProcess } from "../../examples/companion/bundled-capability-plugins.js";
 import { requiresUnsandboxedExecutionApproval } from "../../src/agent/extensions.js";
 
-const server = readFileSync("examples/companion/server.ts", "utf8");
+const server = readServerRouteSurface();
 const packageRoot = process.cwd();
 
 // 硬编码豁免的问题不是"没有确认"——安装本来就要 confirmExecutable；
@@ -53,7 +54,11 @@ test("启动提示按扩展 id 加版本记录确认，升版后重新提示", (
 });
 
 test("确认端点只写当前在运行的那些扩展版本", () => {
-  const handler = server.slice(server.indexOf('url === "/api/unsandboxed-notice/acknowledge"'), server.indexOf('url.split("?")[0] === "/api/network-policy"'));
+  // 按路由声明定位，以下一条 route( 为界——处理函数换文件时这个切法仍然成立。
+  const start = server.indexOf('route("POST", "/api/unsandboxed-notice/acknowledge"');
+  assert.notEqual(start, -1, "找不到确认端点的路由声明");
+  const next = server.indexOf('route("', start + 10);
+  const handler = server.slice(start, next === -1 ? undefined : next);
   assert.match(handler, /unsandboxedNotice\(\)/, "确认的对象来自当前实际状态，不来自请求体");
   assert.equal(handler.includes("readBody"), false, "请求体不参与决定确认了什么");
   assert.match(handler, /\.tmp/, "先写临时文件再改名");

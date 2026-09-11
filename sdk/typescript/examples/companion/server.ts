@@ -23,6 +23,11 @@ import {
   requiresUnsandboxedExecutionApproval,
   validateAgentExtensionManifest,
   FileAgentApprovalStore,
+  FileAgentExtensionStorage,
+  describeAgentJobActivity,
+  describeAgentOrchestrationActivity,
+  describeAgentRunActivity,
+  type AgentApprovalScope,
   AgentJobWorker,
   AgentOrchestrator,
   FileAgentJobQueue,
@@ -45,15 +50,12 @@ import {
   type GuidelineBehavior,
 } from "./work-guidelines.js";
 import { type InFlightWork } from "./presence-contract.js";
-import { failureShapeByName } from "./failure-registry.js";
+import { classifyFailure, failureShapeByName } from "./failure-registry.js";
 import { CompanionEngine, personaNamespace } from "./engine.js";
 import { PERSONAS, RELATIONSHIPS, DEFAULT_RELATIONSHIP } from "./personas.js";
 import { LONG_FORM_EXPERT_IDS } from "./experts.js";
 import {
   dependencyArtifactBlock,
-  expertAssignmentPrompt,
-  finalDeliveryPrompt,
-  planExpertTeam,
 } from "./expert-contracts.js";
 import { resolveLLM, searchWeb, type ResolvedLLM } from "./llm.js";
 import { FileLlmCallLedger } from "./llm-call-ledger.js";
@@ -88,9 +90,6 @@ import {
   type ArtifactFormat,
   type CapabilityNotification,
   type CapabilityStreamCb,
-  type CapabilityTaskExpertAssignment,
-  type CapabilityTaskDecision,
-  type CapabilityTaskStorylineStatus,
 } from "./capabilities.js";
 import {
   createCapabilityHandoffEnvelope,
@@ -103,9 +102,7 @@ import {
 } from "./capability-handoff.js";
 import { createDefaultCapabilityToolRegistry, isToolAllowedForPersona, type CapabilityToolSummary } from "./capability-tools.js";
 import {
-  buildCapabilitySystemRegistry,
   capabilityToolFilterForSurface,
-  companionRuntimeToolSummaries,
   filterCompanionRuntimeToolsForSurface,
   type CapabilityExtensionSummary,
   type CapabilityProviderSummary,
@@ -117,23 +114,19 @@ import {
   imagePromptVisionPrompt,
 } from "./image-prompt-reconstruction.js";
 import { CONTACTABLE_PERSONA_IDS, normalizeAddedContactIds, visibleContactIds } from "./contact-roster.js";
-import { RelationshipMemory, RelationshipMemoryUnavailableError, type CounterpartPatch } from "./relationship-memory.js";
-import { PersonaToolBindings, type PersonaToolBinding } from "./persona-tool-bindings.js";
+import { RelationshipMemory, RelationshipMemoryUnavailableError } from "./relationship-memory.js";
+import { PersonaToolBindings } from "./persona-tool-bindings.js";
 import { resolveGroupReplyRoute } from "./group-routing.js";
 import { APP_PERSONA_ID, migratePersonaIdentityValue, normalizePersonaId } from "./identity.js";
-import { MAX_OFFICE_FILE_BYTES, officeExtractionFromMarkdown } from "./office-file-parser.js";
 import { officeCapabilityBrowserScript } from "./office-capabilities.js";
-import { convertOfficeToMarkdown } from "./office-to-markdown.js";
 import { userFacingMessage } from "./office-errors.js";
-import { exportOfficeDocument, type OfficeExportFormat } from "./office-export.js";
 import { OfficeFileSessionStore } from "./office-file-sessions.js";
-import { OfficeWorkbenchRevisionConflict, OfficeWorkbenchStateStore } from "./office-workbench-state.js";
-import { TaskFileRegistry, type TaskFileOwnerKind } from "./task-files.js";
+import { OfficeWorkbenchStateStore } from "./office-workbench-state.js";
+import { TaskFileRegistry } from "./task-files.js";
 import { createMarketDataAdapter } from "./market-data-adapter.js";
 import { AgentExtensionUpdateService } from "./agent-extension-updates.js";
-import { bundledCapabilityPluginCatalog, createBundledCapabilityProvider, spawnsUnsandboxedProcess, type BundledCapabilityPluginId } from "./bundled-capability-plugins.js";
-import { buildReviewQueue, groupReviewQueue, capabilityPackStatuses, extensionRuntimeReady, platformConnectorStatuses } from "./product-platform.js";
-import { routeCapability } from "./capability-router.js";
+import { createBundledCapabilityProvider, spawnsUnsandboxedProcess } from "./bundled-capability-plugins.js";
+import { extensionRuntimeReady, platformConnectorStatuses } from "./product-platform.js";
 import { isAllowedLocalRequest, isPrivateNetworkAddress, readPublicWebUrl } from "./local-http-security.js";
 import { defaultNetworkPolicy, normalizeNetworkPolicy, NetworkPolicyError } from "./network-policy.js";
 import {
@@ -146,15 +139,11 @@ import {
 } from "./outbound-proxy.js";
 import { installOutboundProxy, outboundProxyInstalled } from "./proxy-dispatcher.js";
 import {
-  importWeChatPrivateSource,
   loadPrivateSourcesConfig,
-  privateSourcesSummary,
   savePrivateSourcesConfig,
-  type PrivateSourcesConfig,
 } from "./private-source-connectors.js";
-import { KnowledgeLibrary, type KnowledgeItemKind } from "./knowledge-library.js";
-import { appendCurrentUiEvidence } from "./ui-evidence.js";
-import { ProductReviewRunStore, type ProductReviewIssue } from "./product-review-runs.js";
+import { KnowledgeLibrary } from "./knowledge-library.js";
+import { ProductReviewRunStore } from "./product-review-runs.js";
 import { applyPendingDataRestore, normalizeSyncEndpoint, pullDataSync, pushDataSync, syncSettingsSummary, testDataSync, type DataSyncStoredSettings } from "./data-sync.js";
 import { recoverAgentJobStorage } from "./agent-job-storage-migration.js";
 import { RunningTaskSteeringError, RunningTaskSteeringStore } from "./running-task-steering.js";
@@ -165,6 +154,20 @@ import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamReques
 import { listBotMarket } from "./bot-market.js";
 import { isEmptyRecipe, normalizeBotRecipe, recipeConsentToken, BotRecipeError } from "./bot-recipe.js";
 import { appRoute, renderAppPage } from "./app-navigation.js";
+import {
+  ModelSwitchBusyError,
+  ModelSwitchCoordinator,
+  ModelSwitchJobsActiveError,
+} from "./model-switch.js";
+import { RouteTable, runRoute } from "./routes/table.js";
+import { createFileRoutes } from "./routes/files.js";
+import { createPeopleRoutes } from "./routes/people.js";
+import { createProfileRoutes } from "./routes/profile.js";
+import { createReminderRoutes } from "./routes/reminders.js";
+import { createToolRoutes } from "./routes/tools.js";
+import { createSystemRoutes } from "./routes/system.js";
+import { createSourceRoutes } from "./routes/sources.js";
+import { createCapabilityRoutes } from "./routes/capabilities.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const USER = process.env.COMPANION_USER || "me";
@@ -183,12 +186,6 @@ const WEB_VENDOR_ASSETS = new Map<string, string>([
   ["vendor/jszip.min.js", require.resolve("jszip/dist/jszip.min.js")],
   ["vendor/docx-preview.min.js", join(__dirname, "../../node_modules/docx-preview/dist/docx-preview.min.js")],
 ]);
-const preparedOfficeExports = new Map<string, {
-  data: Buffer;
-  contentType: string;
-  filename: string;
-  expiresAt: number;
-}>();
 const officeFileSessions = new OfficeFileSessionStore(join(DATA_DIR, "office-file-sessions"));
 const officeWorkbenchState = new OfficeWorkbenchStateStore(join(DATA_DIR, "office-workbench.json"));
 const taskFiles = new TaskFileRegistry(join(DATA_DIR, "task-files.json"));
@@ -257,7 +254,17 @@ function broadcastAgentSse(name: "job" | "run" | "approval", event: unknown): vo
 }
 
 function broadcastAgentEvent(event: AgentJobQueueEvent): void {
-  broadcastAgentSse("job", event);
+  // 事件里的 job 只有 id/status/updatedAt，失败原因要回查队列。
+  const failedText = event.action === "failed" || event.action === "uncertain"
+    ? agentJobQueue.get(event.job.id)?.error
+    : undefined;
+  // job.error 是自由文本；classifyFailure 能从 CF-Exxxx 前缀回收编号，回收不到就是 UNREGISTERED。
+  const jobFailure = failedText ? classifyFailure(new Error(failedText)) : undefined;
+  broadcastAgentSse("job", {
+    ...event,
+    activity: describeAgentJobActivity(event.action),
+    ...(jobFailure ? { failure: jobFailure } : {}),
+  });
   queueMicrotask(() => {
     try {
       const job = agentJobQueue.get(event.job.id);
@@ -351,7 +358,6 @@ export function isFreshModelCheck(check: { chat: string; checkedAt: string } | u
   const at = Date.parse(check.checkedAt);
   return Number.isFinite(at) && now - at < MODEL_CHECK_TTL_MS;
 }
-let modelConnectionUpdating = false;
 let modelCatalog = loadSavedLLMModelCatalog();
 let modelCatalogFetchedAt = loadSavedLLMModelCatalogFetchedAt();
 let modelCatalogConnectionRevision = loadSavedLLMModelCatalogConnectionRevision();
@@ -431,7 +437,15 @@ const agentRunObserver: AgentRunObserver = {
   onEvent: (runId, event) => {
     agentRunStore.onEvent(runId, event);
     const sessionId = agentRunStore.get(runId)?.sessionId ?? runId;
-    broadcastAgentSse("run", { action: "event", runId, sessionId, eventType: event.type });
+    // 除了原事件类型，一并给出展示分类：界面按 kind 分流渲染，
+    // 不必认识 13 个取值，将来加事件也不会漏渲染。
+    broadcastAgentSse("run", {
+      action: "event",
+      runId,
+      sessionId,
+      eventType: event.type,
+      activity: describeAgentRunActivity(event),
+    });
   },
   onCheckpoint: (runId, checkpoint) => {
     agentRunStore.onCheckpoint(runId, checkpoint);
@@ -445,15 +459,26 @@ const agentRunObserver: AgentRunObserver = {
   onError: (runId, error) => {
     const sessionId = agentRunStore.get(runId)?.sessionId ?? runId;
     agentRunStore.onError(runId, error);
-    broadcastAgentSse("run", { action: "failed", runId, sessionId });
+    // 失败注册表原本设计成统一的分类边界，但 classifyFailure 在生产代码里一次都没被调用过：
+    // 编号体系和运行事件是两条平行线。这里把它接到运行失败这个边界上。
+    // 未注册的失败会如实落到 UNREGISTERED——那正是"还有多少抛出点没登记"的信号，不掩盖。
+    broadcastAgentSse("run", { action: "failed", runId, sessionId, failure: classifyFailure(error) });
   },
 };
 const agentUserActions = new AgentUserActionGateway(agentRunObserver);
-const agentExtensions = new AgentExtensionRegistry(AGENT_EXTENSIONS_FILE);
+// 扩展的托管存储：按扩展隔离、带配额，只有声明了 storage 权限的进程内扩展拿得到句柄。
+// 子进程扩展（MCP）不走这里——MCP 协议没有存储能力，那条路是宿主分配目录 + 沙箱授权。
+const agentExtensionStorage = new FileAgentExtensionStorage(join(DATA_DIR, "extension-data"));
+const agentExtensions = new AgentExtensionRegistry(AGENT_EXTENSIONS_FILE, { storage: agentExtensionStorage });
 const agentExtensionRuntimeErrors = new Map<string, string>();
 function createExtensionProvider(manifest: AgentExtensionManifest) {
   try {
-    const provider = createBundledCapabilityProvider(manifest, DATA_DIR) ?? createMcpProviderFromManifest(manifest);
+    // 声明了 storage 才分配目录；没声明就不建、也不放行。
+    const dataDir = manifest.permissions.includes("storage")
+      ? agentExtensionStorage.directoryFor(manifest.id)
+      : undefined;
+    const provider = createBundledCapabilityProvider(manifest, DATA_DIR)
+      ?? createMcpProviderFromManifest(manifest, dataDir ? { dataDir } : {});
     agentExtensionRuntimeErrors.delete(manifest.id);
     return provider;
   } catch (error) {
@@ -559,6 +584,33 @@ function enqueueAssistantTeam(raw: Record<string, unknown>) {
 }
 
 const deliveryOutbox = new FileDeliveryOutbox(DELIVERY_OUTBOX_FILE);
+
+// 模型设置类操作共用这一个协调器：切换、显式检查、目录读取互斥，
+// 且切换期间用 worker 的 stop/start 挡住新任务领取——原来只在切换前查一次
+// hasActiveModelJobs()，rebuildLLM 的 await boot() 期间仍会放进新任务。
+const modelSwitch = new ModelSwitchCoordinator({
+  hasActiveJobs: () => hasActiveModelJobs(),
+  holdJobIntake: () => {
+    agentJobWorker.stop();
+    return () => agentJobWorker.start();
+  },
+});
+
+/** 把协调器的两种拒绝映射回原有的 409 契约；不是这两种就返回 false 交给原有处理。 */
+function sendModelSwitchRefusal(res: ServerResponse, error: unknown): boolean {
+  if (error instanceof ModelSwitchBusyError) {
+    send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" });
+    return true;
+  }
+  if (error instanceof ModelSwitchJobsActiveError) {
+    send(res, 409, {
+      error: "model_jobs_active",
+      userMessage: "有模型任务正在执行；为避免中途切换连接，请等待任务结束后再保存设置。",
+    });
+    return true;
+  }
+  return false;
+}
 
 function storedJobSurface(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): "chat" | "capabilities" | "office" {
   if (job.payload.surface === "capabilities" || job.payload.surface === "office") {
@@ -886,7 +938,14 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     }, {
       signal: context.signal,
       onEvent: (event) => {
-        if (event.type === "subtask_start") context.checkpoint(`正在执行：${event.taskId}`);
+        // 原来只消费 subtask_start，另外三个事件直接丢掉——委派过程在界面上是断的。
+        // 现在四个都落成检查点，并带上结构化分类，不只是一句中文文案。
+        const activity = describeAgentOrchestrationActivity(event);
+        const label = event.type === "subtask_start" ? `正在执行：${event.taskId}`
+          : event.type === "subtask_end" ? `子任务 ${event.taskId}：${event.status}`
+            : event.type === "orchestration_start" ? `开始编排 ${event.taskCount} 个子任务`
+              : `编排结束：${event.status}`;
+        context.checkpoint(label, undefined, { activity });
       },
     });
     context.checkpoint("子任务汇总完成", 100);
@@ -1239,18 +1298,16 @@ function wireAgentTools(target: ResolvedLLM): void {
 }
 
 // 运行时切换模型连接：复用同一数据库重建记忆和对话引擎。
-async function rebuildLLM(
-  next: CompanionModelConnection | undefined,
-  catalog: readonly CompanionModelInfo[] = modelCatalog,
-  fetchedAt = modelCatalogFetchedAt,
-  catalogConnectionRevision = modelCatalogConnectionRevision,
-): Promise<void> {
-  if (next) {
-    const submitted = ensureConnectionRevision(normalizeCompanionModelConnection(next));
-    const normalized = withConnectionRevision(submitted, modelConnection, submitted.apiKey !== modelConnection?.apiKey);
+function commitModelConnection(
+  connection: CompanionModelConnection | undefined,
+  catalog: readonly CompanionModelInfo[],
+  fetchedAt: string,
+  catalogConnectionRevision: string,
+): void {
+  if (connection) {
     // Persist successfully before changing the active connection.
-    saveSavedLLMConnection(normalized, catalog, fetchedAt, catalogConnectionRevision);
-    modelConnection = normalized;
+    saveSavedLLMConnection(connection, catalog, fetchedAt, catalogConnectionRevision);
+    modelConnection = connection;
     modelCatalog = [...catalog];
     modelCatalogFetchedAt = fetchedAt;
     modelCatalogConnectionRevision = catalogConnectionRevision;
@@ -1264,14 +1321,58 @@ async function rebuildLLM(
     modelCatalogFetchedAt = "";
     modelCatalogConnectionRevision = "";
   }
-  const old = mem;
+}
+
+async function rebuildModelRuntime(): Promise<void> {
+  const superseded = mem;
   llm = resolveLLM(modelConnection);
   capabilityTools.invalidateReadiness();
   wireAgentTools(llm);
   mem = makeMem();
   engine = makeEngine();
   await boot();
-  try { old.close(); } catch { /* ignore */ }
+  if (superseded !== mem) { try { superseded.close(); } catch { /* ignore */ } }
+}
+
+async function rebuildLLM(
+  next: CompanionModelConnection | undefined,
+  catalog: readonly CompanionModelInfo[] = modelCatalog,
+  fetchedAt = modelCatalogFetchedAt,
+  catalogConnectionRevision = modelCatalogConnectionRevision,
+): Promise<void> {
+  // 运行时起不来就要把磁盘与内存配置退回改动前。少了这一步，保存已经落盘、
+  // modelConnection 已经指向新连接，而 llm/mem/engine 仍是旧的，三者停在不一致状态。
+  const previous = {
+    connection: modelConnection,
+    catalog: modelCatalog,
+    fetchedAt: modelCatalogFetchedAt,
+    catalogConnectionRevision: modelCatalogConnectionRevision,
+  };
+  if (next) {
+    const submitted = ensureConnectionRevision(normalizeCompanionModelConnection(next));
+    commitModelConnection(
+      withConnectionRevision(submitted, modelConnection, submitted.apiKey !== modelConnection?.apiKey),
+      catalog,
+      fetchedAt,
+      catalogConnectionRevision,
+    );
+  } else {
+    commitModelConnection(undefined, [], "", "");
+  }
+  try {
+    await rebuildModelRuntime();
+  } catch (error) {
+    // 回退用的是改动前那个连接对象本身，不重新推导 revision——重新推导会作废已有的模型检查结果。
+    commitModelConnection(previous.connection, previous.catalog, previous.fetchedAt, previous.catalogConnectionRevision);
+    try {
+      await rebuildModelRuntime();
+    } catch (restoreError) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}；回退到原连接同样失败：${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
+      );
+    }
+    throw error;
+  }
   seedPersonaBiosInBackground(engine);
 }
 
@@ -1446,6 +1547,8 @@ function modelConnectionStatus(): Record<string, unknown> {
     connectionRevision: modelConnection?.connectionRevision || null,
     catalogConnectionRevision: modelCatalogConnectionRevision || null,
     catalogStale: Boolean(modelCatalog.length && modelCatalogConnectionRevision !== modelConnection?.connectionRevision),
+    // 切换进展：界面本来只能从 409 反推"是不是正忙"，现在能直接看到阶段与上次结果。
+    switchState: modelSwitch.state(),
     selectionMode: modelConnection?.selectionMode || "manual",
     modelChecks: modelConnection?.modelChecks || {},
     favoriteModels: modelConnection?.favoriteModels || [],
@@ -1614,7 +1717,9 @@ function extensionToolSummaries(): CapabilityToolSummary[] {
   });
 }
 
-type ToolSettings = {
+// 被 routes/ 下的域模块用 `import type` 引用。类型导入编译后完全擦除，
+// 不会在运行时把这个入口文件拉起来——改成值导入会启动第二个服务。
+export type ToolSettings = {
   defaultTab: "translate" | "speech" | "polish";
   translateMode: "auto" | "zh-en" | "en-zh";
   translateProvider: "mymemory" | "zhipu";
@@ -2197,8 +2302,12 @@ function applyRel(personaId: string): void {
 // 调试期：人设可在网页里改并持久化（覆盖 personas.ts 的默认）。
 const PERSONA_FILE = runtimePath("COMPANION_PERSONAS", "personas.json");
 const AVATAR_FILE = runtimePath("COMPANION_AVATARS", "avatars.json");
-type AvatarOverrides = { me?: string; personas?: Record<string, string> };
-interface UserProfile {
+// 被 routes/ 下的域模块用 `import type` 引用。类型导入编译后完全擦除，
+// 不会在运行时把这个入口文件拉起来——改成值导入会启动第二个服务。
+export type AvatarOverrides = { me?: string; personas?: Record<string, string> };
+// 被 routes/ 下的域模块用 `import type` 引用。类型导入编译后完全擦除，
+// 不会在运行时把这个入口文件拉起来——改成值导入会启动第二个服务。
+export interface UserProfile {
   displayName: string;
   spokenName: string;
   personaNicknames: Record<string, string>;
@@ -2501,7 +2610,9 @@ async function onboardGroupMembers(group: GroupInfo, addedIds: string[], previou
   await engine.addGroupSystemNote(USER, group.id, note);
 }
 
-interface HkReminder {
+// 被 routes/ 下的域模块用 `import type` 引用。类型导入编译后完全擦除，
+// 不会在运行时把这个入口文件拉起来——改成值导入会启动第二个服务。
+export interface HkReminder {
   id: string;
   title: string;
   note: string;
@@ -2770,33 +2881,6 @@ function contentType(path: string): string {
   return "application/octet-stream";
 }
 
-function officeSessionContentType(extension: string): string {
-  return ({
-    doc: "application/msword",
-    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    docm: "application/vnd.ms-word.document.macroEnabled.12",
-    odt: "application/vnd.oasis.opendocument.text",
-    rtf: "application/rtf",
-    epub: "application/epub+zip",
-    ppt: "application/vnd.ms-powerpoint",
-    pps: "application/vnd.ms-powerpoint",
-    pot: "application/vnd.ms-powerpoint",
-    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    pptm: "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
-    ppsx: "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
-    ppsm: "application/vnd.ms-powerpoint.slideshow.macroEnabled.12",
-    odp: "application/vnd.oasis.opendocument.presentation",
-    xls: "application/vnd.ms-excel",
-    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    xlsm: "application/vnd.ms-excel.sheet.macroEnabled.12",
-    xlsb: "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
-    ods: "application/vnd.oasis.opendocument.spreadsheet",
-    csv: "text/csv; charset=utf-8",
-    pdf: "application/pdf",
-    txt: "text/plain; charset=utf-8",
-    md: "text/markdown; charset=utf-8",
-  } as Record<string, string>)[extension] || "application/octet-stream";
-}
 
 function sendWebAsset(res: ServerResponse, assetUrl: string): boolean {
   const clean = assetUrl.split("?")[0]!;
@@ -3837,6 +3921,22 @@ function extensionAuditArguments(
   };
 }
 
+const apiRoutes = new RouteTable().add(...createFileRoutes({
+  send,
+  readBody,
+  taskFiles,
+  officeFileSessions,
+  officeWorkbenchState,
+  agentUserActions,
+}))
+  .add(...createCapabilityRoutes({ USER, WEB_DIR, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, readBody, send, teamConnectionFingerprint }))
+  .add(...createSourceRoutes({ DATA_DIR, X_OAUTH_REDIRECT, agentUserActions, clearSavedXToken, completeXOAuth, knowledgeLibrary, marketData, modelConnectionUserMessage, readBody, saveSavedXToken, savedXTokenExists, send, startXOAuth, xOAuthCallbackHtml }))
+  .add(...createSystemRoutes({ APP_MANIFEST, MANIFEST_FILE, MEMORY_CORE_INFO, UNSANDBOXED_NOTICE_FILE, USER, agentApprovalStore, agentExtensions, agentJobQueue, agentUserActions, capabilities, createExtensionProvider, currentPlatformConnectors, jobWithDelivery, knowledgeLibrary, listAgentRuns, llmCallLedger, memoryConsolidationStatus, modelConnectionStatus, pendingSyncRestore, personalWork, productReviewRuns, readBody, readDataSyncSettings, relationships, saveDataSyncSettings, send, unsandboxedNotice }))
+  .add(...createToolRoutes({ agentUserActions, loadToolSettings, personaToolBindings, readBody, runToolAsrCorrectText, runToolPolishText, runToolTranslateText, saveToolSettings, send, toolSettingsSummary }))
+  .add(...createReminderRoutes({ agentJobQueue, agentUserActions, backgroundScheduler, createHkReminderDelivery, loadHkReminders, readBody, sanitizeHkReminder, saveHkReminders, send }))
+  .add(...createProfileRoutes({ agentUserActions, completeOnboarding, generateConversationTitle, publicUserProfile, readBody, saveUserProfile, send }))
+  .add(...createPeopleRoutes({ addedContactIds, agentUserActions, allPersonaIdsInOrder, applyRel, currentContactIds, loadAvatarOverrides, readBody, relOf, relationships, saveAvatarOverride, saveContacts, saveRel, send }));
+
 const server = createServer(async (req, res) => {
   try {
     if (!isAllowedLocalRequest({
@@ -3856,76 +3956,16 @@ const server = createServer(async (req, res) => {
       send(res, 200, renderAppPage(readFileSync(join(WEB_DIR, pageRoute.file), "utf-8"), pathname), "text/html");
       return;
     }
-    if (req.method === "GET" && pathname === "/api/files/export") {
-      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
-      const prepared = preparedOfficeExports.get(id);
-      if (!prepared || prepared.expiresAt < Date.now()) {
-        if (id) preparedOfficeExports.delete(id);
-        send(res, 404, { error: "下载已过期，请重新导出" });
-        return;
-      }
-      preparedOfficeExports.delete(id);
-      res.writeHead(200, {
-        "Content-Type": prepared.contentType,
-        "Content-Length": prepared.data.length,
-        "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(prepared.filename),
-        "Cache-Control": "no-store",
-      });
-      res.end(prepared.data);
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/export") {
-      const received = (await readBody(req, 5 * 1024 * 1024)) as {
-        payload?: string;
-        name?: string;
-        format?: OfficeExportFormat;
-        blocks?: Array<{ title?: string; text?: string; titleAlignment?: "left" | "center" | "right" | "justify"; paragraphAlignments?: Array<"left" | "center" | "right" | "justify"> }>;
-      };
-      const body = (typeof received.payload === "string" ? JSON.parse(received.payload) : received) as {
-        name?: string;
-        format?: OfficeExportFormat;
-        blocks?: Array<{ title?: string; text?: string; titleAlignment?: "left" | "center" | "right" | "justify"; paragraphAlignments?: Array<"left" | "center" | "right" | "justify"> }>;
-      };
-      const allowed: OfficeExportFormat[] = ["docx", "pptx", "xlsx", "pdf", "html", "md"];
-      if (!body.format || !allowed.includes(body.format) || !Array.isArray(body.blocks)) {
-        send(res, 400, { error: "导出参数不完整" });
-        return;
-      }
-      try {
-        const exported = await exportOfficeDocument({
-          name: String(body.name || "办公文稿"),
-          format: body.format,
-          blocks: body.blocks.map((block) => ({ title: String(block.title || ""), text: String(block.text || ""), titleAlignment: block.titleAlignment, paragraphAlignments: block.paragraphAlignments })),
-        });
-        const prepare = new URL(url, "http://127.0.0.1").searchParams.get("prepare") === "1";
-        if (prepare) {
-          for (const [id, item] of preparedOfficeExports) {
-            if (item.expiresAt < Date.now()) preparedOfficeExports.delete(id);
-          }
-          const id = randomBytes(18).toString("hex");
-          preparedOfficeExports.set(id, {
-            data: exported.data,
-            contentType: exported.contentType,
-            filename: exported.filename,
-            expiresAt: Date.now() + 2 * 60_000,
-          });
-          send(res, 200, {
-            downloadUrl: `/api/files/export?id=${id}`,
-            warnings: exported.warnings,
-          });
-          return;
-        }
-        res.writeHead(200, {
-          "Content-Type": exported.contentType,
-          "Content-Length": exported.data.length,
-          "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(exported.filename),
-          "X-Clownfish-Warnings": encodeURIComponent(exported.warnings.join("\n")),
-          "Cache-Control": "no-store",
-        });
-        res.end(exported.data);
-      } catch (error) {
-        send(res, 500, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
+    const matchedRoute = apiRoutes.find(req.method, pathname);
+    if (matchedRoute) {
+      await runRoute(
+        matchedRoute,
+        { req, res, url, pathname, query: new URL(url, "http://127.0.0.1").searchParams },
+        {
+          readBody: (request) => readBody(request),
+          sendInvalid: (response, detail) => send(response, 400, { error: "请求内容不符合要求", userMessage: detail }),
+        },
+      );
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/assets/office-capabilities.js") {
@@ -3934,175 +3974,6 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && sendWebAsset(res, url)) {
-      return;
-    }
-    if (req.method === "POST" && url === "/api/files/extract") {
-      // 请求体上限会先于下面的 8 MB 判断触发，这里翻译成用户能照做的说明。
-      let body: { name?: string; dataBase64?: string };
-      try {
-        body = (await readBody(req, 12 * 1024 * 1024)) as { name?: string; dataBase64?: string };
-      } catch {
-        send(res, 400, { error: "请求内容过大", userMessage: "单个办公文件不能超过 8 MB" });
-        return;
-      }
-      const name = String(body.name ?? "").trim();
-      const encoded = String(body.dataBase64 ?? "");
-      if (!name || !encoded || !/^[a-z0-9+/=\r\n]+$/i.test(encoded)) {
-        send(res, 400, { error: "文件内容不完整", userMessage: "文件内容不完整，请重新选择文件" });
-        return;
-      }
-      const data = Buffer.from(encoded, "base64");
-      if (!data.byteLength || data.byteLength > MAX_OFFICE_FILE_BYTES) {
-        send(res, 400, { error: "单个办公文件不能超过 8 MB", userMessage: "单个办公文件不能超过 8 MB" });
-        return;
-      }
-      try {
-        // 上传文件生成结构化可编辑副本；原文件仍完整保存在会话里，可随时下载。
-        const conversion = await convertOfficeToMarkdown(name, data);
-        const extraction = officeExtractionFromMarkdown(conversion.sourceFormat, conversion.markdown, conversion.truncated);
-        const session = officeFileSessions.create(name, data);
-        const fileRecord = taskFiles.register({
-          sourceKey: `office:${session.id}`,
-          ownerKind: "office",
-          ownerId: session.id,
-          displayName: session.name,
-          extension: session.extension,
-          byteLength: session.byteLength,
-          contentHash: session.contentHash,
-          storageRef: session.id,
-        });
-        send(res, 200, { ok: true, extraction, conversion, session, fileRecord });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && pathname === "/api/files/workbench") {
-      send(res, 200, { ok: true, state: officeWorkbenchState.read() });
-      return;
-    }
-    if (req.method === "PUT" && pathname === "/api/files/workbench") {
-      const body = (await readBody(req, 7 * 1024 * 1024)) as { expectedRevision?: number; documents?: unknown[]; trash?: unknown[]; selectedId?: string | null };
-      try {
-        const state = officeWorkbenchState.save({
-          expectedRevision: Number(body.expectedRevision),
-          documents: body.documents || [],
-          trash: body.trash || [],
-          selectedId: body.selectedId,
-        });
-        send(res, 200, { ok: true, state });
-      } catch (error) {
-        if (error instanceof OfficeWorkbenchRevisionConflict) send(res, 409, { error: error.message, state: error.current });
-        else send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && pathname === "/api/files") {
-      const query = new URL(url, "http://127.0.0.1").searchParams;
-      const ownerKind = query.get("ownerKind") as TaskFileOwnerKind | null;
-      const ownerId = query.get("ownerId") || undefined;
-      const allowedOwner = ownerKind && ["conversation", "task", "artifact", "office"].includes(ownerKind) ? ownerKind : undefined;
-      send(res, 200, { ok: true, files: taskFiles.list(allowedOwner, ownerId) });
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/link") {
-      const body = (await readBody(req)) as { id?: string; ownerKind?: TaskFileOwnerKind; ownerId?: string; sourceKey?: string };
-      try {
-        if (!body.ownerKind || !["conversation", "task", "artifact", "office"].includes(body.ownerKind)) throw new Error("文件归属类型无效");
-        const file = taskFiles.link(String(body.id || ""), body.ownerKind, String(body.ownerId || ""), String(body.sourceKey || "") || undefined);
-        send(res, 200, { ok: true, file });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/status") {
-      const body = (await readBody(req)) as { id?: string; status?: "active" | "trashed" };
-      try {
-        if (body.status !== "active" && body.status !== "trashed") throw new Error("文件状态无效");
-        const file = taskFiles.setStatus(String(body.id || ""), body.status);
-        send(res, 200, { ok: true, file });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && pathname === "/api/files/session") {
-      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
-      try {
-        const { session, data } = officeFileSessions.read(id);
-        res.writeHead(200, {
-          "Content-Type": officeSessionContentType(session.extension),
-          "Content-Length": data.byteLength,
-          "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(session.name),
-          "Cache-Control": "no-store",
-          "X-Clownfish-Content-Hash": session.contentHash,
-        });
-        res.end(data);
-      } catch (error) {
-        send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/session/open") {
-      const body = (await readBody(req)) as { id?: string };
-      try {
-        const action = await agentUserActions.execute({
-          name: "office_file_open_desktop",
-          description: "在 Windows 已关联的桌面应用中打开用户明确选择的本机工作副本",
-          arguments: { sessionId: body.id },
-          execute: () => officeFileSessions.openDesktop(String(body.id || "")),
-          summarizeResult: (session) => ({ ok: true, sessionId: session.id, extension: session.extension }),
-        });
-        send(res, 200, { ok: true, session: action.value, auditRunId: action.runId });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/session/refresh") {
-      const body = (await readBody(req)) as { id?: string; expectedHash?: string };
-      try {
-        const { session, data } = officeFileSessions.read(String(body.id || ""));
-        const changed = !body.expectedHash || body.expectedHash !== session.contentHash;
-        const conversion = await convertOfficeToMarkdown(session.name, data);
-        const extraction = officeExtractionFromMarkdown(conversion.sourceFormat, conversion.markdown, conversion.truncated);
-        send(res, 200, { ok: true, changed, session, extraction, conversion, dataBase64: data.toString("base64") });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && pathname === "/api/files/session/history") {
-      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
-      try {
-        send(res, 200, { ok: true, versions: officeFileSessions.history(id) });
-      } catch (error) {
-        send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && pathname === "/api/files/session/events") {
-      const id = new URL(url, "http://127.0.0.1").searchParams.get("id") || "";
-      try {
-        send(res, 200, { ok: true, events: officeFileSessions.eventHistory(id) });
-      } catch (error) {
-        send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "POST" && pathname === "/api/files/session/restore") {
-      const body = (await readBody(req)) as { id?: string; versionId?: string; expectedHash?: string };
-      try {
-        const session = officeFileSessions.restore(String(body.id || ""), String(body.versionId || ""), String(body.expectedHash || ""));
-        send(res, 200, { ok: true, session });
-      } catch (error) {
-        send(res, 409, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && url === "/api/health") {
-      send(res, 200, { ok: true });
       return;
     }
     if (req.method === "GET" && url === "/api/state") {
@@ -4118,72 +3989,6 @@ const server = createServer(async (req, res) => {
         groups,
         avatars: loadAvatarOverrides(),
         profile: publicUserProfile(),
-      });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/user-profile") {
-      send(res, 200, { ok: true, profile: publicUserProfile() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/user-profile") {
-      const b = (await readBody(req)) as { displayName?: string; personaNicknames?: Record<string, string> };
-      const action = await agentUserActions.execute({
-        name: "user_profile_update",
-        description: "保存用户在个人设置页修改的称呼",
-        arguments: {
-          displayNameUpdated: b.displayName !== undefined,
-          personaNicknameIds: Object.keys(b.personaNicknames ?? {}),
-        },
-        execute: () => saveUserProfile(b),
-        summarizeResult: (profile) => ({ ok: true, profileUpdated: true, nicknameCount: Object.keys(profile.personaNicknames ?? {}).length }),
-      });
-      send(res, 200, { ok: true, profile: action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/onboarding") {
-      const b = (await readBody(req)) as { displayName?: string };
-      const action = await agentUserActions.execute({
-        name: "onboarding_complete",
-        description: "保存首次启动时用户提交的称呼并生成固定欢迎消息",
-        arguments: { displayNameProvided: Boolean(b.displayName?.trim()) },
-        execute: () => completeOnboarding(b.displayName),
-        summarizeResult: () => ({ ok: true, onboardingCompleted: true }),
-      });
-      send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/llm") {
-      send(res, 200, modelConnectionStatus());
-      return;
-    }
-    if (req.method === "GET" && url === "/api/tool-settings") {
-      send(res, 200, { ok: true, ...toolSettingsSummary() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/tool-settings") {
-      const b = (await readBody(req)) as { settings?: Partial<ToolSettings>; zhipuKey?: string; clearZhipuKey?: boolean };
-      const action = await agentUserActions.execute({
-        name: "tool_settings_update",
-        description: "保存用户在工具设置页修改的模型与工具配置",
-        arguments: {
-          settingKeys: Object.keys(b.settings ?? {}),
-          zhipuKeyUpdated: Boolean(b.zhipuKey),
-          clearZhipuKey: Boolean(b.clearZhipuKey),
-        },
-        execute: () => {
-          saveToolSettings(b.settings ?? loadToolSettings(), b.zhipuKey, !!b.clearZhipuKey);
-          return toolSettingsSummary();
-        },
-        summarizeResult: (summary) => ({ ok: true, hasZhipuKey: summary.hasZhipuKey }),
-      });
-      send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/version") {
-      send(res, 200, {
-        manifest: APP_MANIFEST,
-        memoryCore: MEMORY_CORE_INFO,
-        manifestFile: MANIFEST_FILE,
       });
       return;
     }
@@ -4243,19 +4048,6 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, runs });
       return;
     }
-    if (req.method === "GET" && url.split("?")[0] === "/api/llm-calls") {
-      const query = new URLSearchParams(url.split("?")[1] || "");
-      const taskId = query.get("taskId") || undefined;
-      const runId = query.get("runId") || undefined;
-      const limit = Number(query.get("limit") || 50);
-      // Read-only operational metadata: never expose prompts, outputs, endpoints, credentials or price guesses.
-      send(res, 200, {
-        ok: true,
-        calls: llmCallLedger.list({ taskId, runId, limit }),
-        summary: llmCallLedger.summarize({ taskId, runId }),
-      });
-      return;
-    }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/run") {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id") || "";
       const run = id ? agentRunStore.get(id) : null;
@@ -4286,17 +4078,47 @@ const server = createServer(async (req, res) => {
       const status = statuses.includes(rawStatus as AgentApprovalStatus) ? rawStatus as AgentApprovalStatus : undefined;
       const approvals = agentApprovalStore.list({ status, limit: Number(query.get("limit") || 50) })
         .filter((approval) => runVisibleOnSurface(agentRunStore.get(approval.runId)?.metadata?.surface, surface));
-      send(res, 200, { ok: true, approvals });
+      // 会话级放行是长期生效的授权，必须和待处理审批一起被看见——
+      // 看不见也收不回的放行，比多问几次危险得多。
+      send(res, 200, { ok: true, approvals, sessionGrants: agentApprovalStore.listSessionGrants() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/agent/approval/session-grant/revoke") {
+      const body = (await readBody(req)) as { sessionId?: string; tool?: string };
+      const sessionId = String(body.sessionId || "").trim();
+      if (!sessionId) {
+        send(res, 400, { error: "missing sessionId", userMessage: "缺少会话标识。" });
+        return;
+      }
+      const action = await agentUserActions.execute({
+        name: "approval_session_grant_revoke",
+        description: body.tool ? `撤销会话内对「${body.tool}」的放行` : "撤销该会话内的全部放行",
+        arguments: { sessionId, tool: body.tool ?? "" },
+        execute: () => body.tool
+          ? { revoked: agentApprovalStore.revokeSessionGrant(sessionId, String(body.tool)) ? 1 : 0 }
+          : { revoked: agentApprovalStore.revokeSessionGrants(sessionId) },
+        summarizeResult: (value) => ({ ok: true, revoked: value.revoked }),
+      });
+      send(res, 200, { ok: true, ...action.value, sessionGrants: agentApprovalStore.listSessionGrants(), auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/approval/decision") {
-      const body = (await readBody(req)) as { id?: string; allowed?: boolean; reason?: string; always?: boolean };
+      const body = (await readBody(req)) as {
+        id?: string;
+        allowed?: boolean;
+        reason?: string;
+        always?: boolean;
+        scope?: AgentApprovalScope;
+      };
       if (!body.id || typeof body.allowed !== "boolean") {
         send(res, 400, { error: "missing approval id or decision" });
         return;
       }
+      // 三档粒度，越往后越宽：只此一次 / 本会话内同类操作 / 写成永久准则。
+      // 未识别的 scope 一律按最窄的 once 处理，不靠猜。
+      const scope: AgentApprovalScope = body.scope === "session" ? "session" : "once";
       const before = agentApprovalStore.get(body.id);
-      const approval = agentApprovalStore.decide(body.id, body.allowed, body.reason);
+      const approval = agentApprovalStore.decide(body.id, body.allowed, body.reason, scope);
       // 「以后总是允许」不做成黑盒开关：落成一条用户能读、能改、能删的准则，
       // 并且点名它只适用于这一个工具，不会顺手放开其它动作。
       let guideline: ReturnType<typeof userGuideline> | undefined;
@@ -4328,20 +4150,8 @@ const server = createServer(async (req, res) => {
         resumeReason,
         guideline,
         guidelineError,
+        sessionGrants: before ? agentApprovalStore.listSessionGrants(before.sessionId) : [],
       });
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/unsandboxed-notice") {
-      send(res, 200, { ok: true, ...unsandboxedNotice() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/unsandboxed-notice/acknowledge") {
-      const notice = unsandboxedNotice();
-      const keys = [...new Set(notice.items.map((item) => `${item.id}@${item.version}`))];
-      const temp = `${UNSANDBOXED_NOTICE_FILE}.${process.pid}.tmp`;
-      writeFileSync(temp, JSON.stringify(keys, null, 2), "utf8");
-      renameSync(temp, UNSANDBOXED_NOTICE_FILE);
-      send(res, 200, { ok: true, acknowledged: keys });
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/network-policy") {
@@ -4668,66 +4478,6 @@ const server = createServer(async (req, res) => {
       send(res, 202, { ok: true, job: action.value, auditRunId: action.runId });
       return;
     }
-    if (req.method === "POST" && url === "/api/capability-conversations/archive") {
-      const body = (await readBody(req)) as { taskId?: string };
-      const task = capabilities.snapshot().tasks.find((item) => item.id === body.taskId && item.oneOff);
-      if (!task) { send(res, 404, { error: "找不到这条能力对话" }); return; }
-      const running = agentJobQueue.list({ limit: 500 }).some((job) => {
-        const result = job.result?.data as { artifact?: { taskId?: string } } | undefined;
-        const originTask = capabilities.snapshot().tasks.find((item) => item.origin?.jobId === job.id);
-        const linkedTaskId = String(result?.artifact?.taskId || job.payload.continuationTaskId || originTask?.id || "");
-        return linkedTaskId === task.id && (job.status === "queued" || job.status === "running");
-      });
-      if (running) { send(res, 409, { error: "对话仍在执行，完成或取消后才能归档" }); return; }
-      const action = await agentUserActions.execute({
-        name: "capability_conversation_archive",
-        description: "把用户选中的能力对话移入归档",
-        arguments: { taskId: task.id },
-        execute: () => capabilities.archiveTask(task.id),
-        summarizeResult: (value) => ({ ok: true, taskId: value.id, archived: true }),
-      });
-      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capability-conversations/restore") {
-      const body = (await readBody(req)) as { taskId?: string };
-      const task = capabilities.snapshot().tasks.find((item) => item.id === body.taskId && item.oneOff && item.archivedAt);
-      if (!task) { send(res, 404, { error: "找不到这条已归档对话" }); return; }
-      const action = await agentUserActions.execute({
-        name: "capability_conversation_restore",
-        description: "把用户选中的能力对话恢复到首页",
-        arguments: { taskId: task.id },
-        execute: () => capabilities.restoreTask(task.id),
-        summarizeResult: (value) => ({ ok: true, taskId: value.id, archived: false }),
-      });
-      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capability-conversations/delete") {
-      const body = (await readBody(req)) as { taskId?: string; deleteFiles?: boolean };
-      const task = capabilities.snapshot().tasks.find((item) => item.id === body.taskId && item.oneOff);
-      if (!task) { send(res, 404, { error: "找不到这条能力对话" }); return; }
-      if (!task.archivedAt) { send(res, 409, { error: "只有归档中的对话可以删除" }); return; }
-      const jobIds = agentJobQueue.list({ limit: 500 }).filter((job) => {
-        const result = job.result?.data as { artifact?: { taskId?: string } } | undefined;
-        const originTask = capabilities.snapshot().tasks.find((item) => item.origin?.jobId === job.id);
-        return String(result?.artifact?.taskId || job.payload.continuationTaskId || originTask?.id || "") === task.id;
-      }).map((job) => job.id);
-      const action = await agentUserActions.execute({
-        name: "capability_conversation_delete",
-        description: "删除用户在归档中选中的能力对话，并按选择保留或删除产出文件",
-        arguments: { taskId: task.id, deleteFiles: !!body.deleteFiles },
-        execute: () => {
-          const capabilityData = capabilities.deleteTaskData([task.id], { keepFiles: !body.deleteFiles });
-          const deliveries = deliveryOutbox.deleteBySources("agent-job", jobIds);
-          const jobs = agentJobQueue.deleteMany(jobIds);
-          return { jobs, tasks: capabilityData.tasks, artifacts: capabilityData.artifacts, deliveries };
-        },
-        summarizeResult: (value) => ({ ok: true, ...value }),
-      });
-      send(res, 200, { ok: true, deleted: action.value, auditRunId: action.runId });
-      return;
-    }
     if (req.method === "POST" && url === "/api/agent/orchestration") {
       const body = (await readBody(req)) as {
         taskId?: string;
@@ -4892,6 +4642,10 @@ const server = createServer(async (req, res) => {
         extensions: agentExtensions.list().map((extension) => ({
           ...extension,
           runtimeError: agentExtensionRuntimeErrors.get(extension.manifest.id) ?? null,
+          // 用了用户的磁盘就要让用户看得到；没声明 storage 权限的扩展这里是 null。
+          storageUsage: extension.manifest.permissions.includes("storage")
+            ? agentExtensionStorage.usage(extension.manifest.id)
+            : null,
         })),
         runtimeSecurity: {
           mainNodeVersion: process.versions.node,
@@ -4906,22 +4660,6 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
-    if (req.method === "GET" && url === "/api/data-sync") {
-      send(res, 200, { ok: true, settings: syncSettingsSummary(readDataSyncSettings()), pendingRestoreApplied: pendingSyncRestore });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/data-sync/settings") {
-      const body = (await readBody(req)) as { mode?: string; endpoint?: string; userId?: string; token?: string; passphrase?: string };
-      const action = await agentUserActions.execute({
-        name: "data_sync_settings_update",
-        description: "保存用户选择的本地或自托管服务器数据模式",
-        arguments: { mode: body.mode, endpointProvided: Boolean(body.endpoint), tokenUpdated: Boolean(body.token), passphraseUpdated: Boolean(body.passphrase) },
-        execute: () => saveDataSyncSettings(body),
-        summarizeResult: (settings) => ({ ok: true, mode: settings.mode, endpoint: settings.endpoint }),
-      });
-      send(res, 200, { ok: true, settings: syncSettingsSummary(action.value), auditRunId: action.runId });
-      return;
-    }
     if (req.method === "POST" && ["/api/data-sync/test", "/api/data-sync/push", "/api/data-sync/pull"].includes(url)) {
       const operation = url.endsWith("/test") ? "test" : url.endsWith("/push") ? "push" : "pull";
       const action = await agentUserActions.execute({
@@ -4932,59 +4670,6 @@ const server = createServer(async (req, res) => {
         summarizeResult: (result) => ({ ok: true, operation, revision: result.revision }),
       });
       send(res, 200, { ...action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/platform/readiness") {
-      const extensions = agentExtensions.list();
-      const snapshot = capabilities.snapshot();
-      send(res, 200, {
-        ok: true,
-        connectors: currentPlatformConnectors(),
-        capabilityPacks: capabilityPackStatuses(snapshot.abilities, snapshot.artifacts),
-        bundledPlugins: bundledCapabilityPluginCatalog({
-          packageRoot: resolve(__dirname, "..", ".."),
-          installedIds: extensions.map((item) => item.manifest.id),
-          installedManifests: extensions.map((item) => item.manifest),
-        }).map(({ manifest: _manifest, ...item }) => item),
-      });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/platform/bundled-plugin/install") {
-      const body = (await readBody(req)) as { id?: BundledCapabilityPluginId; confirmExecutable?: boolean };
-      const catalog = bundledCapabilityPluginCatalog({
-        packageRoot: resolve(__dirname, "..", ".."),
-        installedIds: agentExtensions.list().map((item) => item.manifest.id),
-        installedManifests: agentExtensions.list().map((item) => item.manifest),
-      });
-      const item = catalog.find((candidate) => candidate.id === body.id);
-      if (!item) { send(res, 400, { error: "未知的内置能力插件。" }); return; }
-      if (item.installed) { send(res, 409, { error: "这个能力插件已经安装。" }); return; }
-      if (!item.installable) { send(res, 409, { error: item.reason || "这个能力插件当前无法安装。" }); return; }
-      // 无沙箱的可执行扩展必须由用户确认，而且确认文案要说清它是无沙箱的。
-      // 原来这里只说"会启动隔离的 Chrome 进程"，用户确认的是一件风险没被说明的事；
-      // 而下面的 allowUnsandboxed 曾按插件 id 硬编码豁免，等于代码替用户做了决定。
-      const needsUnsandboxed = spawnsUnsandboxedProcess(item.manifest);
-      if (needsUnsandboxed && body.confirmExecutable !== true) {
-        send(res, 409, {
-          error: `${item.name} 会启动本机进程，并且不在扩展沙箱内运行：它对文件和网络的访问不受读写路径与网络策略限制。确认后才会安装。`,
-          requiresConfirmation: true,
-          unsandboxed: true,
-        });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "bundled_capability_plugin_install",
-        description: `安装小丑鱼内置能力插件：${item.name}`,
-        arguments: { pluginId: item.id, permissions: item.manifest.permissions },
-        execute: () => agentExtensions.install(
-          item.manifest,
-          createExtensionProvider(item.manifest),
-          // 由这次请求带来的用户确认决定，不再按插件 id 豁免。
-          { allowUnsandboxed: needsUnsandboxed && body.confirmExecutable === true },
-        ),
-        summarizeResult: (extension) => ({ extensionId: extension.manifest.id, enabled: extension.enabled }),
-      });
-      send(res, 200, { ok: true, extension: action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "GET" && url === "/api/agent/extension-updates") {
@@ -5018,87 +4703,6 @@ const server = createServer(async (req, res) => {
         summarizeResult: (result) => ({ id: result.item.id, version: result.item.currentVersion }),
       });
       send(res, 200, { ...action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/platform/connector/test") {
-      const body = (await readBody(req)) as { id?: "files" | "browser" | "github" | "email" | "calendar" | "enterprise-docs" };
-      const status = currentPlatformConnectors().find((item) => item.id === body.id);
-      if (!status) { send(res, 400, { error: "未知的数据连接。" }); return; }
-      if (status.state !== "ready") { send(res, 409, { error: `${status.name}当前不可用。${status.detail}`, connector: status }); return; }
-      try {
-        if (status.id === "files" && status.provider === "built-in") {
-          const items = knowledgeLibrary.list(true);
-          send(res, 200, { ok: true, connector: status, toolCount: 1, itemCount: items.length, checkedAt: new Date().toISOString() });
-          return;
-        }
-        if (status.id === "browser" && status.provider === "built-in") {
-          send(res, 200, { ok: true, connector: status, toolCount: 1, checkedAt: new Date().toISOString() });
-          return;
-        }
-        const extension = status.extensionId ? agentExtensions.get(status.extensionId) : null;
-        const query = [status.purpose, ...(extension?.manifest.activation || [])].join(" ");
-        const tools = await agentExtensions.toolsForRequest(query, {
-          allow: (tool) => tool.extensionId === status.extensionId && tool.effect === "read",
-        });
-        if (!tools.length) throw new Error("连接已启用，但没有发现可用的读取工具。");
-        send(res, 200, { ok: true, connector: status, toolCount: tools.length, checkedAt: new Date().toISOString(), note: "已发现该连接器的读取工具；账号权限与实际数据访问仍需在使用时验证。" });
-      } catch (error) {
-        send(res, 502, { error: error instanceof Error ? error.message : String(error), connector: status });
-      }
-      return;
-    }
-    if (req.method === "GET" && url === "/api/review-queue") {
-      const items = buildReviewQueue({
-        approvals: agentApprovalStore.list({ status: "pending", limit: 500 }),
-        jobs: agentJobQueue.list({ limit: 500 }).map(jobWithDelivery),
-        runs: listAgentRuns(500),
-      });
-      send(res, 200, {
-        ok: true,
-        items,
-        groups: groupReviewQueue(items),
-        relationshipMemory: relationships.getReadStatus(),
-        // 自动整合由内核自己触发、不经过应用代码，失败时这里是唯一的观察点。
-        // 不放进"需要处理"的话，记忆停止沉淀是完全静默的：用户只会觉得它最近不记事。
-        memoryConsolidation: memoryConsolidationStatus(),
-        personalReminders: personalWork.reminders(USER),
-      });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/product-reviews") {
-      send(res, 200, { ok: true, summary: productReviewRuns.summary(), runs: productReviewRuns.list() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/product-reviews") {
-      const body = (await readBody(req)) as {
-        round?: number;
-        persona?: string;
-        scenario?: string;
-        route?: string;
-        status?: "passed" | "issues" | "blocked";
-        observations?: string[];
-        issues?: ProductReviewIssue[];
-        evidence?: string[];
-      };
-      if (!body.round || !body.persona || !body.scenario || !body.route || !body.status || !["passed", "issues", "blocked"].includes(body.status)) {
-        send(res, 400, { error: "真实检查记录不完整。" });
-        return;
-      }
-      try {
-        const run = productReviewRuns.append({
-          round: body.round,
-          persona: body.persona,
-          scenario: body.scenario,
-          route: body.route,
-          status: body.status,
-          observations: Array.isArray(body.observations) ? body.observations : [],
-          issues: Array.isArray(body.issues) ? body.issues : [],
-          evidence: Array.isArray(body.evidence) ? body.evidence : [],
-        });
-        send(res, 201, { ok: true, run, summary: productReviewRuns.summary() });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error) });
-      }
       return;
     }
     if (req.method === "POST" && url === "/api/agent/extension/validate") {
@@ -5257,43 +4861,6 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, extension: action.value, auditRunId: action.runId });
       return;
     }
-    if (req.method === "GET" && url.split("?")[0] === "/api/knowledge") {
-      const params = new URLSearchParams(url.split("?")[1] || "");
-      const id = params.get("id");
-      if (id) {
-        const item = knowledgeLibrary.get(id);
-        if (!item) { send(res, 404, { error: "未找到这份资料" }); return; }
-        send(res, 200, { ok: true, item });
-      } else {
-        send(res, 200, { ok: true, items: knowledgeLibrary.list(params.get("archived") === "1") });
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/knowledge") {
-      const b = (await readBody(req)) as {
-        id?: string;
-        title?: string;
-        kind?: KnowledgeItemKind;
-        content?: string;
-        sourceUrl?: string;
-        fileName?: string;
-        mimeType?: string;
-        spaceId?: string | null;
-      };
-      if (!b.id && !b.title?.trim()) { send(res, 400, { error: "资料名称不能为空" }); return; }
-      try {
-        const item = b.id
-          ? knowledgeLibrary.update({ id: b.id, title: b.title, content: b.content, sourceUrl: b.sourceUrl, spaceId: b.spaceId })
-          : knowledgeLibrary.create({
-              title: b.title!, kind: b.kind, content: b.content, sourceUrl: b.sourceUrl,
-              fileName: b.fileName, mimeType: b.mimeType, spaceId: b.spaceId || undefined,
-            });
-        send(res, 200, { ok: true, item, items: knowledgeLibrary.list() });
-      } catch (error) {
-        send(res, 400, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
     if (req.method === "POST" && (url === "/api/knowledge/archive" || url === "/api/knowledge/restore")) {
       const b = (await readBody(req)) as { id?: string };
       if (!b.id) { send(res, 400, { error: "缺少资料编号" }); return; }
@@ -5302,166 +4869,6 @@ const server = createServer(async (req, res) => {
         send(res, 200, { ok: true, item, items: knowledgeLibrary.list(true) });
       } catch (error) {
         send(res, 404, { error: error instanceof Error ? error.message : String(error), userMessage: userFacingMessage(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && url === "/api/sources") {
-      send(res, 200, {
-        ok: true,
-        savedXToken: savedXTokenExists(),
-        xOAuthRedirect: X_OAUTH_REDIRECT,
-        sources: privateSourcesSummary(DATA_DIR),
-      });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/sources") {
-      const b = (await readBody(req)) as {
-        config?: Partial<PrivateSourcesConfig>;
-        xBearerToken?: string;
-        xUserAccessToken?: string;
-        xRefreshToken?: string;
-        xClientSecret?: string;
-        clearXToken?: boolean;
-      };
-      const action = await agentUserActions.execute({
-        name: "private_sources_update",
-        description: "保存用户在数据源设置页提交的私域来源配置",
-        arguments: {
-          wechatConfigUpdated: Boolean(b.config?.wechat),
-          xConfigUpdated: Boolean(b.config?.x),
-          xCredentialsUpdated: Boolean(b.xBearerToken || b.xUserAccessToken || b.xRefreshToken || b.xClientSecret),
-          clearXToken: Boolean(b.clearXToken),
-        },
-        execute: () => {
-          if (b.clearXToken) clearSavedXToken();
-          if (b.xBearerToken || b.xUserAccessToken || b.xRefreshToken || b.xClientSecret) {
-            saveSavedXToken({
-              bearerToken: b.xBearerToken,
-              userAccessToken: b.xUserAccessToken,
-              refreshToken: b.xRefreshToken,
-              clientSecret: b.xClientSecret,
-            });
-          }
-          const current = loadPrivateSourcesConfig(DATA_DIR);
-          const config = savePrivateSourcesConfig(DATA_DIR, {
-            wechat: { ...current.wechat, ...(b.config?.wechat ?? {}) },
-            x: { ...current.x, ...(b.config?.x ?? {}) },
-          });
-          return {
-            config,
-            savedXToken: savedXTokenExists(),
-            xOAuthRedirect: X_OAUTH_REDIRECT,
-            sources: privateSourcesSummary(DATA_DIR),
-          };
-        },
-        summarizeResult: (value) => ({ ok: true, savedXToken: value.savedXToken }),
-      });
-      send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/sources/x/oauth/start") {
-      try {
-        const b = (await readBody(req)) as { clientId?: string; clientSecret?: string };
-        const action = await agentUserActions.execute({
-          name: "source_x_oauth_start",
-          description: "开始用户在数据源设置页发起的 X OAuth 授权",
-          arguments: {
-            clientIdConfigured: Boolean(b.clientId?.trim()),
-            clientSecretUpdated: Boolean(b.clientSecret),
-          },
-          execute: () => {
-            const oauth = startXOAuth(b);
-            const current = loadPrivateSourcesConfig(DATA_DIR);
-            savePrivateSourcesConfig(DATA_DIR, {
-              wechat: current.wechat,
-              x: { ...current.x, oauthClientId: b.clientId?.trim() || current.x.oauthClientId },
-            });
-            if (b.clientSecret) saveSavedXToken({ clientSecret: b.clientSecret });
-            return { ...oauth, sources: privateSourcesSummary(DATA_DIR) };
-          },
-          summarizeResult: () => ({ ok: true, provider: "x", authorizationStarted: true }),
-        });
-        send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
-      } catch (e) {
-        const detail = e instanceof Error ? e.message : String(e);
-        console.error(`[companion] 模型连接验证失败：${detail}`);
-        send(res, 400, { ok: false, error: detail, userMessage: modelConnectionUserMessage(detail) });
-      }
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/sources/x/oauth/callback") {
-      const q = new URLSearchParams(url.split("?")[1] || "");
-      const code = q.get("code") || "";
-      const state = q.get("state") || "";
-      const denied = q.get("error") || "";
-      try {
-        if (denied) throw new Error(`X 授权取消或失败：${denied}`);
-        if (!code || !state) throw new Error("X 回调缺少 code 或 state");
-        const action = await agentUserActions.execute({
-          name: "source_x_oauth_complete",
-          description: "完成用户已在 X 授权页确认的 OAuth 连接",
-          arguments: { provider: "x" },
-          metadata: { origin: "oauth-callback" },
-          execute: () => completeXOAuth(code, state),
-          summarizeResult: (me) => ({ ok: true, provider: "x", userId: me.userId, username: me.username }),
-        });
-        const me = action.value;
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(xOAuthCallbackHtml(true, `已连接 @${me.username || me.userId}，Home Timeline 会在小丑鱼执行任务时作为私域来源读取。`));
-      } catch (e) {
-        res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-        res.end(xOAuthCallbackHtml(false, "授权未完成，请返回设置后重试。"));
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/sources/wechat/import") {
-      const b = (await readBody(req)) as { title?: string; text?: string; url?: string; source?: string };
-      if (!b.text && !b.url) {
-        send(res, 400, { error: "missing text or url" });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "source_wechat_import",
-        description: "导入用户提交的微信私域资料",
-        arguments: {
-          title: b.title,
-          source: b.source,
-          url: b.url,
-          textChars: b.text?.length ?? 0,
-        },
-        execute: () => importWeChatPrivateSource(DATA_DIR, b),
-        summarizeResult: (item) => ({ ok: true, file: item.file, title: item.title }),
-      });
-      send(res, 200, { ok: true, item: action.value, auditRunId: action.runId, sources: privateSourcesSummary(DATA_DIR) });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/tools/translate") {
-      try {
-        const b = (await readBody(req)) as { text?: string };
-        const result = await runToolTranslateText(b.text || "");
-        send(res, 200, { ok: true, ...result, settings: toolSettingsSummary() });
-      } catch (e) {
-        send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e), settings: toolSettingsSummary() });
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/tools/polish") {
-      try {
-        const b = (await readBody(req)) as { text?: string };
-        const result = await runToolPolishText(b.text || "");
-        send(res, 200, { ok: true, ...result, settings: toolSettingsSummary() });
-      } catch (e) {
-        send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e), settings: toolSettingsSummary() });
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/tools/asr-correct") {
-      try {
-        const b = (await readBody(req)) as { text?: string };
-        const result = await runToolAsrCorrectText(b.text || "");
-        send(res, 200, { ok: true, ...result, settings: toolSettingsSummary() });
-      } catch (e) {
-        send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e), settings: toolSettingsSummary() });
       }
       return;
     }
@@ -5505,848 +4912,9 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
-    if (req.method === "GET" && url === "/api/market/watchlist") {
-      send(res, 200, { items: await marketData.listWatchlist() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/market/watchlist") {
-      const body = (await readBody(req)) as { symbol?: string; name?: string };
-      if (!body.symbol?.trim()) { send(res, 400, { error: "缺少港股代码" }); return; }
-      const action = await agentUserActions.execute({
-        name: "market_watchlist_add",
-        description: "把用户指定的港股代码加入本机关注列表",
-        arguments: { symbol: body.symbol, name: body.name },
-        execute: () => marketData.addWatchItem({ symbol: body.symbol!, name: body.name }),
-        summarizeResult: (items) => ({ ok: true, symbol: body.symbol, count: items.length }),
-      });
-      send(res, 200, { ok: true, items: action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/market/watchlist/remove") {
-      const body = (await readBody(req)) as { symbol?: string };
-      if (!body.symbol?.trim()) { send(res, 400, { error: "缺少港股代码" }); return; }
-      const action = await agentUserActions.execute({
-        name: "market_watchlist_remove",
-        description: "从本机市场关注列表移除用户指定的港股代码",
-        arguments: { symbol: body.symbol },
-        execute: () => marketData.removeWatchItem(body.symbol!),
-        summarizeResult: (items) => ({ ok: true, symbol: body.symbol, count: items.length }),
-      });
-      send(res, 200, { ok: true, items: action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/market/snapshot") {
-      const body = (await readBody(req)) as { symbols?: string[]; announcementLimit?: number };
-      try {
-        const snapshot = await marketData.snapshot({
-          symbols: Array.isArray(body.symbols) ? body.symbols.map(String) : undefined,
-          announcementLimit: body.announcementLimit,
-        });
-        send(res, 200, snapshot);
-      } catch (error) {
-        send(res, 502, { error: error instanceof Error ? error.message : String(error) });
-      }
-      return;
-    }
-    if (req.method === "GET" && url === "/api/capabilities") {
-      send(res, 200, capabilities.snapshot());
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/route") {
-      const body = (await readBody(req)) as { goal?: string; materialNames?: string[] };
-      send(res, 200, {
-        ok: true,
-        route: routeCapability({
-          goal: String(body.goal || ""),
-          materialNames: Array.isArray(body.materialNames) ? body.materialNames.slice(0, 20).map(String) : [],
-        }),
-      });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/capabilities/tools") {
-      const snap = capabilities.snapshot();
-      send(res, 200, { tools: snap.tools, sourceConnectors: snap.sourceConnectors });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/capabilities/registry") {
-      const snap = capabilities.snapshot();
-      send(res, 200, buildCapabilitySystemRegistry({
-        tools: capabilityTools,
-        additionalTools: [...companionRuntimeToolSummaries(), ...extensionToolSummaries()],
-        abilities: snap.abilities,
-        providers: capabilityProviderSummaries(),
-        extensions: capabilityExtensionSummaries(),
-      }));
-      return;
-    }
     if (req.method === "GET" && url.startsWith("/api/capabilities/executions")) {
       const requested = Number(new URL(req.url || "/", "http://localhost").searchParams.get("limit") || 100);
       send(res, 200, { executions: capabilityTools.listExecutionHistory(requested) });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/capabilities/roadmap") {
-      send(res, 200, capabilities.snapshot().roadmap);
-      return;
-    }
-    if (req.method === "GET" && url === "/api/capabilities/intakes") {
-      send(res, 200, { intakes: capabilities.snapshot().recentIntakes });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/capabilities/skills/audit") {
-      const audit = capabilities.auditSkills();
-      send(res, 200, {
-        ...audit,
-        items: audit.items.map(({ sourceUrl, ...item }) => ({ ...item, canUpdate: Boolean(sourceUrl) })),
-      });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/ability/state") {
-      const body = (await readBody(req)) as { id?: string; action?: "pin" | "unpin" | "disable" | "enable" | "stale" | "refresh" };
-      const actions = ["pin", "unpin", "disable", "enable", "stale", "refresh"] as const;
-      if (!body.id || !body.action || !actions.includes(body.action)) {
-        send(res, 400, { error: "能力状态参数不完整" });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "capability_ability_state",
-        description: "更新用户选中能力的固定、停用或陈旧状态",
-        arguments: { abilityId: body.id, action: body.action },
-        execute: () => capabilities.setAbilityLifecycle(body.id!, body.action!),
-        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, action: body.action }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/artifact/feedback") {
-      const body = (await readBody(req)) as { id?: string; outcome?: "useful" | "needs-work"; note?: string; applyToSkill?: boolean };
-      if (!body.id || (body.outcome !== "useful" && body.outcome !== "needs-work")) {
-        send(res, 400, { error: "结果反馈参数不完整" });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "capability_artifact_feedback",
-        description: "记录用户对能力结果的验证反馈，并按明确选择写回技能",
-        arguments: { artifactId: body.id, outcome: body.outcome, applyToSkill: Boolean(body.applyToSkill), noteChars: body.note?.length || 0 },
-        execute: () => capabilities.recordArtifactFeedback({
-          artifactId: body.id!,
-          outcome: body.outcome!,
-          note: body.note,
-          applyToSkill: Boolean(body.applyToSkill),
-        }),
-        summarizeResult: (value) => ({ ok: true, artifactId: value.artifact.id, applied: value.applied }),
-      });
-      send(res, 200, { ok: true, applied: action.value.applied, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/search") {
-      const b = (await readBody(req)) as { query?: string; limit?: number; kinds?: Array<"artifact" | "ability" | "task" | "intake"> };
-      if (!b.query || !b.query.trim()) { send(res, 400, { error: "missing query" }); return; }
-      send(res, 200, capabilities.searchLocal({ query: b.query, limit: b.limit, kinds: b.kinds }));
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/ability/archive") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
-      const action = await agentUserActions.execute({
-        name: "capability_ability_archive",
-        description: "归档用户在能力管理页选中的能力",
-        arguments: { abilityId: b.id },
-        execute: () => capabilities.archiveAbility(b.id!),
-        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, archived: true }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/ability/restore") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
-      const action = await agentUserActions.execute({
-        name: "capability_ability_restore",
-        description: "恢复用户在能力管理页选中的能力",
-        arguments: { abilityId: b.id },
-        execute: () => capabilities.restoreAbility(b.id!),
-        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, archived: false }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/ability/update") {
-      const b = (await readBody(req)) as {
-        id?: string;
-        name?: string;
-        description?: string;
-        defaultFormat?: ArtifactFormat;
-        prompt?: string;
-      };
-      if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
-      const action = await agentUserActions.execute({
-        name: "capability_ability_update",
-        description: "保存用户在能力管理页编辑的能力",
-        arguments: {
-          abilityId: b.id,
-          name: b.name,
-          description: b.description,
-          defaultFormat: b.defaultFormat,
-          promptUpdated: b.prompt !== undefined,
-        },
-        execute: () => capabilities.updateGeneratedAbility({
-          id: b.id!,
-          name: b.name,
-          description: b.description,
-          defaultFormat: b.defaultFormat,
-          prompt: b.prompt,
-        }),
-        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/skill/upgrade") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
-      const item = capabilities.auditSkills().items.find((row) => row.abilityId === b.id);
-      const ability = capabilities.getAbility(b.id);
-      if (!item || !ability || ability.kind !== "generated") {
-        send(res, 404, { error: "skill not found" });
-        return;
-      }
-      if (!item.sourceUrl) {
-        send(res, 400, { error: "这个 Skill 没有远端 source_url，不能自动更新。" });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "skill_upgrade",
-        description: "更新用户在 Skill 管理页选中的 Skill",
-        arguments: { abilityId: b.id, sourceUrl: item.sourceUrl },
-        execute: async (signal) => {
-          const sourceText = await fetchSkillMarkdownFromUrl(item.sourceUrl!, signal);
-          return capabilities.installSkill({
-            personaId: item.personaId === "shared" ? (ability.ownerPersonaId || APP_PERSONA_ID) : item.personaId,
-            name: ability.name,
-            description: ability.description,
-            sourceText,
-            sourceUrl: item.sourceUrl,
-            defaultFormat: ability.defaultFormat,
-          });
-        },
-        summarizeResult: (updated) => ({ ok: true, abilityId: updated.id, sourceUrl: item.sourceUrl }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/skill/delete") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
-      const action = await agentUserActions.execute({
-        name: "skill_delete",
-        description: "删除用户在 Skill 管理页选中的 Skill",
-        arguments: { abilityId: b.id },
-        execute: () => capabilities.deleteGeneratedAbility(b.id!),
-        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, deleted: true }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/intake") {
-      const b = (await readBody(req)) as { request?: string; format?: ArtifactFormat; persist?: boolean };
-      if (!b.request || !b.request.trim()) {
-        send(res, 400, { error: "missing request" });
-        return;
-      }
-      if (b.persist === false) {
-        const report = capabilities.intakeDemand({
-          request: b.request,
-          targetFormat: b.format,
-          persist: false,
-        });
-        send(res, 200, { ok: true, report, snapshot: capabilities.snapshot() });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "capability_intake_save",
-        description: "保存用户提交的新需求分析和能力缺口记录",
-        arguments: { requestChars: b.request.length, format: b.format, persist: true },
-        execute: () => capabilities.intakeDemand({
-          request: b.request!,
-          targetFormat: b.format,
-          persist: true,
-        }),
-        summarizeResult: (report) => ({ ok: true, intakeId: report.id, matchedAbilityId: report.matchedAbilities[0]?.abilityId }),
-      });
-      send(res, 200, { ok: true, report: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/skill/rollback") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing ability id" }); return; }
-      const action = await agentUserActions.execute({
-        name: "skill_rollback",
-        description: "将用户选中的可复用能力恢复到上一个可用版本",
-        arguments: { abilityId: b.id },
-        execute: () => capabilities.rollbackAbilityVersion(b.id!),
-        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, rolledBack: true }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/persona-tools") {
-      send(res, 200, { ok: true, bindings: personaToolBindings.list() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/persona-tools") {
-      const body = (await readBody(req)) as { personaId?: string } & PersonaToolBinding;
-      if (!body.personaId) { send(res, 400, { error: "missing persona id" }); return; }
-      send(res, 200, { ok: true, binding: personaToolBindings.set(body.personaId, body) });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/persona-tools/clear") {
-      const body = (await readBody(req)) as { personaId?: string };
-      if (!body.personaId) { send(res, 400, { error: "missing persona id" }); return; }
-      send(res, 200, { ok: personaToolBindings.clear(body.personaId) });
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/relationships") {
-      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
-      if (id) {
-        const profile = relationships.get(id);
-        if (!profile) send(res, 404, { error: "counterpart not found" });
-        else send(res, 200, { ok: true, profile });
-      } else {
-        send(res, 200, { ok: true, profiles: relationships.list() });
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/relationships") {
-      const body = (await readBody(req)) as { id?: string } & CounterpartPatch;
-      if (!body.id) { send(res, 400, { error: "missing counterpart id" }); return; }
-      send(res, 200, { ok: true, profile: relationships.upsert(body.id, body) });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/relationships/delete") {
-      const body = (await readBody(req)) as { id?: string };
-      if (!body.id) { send(res, 400, { error: "missing counterpart id" }); return; }
-      send(res, 200, { ok: relationships.remove(body.id) });
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact/workspace") {
-      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
-      const state = capabilities.artifactWorkspace(id);
-      if (!state) send(res, 404, { error: "artifact workspace not found" });
-      else send(res, 200, { ok: true, state });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/artifact/workspace") {
-      const body = (await readBody(req)) as { id?: string; action?: "save" | "version" | "restore"; current?: unknown; versionId?: string; expectedRevision?: number };
-      if (!body.id || !body.action) { send(res, 400, { error: "missing artifact workspace action" }); return; }
-      const state = capabilities.updateArtifactWorkspace({ id: body.id, action: body.action, current: body.current, versionId: body.versionId, expectedRevision: body.expectedRevision });
-      send(res, 200, { ok: true, state, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/retained-artifact/delete") {
-      const body = (await readBody(req)) as { id?: string; confirm?: boolean };
-      if (!body.id || body.confirm !== true) { send(res, 400, { error: "需要确认删除保留文件" }); return; }
-      if (!capabilities.deleteRetainedArtifact(body.id)) { send(res, 404, { error: "保留文件不存在" }); return; }
-      send(res, 200, { ok: true, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact/preview") {
-      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
-      if (!capabilities.previewArtifact(res, id)) send(res, 404, { error: "artifact not found" });
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact/context") {
-      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
-      const handoff = capabilities.artifactHandoff(id);
-      if (!handoff) send(res, 404, { error: "artifact not found" });
-      else send(res, 200, { ok: true, artifact: handoff.artifact, text: handoff.text });
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/artifact") {
-      const id = new URLSearchParams(url.split("?")[1] || "").get("id");
-      const download = new URLSearchParams(url.split("?")[1] || "").get("download") === "1";
-      if (!capabilities.sendArtifact(res, id, download ? "attachment" : "inline")) send(res, 404, { error: "artifact not found" });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/capabilities/due") {
-      const jobs = agentJobQueue.list({ limit: 1_000 }).filter((job) => job.type === "capability-task" && job.metadata?.scheduled === "true");
-      send(res, 200, {
-        notifications: [],
-        scheduler: backgroundScheduler.status(),
-        jobs: jobs.map((job) => ({ id: job.id, status: job.status, taskId: job.payload.taskId })),
-      });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/ability") {
-      const b = (await readBody(req)) as { personaId: string; name: string; description?: string; goal: string; defaultFormat?: ArtifactFormat };
-      const action = await agentUserActions.execute({
-        name: "capability_ability_create",
-        description: "创建用户在能力管理页填写的新能力",
-        arguments: {
-          personaId: b.personaId,
-          name: b.name,
-          description: b.description,
-          defaultFormat: b.defaultFormat,
-          goalChars: b.goal?.length ?? 0,
-        },
-        metadata: { personaId: b.personaId || APP_PERSONA_ID },
-        execute: () => capabilities.createGeneratedAbility(b),
-        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/skill/install") {
-      const b = (await readBody(req)) as {
-        personaId?: string;
-        name?: string;
-        description?: string;
-        sourceText?: string;
-        sourcePath?: string;
-        sourceUrl?: string;
-        defaultFormat?: ArtifactFormat;
-      };
-      const personaId = b.personaId || APP_PERSONA_ID;
-      const sourceUrl = b.sourceUrl || (/^https?:\/\//i.test((b.sourcePath || "").trim()) ? (b.sourcePath || "").trim() : undefined);
-      const action = await agentUserActions.execute({
-        name: "skill_install",
-        description: "安装用户在 Skill 管理页提交的 Skill",
-        arguments: {
-          personaId,
-          name: b.name,
-          sourceUrl,
-          sourcePath: sourceUrl ? undefined : b.sourcePath,
-          sourceTextChars: b.sourceText?.length ?? 0,
-          defaultFormat: b.defaultFormat,
-        },
-        metadata: { personaId },
-        execute: async (signal) => {
-          const sourceText = sourceUrl && !b.sourceText
-            ? await fetchSkillMarkdownFromUrl(sourceUrl, signal)
-            : b.sourceText;
-          return capabilities.installSkill({
-            personaId,
-            name: b.name,
-            description: b.description,
-            sourceText,
-            sourcePath: sourceUrl ? undefined : b.sourcePath,
-            sourceUrl,
-            defaultFormat: b.defaultFormat,
-          });
-        },
-        summarizeResult: (ability) => ({ ok: true, abilityId: ability.id, sourceUrl }),
-      });
-      send(res, 200, { ok: true, ability: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/task") {
-      const b = (await readBody(req)) as {
-        id?: string;
-        title: string;
-        personaId: string;
-        capabilityId: string;
-        instruction: string;
-        format?: ArtifactFormat;
-        schedule?: { mode?: "manual" | "daily" | "turns"; time?: string; timezone?: string; days?: number[]; everyTurns?: number };
-        enabled?: boolean;
-        promote?: boolean;
-        spaceId?: string | null;
-        knowledgeIds?: string[];
-      };
-      const action = await agentUserActions.execute({
-        name: b.id ? "capability_task_update" : "capability_task_create",
-        description: b.id ? "保存用户在任务管理页编辑的任务" : "创建用户在任务管理页填写的新任务",
-        arguments: {
-          taskId: b.id,
-          title: b.title,
-          personaId: b.personaId,
-          capabilityId: b.capabilityId,
-          format: b.format,
-          schedule: b.schedule,
-          enabled: b.enabled,
-          spaceId: b.spaceId,
-          knowledgeCount: b.knowledgeIds?.length ?? 0,
-          instructionChars: b.instruction?.length ?? 0,
-        },
-        metadata: { personaId: b.personaId || APP_PERSONA_ID },
-        execute: () => b.id ? capabilities.updateTask({ ...b, id: b.id! }) : capabilities.createTask({ ...b, spaceId: b.spaceId ?? undefined }),
-        summarizeResult: (task) => ({ ok: true, taskId: task.id }),
-      });
-      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/task/reviewed") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
-      try {
-        send(res, 200, { ok: true, task: capabilities.markTaskReviewed(b.id) });
-      } catch (error) {
-        send(res, 404, { error: error instanceof Error ? error.message : "未知任务" });
-      }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/task/resume") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
-      // 恢复一个会自己跑的任务是真实动作，走和任务编辑同一条审计路径。
-      const action = await agentUserActions.execute({
-        name: "capability_task_resume",
-        description: "恢复因结果无人查看而自动暂停的计划任务",
-        arguments: { taskId: b.id },
-        execute: () => capabilities.resumeAutoPausedTask(b.id!),
-        summarizeResult: (task) => ({ ok: true, taskId: task.id }),
-      });
-      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "GET" && url.split("?")[0] === "/api/capabilities/tasks/awaiting-resume") {
-      send(res, 200, { ok: true, tasks: capabilities.tasksAwaitingResumeDecision() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/space") {
-      const b = (await readBody(req)) as {
-        id?: string;
-        title?: string;
-        description?: string;
-        status?: "active" | "archived";
-      };
-      if (!b.id && !b.title?.trim()) { send(res, 400, { error: "missing space title" }); return; }
-      const action = await agentUserActions.execute({
-        name: b.id ? "capability_space_update" : "capability_space_create",
-        description: b.id ? "更新工作空间的名称、说明或归档状态" : "创建用于组织相关任务和结果的工作空间",
-        arguments: {
-          spaceId: b.id,
-          title: b.title,
-          descriptionChars: b.description?.length ?? 0,
-          status: b.status,
-        },
-        execute: () => b.id
-          ? capabilities.updateSpace({ id: b.id!, title: b.title, description: b.description, status: b.status })
-          : capabilities.createSpace({ title: b.title!, description: b.description }),
-        summarizeResult: (space) => ({ ok: true, spaceId: space.id, status: space.status }),
-      });
-      send(res, 200, { ok: true, space: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/task/storyline") {
-      const b = (await readBody(req)) as {
-        id?: string;
-        status?: CapabilityTaskStorylineStatus;
-        summary?: string;
-        nextAction?: string;
-        experts?: CapabilityTaskExpertAssignment[];
-      };
-      if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
-      const action = await agentUserActions.execute({
-        name: "capability_task_storyline_update",
-        description: "保存长期任务的当前进展、下一步和专家职责",
-        arguments: {
-          taskId: b.id,
-          status: b.status,
-          summaryChars: b.summary?.length ?? 0,
-          nextActionChars: b.nextAction?.length ?? 0,
-          expertCount: b.experts?.length ?? 0,
-        },
-        execute: () => capabilities.updateTaskStoryline({
-          id: b.id!,
-          status: b.status,
-          summary: b.summary,
-          nextAction: b.nextAction,
-          experts: b.experts,
-        }),
-        summarizeResult: (task) => ({ ok: true, taskId: task.id, status: task.storyline.status }),
-      });
-      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/task/decision") {
-      const b = (await readBody(req)) as {
-        id?: string;
-        text?: string;
-        note?: string;
-        supersedesId?: string;
-        status?: CapabilityTaskDecision["status"];
-        evidenceIds?: string[];
-        confidence?: number;
-        validFrom?: string;
-        validUntil?: string;
-        producedBy?: CapabilityTaskDecision["producedBy"];
-        derivedFrom?: string[];
-        sourceFingerprints?: string[];
-      };
-      if (!b.id || !b.text?.trim()) { send(res, 400, { error: "missing task id or decision" }); return; }
-      const action = await agentUserActions.execute({
-        name: "capability_task_decision_record",
-        description: "记录长期任务的关键决定，并保留被替代结论",
-        arguments: {
-          taskId: b.id,
-          decisionChars: b.text.length,
-          noteChars: b.note?.length ?? 0,
-          supersedesId: b.supersedesId,
-        },
-        execute: () => capabilities.recordTaskDecision({
-          id: b.id!,
-          text: b.text!,
-          note: b.note,
-          supersedesId: b.supersedesId,
-          status: b.status,
-          evidenceIds: b.evidenceIds,
-          confidence: b.confidence,
-          validFrom: b.validFrom,
-          validUntil: b.validUntil,
-          producedBy: b.producedBy,
-          derivedFrom: b.derivedFrom,
-          sourceFingerprints: b.sourceFingerprints,
-        }),
-        summarizeResult: (task) => ({ ok: true, taskId: task.id, decisionCount: task.storyline.decisions.length }),
-      });
-      send(res, 200, { ok: true, task: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/task/delete") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
-      const selected = capabilities.snapshot().tasks.find((item) => item.id === b.id);
-      if (selected?.oneOff && selected.origin?.kind === "capability" && !selected.archivedAt) {
-        send(res, 409, { error: "只有归档中的能力对话可以删除" });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "capability_task_delete",
-        description: "删除用户在任务管理页选中的任务",
-        arguments: { taskId: b.id },
-        execute: () => {
-          capabilities.deleteTask(b.id!);
-          return { taskId: b.id! };
-        },
-        summarizeResult: (value) => ({ ok: true, taskId: value.taskId, deleted: true }),
-      });
-      send(res, 200, { ok: true, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/task/collaborate") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "缺少任务编号" }); return; }
-      const task = capabilities.snapshot().tasks.find((item) => item.id === b.id);
-      if (!task) { send(res, 404, { error: "未找到这个任务" }); return; }
-      const teamPlan = planExpertTeam({ capabilityId: task.capabilityId, instruction: task.instruction });
-      const collaborationObjective = appendCurrentUiEvidence(task.instruction, WEB_DIR);
-      const assignments = teamPlan.assignments
-        .filter((assignment) => LONG_FORM_EXPERT_IDS.has(assignment.personaId));
-      capabilities.updateTaskStoryline({
-        id: task.id,
-        summary: teamPlan.reason,
-        nextAction: "等待专家意见汇总后，由小丑鱼完成最终交付。",
-        experts: assignments.map(({ personaId, responsibility }) => ({ personaId, responsibility })),
-      });
-      const expertTasks = assignments.map((assignment, index) => ({
-        id: `expert-${index + 1}`,
-        title: assignment.responsibility,
-        instruction: expertAssignmentPrompt(assignment, collaborationObjective),
-        dependsOn: [] as string[],
-        metadata: {
-          personaId: assignment.personaId,
-          capabilityId: assignment.capabilityId,
-          format: assignment.format as ArtifactFormat,
-          memoryMode: assignment.memoryMode,
-          expertContractId: assignment.personaId,
-        },
-      }));
-      const finalTask = {
-        id: "clownfish-final",
-        title: `复核并完成：${task.title}`,
-        instruction: finalDeliveryPrompt({ objective: collaborationObjective, reviewChecks: teamPlan.finalReviewChecks }),
-        dependsOn: expertTasks.map((item) => item.id),
-        metadata: {
-          personaId: APP_PERSONA_ID,
-          capabilityId: task.capabilityId,
-          format: task.format,
-          memoryMode: teamPlan.finalMemoryMode,
-        },
-      };
-      const action = await agentUserActions.execute({
-        name: "capability_task_collaborate",
-        description: "由小丑鱼按任务需要自动组织专家检查并完成最终交付",
-        arguments: { taskId: task.id, capabilityId: task.capabilityId, expertCount: assignments.length },
-        execute: () => agentJobQueue.enqueue({
-          type: "orchestration",
-          payload: { objective: collaborationObjective, tasks: [...expertTasks, finalTask], taskId: task.id, connectionFingerprint: teamConnectionFingerprint() },
-          metadata: {
-            userId: USER,
-            workTaskId: task.id,
-            requestedBy: APP_PERSONA_ID,
-            expertTeamId: teamPlan.id,
-            expertTeamReason: teamPlan.reason,
-          },
-          deliveryRequired: true,
-          sideEffectRisk: true,
-          maxAttempts: 1,
-          timeoutMs: 45 * 60_000,
-          idempotencyKey: `collaboration:${task.id}:${Date.now()}`,
-        }),
-        summarizeResult: (job) => ({ ok: true, jobId: job.id, status: job.status }),
-      });
-      capabilities.projectTaskExecution({
-        taskId: task.id,
-        jobId: action.value.id,
-        status: action.value.status,
-        label: "小丑鱼正在组织协作",
-        updatedAt: action.value.updatedAt,
-      });
-      send(res, 202, { ok: true, job: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/task/run") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing task id" }); return; }
-      const task = capabilities.snapshot().tasks.find((item) => item.id === b.id);
-      if (!task) { send(res, 404, { error: "task not found" }); return; }
-      const action = await agentUserActions.execute({
-        name: "capability_task_run",
-        description: "把用户选中的常规任务加入持久队列",
-        arguments: { taskId: task.id, personaId: task.personaId, capabilityId: task.capabilityId },
-        metadata: { personaId: task.personaId },
-        execute: () => agentJobQueue.enqueue({
-          type: "capability-task",
-          payload: { taskId: task.id, trigger: "manual", connectionFingerprint: teamConnectionFingerprint() },
-          metadata: { userId: USER, workTaskId: task.id },
-          deliveryRequired: true,
-          sideEffectRisk: true,
-          maxAttempts: 1,
-          idempotencyKey: `capability-task:${task.id}:${Date.now()}`,
-        }),
-        summarizeResult: (job) => ({ ok: true, jobId: job.id, taskId: task.id, status: job.status }),
-      });
-      capabilities.projectTaskExecution({
-        taskId: task.id,
-        jobId: action.value.id,
-        status: action.value.status,
-        updatedAt: action.value.updatedAt,
-      });
-      send(res, 202, { ok: true, job: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/capabilities/adhoc/run") {
-      const b = (await readBody(req)) as {
-        title?: string;
-        personaId?: string;
-        capabilityId?: string;
-        instruction?: string;
-        format?: ArtifactFormat;
-      };
-      if (!b.personaId || !b.capabilityId || !b.instruction) {
-        send(res, 400, { error: "missing personaId, capabilityId, or instruction" });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "capability_adhoc_run",
-        description: "执行用户在任务工作台提交的临时任务并保存交付物",
-        timeoutMs: 10 * 60_000,
-        arguments: {
-          title: b.title,
-          personaId: b.personaId,
-          capabilityId: b.capabilityId,
-          format: b.format,
-          instructionChars: b.instruction.length,
-        },
-        metadata: { personaId: b.personaId },
-        execute: async (signal) => {
-          const notification = await capabilities.runAdHocTask({
-            title: b.title || "任务工作台",
-            personaId: b.personaId!,
-            capabilityId: b.capabilityId!,
-            instruction: b.instruction!,
-            format: b.format || "md",
-            trigger: "workspace",
-            origin: { kind: "direct" },
-          }, signal);
-          autoLearnFromWork(b.personaId!, b.instruction!, b.capabilityId!, b.format || "md");
-          return notification;
-        },
-        summarizeResult: (notification) => ({ ok: true, artifactId: notification.artifact.id }),
-      });
-      send(res, 200, { ok: true, notification: capabilityReply(action.value), auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/hk-reminders") {
-      send(res, 200, {
-        timezone: "Asia/Hong_Kong",
-        source: "HKEX securities market hours",
-        reminders: loadHkReminders(),
-      });
-      return;
-    }
-    if (req.method === "GET" && url === "/api/hk-reminders/due") {
-      const jobs = agentJobQueue.list({ limit: 1_000 }).filter((job) => job.type === "hk-reminder" && job.metadata?.scheduled === "true");
-      send(res, 200, {
-        timezone: "Asia/Hong_Kong",
-        due: [],
-        scheduler: backgroundScheduler.status(),
-        jobs: jobs.map((job) => ({ id: job.id, status: job.status, reminderId: (job.payload.reminder as Partial<HkReminder> | undefined)?.id })),
-      });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/hk-reminders/notify") {
-      const b = (await readBody(req)) as Partial<HkReminder>;
-      const reminder = sanitizeHkReminder(b);
-      const action = await agentUserActions.execute({
-        name: "hk_reminder_notify",
-        description: "让小丑鱼立即生成用户请求的港股辅助提醒",
-        arguments: {
-          reminderId: reminder.id,
-          title: reminder.title,
-          noteChars: reminder.note.length,
-        },
-        metadata: { personaId: APP_PERSONA_ID },
-        execute: (signal) => createHkReminderDelivery(reminder, signal),
-        summarizeResult: () => ({ ok: true, reminderId: reminder.id, delivered: true }),
-      });
-      send(res, 200, { ...action.value, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/hk-reminders") {
-      const b = (await readBody(req)) as Partial<HkReminder>;
-      const action = await agentUserActions.execute({
-        name: b.id ? "hk_reminder_update" : "hk_reminder_create",
-        description: b.id ? "保存用户编辑的港股辅助提醒" : "创建用户填写的港股辅助提醒",
-        arguments: {
-          reminderId: b.id,
-          enabled: b.enabled,
-          time: b.time,
-          title: b.title,
-          noteChars: b.note?.length ?? 0,
-        },
-        metadata: { personaId: APP_PERSONA_ID },
-        execute: () => {
-          const reminders = loadHkReminders();
-          const index = reminders.findIndex((reminder) => reminder.id === b.id);
-          const next = sanitizeHkReminder(b, index >= 0 ? reminders[index] : undefined);
-          if (index >= 0) reminders[index] = next;
-          else reminders.push(next);
-          reminders.sort((a, other) => a.time.localeCompare(other.time));
-          saveHkReminders(reminders);
-          return { reminder: next, reminders };
-        },
-        summarizeResult: (value) => ({ ok: true, reminderId: value.reminder.id }),
-      });
-      send(res, 200, { ok: true, reminders: action.value.reminders, auditRunId: action.runId });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/hk-reminders/delete") {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "missing reminder id" }); return; }
-      const action = await agentUserActions.execute({
-        name: "hk_reminder_delete",
-        description: "删除用户在提醒管理页选中的港股辅助提醒",
-        arguments: { reminderId: b.id },
-        metadata: { personaId: APP_PERSONA_ID },
-        execute: () => {
-          const reminders = loadHkReminders().filter((reminder) => reminder.id !== b.id);
-          saveHkReminders(reminders);
-          return { reminderId: b.id!, reminders };
-        },
-        summarizeResult: (value) => ({ ok: true, reminderId: value.reminderId, deleted: true }),
-      });
-      send(res, 200, { ok: true, reminders: action.value.reminders, auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/llm-model/check") {
@@ -6360,8 +4928,8 @@ const server = createServer(async (req, res) => {
         send(res, 200, { ok: true, ...modelConnectionStatus(), checkedModel: id, checked: cached, cached: true });
         return;
       }
-      if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
-      modelConnectionUpdating = true;
+      const releaseModelLock = modelSwitch.tryLock();
+      if (!releaseModelLock) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
       try {
         if (!modelConnection) throw new Error("请先保存模型连接。");
         const check = await checkSingleCompanionModel(modelConnection, id);
@@ -6373,7 +4941,7 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         const detail = modelConnectionUserMessage(error instanceof Error ? error.message : String(error));
         send(res, 400, { error: detail, userMessage: detail });
-      } finally { modelConnectionUpdating = false; }
+      } finally { releaseModelLock(); }
       return;
     }
     if (req.method === "POST" && url === "/api/llm-model/favorite") {
@@ -6391,8 +4959,8 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url === "/api/llm-model/catalog") {
       if (!modelConnection) { send(res, 400, { error: "请先保存模型连接。", userMessage: "请先保存模型连接。" }); return; }
-      if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在读取模型目录，请稍后重试。" }); return; }
-      modelConnectionUpdating = true;
+      const releaseModelLock = modelSwitch.tryLock();
+      if (!releaseModelLock) { send(res, 409, { error: "model_update_busy", userMessage: "正在读取模型目录，请稍后重试。" }); return; }
       try {
         const catalog = await discoverCompanionModels(modelConnection);
         modelCatalog = catalog;
@@ -6403,14 +4971,10 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         const detail = modelConnectionUserMessage(error instanceof Error ? error.message : String(error));
         send(res, 400, { error: detail, userMessage: detail });
-      } finally { modelConnectionUpdating = false; }
+      } finally { releaseModelLock(); }
       return;
     }
     if (req.method === "POST" && url === "/api/llm-config") {
-      if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
-      if (hasActiveModelJobs()) { send(res, 409, { error: "model_jobs_active", userMessage: "有模型任务正在执行；为避免中途切换连接，请等待任务结束后再保存设置。" }); return; }
-      modelConnectionUpdating = true;
-      try {
       const b = (await readBody(req)) as {
         provider?: CompanionModelProvider;
         protocol?: CompanionModelProtocol;
@@ -6419,103 +4983,99 @@ const server = createServer(async (req, res) => {
         key?: string;
         offline?: boolean;
         selectionMode?: "auto" | "manual";
+        /** 有模型任务在跑时，愿意等多久让它们结束；0（默认）表示直接拒绝，与原行为一致。 */
+        waitForJobsMs?: number;
       };
-        const provider = b.provider ?? modelConnection?.provider ?? "zhipu";
-        const submittedKey = String(b.key ?? "").trim();
-        const key = submittedKey
-          || (modelConnection?.provider === provider ? modelConnection.apiKey : "");
-        let next = b.offline
-          ? undefined
-          : normalizeCompanionModelConnection({
-              provider,
-              protocol: b.protocol,
-              baseUrl: b.baseUrl,
-              model: b.model,
-              apiKey: key,
-            });
-        const nextCatalog = modelCatalog;
-        const nextCatalogFetchedAt = modelCatalogFetchedAt;
-        const nextCatalogRevision = modelCatalogConnectionRevision;
-        let catalogWarning = "连接已保存；请按需刷新目录，并显式检查要执行的模型。";
-        if (next) {
-          const connectionChanged = !modelConnection
-            || modelConnection.provider !== next.provider
-            || modelConnection.protocol !== next.protocol
-            || modelConnection.baseUrl !== next.baseUrl;
-          // Never forward a saved secret to a different endpoint, even for the same provider.
-          if (connectionChanged && !submittedKey) next = normalizeCompanionModelConnection({ ...next, apiKey: "" });
-          next.selectionMode = "manual";
-          next.favoriteModels = normalizeFavoriteModels(modelConnection?.favoriteModels || []);
-          next.modelChecks = { ...(modelConnection?.modelChecks || {}) };
-          next = withConnectionRevision(next, modelConnection, key !== modelConnection?.apiKey);
-          if (!connectionChanged && key === modelConnection?.apiKey) catalogWarning = "连接与目录保持不变；未发起模型检查。";
-        }
-        const action = await agentUserActions.execute({
-          name: "llm_connection_update",
-          description: next ? `验证并保存 ${next.provider} 模型连接` : "切换到离线模式",
-          arguments: next
-            ? { provider: next.provider, protocol: next.protocol, baseUrl: next.baseUrl, model: next.model, keyUpdated: Boolean(b.key) }
-            : { offline: true },
-          execute: async () => {
-            await rebuildLLM(next, next ? nextCatalog : [], next ? nextCatalogFetchedAt : "", next ? nextCatalogRevision : "");
-            return modelConnectionStatus();
+      try {
+        // 读取 body 在锁外（不碰连接状态）；normalize 与重建都在锁内，
+        // 并且整个窗口内后台 worker 不再领新任务。
+        const outcome = await modelSwitch.run(
+          {
+            target: b.offline ? "offline" : `${b.provider ?? modelConnection?.provider ?? "zhipu"}/${b.model ?? ""}`,
+            drainMs: Number(b.waitForJobsMs) || 0,
           },
-          summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider, model: value.model }),
-        });
-        send(res, 200, { ok: true, ...action.value, catalogWarning, auditRunId: action.runId });
+          async () => {
+            const provider = b.provider ?? modelConnection?.provider ?? "zhipu";
+            const submittedKey = String(b.key ?? "").trim();
+            const key = submittedKey
+              || (modelConnection?.provider === provider ? modelConnection.apiKey : "");
+            let next = b.offline
+              ? undefined
+              : normalizeCompanionModelConnection({
+                  provider,
+                  protocol: b.protocol,
+                  baseUrl: b.baseUrl,
+                  model: b.model,
+                  apiKey: key,
+                });
+            const nextCatalog = modelCatalog;
+            const nextCatalogFetchedAt = modelCatalogFetchedAt;
+            const nextCatalogRevision = modelCatalogConnectionRevision;
+            let catalogWarning = "连接已保存；请按需刷新目录，并显式检查要执行的模型。";
+            if (next) {
+              const connectionChanged = !modelConnection
+                || modelConnection.provider !== next.provider
+                || modelConnection.protocol !== next.protocol
+                || modelConnection.baseUrl !== next.baseUrl;
+              // Never forward a saved secret to a different endpoint, even for the same provider.
+              if (connectionChanged && !submittedKey) next = normalizeCompanionModelConnection({ ...next, apiKey: "" });
+              next.selectionMode = "manual";
+              next.favoriteModels = normalizeFavoriteModels(modelConnection?.favoriteModels || []);
+              next.modelChecks = { ...(modelConnection?.modelChecks || {}) };
+              next = withConnectionRevision(next, modelConnection, key !== modelConnection?.apiKey);
+              if (!connectionChanged && key === modelConnection?.apiKey) catalogWarning = "连接与目录保持不变；未发起模型检查。";
+            }
+            const action = await agentUserActions.execute({
+              name: "llm_connection_update",
+              description: next ? `验证并保存 ${next.provider} 模型连接` : "切换到离线模式",
+              arguments: next
+                ? { provider: next.provider, protocol: next.protocol, baseUrl: next.baseUrl, model: next.model, keyUpdated: Boolean(b.key) }
+                : { offline: true },
+              execute: async () => {
+                await rebuildLLM(next, next ? nextCatalog : [], next ? nextCatalogFetchedAt : "", next ? nextCatalogRevision : "");
+                return modelConnectionStatus();
+              },
+              summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider, model: value.model }),
+            });
+            return { action, catalogWarning };
+          },
+        );
+        send(res, 200, { ok: true, ...outcome.action.value, catalogWarning: outcome.catalogWarning, auditRunId: outcome.action.runId });
       } catch (e) {
+        if (sendModelSwitchRefusal(res, e)) return;
         const detail = e instanceof Error ? e.message : String(e);
         console.error(`[companion] 模型连接验证失败：${detail}`);
         send(res, 400, { ok: false, error: detail, userMessage: modelConnectionUserMessage(detail) });
-      } finally { modelConnectionUpdating = false; }
+      }
       return;
     }
     if (req.method === "POST" && url === "/api/llm-key") {
-      if (modelConnectionUpdating) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
-      if (hasActiveModelJobs()) { send(res, 409, { error: "model_jobs_active", userMessage: "有模型任务正在执行；为避免中途切换连接，请等待任务结束后再保存设置。" }); return; }
-      modelConnectionUpdating = true;
-      try {
       // 兼容旧客户端：该入口仍按智谱连接处理。
-      const b = (await readBody(req)) as { key?: string };
+      const b = (await readBody(req)) as { key?: string; waitForJobsMs?: number };
       const key = String(b.key ?? "").trim();
-        const action = await agentUserActions.execute({
-          name: "llm_key_update",
-        description: key ? "保存旧客户端提交的智谱 Key（等待显式模型检查）" : "清除用户保存的模型连接",
-          arguments: { configured: Boolean(key) },
-          execute: async () => {
-            const next = key ? withConnectionRevision(defaultCompanionModelConnection("zhipu", key), modelConnection, key !== modelConnection?.apiKey) : undefined;
-            await rebuildLLM(next, next ? modelCatalog : [], next ? modelCatalogFetchedAt : "", next ? modelCatalogConnectionRevision : "");
-            return modelConnectionStatus();
-          },
-          summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider }),
-        });
+      try {
+        // 读取 body 在锁外（不碰连接状态）；从这里往后都在锁内，
+        // 并且整个窗口内后台 worker 不再领新任务。
+        const action = await modelSwitch.run(
+          { target: key ? "zhipu" : "offline", drainMs: Number(b.waitForJobsMs) || 0 },
+          () => agentUserActions.execute({
+            name: "llm_key_update",
+            description: key ? "保存旧客户端提交的智谱 Key（等待显式模型检查）" : "清除用户保存的模型连接",
+            arguments: { configured: Boolean(key) },
+            execute: async () => {
+              const next = key ? withConnectionRevision(defaultCompanionModelConnection("zhipu", key), modelConnection, key !== modelConnection?.apiKey) : undefined;
+              await rebuildLLM(next, next ? modelCatalog : [], next ? modelCatalogFetchedAt : "", next ? modelCatalogConnectionRevision : "");
+              return modelConnectionStatus();
+            },
+            summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider }),
+          }),
+        );
         send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       } catch (e) {
+        if (sendModelSwitchRefusal(res, e)) return;
         const detail = modelConnectionUserMessage(e instanceof Error ? e.message : String(e));
         send(res, 400, { ok: false, error: detail, userMessage: detail });
-      } finally { modelConnectionUpdating = false; }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/relationship") {
-      const b = (await readBody(req)) as { personaId: string; relationship: string };
-      if (!RELATIONSHIPS.some((r) => r.id === b.relationship)) {
-        send(res, 400, { error: "unknown relationship" });
-        return;
       }
-      const action = await agentUserActions.execute({
-        name: "relationship_update",
-        description: "保存用户为角色选择的关系类型",
-        arguments: { personaId: b.personaId, relationship: b.relationship },
-        metadata: { personaId: b.personaId },
-        execute: () => {
-          relOf.set(b.personaId, b.relationship);
-          applyRel(b.personaId);
-          saveRel();
-          return { personaId: b.personaId, relationship: b.relationship };
-        },
-        summarizeResult: (value) => ({ ok: true, ...value }),
-      });
-      send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       return;
     }
     if (pathname === "/api/assistant-team" || pathname.startsWith("/api/assistant-team/")) {
@@ -6879,32 +5439,6 @@ const server = createServer(async (req, res) => {
       send(res, 200, { personas: engine.listPersonas() });
       return;
     }
-    if (req.method === "GET" && url === "/api/avatars") {
-      send(res, 200, { avatars: loadAvatarOverrides() });
-      return;
-    }
-    if (req.method === "POST" && url === "/api/avatar") {
-      const b = (await readBody(req)) as { owner?: string; id?: string; image?: string; clear?: boolean };
-      try {
-        const action = await agentUserActions.execute({
-          name: "avatar_update",
-          description: b.clear ? "清除用户在头像编辑器选中的头像" : "保存用户在头像编辑器裁剪后的头像",
-          arguments: {
-            owner: String(b.owner ?? ""),
-            personaId: b.id,
-            clear: Boolean(b.clear),
-            imageChars: b.image?.length ?? 0,
-          },
-          metadata: b.id ? { personaId: b.id } : undefined,
-          execute: () => saveAvatarOverride(String(b.owner ?? ""), b.id, b.image, !!b.clear),
-          summarizeResult: () => ({ ok: true, owner: b.owner, personaId: b.id, cleared: Boolean(b.clear) }),
-        });
-        send(res, 200, { ok: true, avatars: action.value, auditRunId: action.runId });
-      } catch (e) {
-        send(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) });
-      }
-      return;
-    }
     if (req.method === "POST" && url === "/api/persona") {
       const b = (await readBody(req)) as { id: string; name?: string; persona?: string; verbosity?: "terse" | "normal" | "talkative" };
       try {
@@ -6930,23 +5464,6 @@ const server = createServer(async (req, res) => {
       } catch (e) {
         send(res, 400, { error: e instanceof Error ? e.message : String(e) });
       }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/contacts/add") {
-      const b = (await readBody(req)) as { personaIds?: unknown };
-      const ids = normalizeAddedContactIds(allPersonaIdsInOrder(), b.personaIds);
-      const action = await agentUserActions.execute({
-        name: "contacts_add",
-        description: "把用户在联系人选择器勾选的角色加入通讯录",
-        arguments: { personaIds: ids },
-        execute: () => {
-          for (const id of ids) addedContactIds.add(id);
-          saveContacts();
-          return { contactIds: currentContactIds() };
-        },
-        summarizeResult: (value) => ({ ok: true, added: ids, contactCount: value.contactIds.length }),
-      });
-      send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
       return;
     }
     if (req.method === "POST" && url === "/api/group") {
@@ -7022,16 +5539,6 @@ const server = createServer(async (req, res) => {
           : message;
         send(res, 500, { error: hint });
       }
-      return;
-    }
-    if (req.method === "POST" && url === "/api/conversation/title") {
-      const body = (await readBody(req)) as { text?: string };
-      const text = String(body.text || "").trim();
-      if (!text) {
-        send(res, 400, { error: "missing text" });
-        return;
-      }
-      send(res, 200, { title: await generateConversationTitle(text) });
       return;
     }
     if (req.method === "POST" && url === "/api/chat/stream") {

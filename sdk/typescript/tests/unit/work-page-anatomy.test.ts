@@ -67,3 +67,50 @@ test('编辑暂停的自动化保持暂停，不因保存内容而重新启用',
   assert.equal(body.enabled,false);assert.equal(body.schedule.time,'09:10');
   nodes['#taskId'].value='';await runInNewContext(fn+'\nsaveTask();',ctx);assert.equal(body.enabled,true);
 });
+
+test('审批卡提供三档决定：只此一次、本会话内、拒绝',()=>{
+  const render=source.slice(source.indexOf('function renderAttentionInbox('),source.indexOf('function renderRuns('));
+  const state:any={
+    reviewQueue:[{}],
+    reviewGroups:[{id:'g1',items:[{id:'i1',kind:'approval',sourceId:'ap-1',title:'写入报告',nextAction:'需要你确认'}]}],
+    approvals:[{id:'ap-1',call:{name:'save_file',arguments:{path:'a.md'}},tool:{name:'save_file'}}],
+    relationshipMemory:null,
+  };
+  const html=runInNewContext(render+'\nrenderAttentionInbox(true);',{state,escapeHtml:(v:unknown)=>String(v),encodeURIComponent});
+  assert.match(html,/data-review-approval="ap-1" data-allowed="true" data-scope="once"/);
+  assert.match(html,/data-review-approval="ap-1" data-allowed="true" data-scope="session"/);
+  assert.match(html,/data-review-approval="ap-1" data-allowed="false" data-scope="once"/);
+  // 会话档要点名是哪个工具，不能是"全都允许"这种没边界的说法。
+  assert.match(html,/本次会话内都允许「save_file」/);
+});
+
+test('提交审批决定时把 scope 一起发出，未识别取值退回只此一次',()=>{
+  // 服务端已有更宽的「写成永久准则」(always)，但界面刻意不暴露——
+  // 那是跨会话永久生效的授权，要单独的产品决定，不在这次范围内。
+  assert.match(source,/const scope = decision\.dataset\.scope === "session" \? "session" : "once";/);
+  assert.match(source,/JSON\.stringify\(\{ id: decision\.dataset\.reviewApproval, allowed: decision\.dataset\.allowed === "true", scope \}\)/);
+  assert.doesNotMatch(source,/always: *true/);
+});
+
+test('会话内放行在界面上看得见、能撤销',()=>{
+  const render=source.slice(source.indexOf('function renderAttentionInbox('),source.indexOf('function renderRuns('));
+  const state:any={
+    reviewQueue:[],reviewGroups:[],relationshipMemory:null,approvals:[],
+    sessionGrants:[{sessionId:'s1',tool:'save_file',grantedAt:'2026-09-11T10:00:00.000Z',expiresAt:'2026-09-11T18:00:00.000Z'}],
+  };
+  const html=runInNewContext(render+'\nrenderAttentionInbox(true);',
+    {state,escapeHtml:(v:unknown)=>String(v),encodeURIComponent,date:(v:unknown)=>String(v)});
+  assert.match(html,/已放行的操作/);
+  assert.match(html,/save_file/);
+  assert.match(html,/data-revoke-grant="s1" data-revoke-tool="save_file"/);
+  assert.match(html,/到期/,'必须显示到期时间——没有期限的放行就是永久放行');
+  // 没有放行时不占版面
+  state.sessionGrants=[];
+  assert.doesNotMatch(runInNewContext(render+'\nrenderAttentionInbox(true);',
+    {state,escapeHtml:(v:unknown)=>String(v),encodeURIComponent,date:(v:unknown)=>String(v)}),/已放行的操作/);
+});
+
+test('撤销走专用接口，并且只撤指定的那一条',()=>{
+  assert.match(source,/api\("\/api\/agent\/approval\/session-grant\/revoke"/);
+  assert.match(source,/sessionId: revoke\.dataset\.revokeGrant, tool: revoke\.dataset\.revokeTool/);
+});
