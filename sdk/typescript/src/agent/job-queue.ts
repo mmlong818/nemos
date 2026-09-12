@@ -166,6 +166,21 @@ export class FileAgentJobQueue {
     return structuredClone(next);
   }
 
+  /**
+   * 最早一个排队任务可被领取的时刻；没有排队任务返回 null。
+   * 过滤条件与 claimNext 一致，好让 worker 按退避醒来而不是等兜底轮询。
+   */
+  nextAvailableAt(): number | null {
+    let earliest: number | null = null;
+    for (const job of this.jobs.values()) {
+      if (job.status !== "queued") continue;
+      const at = Date.parse(job.availableAt);
+      if (Number.isNaN(at)) continue;
+      if (earliest === null || at < earliest) earliest = at;
+    }
+    return earliest;
+  }
+
   heartbeat(id: string, workerId: string, checkpoint?: Omit<AgentJobCheckpoint, "at">): void {
     const job = this.requireRunning(id, workerId);
     const now = new Date();
@@ -577,18 +592,36 @@ export class AgentJobWorker {
         const retryDelay = job?.status === "queued"
           ? Math.max(0, Date.parse(job.availableAt) - Date.now())
           : 0;
-        const nextDelay = this.wakeRequested ? 0 : job ? retryDelay : this.pollIntervalMs;
+        const nextDelay = this.wakeRequested ? 0 : job ? retryDelay : this.idleDelay();
         this.wakeRequested = false;
         this.executing = false;
         this.schedule(nextDelay);
       } catch {
         this.executing = false;
-        const nextDelay = this.wakeRequested ? 0 : this.pollIntervalMs;
+        const nextDelay = this.wakeRequested ? 0 : this.idleDelay();
         this.wakeRequested = false;
         this.schedule(nextDelay);
       }
     }, delay);
     this.timer.unref?.();
+  }
+
+  /**
+   * 这一跳什么都没领到时，下一跳排在哪。
+   *
+   * 原先一律排兜底轮询，于是出现这条竞态：任务失败后 queue.fail 按退避排重试并发出
+   * retried 事件；该事件在 executing 期间把 wakeRequested 置真，于是下一跳按 0 立刻醒来，
+   * 此时退避还没到、领不到任何东西，接着就被排到整个轮询周期之后——10 毫秒的退避实际要等
+   * 几十秒。Linux 上 setTimeout(0) 亚毫秒触发必然踩中，Windows 定时器粒度粗反而常常躲过去。
+   *
+   * 已经到点却没领到，说明它被别的条件挡着（比如刚被另一个 worker 抢走），
+   * 立刻重试只会空转，那种情况仍然交给兜底轮询。
+   */
+  private idleDelay(): number {
+    const next = this.queue.nextAvailableAt();
+    if (next === null) return this.pollIntervalMs;
+    const delay = next - Date.now();
+    return delay > 0 ? Math.min(this.pollIntervalMs, delay) : this.pollIntervalMs;
   }
 }
 
