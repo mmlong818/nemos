@@ -103,7 +103,7 @@
     $('.page-head .lede').textContent='管理模型服务、数据连接与本机偏好。';
     const appearance=$('[data-panel="appearance"]');
     const values={wbColor:['clownfish-workbench-color','teal'],wbDensity:['clownfish-workbench-density','comfortable'],wbMotion:['clownfish-workbench-motion','full']};
-    Object.entries(values).forEach(([id,[key,fallback]])=>{const select=$('#'+id);if(!select)return;select.value=document.documentElement.dataset[id.replace('wb','wb')]||fallback;select.onchange=()=>{try{localStorage.setItem(key,select.value);loadPreferences();}catch{$('#wallpaperStatus').textContent='浏览器未允许保存偏好，请检查本地存储权限。';}};});
+    Object.entries(values).forEach(([id,[key,fallback]])=>{const select=$('#'+id);if(!select)return;select.value=document.documentElement.dataset[id]||fallback;select.onchange=()=>{try{localStorage.setItem(key,select.value);loadPreferences();}catch{$('#wallpaperStatus').textContent='浏览器未允许保存偏好，请检查本地存储权限。';}};});
   }
   if(body.dataset.wbRoute==='/capabilities'){
     $('.hero h1').textContent='工具与连接';
