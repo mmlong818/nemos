@@ -380,3 +380,50 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 5_000): Promise<v
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
+
+test("空转那一跳按最早可领时刻重排，而不是落到兜底轮询", async () => {
+  // 真实竞态：重试唤醒按 availableAt - now 排，定时器偶尔早触发一丝，这一跳 claimNext
+  // 判定 availableAt <= now 不成立、领不到东西，旧实现随即把下一跳排到整个轮询周期之后——
+  // 10 毫秒的退避实际要等几十秒。它在 Linux 上比 Windows 更容易踩中，所以只在 ubuntu 挂。
+  //
+  // 那条竞态本身不好稳定复现，这里换个角度确定性地打中同一个分支：先用另一个队列实例把
+  // 任务置成"排队中但要等 400ms 才可领"，再让 worker 从零开始跑——它的第一跳必然空转。
+  const fixture = temporaryQueue({ retryBaseDelayMs: 400 });
+  const seeded = fixture.queue.enqueue({ type: "read", payload: {}, maxAttempts: 2 });
+  fixture.queue.claimNext("seeder");
+  fixture.queue.fail(seeded.id, "seeder", new Error("temporary"));
+  assert.equal(fixture.queue.get(seeded.id)?.status, "queued");
+  assert.ok(Date.parse(fixture.queue.get(seeded.id)!.availableAt) - Date.now() > 200, "应当还要等一会儿才可领");
+
+  const queue = new FileAgentJobQueue(fixture.file, { retryBaseDelayMs: 400 });
+  let calls = 0;
+  const worker = new AgentJobWorker(queue, {
+    read: async () => { calls++; return { summary: "recovered" }; },
+  }, { pollIntervalMs: 60_000 });
+  try {
+    worker.start();
+    const started = Date.now();
+    await waitUntil(() => queue.get(seeded.id)?.status === "succeeded", 3_000);
+    assert.equal(calls, 1);
+    // 可领时刻在 400ms 后，兜底轮询是 60 秒。三秒内完成就说明它是按可领时刻醒的。
+    assert.ok(Date.now() - started < 3_000, "应当按最早可领时刻唤醒，而不是等兜底轮询");
+  } finally {
+    worker.stop();
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("nextAvailableAt 只看排队中的任务，取最早可领时刻", () => {
+  const fixture = temporaryQueue({});
+  try {
+    assert.equal(fixture.queue.nextAvailableAt(), null, "没有排队任务时返回 null");
+    const soon = fixture.queue.enqueue({ type: "read", payload: {} });
+    const first = fixture.queue.nextAvailableAt();
+    assert.equal(first, Date.parse(fixture.queue.get(soon.id)!.availableAt));
+    // 领取之后它不再是"排队中"，也就不该再被算进去
+    fixture.queue.claimNext("worker-x");
+    assert.equal(fixture.queue.nextAvailableAt(), null);
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
