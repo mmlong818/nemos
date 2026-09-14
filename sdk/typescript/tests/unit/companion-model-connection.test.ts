@@ -5,6 +5,7 @@ import type { AgentTool } from "../../src/index.js";
 import { resolveLLM } from "../../examples/companion/llm.js";
 import {
   dailyChatModelForConnection,
+  companionModelProviderPreset,
   ensureConnectionRevision,
   fetchCompanionModelCatalog,
   isModelCheckEligible,
@@ -45,6 +46,7 @@ test("Anthropic model catalog uses its native headers and parses creation dates"
     const headers = init?.headers as Record<string, string>;
     assert.equal(headers["x-api-key"], "anthropic-test-key");
     assert.equal(headers["anthropic-version"], "2023-06-01");
+    assert.equal(headers.Authorization, undefined);
     return Response.json({ data: [
       { id: "claude-old", created_at: "2025-01-01T00:00:00Z" },
       { id: "claude-new", created_at: "2026-01-01T00:00:00Z", display_name: "Claude New" },
@@ -63,6 +65,7 @@ test("Anthropic model catalog uses its native headers and parses creation dates"
 });
 
 test("model connection applies provider presets and protects remote transport", () => {
+  assert.match(companionModelProviderPreset("anthropic").note, /原生 SSE.*显式检查.*完整 JSON/);
   const connection = normalizeCompanionModelConnection({
     provider: "deepseek",
     apiKey: "test-key",

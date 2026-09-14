@@ -73,19 +73,51 @@ test("inventing a final receipt does not pass the tool round trip", async () => 
   }, async () => { assert.equal((await checkCompanionModel(connection)).tools, "failed"); });
 });
 
-test("Anthropic native message/tool-result format is checked without claiming native streaming", async () => {
+test("Anthropic native SSE and message/tool-result format are checked together", async () => {
   let count = 0;
   await withFetch(async (url, init) => {
     assert.equal(String(url), "https://api.anthropic.com/v1/messages");
     assert.equal((init?.headers as any)["x-api-key"], "fixture-key");
     const body = JSON.parse(String(init?.body)); count++;
-    assert.equal(body.stream, undefined);
-    return Response.json({ content: body.tools?.length
-      ? [{ type: "tool_use", id: "probe-call", name: "clownfish_connection_probe", input: { value: 7 } }]
-      : [{ type: "text", text: Array.isArray(body.messages.at(-1).content) ? body.messages.at(-1).content[0].content : "OK" }] });
+    const last = body.messages.at(-1);
+    const reply = Array.isArray(last.content) ? last.content[0].content : "OK";
+    if (!body.stream) return Response.json({ content: [{ type: "text", text: reply }], stop_reason: "end_turn" });
+    const tool = Boolean(body.tools?.length) && !Array.isArray(last.content);
+    const block = tool
+      ? { type: "tool_use", id: "probe-call", name: "clownfish_connection_probe", input: {} }
+      : { type: "text", text: "" };
+    const delta = tool
+      ? { type: "input_json_delta", partial_json: '{"value":7}' }
+      : { type: "text_delta", text: reply };
+    const stopReason = tool ? "tool_use" : "end_turn";
+    const sse = [
+      { type: "message_start", message: { type: "message", id: `msg-${count}`, role: "assistant", content: [], model: "chosen", stop_reason: null, stop_sequence: null, usage: { input_tokens: 3, output_tokens: 1 } } },
+      { type: "content_block_start", index: 0, content_block: block },
+      { type: "content_block_delta", index: 0, delta },
+      { type: "content_block_stop", index: 0 },
+      { type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: 2 } },
+      { type: "message_stop" },
+    ].map((item) => `event: ${item.type}\ndata: ${JSON.stringify(item)}\n\n`).join("");
+    return new Response(sse, { headers: { "content-type": "text/event-stream" } });
   }, async () => {
     const check = await checkCompanionModel(normalizeCompanionModelConnection({ provider: "anthropic", apiKey: "fixture-key", model: "chosen" }));
-    assert.equal(check.tools, "passed"); assert.equal(check.streaming, "buffered"); assert.equal(count, 3);
+    assert.equal(check.tools, "passed"); assert.equal(check.streaming, "passed"); assert.equal(count, 4);
+  });
+});
+
+test("Anthropic JSON-only gateway is recorded as streaming failed and tools fall back without a paid retry", async () => {
+  const streams: boolean[] = [];
+  await withFetch(async (_url, init) => {
+    const body = JSON.parse(String(init?.body)); streams.push(Boolean(body.stream));
+    const last = body.messages.at(-1);
+    if (body.tools?.length && !Array.isArray(last.content)) {
+      return Response.json({ content: [{ type: "tool_use", id: "probe-call", name: "clownfish_connection_probe", input: { value: 7 } }], stop_reason: "tool_use" });
+    }
+    return Response.json({ content: [{ type: "text", text: Array.isArray(last.content) ? last.content[0].content : "OK" }], stop_reason: "end_turn" });
+  }, async () => {
+    const check = await checkCompanionModel(normalizeCompanionModelConnection({ provider: "anthropic", apiKey: "fixture-key", model: "chosen" }));
+    assert.equal(check.chat, "passed"); assert.equal(check.streaming, "failed"); assert.equal(check.tools, "passed");
+    assert.deepEqual(streams, [false, true, false, false]);
   });
 });
 

@@ -31,6 +31,7 @@ import {
 import type { ChatAgentContext, ChatFn, ChatStreamFn } from "./engine.js";
 import type { CapabilityStreamCb } from "./capabilities.js";
 import { makeOpenAIResponsesAgentModel } from "./openai-responses.js";
+import { makeAnthropicMessagesAgentModel } from "./anthropic-messages.js";
 import { resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
 import {
   CompanionModelHttpError,
@@ -789,10 +790,12 @@ function makeConnectionAgentModelInternal(options: ConnectionAgentModelOptions, 
   resolveReasoningEffort(options.connection, options.model, options.reasoningEffort);
   const storedCheck = options.connection.modelChecks?.[options.model];
   const check = storedCheck?.connectionRevision === options.connection.connectionRevision ? storedCheck : undefined;
-  const effective = check?.streaming === "failed" ? { ...options, stream: false } : options;
+  // Legacy Anthropic checks used "buffered" before native SSE existed. They have
+  // not verified streaming, so retain JSON fallback until the user rechecks.
+  const effective = check?.streaming === "failed" || check?.streaming === "buffered" ? { ...options, stream: false } : options;
   const transport = modelTransport(options.connection, options.model);
   const adapter = transport === "anthropic-messages"
-    ? makeAnthropicAgentModel(effective)
+    ? makeAnthropicMessagesAgentModel(effective)
     : transport === "openai-responses"
       ? makeOpenAIResponsesAgentModel(effective)
       : makeOpenAICompatibleAgentModel(effective);
@@ -900,98 +903,6 @@ function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): A
       return result;
     },
   };
-}
-
-interface AnthropicContentBlock {
-  type?: string;
-  text?: string;
-  id?: string;
-  name?: string;
-  input?: Record<string, unknown>;
-}
-
-function makeAnthropicAgentModel(options: ConnectionAgentModelOptions): AgentModel {
-  return {
-    complete: async (request) => {
-      const system = request.messages
-        .filter((message) => message.role === "system")
-        .map((message) => message.content)
-        .join("\n\n");
-      const body: Record<string, unknown> = {
-        model: options.model,
-        system,
-        messages: request.messages.flatMap(toAnthropicMessage),
-        max_tokens: Math.max(1, Math.min(options.maxTokens, request.maxOutputTokens ?? options.maxTokens)),
-        temperature: options.temperature,
-      };
-      if (request.tools.length > 0) body.tools = request.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.inputSchema,
-      }));
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-      };
-      if (options.connection.apiKey) {
-        headers["x-api-key"] = options.connection.apiKey;
-        headers.Authorization = `Bearer ${options.connection.apiKey}`;
-      }
-      const resp = await fetch(modelConnectionEndpoint(options.connection), {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: request.signal,
-      });
-      if (!resp.ok) {
-        await resp.body?.cancel();
-        throw new CompanionModelHttpError(resp.status);
-      }
-      const data = await resp.json() as {
-        content?: AnthropicContentBlock[];
-        stop_reason?: string;
-        usage?: { input_tokens?: number; output_tokens?: number };
-      };
-      const blocks = data.content ?? [];
-      const text = blocks.filter((block) => block.type === "text").map((block) => block.text ?? "").join("");
-      if (text) request.onTextDelta?.(text);
-      return {
-        text,
-        toolCalls: blocks.flatMap((block, index) => block.type === "tool_use" && block.name
-          ? [{
-              id: block.id || `tool-call-${index + 1}`,
-              name: block.name,
-              arguments: block.input && typeof block.input === "object" ? block.input : {},
-            }]
-          : []),
-        stopReason: data.stop_reason,
-        inputTokens: data.usage?.input_tokens,
-        outputTokens: data.usage?.output_tokens,
-      };
-    },
-  };
-}
-
-function toAnthropicMessage(message: AgentMessage): Array<Record<string, unknown>> {
-  if (message.role === "system") return [];
-  if (message.role === "assistant" && message.toolCalls?.length) {
-    const content: Array<Record<string, unknown>> = [];
-    if (message.content) content.push({ type: "text", text: message.content });
-    content.push(...message.toolCalls.map((call) => ({
-      type: "tool_use",
-      id: call.id,
-      name: call.name,
-      input: call.arguments,
-    })));
-    return [{ role: "assistant", content }];
-  }
-  if (message.role === "tool") {
-    return [{
-      role: "user",
-      content: [{ type: "tool_result", tool_use_id: message.toolCallId, content: message.content }],
-    }];
-  }
-  return [{ role: message.role, content: message.content }];
 }
 
 function toZhipuMessage(message: AgentMessage): Record<string, unknown> {

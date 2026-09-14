@@ -66,6 +66,18 @@ test('旧任务缺少可选字段也能查看，不虚构正文或模型',()=>{
   assert.match(html,/尚无回执/);assert.match(html,/模型：未记录/);assert.doesNotMatch(html,/data-copy-result/);
 });
 
+test('任务详情保留步骤尝试、证据与未决项，并区分结构和事实核验',()=>{
+  const job:any=fixture();
+  job.stepReceipts=[
+    {version:1,receiptId:'receipt-old',stepId:'one',attempt:1,state:'failed',result:{completedAt:'2026-09-14T00:00:00Z',summary:'旧输出',rawOutput:'原始失败内容',claims:[],evidenceRefs:[],unresolvedItems:['第一次失败'],inputHash:'a'.repeat(64)}},
+    {version:1,receiptId:'receipt-new',stepId:'one',attempt:2,state:'succeeded',result:{completedAt:'2026-09-14T00:01:00Z',summary:'新输出',rawOutput:'原始成功内容',claims:[{key:'attendance',value:'36',sourceRefs:['material:S1'],evidenceState:'source-linked'}],evidenceRefs:[{ref:'material:S1'}],unresolvedItems:['满意度待核实'],inputHash:'b'.repeat(64),outputHash:'c'.repeat(64)}},
+  ];
+  job.result.data.structuredMerge={status:'unresolved',orderedResults:[job.stepReceipts[1].result],unresolvedItems:['满意度待核实']};
+  const html=detail.botDetail(job);
+  for(const value of ['结构化步骤成果','第 1 次 · 未完成','第 2 次 · 已保存','原始失败内容','原始成功内容','material:S1','attendance','程序汇合：仍有未决项','结构核验不代表内容事实正确'])assert.ok(html.includes(value),value);
+  assert.doesNotMatch(html,/<script|onerror=/);
+});
+
 test('追加消息显示事实消费状态，待补充和受阻不误导为可原任务恢复',()=>{
   const running:any=fixture('running');delete running.result;
   running.steering=[{mode:'merge',revision:1,text:'<new>'},{mode:'redirect',revision:2,text:'new goal'}];

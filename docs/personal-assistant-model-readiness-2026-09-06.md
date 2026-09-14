@@ -14,7 +14,13 @@
 - OpenAI 兼容接口的一次流式文字回复。
 - 一个固定参数的模拟工具调用，以及把随机回执作为工具结果发回后的最终回复。必须收到正确函数名、有效参数和正确回执，不能只凭模型说“成功”判定通过。
 
-每个型号最多 4 次请求，单次输出上限 512 tokens；单型号检查总超时为 20 秒。检查可能产生服务商费用，页面已提示。Anthropic 适配器目前使用完整 JSON 回复，记录为 buffered，不宣称原生流式已经验证。
+每个型号最多 4 次请求，单次输出上限 512 tokens；单型号检查总超时为 20 秒。检查可能产生服务商费用，页面已提示。
+
+### 2026-09-14：Anthropic 原生流式补充
+
+Anthropic Messages 现与 OpenAI-compatible 通道一样，在显式模型检查中实际发送 `stream: true` 并验证 SSE，而不再固定记为 buffered。适配器按 SSE 空行分帧，支持 CRLF、跨网络 chunk 和多行 `data:`；原生处理 `message_start`、`content_block_start/delta/stop`、`message_delta`、`message_stop`、`error` 与 `ping`。文字 `text_delta` 立即进入现有 AgentRuntime 增量回调；`tool_use` 的 `input_json_delta` 按内容块顺序收集，只在块与消息都正常结束、参数为完整 JSON 对象后才交给工具执行层。输入用量由 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens` 汇聚，再进入现有运行预算与模型调用账本；缓存字段缺失时按零处理，不伪造未报告的用量。
+
+已知事件缺字段、乱序、错误事件、提前断流或未完成工具 JSON 会失败关闭，错误文案不包含服务商原始响应。未知的未来顶层事件安全忽略。若显式检查发现服务只返回完整 JSON，连接记录 streaming failed，之后业务调用沿用已有非流式 JSON 回退，不在单次业务请求中自动追加一次付费重试。旧版 `buffered` 检查记录也继续使用 JSON，直到用户重新显式检查；OpenAI-compatible 与 Responses 的传输和工具协议未改变。Anthropic 原生请求只使用协议规定的 `x-api-key`，不再把同一密钥重复放入 `Authorization` header。
 
 ### 2. 自动检查较新候选，保留手动选择
 

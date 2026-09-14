@@ -42,14 +42,11 @@ export async function checkCompanionModel(
       check.chat = "passed";
     } catch (error) { stopOnGlobalFailure(error); return check; }
 
-    // The Anthropic adapter currently buffers JSON; do not claim native SSE works.
-    check.streaming = connection.protocol === "anthropic" ? "buffered" : "failed";
-    if (connection.protocol !== "anthropic") {
-      try {
-        const response = await complete(ping, true);
-        if (response.text.trim() && !response.toolCalls?.length) check.streaming = "passed";
-      } catch (error) { stopOnGlobalFailure(error); }
-    }
+    check.streaming = "failed";
+    try {
+      const response = await complete(ping, true);
+      if (response.text.trim() && !response.toolCalls?.length) check.streaming = "passed";
+    } catch (error) { stopOnGlobalFailure(error); }
     check.tools = "failed";
     check.detail = "文字回复已验证；工具调用未通过检查，可关闭工具后对话。";
     const tool: AgentToolDefinition = {
