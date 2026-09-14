@@ -46,6 +46,7 @@
     "quality:office-corpus": "tsx scripts/office-corpus.ts",
     "quality:office-word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Verify-OfficeCorpus.ps1",
     "quality:capabilities": "node scripts/capability-real-quality.mjs",
+    "evaluation:structured-handoff": "tsx scripts/structured-handoff-eval.ts",
     "vendor:docx-engine": "tsc -p examples/companion/vendor/docx-engine/tsconfig.json",
     "vendor:pptx-engine": "tsc -p examples/companion/vendor/pptx-engine/tsconfig.json",
     "licenses:check": "node scripts/audit-licenses.mjs",

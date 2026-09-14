@@ -151,6 +151,7 @@ import { BackgroundScheduler, enqueueScheduledCapabilities } from "./background-
 import { attachScheduledTaskHandoffProjection, FileScheduledTaskHandoffStore } from "./scheduled-task-handoff.js";
 import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
+import { FileStepReceiptStore } from "./structured-handoff.js";
 import { listBotMarket } from "./bot-market.js";
 import { isEmptyRecipe, normalizeBotRecipe, recipeConsentToken, BotRecipeError } from "./bot-recipe.js";
 import { appRoute, renderAppPage } from "./app-navigation.js";
@@ -232,6 +233,7 @@ const AGENT_APPROVALS_FILE = runtimePath("COMPANION_AGENT_APPROVALS", "agent-app
 const AGENT_JOBS_FILE = runtimePath("COMPANION_AGENT_JOBS", "agent-jobs.json");
 const RUNNING_TASK_STEERING_FILE = runtimePath("COMPANION_RUNNING_TASK_STEERING", "running-task-steering.json");
 const SCHEDULED_TASK_HANDOFFS_FILE = runtimePath("COMPANION_SCHEDULED_TASK_HANDOFFS", "scheduled-task-handoffs.json");
+const ASSISTANT_TEAM_STEP_RECEIPTS_FILE = runtimePath("COMPANION_ASSISTANT_TEAM_STEP_RECEIPTS", "assistant-team-step-receipts.json");
 const DELIVERY_OUTBOX_FILE = runtimePath("COMPANION_DELIVERY_OUTBOX", "delivery-outbox.json");
 const AGENT_EXTENSIONS_FILE = runtimePath("COMPANION_AGENT_EXTENSIONS", "agent-extensions.json");
 const WORK_GUIDELINES_FILE = runtimePath("COMPANION_WORK_GUIDELINES", "work-guidelines.json");
@@ -548,6 +550,7 @@ const capabilities = new CapabilityRuntime({
 });
 const scheduledTaskHandoffs = new FileScheduledTaskHandoffStore(SCHEDULED_TASK_HANDOFFS_FILE);
 const agentJobQueue = new FileAgentJobQueue(AGENT_JOBS_FILE, { onChange: broadcastAgentEvent });
+const assistantTeamStepReceipts = new FileStepReceiptStore(ASSISTANT_TEAM_STEP_RECEIPTS_FILE);
 const runningTaskSteering = new RunningTaskSteeringStore(RUNNING_TASK_STEERING_FILE);
 attachScheduledTaskHandoffProjection(agentJobQueue, scheduledTaskHandoffs, {
   onError: (error) => console.warn(`[scheduled-task-handoff] continuity unavailable: ${error instanceof Error ? error.message : String(error)}`),
@@ -675,10 +678,11 @@ function ensureJobDelivery(job: ReturnType<FileAgentJobQueue["get"]>): DeliveryR
   });
 }
 
-function jobWithDelivery(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): typeof job & { delivery: DeliveryRecord | null; llmCallLedgerAssociated: false } {
+function jobWithDelivery(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): typeof job & { delivery: DeliveryRecord | null; llmCallLedgerAssociated: false; stepReceipts: ReturnType<FileStepReceiptStore["list"]> } {
   return {
     ...job,
     delivery: deliveryOutbox.getBySource("agent-job", job.id),
+    stepReceipts: job.type === "assistant-team" ? assistantTeamStepReceipts.list(job.id) : [],
     // Do not infer that a generic queue job owns an LLM call. Explicit surfaces add a true association.
     llmCallLedgerAssociated: false,
   };
@@ -784,7 +788,10 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     }
     // Capture this connection for the whole run. A settings edit must not switch providers mid-task.
     const chat = llm.chat;
-    return runAssistantTeam(job, context, chat, { readSteering: () => runningTaskSteering.snapshot(job.id, String(job.metadata?.userId || "")) });
+    return runAssistantTeam(job, context, chat, {
+      readSteering: () => runningTaskSteering.snapshot(job.id, String(job.metadata?.userId || "")),
+      receiptStore: assistantTeamStepReceipts,
+    });
   },
   "hk-reminder": async (job, context) => {
     const raw = job.payload.reminder;
@@ -5152,6 +5159,7 @@ const server = createServer(async (req, res) => {
               ...job,
               payload,
               steering: runningTaskSteering.snapshot(job.id, USER),
+              stepReceipts: assistantTeamStepReceipts.list(job.id),
               // Team calls carry a real team/<job-id>/… run id. Other job kinds are not inferred.
               llmCallLedgerAssociated: true,
               llmCallSummary: llmCallLedger.summarize({ taskId: job.id }),

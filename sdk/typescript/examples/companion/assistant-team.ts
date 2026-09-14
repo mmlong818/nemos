@@ -6,9 +6,25 @@ import { listBotMarket, type BotMarketTemplate } from "./bot-market.js";
 import { applyRecipe, isEmptyRecipe, normalizeBotRecipe, planRecipeImport, type RecipeConsent, type RecipeHost, type RecipeReceipt } from "./bot-recipe.js";
 import { APP_PERSONA_ID } from "./identity.js";
 import { routeAssistantTeam, type TeamRouting } from "./assistant-team-routing.js";
-import { validateExecutionPlan } from "./execution-plan.js";
+import { validateExecutionPlan, type ExecutionPlan } from "./execution-plan.js";
 import { planTeamExecution } from "./team-planner.js";
 import type { RunningTaskMessage } from "./running-task-steering.js";
+import {
+  createFailedStepReceipt,
+  createSucceededStepReceipt,
+  mergeStepReceipts,
+  nextStepAttempt,
+  observedMaterialEvidence,
+  renderStructuredMergeContext,
+  ruleHash,
+  stepResultEvidence,
+  structuredPlanHash,
+  validateStepReceiptHistory,
+  type StepEvidenceRefV1,
+  type StepProducerV1,
+  type StepReceiptV1,
+  type StepReceiptStore,
+} from "./structured-handoff.js";
 
 export class AssistantTeamError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -245,8 +261,10 @@ const FINAL_RULES = `你是小丑鱼，负责最终交付。后台已收齐下�
 独立对照原材料吸收核验意见，给出一份最终结果。完成字段结构检查不代表事实均正确，不得宣称外部动作已执行。
 最终交付协议：只返回 JSON 对象 {"summary":"最终简报","fields":[{"label":"必填字段原名","value":"具体结果或明确未知","sources":["材料中的来源标识或摘录"]}]}。
 每个必填字段必须恰好出现一次，有值、有来源；未知的来源可以写“材料未提供”。没有必填字段时 fields 为 []。不得虚构来源。`;
+const STRUCTURED_STEP_RULES = `步骤成果优先返回 JSON：{"summary":"简述","claims":[{"key":"稳定字段键","value":"值","sourceRefs":["runtime 给出的来源 ref"]}],"unresolvedItems":["缺失、冲突或待判断项"]}。
+只能引用输入中 runtimeObservedEvidenceRefs 列出的 ref；来源链接只表示来源存在，不代表事实已验证。没有运行时观测来源时 sourceRefs 必须为 []，并把事实状态写入 unresolvedItems。`;
 
-export function validateTeamDelivery(output: string, fields: string[]): TeamDelivery {
+export function validateTeamDelivery(output: string, fields: string[], allowedEvidence?: readonly StepEvidenceRefV1[]): TeamDelivery {
   let parsed: unknown;
   try { parsed = JSON.parse(output.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
   catch { throw new AssistantTeamError("最终结果未按交付协议返回，不能标记完成；可重试汇总，已完成回执会保留"); }
@@ -263,16 +281,63 @@ export function validateTeamDelivery(output: string, fields: string[]): TeamDeli
     seen.add(label);
     const sources = list(f.sources, "字段来源", 12, 500);
     if (!sources.length) throw new AssistantTeamError(`字段“${label}”没有来源`);
+    if (allowedEvidence) validateDeliverySources(sources, allowedEvidence);
     return { label, value: text(f.value, "字段结果", 4000, true), sources };
   });
   return { summary, fields: checked };
 }
 
+function validateDeliverySources(sources: readonly string[], allowedEvidence: readonly StepEvidenceRefV1[]): void {
+  const allowed = new Set(allowedEvidence.map((item) => item.ref));
+  for (const source of sources) {
+    if (source === "材料未提供" || source === "unknown") continue;
+    if (allowed.has(source) || allowed.has(`material:${source}`)) continue;
+    throw new AssistantTeamError(`最终结果引用了运行时未观察到的来源“${source}”；仅完成来源结构检查，不能据此声称事实已核验`);
+  }
+}
+
+function validateStructuredHistoryForPlan(
+  plan: ExecutionPlan,
+  history: readonly StepReceiptV1[],
+  stages: readonly { id: string; bot: { id: string; revision: number; instructions: string } }[],
+  materialEvidence: readonly StepEvidenceRefV1[],
+  model: string,
+): void {
+  const planHash = structuredPlanHash(plan);
+  const steps = new Map(plan.steps.map((step) => [step.id, step]));
+  const stageById = new Map(stages.map((stage) => [stage.id, stage]));
+  const results = new Map(history.map((receipt) => [receipt.result.id, receipt]));
+  const materials = new Set(materialEvidence.map((item) => item.ref));
+  for (const receipt of history) {
+    const step = steps.get(receipt.stepId), stage = stageById.get(receipt.stepId);
+    if (receipt.taskId !== plan.taskId || receipt.planHash !== planHash || !step || !stage) throw new AssistantTeamError("步骤回执不属于当前已授权执行计划；权威历史需要人工核对", 409);
+    if (receipt.result.producer.botId !== step.executorId || receipt.result.producer.botId !== stage.bot.id
+      || receipt.result.producer.botRevision !== stage.bot.revision
+      || receipt.result.producer.ruleHash !== ruleHash(stage.bot.instructions)
+      || receipt.result.producer.model !== (model || "unknown")) {
+      throw new AssistantTeamError("步骤回执的 Bot、规则或模型元数据与当前执行计划不一致；不能自动恢复", 409);
+    }
+    for (const evidence of receipt.result.evidenceRefs) if (evidence.kind === "material" && !materials.has(evidence.ref)) {
+      throw new AssistantTeamError("步骤回执包含当前任务未观察到的材料来源；不能自动恢复", 409);
+    }
+    if (receipt.result.evidenceRefs.some((evidence) => evidence.kind === "artifact" || evidence.kind === "tool")) {
+      throw new AssistantTeamError("工具关闭的协作任务不能从步骤历史恢复 artifact/tool 证据；需要人工核对", 409);
+    }
+    for (const resultId of receipt.result.derivedFrom) {
+      const parent = results.get(resultId);
+      if (!parent || !step.dependsOn.includes(parent.stepId)) throw new AssistantTeamError("步骤回执引用了执行计划之外的上游成果；不能自动恢复", 409);
+    }
+  }
+}
+
 /** A bounded sequence, owned by the worker, not by mention messages or a web page poll. */
 export async function runAssistantTeam(
   job: AgentJobRecord, context: AgentJobHandlerContext, chat: ChatFn,
-  options: { stageTimeoutMs?: number; readSteering?: () => RunningTaskMessage[] } = {},
+  options: { stageTimeoutMs?: number; readSteering?: () => RunningTaskMessage[]; receiptStore?: StepReceiptStore } = {},
 ) {
+  // A damaged authoritative store must stop the task before planning or any
+  // model call. Checkpoint projections can never bypass this health gate.
+  options.receiptStore?.assertHealthy();
   const plan = job.payload.teamPlan as TeamPlan;
   if (!plan || plan.version !== 1 || plan.sharing !== "task-only" || plan.tools !== "off") throw new AssistantTeamError("不支持的协作任务版本");
   if (plan.executionMode !== undefined && !['fixed-v1', 'planned-text-v1'].includes(plan.executionMode)) throw new AssistantTeamError("不支持的任务执行模式");
@@ -296,6 +361,14 @@ export async function runAssistantTeam(
   const request = normalizeTeamRequest({ ...plan });
   if (plan.workers.length !== request.workerIds.length || plan.workers.some((b, i) => b.id !== request.workerIds[i] || b.role !== "worker")
     || (plan.reviewer?.id || "") !== request.reviewerId || (plan.reviewer && plan.reviewer.role !== "reviewer")) throw new AssistantTeamError("协作任务的角色快照不一致");
+  const checkpointHistory = job.checkpoints.flatMap((checkpoint) => {
+    const data = checkpoint.data as { structuredStepReceipt?: unknown } | undefined;
+    return data && Object.prototype.hasOwnProperty.call(data, "structuredStepReceipt")
+      ? [data.structuredStepReceipt as StepReceiptV1]
+      : [];
+  });
+  const authoritativeHistory = options.receiptStore?.list(job.id) ?? [];
+  const hasStructuredHistory = authoritativeHistory.length > 0 || checkpointHistory.length > 0;
   const receipts: TeamReceipt[] = [];
   let stages = [
     ...plan.workers.map((bot) => ({ id: `work:${bot.id}`, bot, kind: "work" })),
@@ -320,6 +393,9 @@ export async function runAssistantTeam(
       if (!bot || bot.id === 'clownfish' || bot.enabled !== true || bot.placement === 'market' || !['worker','reviewer'].includes(bot.role) || !Number.isSafeInteger(bot.revision) || bot.revision < 1) throw new AssistantTeamError('候选角色快照无效');
       text(bot.id, '角色编号', 100, true); text(bot.name, '角色名称', 60, true); text(bot.instructions, '工作规则', 4000, true);
     }
+    if (hasStructuredHistory && !job.checkpoints.some((checkpoint) => (checkpoint.data as { teamExecutionPlan?: unknown } | undefined)?.teamExecutionPlan)) {
+      throw new AssistantTeamError("自主协作存在步骤历史但缺少可验证的冻结执行计划；不会调用规划模型或自动恢复", 409);
+    }
     const availableStages = [...candidates.map(bot => ({id: `candidate:${bot.id}`, bot, kind: bot.role === 'reviewer' ? 'review' : 'work'})), stages.find(stage => stage.id === 'final')!];
     executionPlan = await planTeamExecution(job, context, chat, {
       objective: request.objective, model: request.model,
@@ -335,6 +411,26 @@ export async function runAssistantTeam(
     }
     stages = ordered;
   }
+  const planHash = structuredPlanHash(executionPlan);
+  const materialEvidence = observedMaterialEvidence(request.materials);
+  const checkedCheckpointHistory = validateStepReceiptHistory(checkpointHistory);
+  // Bind both sources to the frozen task/plan before checkpoint projections can
+  // enter the authority. In planned mode, existing history required a saved plan,
+  // so planTeamExecution above performed validation without a model call.
+  validateStructuredHistoryForPlan(executionPlan, authoritativeHistory, stages, materialEvidence, request.model);
+  validateStructuredHistoryForPlan(executionPlan, checkedCheckpointHistory, stages, materialEvidence, request.model);
+  if (options.receiptStore) for (const receipt of checkedCheckpointHistory) options.receiptStore.append(receipt);
+  const structuredHistory = options.receiptStore
+    ? options.receiptStore.list(job.id)
+    : checkedCheckpointHistory;
+  const appendStructuredReceipt = (stepReceipt: StepReceiptV1): void => {
+    if (structuredHistory.some((item) => item.receiptId === stepReceipt.receiptId)) return;
+    // The independent append-only store is authoritative. Checkpoint data is only
+    // a bounded compatibility/UI projection and may be trimmed by the legacy queue.
+    options.receiptStore?.append(stepReceipt);
+    structuredHistory.push(stepReceipt);
+    context.checkpoint(`步骤 ${stepReceipt.stepId} 回执已保存`, undefined, { structuredStepReceipt: stepReceipt });
+  };
   for (const stage of stages) {
     context.signal.throwIfAborted();
     // Workers receive no other worker's context; reviewer/final receive returned task outputs only.
@@ -344,16 +440,35 @@ export async function runAssistantTeam(
     const redirectRevision = Math.max(0, ...steering.filter((item) => item.mode === "redirect").map((item) => item.revision));
     const sharedReceipts = receipts.filter((r) => ["returned", "verified"].includes(r.state) && dependencies.includes(r.stageId)).map((r) => ({ bot: r.botName, output: r.output }));
     const step = executionPlan.steps.find(step => step.id === stage.id)!;
+    const dependencyMerge = mergeStepReceipts(executionPlan, structuredHistory, dependencies);
+    const dependencyResults = dependencyMerge.orderedResults;
+    const allowedEvidence = [...materialEvidence, ...stepResultEvidence(dependencyResults)];
     const baseInput = { objective: request.objective, materials: request.materials,
       ...(planning ? {stepObjective: step.objective, expectedOutput: step.output} : {}),
       requiredFields: request.requiredFields, receipts: sharedReceipts };
-    const input = JSON.stringify({ ...baseInput,
+    const structuredContext = dependencies.length ? renderStructuredMergeContext(dependencyMerge) : undefined;
+    const runtimeInput = { ...baseInput,
+      // Keep only stable result indexes in this compatibility field. The bounded
+      // deterministic projection below supplies claims/excerpts to downstream steps.
+      receipts: sharedReceipts.map((item, index) => ({ bot: item.bot, resultId: dependencyResults[index]?.id ?? "legacy-result" })),
+      runtimeObservedEvidenceRefs: allowedEvidence,
+      ...(structuredContext ? { structuredContext } : {}),
       steering: steering.map((item) => ({ mode: item.mode, text: item.text, revision: item.revision })),
       ...(redirectRevision ? { steeringRule: "redirect 替换旧目标；旧回执只是历史，不得当作新目标已完成" } : {}),
-    });
-    const system = `${BOUNDARY}\n\n当前职责（用户明确保存的工作规则）：\n${stage.bot.instructions}`;
-    const baseInputHash = hash(JSON.stringify({ stage: stage.id, model: request.model, system, input: baseInput }));
+    };
+    const baseSystem = `${BOUNDARY}\n\n当前职责（用户明确保存的工作规则）：\n${stage.bot.instructions}`;
+    const system = stage.kind === "final" ? baseSystem : `${baseSystem}\n\n${STRUCTURED_STEP_RULES}`;
+    const input = JSON.stringify(runtimeInput);
+    // Preserve the legacy hash so old verified checkpoints remain resumable.
+    const baseInputHash = hash(JSON.stringify({ stage: stage.id, model: request.model, system: baseSystem, input: baseInput }));
     const inputHash = hash(JSON.stringify({ stage: stage.id, model: request.model, system, input }));
+    const producer: StepProducerV1 = {
+      botId: stage.bot.id,
+      botRevision: stage.bot.revision,
+      ruleHash: ruleHash(stage.bot.instructions),
+      model: request.model || "unknown",
+      tools: "off",
+    };
     // Resume only verified returned receipts for the exact frozen input. Never reuse failed/received states.
     const previous = job.checkpoints.map((c) => (c.data as { teamReceipt?: TeamReceipt } | undefined)?.teamReceipt).reverse()
       .find((r) => r?.stageId === stage.id
@@ -361,18 +476,34 @@ export async function runAssistantTeam(
         && (r.baseInputHash === baseInputHash || (!r.baseInputHash && r.inputHash === inputHash))
         && (r.steeringRevision ?? 0) >= redirectRevision && r.output);
     if (previous) {
+      // Old verified TeamReceipt sources remain display-compatible, but are not
+      // upgraded into trusted structured evidence during compatibility recovery.
       if (stage.kind === "final") delivery = validateTeamDelivery(previous.output!, request.requiredFields);
+      if (!structuredHistory.some((item) => item.stepId === stage.id && item.state === "succeeded" && item.result.rawOutput === previous.output)) {
+        appendStructuredReceipt(createSucceededStepReceipt({
+          taskId: job.id, planHash, stepId: stage.id,
+          attempt: nextStepAttempt(structuredHistory, planHash, stage.id),
+          inputHash: previous.inputHash,
+          output: previous.output!, producer, allowedEvidence,
+          derivedFrom: dependencyResults.map((item) => item.id),
+          startedAt: previous.receivedAt, completedAt: previous.returnedAt,
+        }));
+      }
       receipts.push(previous);
       continue;
     }
+    const attempt = nextStepAttempt(structuredHistory, planHash, stage.id);
+    const startedAt = new Date().toISOString();
     const receipt: TeamReceipt = { stageId: stage.id, botId: stage.bot.id, botName: stage.bot.name,
-      botRevision: stage.bot.revision, state: "received", inputHash, baseInputHash, receivedAt: new Date().toISOString(), kind: stage.kind as TeamReceipt["kind"], steeringRevision };
+      botRevision: stage.bot.revision, state: "received", inputHash, baseInputHash, receivedAt: startedAt, kind: stage.kind as TeamReceipt["kind"], steeringRevision };
     context.checkpoint(`${stage.bot.name}已接收任务`, Math.round(receipts.length / stages.length * 90), { teamReceipt: receipt });
     const abort = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let onAbort: (() => void) | undefined;
+    let rawOutput: string | undefined;
+    let terminalStructuredReceipt = false;
     try {
-      const output = await Promise.race([
+      const output = rawOutput = await Promise.race([
         chat(system, input, request.model || undefined, 5000, {
           runId: `team/${job.id}/${stage.id}/${randomUUID()}`, sessionId: `team/${job.id}/${stage.id}`,
           userId: job.metadata?.userId || "me", personaId: stage.bot.id, instruction: request.objective,
@@ -398,12 +529,28 @@ export async function runAssistantTeam(
       };
       context.checkpoint(`${stage.bot.name}已返回成果`, Math.round(receipts.length / stages.length * 95), { teamReceipt: returned });
       if (stage.kind === "final") {
-        delivery = validateTeamDelivery(output, request.requiredFields);
+        delivery = validateTeamDelivery(output, request.requiredFields, allowedEvidence);
         const verified: TeamReceipt = { ...returned, state: "verified", verification: "required-fields-and-sources-shape" };
         receipts.push(verified);
-        context.checkpoint("必填字段与来源结构已核验", Math.round(receipts.length / stages.length * 95), { teamReceipt: verified });
+        const stepReceipt = createSucceededStepReceipt({ taskId: job.id, planHash, stepId: stage.id, attempt,
+          inputHash, output, producer, allowedEvidence, derivedFrom: dependencyResults.map((item) => item.id),
+          startedAt, completedAt: returned.returnedAt });
+        terminalStructuredReceipt = true; appendStructuredReceipt(stepReceipt);
+        context.checkpoint("必填字段与来源结构已核验（不代表事实正确）", Math.round(receipts.length / stages.length * 95), { teamReceipt: verified });
       } else receipts.push(returned);
+      if (stage.kind !== "final") {
+        const stepReceipt = createSucceededStepReceipt({ taskId: job.id, planHash, stepId: stage.id, attempt,
+          inputHash, output, producer, allowedEvidence, derivedFrom: dependencyResults.map((item) => item.id),
+          startedAt, completedAt: returned.returnedAt });
+        terminalStructuredReceipt = true; appendStructuredReceipt(stepReceipt);
+      }
     } catch (error) {
+      if (!terminalStructuredReceipt) {
+        const failure = createFailedStepReceipt({ taskId: job.id, planHash, stepId: stage.id, attempt,
+          inputHash, producer, rawOutput, startedAt,
+          error: error instanceof Error ? error.message : "execution failed" });
+        appendStructuredReceipt(failure);
+      }
       context.checkpoint(`${stage.bot.name}未完成`, undefined, { teamReceipt: { ...receipt, state: "failed", error: "执行失败、超时或结果未通过交付检查；已收到的成果保留。" } });
       throw error;
     } finally {
@@ -412,6 +559,7 @@ export async function runAssistantTeam(
     }
   }
   if (!delivery) throw new AssistantTeamError("没有最终交付，不能完成任务");
+  const structuredMerge = mergeStepReceipts(executionPlan, structuredHistory);
   context.checkpoint("最终结果已保存，待你审阅", 100);
-  return { summary: delivery.summary, data: { delivery, receipts, sharing: "task-only", tools: "off", validation: "fields-present-not-fact-verified" } };
+  return { summary: delivery.summary, data: { delivery, receipts, structuredMerge, sharing: "task-only", tools: "off", validation: "fields-present-not-fact-verified" } };
 }

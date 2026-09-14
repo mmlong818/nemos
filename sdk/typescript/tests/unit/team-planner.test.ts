@@ -4,6 +4,7 @@ import type {AgentJobRecord, AgentJobHandlerContext} from '../../src/agent/job-q
 import type {ChatFn} from '../../examples/companion/engine.js';
 import {AssistantBotStore, runAssistantTeam} from '../../examples/companion/assistant-team.js';
 import {planTeamExecution} from '../../examples/companion/team-planner.js';
+import {createSucceededStepReceipt, ruleHash} from '../../examples/companion/structured-handoff.js';
 function fixture() {
   const store = new AssistantBotStore(':memory:'); store.seed('qa');
   const teamPlan = store.plan('qa', {requestId:'test', objective:'整理并核验合成资料', materials:'[S1] 仅测试', requiredFields:[], workerIds:['bot-organizer'],reviewerId:'bot-reviewer',model:'test'});
@@ -20,6 +21,11 @@ function proposal() { return {version:1,taskId:'test-job',revision:1,finalStepId
   {id:'check',executorId:'bot-reviewer',objective:'核对',output:'差异',dependsOn:['organize']},
   {id:'final',executorId:'clownfish',objective:'不可覆盖原始目标',output:'JSON',dependsOn:['organize','check']},
 ]}; }
+function foreignReceipt(){return createSucceededStepReceipt({
+  taskId:'other-task',planHash:'a'.repeat(64),stepId:'foreign',attempt:1,inputHash:'b'.repeat(64),
+  output:'legacy foreign output',allowedEvidence:[],producer:{botId:'bot-organizer',botRevision:1,ruleHash:ruleHash('foreign'),model:'test',tools:'off'},
+  startedAt:'2026-09-14T00:00:00Z',completedAt:'2026-09-14T00:00:01Z',
+});}
 
 test('失败重试和恢复共享调用预算，耗尽后不再调用模型',async()=>{
   const f=fixture();const plan=f.job.payload.teamPlan as any;
@@ -78,6 +84,18 @@ test('保存计划绑定模型、目标和角色规则，恢复时重新校验',
   const saved=(f.job.checkpoints[0].data as any).teamExecutionPlan;
   saved.plan.steps[0].executorId='unknown';
   await assert.rejects(planTeamExecution(f.job,f.context,async()=>'',f.input),/执行角色/);
+});
+test('自主协作的跨任务步骤回执在任何规划模型调用前失败关闭',async()=>{
+  const missing=fixture();missing.job.checkpoints.push({at:new Date().toISOString(),status:'foreign',data:{structuredStepReceipt:foreignReceipt()}});
+  let calls=0;
+  await assert.rejects(runAssistantTeam(missing.job,missing.context,async()=>{calls++;return JSON.stringify(proposal());}),/缺少可验证的冻结执行计划/);
+  assert.equal(calls,0);
+
+  const frozen=fixture();await planTeamExecution(frozen.job,frozen.context,async()=>JSON.stringify(proposal()),frozen.input);
+  frozen.job.checkpoints.push({at:new Date().toISOString(),status:'foreign',data:{structuredStepReceipt:foreignReceipt()}});
+  calls=0;
+  await assert.rejects(runAssistantTeam(frozen.job,frozen.context,async()=>{calls++;return 'must not run';}),/不属于当前已授权执行计划/);
+  assert.equal(calls,0);
 });
 test('简单目标可仅汇总，仍保持用户原始目标',async()=>{
   const f=fixture(),p=proposal();p.steps=[{...p.steps[2],dependsOn:[]}];

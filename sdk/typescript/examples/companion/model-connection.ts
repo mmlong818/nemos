@@ -94,7 +94,7 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     model: "claude-sonnet-5",
     dailyChatModel: "claude-haiku-4-5",
     keyRequired: true,
-    note: "使用已选择的模型；当前适配器以完整回复输出，不代表已验证原生流式。",
+    note: "原生 SSE 流式在显式检查通过后启用；检查失败或旧版 buffered 记录继续使用完整 JSON。",
   },
   {
     id: "deepseek",

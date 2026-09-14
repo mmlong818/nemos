@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import { startModelHarness } from "../fixtures/companion-model-harness.js";
 
@@ -31,6 +33,10 @@ test("助理团队 HTTP：配置、实际队列执行、自动收尾、回执恢
     await team("/start", { ...payload, materials: "changed" }, 409);
     const success = await waitJob(id, ["succeeded", "failed"]);
     assert.equal(success.status, "succeeded", success.error); assert.equal(success.result.data.receipts.length, 3);
+    assert.deepEqual(success.stepReceipts.map((receipt: any) => [receipt.stepId, receipt.attempt, receipt.state]), [
+      ["work:bot-organizer", 1, "succeeded"], ["review:bot-reviewer", 1, "succeeded"], ["final", 1, "succeeded"],
+    ]);
+    assert.deepEqual(success.result.data.structuredMerge.orderedResults.map((result: any) => result.stepId), ["work:bot-organizer", "review:bot-reviewer", "final"]);
     assert.equal(success.result.data.delivery.fields[0].value, "10月6日");
     assert.equal(success.payload.connectionFingerprint, undefined);
     const summary = (await team()).jobs.find((job: any) => job.id === id);
@@ -47,13 +53,20 @@ test("助理团队 HTTP：配置、实际队列执行、自动收尾、回执恢
     await team("/retry", { id }, 409);
     badFinal = true;
     const failedId = (await team("/start", { ...payload, requestId: "bad-final" }, 202)).record.id;
-    assert.equal((await waitJob(failedId, ["failed"])).result, undefined);
+    const failedJob = await waitJob(failedId, ["failed"]);
+    assert.equal(failedJob.result, undefined);
+    assert.deepEqual(failedJob.stepReceipts.filter((receipt: any) => receipt.stepId === "final").map((receipt: any) => [receipt.attempt, receipt.state]), [[1, "failed"]]);
+    assert.match(failedJob.stepReceipts.find((receipt: any) => receipt.stepId === "final").result.rawOutput, /"fields":\[\]/);
     badFinal = false; const before = h.requests.length;
-    await team("/retry", { id: failedId }); assert.equal((await waitJob(failedId, ["succeeded", "failed"])).status, "succeeded");
+    await team("/retry", { id: failedId });
+    const retried = await waitJob(failedId, ["succeeded", "failed"]);
+    assert.equal(retried.status, "succeeded");
+    assert.deepEqual(retried.stepReceipts.filter((receipt: any) => receipt.stepId === "final").map((receipt: any) => [receipt.attempt, receipt.state]), [[1, "failed"], [2, "succeeded"]]);
     assert.equal(h.requests.length - before, 1); // only final, not the specialists
     await h.restart();
     assert.equal((await team()).bots.find((b: any) => b.id === custom.record.id).instructions, "只整理当前材料");
     assert.equal((await team("/job?id=" + id)).job.result.data.receipts.length, 3);
+    assert.deepEqual((await team("/job?id=" + failedId)).job.stepReceipts.filter((receipt: any) => receipt.stepId === "final").map((receipt: any) => [receipt.attempt, receipt.state]), [[1, "failed"], [2, "succeeded"]]);
     h.state.delayMs = 800;
     const cancelId = (await team("/start", { ...payload, requestId: "cancel" }, 202)).record.id;
     await waitJob(cancelId, ["running"]); await team("/cancel", { id: cancelId });
@@ -135,5 +148,44 @@ test("运行中转向经 HTTP 原子记录并明确中止旧阶段，最终核�
     const rejected = await request("/api/assistant-team/message", { id: finalId, messageId: "too-late", mode: "merge", text: "must not persist" }, 409);
     assert.match(JSON.stringify(rejected), /未记录/);
     assert.deepEqual((await read(finalId)).steering, []);
+  } finally { await h.stop(); }
+});
+
+test("语义损坏的权威步骤历史阻断 checkpoint 恢复且不调用模型或覆盖原文件", { timeout: 60000 }, async () => {
+  const h = await startModelHarness();
+  const request = async (path: string, body?: unknown, expected = 200) => {
+    const response = await fetch(h.base + path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await response.json() as any; assert.equal(response.status, expected, JSON.stringify(data)); return data;
+  };
+  const read = async (id: string) => (await request("/api/assistant-team/job?id=" + id)).job;
+  const waitFor = async (id: string, predicate: (job: any) => boolean) => {
+    for (let i = 0; i < 300; i++) { const job = await read(id); if (predicate(job)) return job; await new Promise((resolve) => setTimeout(resolve, 25)); }
+    throw new Error("assistant-team state did not arrive");
+  };
+  try {
+    await request("/api/llm-config", { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual" });
+    await request("/api/llm-model/check", { model: "manual", force: true });
+    h.state.replyFor = (body) => body.messages?.[0]?.content.includes("最终交付协议")
+      ? '{"summary":"bad","fields":[]}' : "[S1] saved prerequisite";
+    const objective = "QA-DAMAGED-STEP-STORE";
+    const id = (await request("/api/assistant-team/start", { requestId: "damaged-step-store", objective, materials: "[S1] synthetic", requiredFields: ["日期"], workerIds: ["bot-organizer"], reviewerId: "bot-reviewer" }, 202)).record.id;
+    const initial = await waitFor(id, (job) => job.status === "failed");
+    assert.ok(initial.checkpoints.some((checkpoint: any) => checkpoint.data?.structuredStepReceipt), "checkpoint projection exists before corruption");
+    const storeFile = join(h.dir, "assistant-team-step-receipts.json");
+    let malformed = "";
+    await h.restart(() => {
+      const parsed = JSON.parse(readFileSync(storeFile, "utf8"));
+      parsed.receipts[0].result.producer.tools = "on";
+      malformed = JSON.stringify(parsed);
+      writeFileSync(storeFile, malformed, "utf8");
+    });
+    const before = h.requests.filter((item) => item.body?.messages?.some((message: any) => String(message.content).includes(objective))).length;
+    await request("/api/assistant-team/retry", { id });
+    const blocked = await waitFor(id, (job) => job.status === "failed" && /Step receipt store is read-only/.test(job.error || ""));
+    assert.match(blocked.error, /persisted history could not be validated/);
+    const after = h.requests.filter((item) => item.body?.messages?.some((message: any) => String(message.content).includes(objective))).length;
+    assert.equal(after, before, "health gate runs before every planning or model call");
+    assert.equal(blocked.result, undefined);
+    assert.equal(readFileSync(storeFile, "utf8"), malformed, "checkpoint bootstrap never overwrites the damaged authority");
   } finally { await h.stop(); }
 });

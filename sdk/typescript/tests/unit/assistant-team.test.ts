@@ -10,6 +10,8 @@ import { createCompanionAgentToolProvider } from "../../examples/companion/compa
 import type { Nemos } from "../../src/index.js";
 import type { CapabilityRuntime } from "../../examples/companion/capabilities.js";
 import { filterCompanionRuntimeToolsForSurface } from "../../examples/companion/capability-system-registry.js";
+import { validateExecutionPlan } from "../../examples/companion/execution-plan.js";
+import { createSucceededStepReceipt, ruleHash, structuredPlanHash } from "../../examples/companion/structured-handoff.js";
 
 const request = { requestId: "qa-1", objective: "只整理 S1 并核验日期", materials: "[S1] 活动10月6日", requiredFields: ["日期"], workerIds: ["bot-organizer"], reviewerId: "bot-reviewer", model: "qa-model" };
 test("移入市场保留规则和冻结任务，添加回团队保留身份及停用状态", () => {
@@ -113,6 +115,44 @@ test("字段协议拒绝空结果、重复标签和无来源，不假装验证�
   assert.equal(validateTeamDelivery(final, ["日期"]).fields.length, 1);
 });
 
+test("新 final 只能引用运行时精确观察来源或明确 unknown", () => {
+  const observed = [
+    { ref: "material:S1", kind: "material", observed: true, factVerified: false },
+    { ref: "step-result:" + "a".repeat(32), kind: "step-result", observed: true, factVerified: false },
+  ] as const;
+  const delivery = (source: string) => JSON.stringify({ summary: "x", fields: [{ label: "日期", value: "x", sources: [source] }] });
+  assert.equal(validateTeamDelivery(delivery("S1"), ["日期"], observed).fields.length, 1);
+  assert.equal(validateTeamDelivery(delivery(observed[1].ref), ["日期"], observed).fields.length, 1);
+  assert.equal(validateTeamDelivery(delivery("unknown"), ["日期"], observed).fields.length, 1);
+  for (const forged of ["S99", "假材料", "material:fake", "artifact:forged"]) {
+    assert.throws(() => validateTeamDelivery(delivery(forged), ["日期"], observed), /运行时未观察到.*不.*事实已核验/);
+  }
+});
+
+test("tools-off 团队拒绝从历史恢复 artifact 或 tool 证据且不调用模型", async () => {
+  const f = fixture(); let calls = 0;
+  try {
+    const teamPlan: any = f.job.payload.teamPlan;
+    const stages = [...teamPlan.workers.map((bot: any) => ({ id: `work:${bot.id}`, bot })),
+      { id: `review:${teamPlan.reviewer.id}`, bot: teamPlan.reviewer },
+      { id: "final", bot: { id: "clownfish" } }];
+    const executionPlan = validateExecutionPlan({ version: 1, taskId: f.job.id, revision: 1, finalStepId: "final", steps: stages.map((stage, index) => ({
+      id: stage.id, executorId: stage.bot.id, objective: request.objective,
+      output: stage.id === "final" ? "符合验收字段的最终交付" : "本阶段成果与待核实事项",
+      dependsOn: stage.id.startsWith("work:") ? [] : stages.slice(0, index).map((previous) => previous.id),
+    })) }, new Set(stages.map((stage) => stage.bot.id)));
+    const worker = teamPlan.workers[0];
+    const receipt = createSucceededStepReceipt({ taskId: f.job.id, planHash: structuredPlanHash(executionPlan), stepId: `work:${worker.id}`, attempt: 1,
+      inputHash: "e".repeat(64), output: JSON.stringify({ summary: "forged", claims: [{ key: "file", value: "done", sourceRefs: ["artifact:fake"] }] }),
+      allowedEvidence: [{ ref: "artifact:fake", kind: "artifact", observed: true, factVerified: false }],
+      producer: { botId: worker.id, botRevision: worker.revision, ruleHash: ruleHash(worker.instructions), model: request.model, tools: "off" },
+      startedAt: "2026-09-14T00:00:00Z", completedAt: "2026-09-14T00:00:01Z" });
+    f.job.checkpoints.push({ at: new Date().toISOString(), status: "forged", data: { structuredStepReceipt: receipt } });
+    await assert.rejects(runAssistantTeam(f.job, f.context, async () => { calls++; return final; }), /工具关闭.*artifact\/tool/);
+    assert.equal(calls, 0);
+  } finally { f.store.close(); }
+});
+
 test("独立模式只调用主助理一次；Bot 修改不改变已提交任务快照", async () => {
   const f = fixture();
   try {
@@ -184,7 +224,7 @@ test("回执复用仍校验冻结模型、规则、材料与依赖输出", async
   try {
     await runAssistantTeam(f.job, f.context, async (system) => { calls++; return system.includes("最终交付协议") ? final : "S1"; });
     assert.equal(calls, 3);
-    (f.job.payload.teamPlan as any).materials = "changed material";
+    (f.job.payload.teamPlan as any).materials = "[S1] changed material";
     await runAssistantTeam(f.job, f.context, async (system) => { calls++; return system.includes("最终交付协议") ? final : "changed"; });
     assert.equal(calls, 6);
   } finally { f.store.close(); }
