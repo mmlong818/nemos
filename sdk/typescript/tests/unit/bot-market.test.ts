@@ -4,9 +4,10 @@ import { listBotMarket } from "../../examples/companion/bot-market.js";
 import { AssistantBotStore, runAssistantTeam } from "../../examples/companion/assistant-team.js";
 import type { AgentJobRecord, AgentJobHandlerContext } from "../../src/agent/job-queue.js";
 
-test("精选市场：八种有来源的原生适配，声明实际边界，目录返回副本", () => {
-  const templates = listBotMarket(); assert.equal(templates.length, 8);
-  assert.equal(new Set(templates.map((t) => t.id)).size, 8);
+test("精选市场：五种有来源的原生适配，声明实际边界，目录返回副本", () => {
+  const templates = listBotMarket(); assert.equal(templates.length, 5);
+  assert.equal(new Set(templates.map((t) => t.id)).size, 5);
+  assert.deepEqual(templates.map((t) => t.id).sort(), ["bot-designer", "copy-humanizer", "idea-stress-test", "meeting-prep", "project-guide"]);
   for (const t of templates) {
     assert.equal(t.adaptation, "independent-native"); assert.equal(t.permissions.tools, "off");
     assert.equal(t.permissions.memory, "task-only"); assert.equal(t.permissions.automaticRoutines, false);
@@ -19,6 +20,17 @@ test("精选市场：八种有来源的原生适配，声明实际边界，目�
   }
   templates[0].instructions = "forged"; templates[0].permissions.tools = "on" as "off";
   assert.notEqual(listBotMarket()[0].instructions, "forged"); assert.equal(listBotMarket()[0].permissions.tools, "off");
+});
+
+test("默认材料梳理只处理当前材料，与深度研究的外部检索和核验边界分开", () => {
+  const store = new AssistantBotStore(":memory:");
+  try {
+    store.seed("one");
+    const organizer = store.get("one", "bot-organizer");
+    assert.equal(organizer.name, "材料梳理");
+    assert.match(organizer.instructions, /仅基于本次已提供的材料/);
+    assert.match(organizer.instructions, /不检索或核验外部资料/);
+  } finally { store.close(); }
 });
 
 test("添加幂等、用户隔离、版本校验、不覆盖个人派生规则、不接受伪造来源或权限", () => {
