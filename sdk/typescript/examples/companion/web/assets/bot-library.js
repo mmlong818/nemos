@@ -7,7 +7,7 @@
     return sentence.length > 112 ? sentence.slice(0, 112) + "…" : sentence;
   }
   function icon(bot) {
-    const icons = { "plant-journal":"role-startup", "call-follow-ups":"phone", "project-guide":"work", "idea-stress-test":"role-decision", "bot-designer":"role-architecture", "copy-humanizer":"document", "pitch-deck-coach":"panel", "meeting-prep":"users" };
+    const icons = { "project-guide":"work", "idea-stress-test":"role-decision", "bot-designer":"role-architecture", "copy-humanizer":"document", "meeting-prep":"users" };
     return icons[bot.template?.id] || (bot.role === "reviewer" ? "role-test" : "message-circle");
   }
   function matches(item, query) {

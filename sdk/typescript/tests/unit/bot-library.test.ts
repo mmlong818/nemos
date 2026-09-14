@@ -41,6 +41,14 @@ test("filters preserve all Bots and separate text, workflows and disabled items 
   assert.equal(JSON.stringify(bots), before);
 });
 
+test("深度研究与材料梳理的职责和说明分开：前者检索核验，后者只处理已有材料", () => {
+  const research = workflows.find((workflow: any) => workflow.id === "research");
+  assert.equal(research.name, "深度研究与核验");
+  assert.match(research.summary, /检索外部来源/);
+  assert.match(research.description, /时点和限制/);
+  assert.doesNotMatch(research.name, /资料整理/);
+});
+
 test("search supports names, rules, deliverables, whitespace and case, including no results", () => {
   assert.equal(library.filter(bots, workflows, "all", "会议").bots.length, 1);
   assert.equal(library.filter(bots, workflows, "all", "  REVIEW  s1 ").bots[0].id, "two");
