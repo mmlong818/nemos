@@ -13,6 +13,10 @@
 > [!IMPORTANT]
 > This is **source-available software, not OSI-approved open source**. The current version is licensed only for personal, educational, and nonprofit research use. Direct and indirect commercial use is prohibited, including paid services, internal business operations, commercial product integration, resale, SaaS or hosted offerings, commercial training, and any other for-profit activity. Commercial rights require separate written permission from the copyright holder. [LICENSE](LICENSE) is authoritative; third-party components retain their own licenses.
 
+![Clownfish product overview with matters, artifacts, skills, and memory entry points](docs/assets/readme/overview.png)
+
+_Captured from the current application with isolated synthetic demo data; no user data or real service credentials are shown._
+
 ## Product overview
 
 Clownfish is more than a one-turn chat window. It connects the work of understanding a request, scheduling execution, handling source material, checking results, delivering artifacts, and retaining only useful long-term information:
@@ -37,11 +41,19 @@ The assistant supports conversation, task completion, and tutoring modes. A task
 
 Task states distinguish completion, waiting for input, blocked, cancelled, and uncertain external side effects. Empty output is not reported as success, and run completion is stored separately from result delivery. Instructions can be added at collaboration stage boundaries; once final synthesis begins, changes that cannot honestly be incorporated are rejected.
 
+![Clownfish task workspace showing the delivery and step history of a synthetic task](docs/assets/readme/task-workspace.png)
+
+_The workspace keeps the synthetic task, final delivery, sources, and step receipts together._
+
 A skill is a local work rule, not another model. Clownfish does not automatically download third-party scripts or synchronize private memory from third-party Bots. There are currently no installable listings in the online skill market.
 
 ### Pantheon
 
 Pantheon supports structured multi-perspective reasoning. It first classifies the request as exploration, challenge, decision, or direct answer, then exposes its seat-selection reasons and limits. Each round uses independent positions, directed cross-examination, responses, and a moderator summary. A final conclusion is produced only after an explicit convergence action.
+
+![Clownfish Pantheon showing disclosed seat selection for a synthetic decision](docs/assets/readme/pantheon.png)
+
+_Seats represent reasoning methods; the issue in this image is a synthetic example created for the documentation._
 
 The thought library can distill user-supplied material into a reviewable draft. Without source material it creates only a user-defined framework and does not invent biographical claims. A draft becomes eligible for automatic seating only after user approval. Sessions currently live in the running process; approved private thought units are stored locally.
 
@@ -61,11 +73,19 @@ The capability center currently exposes 17 user-facing workflows across research
 
 Long-term memory separates user facts, assistant self-memory, task threads, and expert execution context. A pending learning proposal requires explicit confirmation before becoming memory, and ordinary work recalls only a small amount relevant to the current goal. The memory core is the separately maintained [`@nemos/sdk`](https://github.com/mmlong818/nemos-memory) dependency.
 
+![Clownfish memory management showing a synthetic preference, provenance, and available actions](docs/assets/readme/memory.png)
+
+_Remembered items and pending proposals are separate; each item retains its subject, provenance, and correction or forgetting controls._
+
 Automations schedule recurring work locally and support pause, edit, and run-now actions while retaining related tasks and artifacts. Live external results still depend on the relevant tool, connection, and permissions being operational.
 
 ## One-time OpenAI and Zhipu setup
 
 The standard setup asks only for an **OpenAI** and/or **Zhipu BigModel** API key. Either key can be used alone; two keys can complement one another. Submission runs one coordinated flow:
+
+![Clownfish model setup with OpenAI and Zhipu two-key automatic configuration](docs/assets/readme/model-setup.png)
+
+_Both key fields are empty in this screenshot; the application does not reveal complete saved keys on this page._
 
 1. encrypt credentials with Windows DPAPI for the current user;
 2. read the provider catalog or maintained candidates and shortlist recommended models;
@@ -134,7 +154,7 @@ cd sdk\typescript
 powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-Clownfish.ps1
 ```
 
-Extract the generated portable ZIP completely and launch `小丑鱼.exe` from the `小丑鱼` directory. The package includes the desktop shell and required runtime, while model configuration and user data remain in the local user profile. Check that no user data is included before redistribution.
+Extract the generated portable ZIP completely and launch `portable\小丑鱼\小丑鱼.exe`. The package includes the desktop shell and required runtime, while model configuration and user data remain in the local user profile. Check that no user data is included before redistribution.
 
 ### Optional self-hosted sync
 

@@ -77,8 +77,7 @@ const zhTests = rootReadme.match(/(\d+) 项自动化测试无失败/)?.[1];
 const enTests = englishReadme.match(/(\d+) automated tests with no failures/)?.[1];
 if (!zhTests || zhTests !== enTests) fail("中英文 README 的测试数量不一致");
 // 2026-09-20 审计确认这些截图早于双 Key 设置与万神殿界面，且包含已淘汰的
-// 内部型号名称。文件暂留作历史资产，但公开 README 不得继续引用；取得真实当前
-// 页面截图后，应在这里用明确的已核验登记表替换这份禁用清单。
+// 内部型号名称。文件暂留作历史资产，但公开 README 不得继续引用。
 const outdatedScreenshots = [
   "docs/assets/readme/clownfish-overview-current.png",
   "docs/assets/readme/clownfish-assistant-current.png",
@@ -86,12 +85,22 @@ const outdatedScreenshots = [
   "docs/assets/readme/clownfish-memory-current.png",
   "docs/assets/readme/clownfish-models-current.png",
 ];
+const currentScreenshots = [
+  "docs/assets/readme/overview.png",
+  "docs/assets/readme/task-workspace.png",
+  "docs/assets/readme/pantheon.png",
+  "docs/assets/readme/memory.png",
+  "docs/assets/readme/model-setup.png",
+];
 for (const [label, content] of [["中文", rootReadme], ["英文", englishReadme]]) {
   for (const relativePath of outdatedScreenshots) {
     if (content.includes(relativePath)) fail(`${label} README 引用了已确认过时的截图：${relativePath}`);
   }
+  for (const relativePath of currentScreenshots) {
+    if (!content.includes(relativePath)) fail(`${label} README 缺少当前产品截图：${relativePath}`);
+  }
   for (const reference of new Set(content.match(/docs\/assets\/readme\/[\w.-]+/g) ?? [])) {
-    fail(`${label} README 引用了尚未登记为当前页面的截图：${reference}`);
+    if (!currentScreenshots.includes(reference)) fail(`${label} README 引用了尚未登记为当前页面的截图：${reference}`);
   }
 }
 
