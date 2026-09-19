@@ -76,34 +76,22 @@ const englishReadme = readFileSync(join(root, "README.en.md"), "utf8");
 const zhTests = rootReadme.match(/(\d+) 项自动化测试无失败/)?.[1];
 const enTests = englishReadme.match(/(\d+) automated tests with no failures/)?.[1];
 if (!zhTests || zhTests !== enTests) fail("中英文 README 的测试数量不一致");
-/**
- * 每个界面当前应使用的截图，逐项登记。
- * 只有那个界面真的变了才重拍并改这里——用一个全局日期会逼着无关界面陪着重拍。
- *
- * 文件名不再带日期或版本号：同一界面永远只有一张 `-current.png`，重拍即覆盖。
- * 代价是文件名不再说明拍摄时间，收益是不会再出现"README 指着一个已删除的旧文件"
- * 这种情况——那正是 README.en.md 曾经卡住的地方。带日期或版本后缀的引用因此
- * 一律视为过时残留，由下面那条统一拦下。
- */
-const currentScreenshots = {
-  overview: "docs/assets/readme/clownfish-overview-current.png",
-  assistant: "docs/assets/readme/clownfish-assistant-current.png",
-  task: "docs/assets/readme/clownfish-task-current.png",
-  memory: "docs/assets/readme/clownfish-memory-current.png",
-  models: "docs/assets/readme/clownfish-models-current.png",
-};
-for (const relativePath of Object.values(currentScreenshots)) {
-  if (!existsSync(join(root, relativePath))) fail(`当前 README 截图不存在：${relativePath}`);
-  if (!rootReadme.includes(relativePath) || !englishReadme.includes(relativePath)) {
-    fail(`中英文 README 没有共同使用当前截图：${relativePath}`);
-  }
-}
-// 登记表之外的截图引用只有两种可能：带版本/日期后缀的旧残留，或忘记登记的新图。
-// 两种都要拦——前者会指向已删除的文件，后者会绕过"中英文共用同一张"的约束。
-const registered = new Set(Object.values(currentScreenshots));
+// 2026-09-20 审计确认这些截图早于双 Key 设置与万神殿界面，且包含已淘汰的
+// 内部型号名称。文件暂留作历史资产，但公开 README 不得继续引用；取得真实当前
+// 页面截图后，应在这里用明确的已核验登记表替换这份禁用清单。
+const outdatedScreenshots = [
+  "docs/assets/readme/clownfish-overview-current.png",
+  "docs/assets/readme/clownfish-assistant-current.png",
+  "docs/assets/readme/clownfish-task-current.png",
+  "docs/assets/readme/clownfish-memory-current.png",
+  "docs/assets/readme/clownfish-models-current.png",
+];
 for (const [label, content] of [["中文", rootReadme], ["英文", englishReadme]]) {
+  for (const relativePath of outdatedScreenshots) {
+    if (content.includes(relativePath)) fail(`${label} README 引用了已确认过时的截图：${relativePath}`);
+  }
   for (const reference of new Set(content.match(/docs\/assets\/readme\/[\w.-]+/g) ?? [])) {
-    if (!registered.has(reference)) fail(`${label} README 引用了未登记的截图：${reference}`);
+    fail(`${label} README 引用了尚未登记为当前页面的截图：${reference}`);
   }
 }
 

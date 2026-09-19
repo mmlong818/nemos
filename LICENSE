@@ -1,134 +1,134 @@
-# PolyForm Noncommercial License 1.0.0
+Clownfish Source-Available Non-Commercial License 1.0
 
-<https://polyformproject.org/licenses/noncommercial/1.0.0>
+Copyright (c) 2026 mmlong818 (猫叔). All rights reserved.
 
-Required Notice: Copyright Nemos contributors
-(https://github.com/mmlong818/nemos)
+This license is a source-available license. It is not an open-source license
+approved by the Open Source Initiative.
 
-## Acceptance
+1. Definitions
 
-In order to get any license under these terms, you must agree
-to them as both strict obligations and conditions to all
-your licenses.
+"Software" means the source code, object code, documentation, assets, and other
+materials distributed with this license, excluding third-party materials that
+identify a different license or copyright owner.
 
-## Copyright License
+"Copyright Holder" means mmlong818 (猫叔).
 
-The licensor grants you a copyright license for the
-software to do everything you might do with the software
-that would otherwise infringe the licensor's copyright
-in it for any permitted purpose.  However, you may
-only distribute the software according to [Distribution
-License](#distribution-license) and make changes or new works
-based on the software according to [Changes and New Works
-License](#changes-and-new-works-license).
+"You" means the individual or legal entity exercising rights under this
+license.
 
-## Distribution License
+"Commercial Use" means any use that is intended for, directed toward, or
+reasonably connected with commercial advantage, business operations, monetary
+compensation, or other for-profit activity, whether the benefit is direct or
+indirect.
 
-The licensor grants you an additional copyright license
-to distribute copies of the software.  Your license
-to distribute covers distributing the software with
-changes and new works permitted by [Changes and New Works
-License](#changes-and-new-works-license).
+2. Permitted Non-Commercial Uses
 
-## Notices
+Subject to every condition in this license, the Copyright Holder grants You a
+limited, worldwide, royalty-free, non-exclusive, non-transferable license to
+use, copy, study, and modify the Software solely for:
 
-You must ensure that anyone who gets a copy of any part of
-the software from you also gets a copy of these terms or the
-URL for them above, as well as copies of any plain-text lines
-beginning with `Required Notice:` that the licensor provided
-with the software.  For example:
+a. personal use that has no anticipated commercial application;
+b. teaching, learning, or academic coursework conducted for non-commercial
+   educational purposes; and
+c. research conducted by a nonprofit or public-interest research organization
+   for non-commercial purposes, with no commercial deployment or exploitation.
 
-> Required Notice: Copyright Yoyodyne, Inc. (http://example.com)
+No rights are granted for any other purpose.
 
-## Changes and New Works License
+3. Complete Prohibition on Commercial Use
 
-The licensor grants you an additional copyright license to
-make changes and new works based on the software for any
-permitted purpose.
+You must not use the Software, in whole or in part, directly or indirectly, for
+Commercial Use without a separate written commercial license signed by the
+Copyright Holder. Prohibited activities include, without limitation:
 
-## Patent License
+a. selling, licensing, renting, or otherwise charging for the Software or any
+   modified or derivative version;
+b. offering the Software or functionality based on it as a paid service,
+   subscription, SaaS, hosted service, managed service, consultancy, or other
+   commercial offering;
+c. using the Software for internal business operations, employee productivity,
+   customer service, sales, marketing, advertising, lead generation, customer
+   acquisition, analytics, production workflows, or any other activity of a
+   for-profit enterprise;
+d. integrating or embedding the Software in a commercial product, platform,
+   service, appliance, or distribution;
+e. reselling, sublicensing, white-labeling, or commercially redistributing the
+   Software or any modified or derivative version;
+f. using the Software, its outputs, or modified versions for commercial model
+   training, commercial dataset production, commercial evaluation, or another
+   revenue-generating AI activity; and
+g. using the Software to support, enable, or provide a material benefit to any
+   for-profit activity, even if no separate fee is charged for the Software.
 
-The licensor grants you a patent license for the software that
-covers patent claims the licensor can license, or becomes able
-to license, that you would infringe by using the software.
+The absence of a charge does not make a business use non-commercial.
 
-## Noncommercial Purposes
+4. Redistribution and Modified Versions
 
-Any noncommercial purpose is a permitted purpose.
+You may redistribute exact or modified copies of the Software only when all of
+the following conditions are met:
 
-## Personal Uses
+a. the redistribution is solely for a purpose permitted by Section 2 and is not
+   connected with Commercial Use;
+b. every copy includes this license in full and retains all copyright,
+   attribution, and license notices;
+c. modified files are clearly identified as modified, with the date and a brief
+   description of the changes;
+d. recipients receive the Software only under this same license, without any
+   additional permission for commercial use; and
+e. You do not state or imply endorsement by the Copyright Holder.
 
-Personal use for research, experiment, and testing for
-the benefit of public knowledge, personal study, private
-entertainment, hobby projects, amateur pursuits, or religious
-observance, without any anticipated commercial application,
-is use for a permitted purpose.
+You may not sublicense the Software under different terms. These conditions do
+not alter or replace the licenses of separately identified third-party
+materials.
 
-## Noncommercial Organizations
+5. Commercial Licensing
 
-Use by any charitable organization, educational institution,
-public research organization, public safety or health
-organization, environmental protection organization,
-or government institution is use for a permitted purpose
-regardless of the source of funding or obligations resulting
-from the funding.
+Commercial rights are available only through a separate written agreement
+signed by the Copyright Holder. An issue, email, conversation, contribution,
+download, or public repository access does not grant commercial permission.
 
-## Fair Use
+6. Ownership and Reserved Rights
 
-You may have "fair use" rights for the software under the
-law. These terms do not limit them.
+The Software is licensed, not sold. The Copyright Holder retains all copyright
+and other rights not expressly granted by this license. This license grants no
+rights in names, logos, or trademarks. Contributions are governed separately
+by the repository's contribution terms.
 
-## No Other Rights
+7. Compliance and Termination
 
-These terms do not allow you to sublicense or transfer any of
-your licenses to anyone else, or prevent the licensor from
-granting licenses to anyone else.  These terms do not imply
-any other licenses.
+Your rights under this license terminate automatically and immediately if You
+violate any term. Upon termination, You must stop using and distributing the
+Software and destroy all copies in Your possession or control, except to the
+extent retention is required by law. Termination does not limit any remedy
+available to the Copyright Holder.
 
-## Patent Defense
+8. Earlier Versions and Effective Scope
 
-If you make any written claim that the software infringes or
-contributes to infringement of any patent, your patent license
-for the software granted under these terms ends immediately. If
-your company makes such a claim, your patent license ends
-immediately for work on behalf of your company.
+This license applies to the version of the Software distributed with this
+LICENSE file and to later releases that expressly adopt it. Rights validly
+granted for an earlier version under a different license remain governed by
+that earlier license and are not retroactively revoked, reduced, or replaced by
+this license. Receiving a later version does not change the terms of an earlier
+version, and receiving an earlier version does not grant rights to a later one.
 
-## Violations
+9. No Warranty
 
-The first time you are notified in writing that you have
-violated any of these terms, or done anything with the software
-not covered by your licenses, your licenses can nonetheless
-continue if you come into full compliance with these terms,
-and take practical steps to correct past violations, within
-32 days of receiving notice.  Otherwise, all your licenses
-end immediately.
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR
+A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. YOU USE THE SOFTWARE AT YOUR
+OWN RISK.
 
-## No Liability
+10. Limitation of Liability
 
-***As far as the law allows, the software comes as is, without
-any warranty or condition, and the licensor will not be liable
-to you for any damages arising out of these terms or the use
-or nature of the software, under any kind of legal claim.***
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT HOLDER WILL NOT BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, CONSEQUENTIAL, OR
+OTHER DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS, REVENUE, BUSINESS, OR GOODWILL,
+ARISING FROM OR RELATED TO THE SOFTWARE OR THIS LICENSE, UNDER ANY THEORY OF
+LIABILITY, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-## Definitions
+11. Severability and No Waiver
 
-The **licensor** is the individual or entity offering these
-terms, and the **software** is the software the licensor makes
-available under these terms.
-
-**You** refers to the individual or entity agreeing to these
-terms.
-
-**Your company** is any legal entity, sole proprietorship,
-or other kind of organization that you work for, plus all
-organizations that have control over, are under the control of,
-or are under common control with that organization.  **Control**
-means ownership of substantially all the assets of an entity,
-or the power to direct its management and policies by vote,
-contract, or otherwise.  Control can be direct or indirect.
-
-**Your licenses** are all the licenses granted to you for the
-software under these terms.
-
-**Use** means anything you do with the software requiring one
-of your licenses.
+If any provision is unenforceable, it will be limited to the minimum extent
+necessary, and the remaining provisions will continue in effect. A failure to
+enforce any provision is not a waiver. Any waiver must be in writing and signed
+by the Copyright Holder.

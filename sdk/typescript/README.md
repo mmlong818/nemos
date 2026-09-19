@@ -132,6 +132,6 @@ await nemos.close();
 
 ## 许可证
 
-本包的本地 Agent 运行时代码采用 PolyForm Noncommercial 1.0.0；重新导出的 `@nemos/sdk` 来自独立 `nemos-memory` 仓库，并保留其自己的许可证声明。
+本包的本地 Agent 运行时代码采用 Clownfish Source-Available Non-Commercial License 1.0；重新导出的 `@nemos/sdk` 来自独立 `nemos-memory` 仓库，并保留其自己的许可证声明。
 
-同目录下的 `examples/companion/`（小丑鱼应用）自 2026-09-09 起同样采用 PolyForm Noncommercial 1.0.0；它不随本 npm 包发布（`files` 白名单仅含 `dist`）。完整授权结构见仓库根目录 [LICENSING.md](../../LICENSING.md)。
+同目录下的 `examples/companion/`（小丑鱼应用）采用同一非商业许可；它不随本 npm 包发布（`files` 白名单仅含 `dist`）。包元数据中的 `SEE LICENSE IN LICENSE` 指向本目录许可原文。完整授权结构见仓库根目录 [LICENSING.md](../../LICENSING.md)。

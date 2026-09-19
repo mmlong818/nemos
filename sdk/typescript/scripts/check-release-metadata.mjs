@@ -25,6 +25,10 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) failures.push(`package.json 版本不是�
 expectEqual("package-lock.json", packageLock.version);
 expectEqual("package-lock packages['']", packageLock.packages?.[""]?.version);
 expectEqual("桌面清单", manifest.version);
+if (packageJson.license !== "SEE LICENSE IN LICENSE") failures.push(`package.json license=${String(packageJson.license || "<empty>")}，应为 SEE LICENSE IN LICENSE`);
+if (packageLock.packages?.[""]?.license !== packageJson.license) failures.push("package-lock 根包许可证与 package.json 不一致");
+expectContains("SDK 自定义许可证", resolve(packageRoot, "LICENSE"), "Clownfish Source-Available Non-Commercial License 1.0");
+expectContains("SDK 商业禁用条款", resolve(packageRoot, "LICENSE"), "Complete Prohibition on Commercial Use");
 
 expectContains("服务端回退清单", resolve(packageRoot, "examples", "companion", "server.ts"), `version: "${version}"`);
 expectContains("中文 README 徽章", resolve(repoRoot, "README.md"), `版本-v${version}`);

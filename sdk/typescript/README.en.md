@@ -132,4 +132,8 @@ Closing drains active background work before releasing the SQLite connection.
 
 ## License
 
-PolyForm Noncommercial 1.0.0.
+The local Agent runtime is provided under the Clownfish Source-Available
+Non-Commercial License 1.0. The re-exported `@nemos/sdk` dependency retains its
+own license. The package metadata value `SEE LICENSE IN LICENSE` points to the
+license text shipped in this directory; see the repository-level
+[licensing guide](../../LICENSING.md) for the complete boundary.

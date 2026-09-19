@@ -79,7 +79,7 @@ docs: refresh current product guide
 
 ## 许可
 
-本仓库自有代码统一按 PolyForm Noncommercial 1.0.0 对外提供，包括
+本仓库自有代码统一按 Clownfish Source-Available Non-Commercial License 1.0 对外提供，包括
 `sdk/typescript/examples/companion/`（小丑鱼应用）。随包分发的第三方代码
 保留各自许可证。完整说明见 [LICENSING.md](LICENSING.md)。
 
@@ -90,7 +90,7 @@ docs: refresh current product guide
 
 1. 你拥有所提交内容的著作权，或已获得足以作出本节授权的权利；
 2. 你授予项目所有者一份永久、全球、非独占、免费、不可撤销、可转授的许可，
-   允许其以任何条款（包括但不限于 PolyForm Noncommercial 及商业许可）
+   允许其以任何条款（包括但不限于本仓库当前的非商业许可及单独商业许可）
    使用、复制、修改、演绎、公开发布、分发与再授权你的贡献；
 3. 你的贡献同时按本仓库当前适用的对外许可证向公众提供；
 4. 你保留对自身贡献的著作权，本节授权为许可而非著作权转让。

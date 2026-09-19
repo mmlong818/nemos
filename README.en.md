@@ -1,91 +1,115 @@
 # Clownfish
 
-> A local-first personal AI assistant workbench. Goals, execution, files, verification, and long-term memory stay in one workspace.
+> A local-first personal AI work application that keeps conversations, matters, tasks, files, deliverables, automations, and long-term memory in one traceable workspace.
 
 [中文](README.md) · **English**
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/badge/version-v0.7.6-b33f72)](https://github.com/mmlong818/nemos/tree/v0.7.6)
-[![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#run-locally)
-[![Status](https://img.shields.io/badge/status-Alpha-orange)](ROADMAP.md)
-[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#install-and-run)
+[![Status](https://img.shields.io/badge/status-Alpha-orange)](#current-boundaries)
+[![License](https://img.shields.io/badge/license-noncommercial%20only-blue)](LICENSE)
 
 > [!IMPORTANT]
-> This repository uses [PolyForm Noncommercial 1.0.0](LICENSE), which is not an OSI-approved open-source license. Noncommercial use, modification, and redistribution are allowed; commercial use requires a separate license. Third-party components retain their own terms. See [LICENSING.md](LICENSING.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-![Clownfish overview](docs/assets/readme/clownfish-overview-current.png)
-
-> Every interface image below was captured from the current running local service. None is a concept mockup or an old prototype.
+> This is **source-available software, not OSI-approved open source**. The current version is licensed only for personal, educational, and nonprofit research use. Direct and indirect commercial use is prohibited, including paid services, internal business operations, commercial product integration, resale, SaaS or hosted offerings, commercial training, and any other for-profit activity. Commercial rights require separate written permission from the copyright holder. [LICENSE](LICENSE) is authoritative; third-party components retain their own licenses.
 
 ## Product overview
 
-A chat window can answer a question but is a poor place to manage ongoing work. Clownfish puts the main objects of a personal assistant into one traceable workbench:
+Clownfish is more than a one-turn chat window. It connects the work of understanding a request, scheduling execution, handling source material, checking results, delivering artifacts, and retaining only useful long-term information:
 
-- **Assistant** talks with the user, clarifies the goal, chooses a working mode, and delivers one integrated result;
-- **Matters** hold goals, next actions, and outcomes that need ongoing attention;
-- **Tasks** are concrete queued executions with status, attachments, progress, and receipts;
-- **Bots / skills** are reusable roles and working methods, not separate models or arbitrary downloaded scripts;
-- **Capabilities / tools** separate an end-to-end workflow from one permission-bound operation inside it;
-- **Memory** is long-term information the user can inspect, confirm, correct, and forget.
+**state a goal → create a matter or task → choose skills and tools → execute with status and receipts → deliver a file or conclusion → let the user decide what becomes memory**
 
-The normal path is: **tell the assistant the goal → select skills and capabilities → queue or coordinate execution → verify and deliver → place useful information into memory only when appropriate**. The queue serializes work when a provider cannot handle concurrent requests; multi-Bot collaboration is used only when the task benefits from it.
+The current application brings these areas together:
 
-![Clownfish assistant workspace](docs/assets/readme/clownfish-assistant-current.png)
+- **Assistants**: Clownfish coordinates goals, capabilities, and final delivery. Feifei, Teacher Lin, Azhe, and Lingling provide life conversation, tutoring, decision support, and lightweight companionship. Domain perspectives can be invited dynamically for the current question.
+- **Matters and tasks**: a matter retains an ongoing goal and next action; a task is one concrete execution with attachments, queueing, checkpoints, failure reasons, and delivery receipts.
+- **Skill library**: reusable local working methods can be inspected, edited, and enabled. Bundled templates and user revisions remain separate. The official online skill market is currently empty.
+- **Pantheon**: a structured multi-perspective workspace that selects one to three complementary methods, then runs positions, directed questions, responses, and summaries. Seats represent methods, not impersonations of real people.
+- **Memory**: remembered information is separate from pending learning proposals. Users can inspect provenance, confirm, correct, or forget information, and the current request always outranks old preferences.
+- **Files and artifacts**: originals are preserved, editable working copies are created, and exports are registered as new deliverables that can be linked back to tasks and sources.
+- **Automations and tools**: recurring tasks can be paused, edited, or run immediately. The capability center shows workflows, plugins, connections, dependencies, and actual readiness as separate states.
 
-## What works today
+## Current workflows
 
-### Tasks and collaboration
+### Assistants, tasks, and skills
 
-The task page is the primary execution surface. Enter a goal, attach source files, select a model, or let the application select an enabled skill. An attachment is stored as the original file first; merely selecting it does not extract and paste its text.
+The assistant supports conversation, task completion, and tutoring modes. A task can include source files, use a selected model, or let Clownfish choose from enabled skills. Selecting a file only registers the original; content is read when an execution actually needs it.
 
-Runs retain checkpoints, cancellation, failure reasons, and delivery receipts. Completed, waiting for input, blocked, cancelled, and uncertain side-effect states stay distinct. Empty output is not reported as success, and reloading the page does not turn an undelivered result into a delivered one.
+Task states distinguish completion, waiting for input, blocked, cancelled, and uncertain external side effects. Empty output is not reported as success, and run completion is stored separately from result delivery. Instructions can be added at collaboration stage boundaries; once final synthesis begins, changes that cannot honestly be incorporated are rejected.
 
-For team tasks, the user may add or redirect instructions between stages. Once final synthesis has started, the application rejects additions it cannot honestly incorporate instead of pretending they were used.
+A skill is a local work rule, not another model. Clownfish does not automatically download third-party scripts or synchronize private memory from third-party Bots. There are currently no installable listings in the online skill market.
 
-![Clownfish task workspace](docs/assets/readme/clownfish-task-current.png)
+### Pantheon
 
-### Skills, capabilities, and files
+Pantheon supports structured multi-perspective reasoning. It first classifies the request as exploration, challenge, decision, or direct answer, then exposes its seat-selection reasons and limits. Each round uses independent positions, directed cross-examination, responses, and a moderator summary. A final conclusion is produced only after an explicit convergence action.
 
-The skill library stores reusable methods that can be searched, inspected for provenance and boundaries, and edited. User changes and bundled template versions are tracked separately.
+The thought library can distill user-supplied material into a reviewable draft. Without source material it creates only a user-defined framework and does not invent biographical claims. A draft becomes eligible for automatic seating only after user approval. Sessions currently live in the running process; approved private thought units are stored locally.
 
+### Files and artifacts
 
-The capability center covers research, documents, presentations, analysis, design, and office-file workflows. The file workbench follows a simple boundary: keep the original, edit a working copy, and export a new file.
+The file workbench follows a clear boundary: preserve the original, edit a working copy, and export a new file.
 
-- Imports include common Word, PowerPoint, Excel, PDF, OpenDocument, RTF, EPUB, CSV, TXT, and Markdown files;
-- exports include DOCX, PDF, PPTX, XLSX, HTML, and Markdown;
-- TXT and Markdown can be written back only after explicit authorization and conflict checks; other formats do not overwrite the original;
-- complex floating objects, comments, formulas, charts, masters, and macros still rely on the original and desktop Office or WPS for fidelity.
+- Reads DOCX, PPTX, XLSX, PDF, ODT / ODS / ODP, RTF, EPUB, CSV, TXT, and Markdown;
+- exports DOCX, PDF, PPTX, XLSX, HTML, and Markdown;
+- writes back TXT and Markdown only after explicit authorization and conflict checks; other formats never overwrite the original;
+- tracks versions, restore actions, trash, downloads, and opening in a system application;
+- does not promise lossless conversion of complex floating objects, formulas, charts, comments, masters, or macros; use the original and desktop Office or WPS when fidelity matters.
 
-“Installable” does not mean “ready.” Settings reports installation, local dependencies, external configuration, and actual verification separately:
+The capability center currently exposes 17 user-facing workflows across research and verification, formal documents, presentations, meeting minutes, translation, transcription, polishing, web reports, product design, decisions, and business analysis. Installability, installed dependencies, external configuration, and verified readiness are separate states in the interface.
 
-- safe CSV / JSON analysis and EML / ICS parsing run locally; file parsing does not connect an online mailbox or calendar;
-- browser control needs the bundled Playwright MCP plus a locally installed Chrome, Edge, or Chromium;
-- image and video generation needs the user's compatible endpoint and key; configuration alone remains marked unverified.
+### Memory and automation
 
-### Memory
+Long-term memory separates user facts, assistant self-memory, task threads, and expert execution context. A pending learning proposal requires explicit confirmation before becoming memory, and ordinary work recalls only a small amount relevant to the current goal. The memory core is the separately maintained [`@nemos/sdk`](https://github.com/mmlong818/nemos-memory) dependency.
 
-Memory separates remembered information from pending learning proposals. A pending proposal enters long-term memory only after explicit confirmation; remembered content can be traced to its source, corrected, or forgotten.
+Automations schedule recurring work locally and support pause, edit, and run-now actions while retaining related tasks and artifacts. Live external results still depend on the relevant tool, connection, and permissions being operational.
 
-Ordinary tasks recall only information relevant to the current goal, and the current request always outranks historical preferences. User facts, assistant self-memory, and task context are stored separately. The memory core comes from the independent [`@nemos/sdk`](https://github.com/mmlong818/nemos-memory) dependency; this repository does not keep a second copy.
+## One-time OpenAI and Zhipu setup
 
-![Clownfish memory management](docs/assets/readme/clownfish-memory-current.png)
+The standard setup asks only for an **OpenAI** and/or **Zhipu BigModel** API key. Either key can be used alone; two keys can complement one another. Submission runs one coordinated flow:
 
-### Models
+1. encrypt credentials with Windows DPAPI for the current user;
+2. read the provider catalog or maintained candidates and shortlist recommended models;
+3. make one minimal connection check per key and at most one synthetic check for each additional capability;
+4. enable models that pass and assign capability defaults;
+5. report complete, partial, or failed outcomes without discarding healthy manual choices.
 
-Connections can target OpenAI, Anthropic Claude, Zhipu GLM, DeepSeek, Alibaba Qwen, MiniMax, and custom OpenAI- or Anthropic-compatible services. A provider catalog is for **discovering candidates**; its entries are not automatically qualified to execute tasks.
+Verification makes real provider requests and can incur small charges. APIs never return complete saved keys. Advanced settings still support additional providers, compatible protocols, custom endpoints, full catalogs, and manual overrides, but those are outside the standard two-key path.
 
-- Any model identifier can be registered, but text and tool capabilities appear only after an explicit check;
-- a check may incur a small provider charge, so it runs only after the user asks for it;
-- catalog size, release date, and model name do not replace capability verification;
-- a task can select model and reasoning effort, and a tool-requiring task does not silently fall back to a text-only model.
+Current model execution boundaries:
 
-The call ledger stores purpose, model, state, latency, and provider-reported usage. Missing usage remains unknown; the application does not guess cost or store full prompts, responses, or keys in the ledger.
+| Provider / capability | Current state |
+| --- | --- |
+| OpenAI text, vision, speech-to-text, text-to-speech, and image generation | Wired into execution; actual readiness still depends on the account, model, permission, and verification result |
+| Zhipu text tasks | Wired into execution |
+| Zhipu vision, speech, image, and other media capabilities | Not wired into the current execution path |
+| Video generation | Explicitly reported as not integrated by the two-key setup |
 
-![Clownfish model settings](docs/assets/readme/clownfish-models-current.png)
+## Integrated and not integrated
 
-## Run locally
+| Integrated | Not integrated or not promised |
+| --- | --- |
+| Local assistants, matters, tasks, skills, Pantheon, memory, files, artifacts, and automations | Official online skill listings and third-party Bot-account synchronization |
+| OpenAI + Zhipu two-key setup and capability verification | End-user built-in account connectors for online mail, calendars, GitHub, or enterprise documents |
+| Local CSV / JSON analysis and EML / ICS file parsing | Mailbox or calendar synchronization; parsing a file is not an account connection |
+| Browser control through Playwright MCP and a locally installed Chrome, Edge, or Chromium | A bundled browser, or readiness when the local dependency is absent |
+| Configurable media tools with readiness reporting | Media services not verified against a real account, and video execution in the two-key path |
+| Optional self-hosted encrypted snapshot sync | A hosted Clownfish cloud account system or real-time multi-user collaboration |
+| Sourced research, announcement, and market-data reading workflows | Live booking or transaction adapters for rail, flights, hotels, or restaurants |
 
-Requires **Node.js ≥ 22.19**. Windows is the primary target. Linux and macOS can run the web service, but API-key persistence currently depends on Windows DPAPI and is unavailable outside Windows; see the [known limitation](docs/model-key-storage-non-windows-2026-09-08.md).
+## Data, privacy, and security
+
+- The web service listens on `127.0.0.1` by default; user data defaults to `~/.clownfish`.
+- On Windows, model and tool credentials are encrypted for the current user with DPAPI, and common credential fields are redacted from logs.
+- Opening a page does not send tasks, attachments, or memory to a model. Necessary material may leave the machine only when a relevant task runs against a user-configured service.
+- Tools are subject to permission, network, and runtime auditing. The UI exposes boundaries when local processes or external services are required.
+- The optional sync service stores client-side AES-256-GCM encrypted snapshots; the local copy remains the working copy, and remote deployments require HTTPS.
+- Do not put API keys, passwords, or private tokens in task text, attachments, or project files.
+
+See [PRIVACY.en.md](PRIVACY.en.md) for storage, export, and deletion rules. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## Install and run
+
+Requires **Node.js ≥ 22.19**. Windows is the primary verified platform. Linux and macOS can run the web service, but API-key persistence currently depends on Windows DPAPI and is unavailable outside Windows; see the [known limitation](docs/model-key-storage-non-windows-2026-09-08.md).
 
 ```powershell
 git clone https://github.com/mmlong818/nemos.git
@@ -94,12 +118,13 @@ npm install
 npm run companion
 ```
 
-Open <http://localhost:8787> and save a connection under **设置 → 模型与服务** (Settings → Models & Services). Without a configured model, the application can still display local data but issues no model requests. The interface is currently primarily Chinese.
+Open <http://127.0.0.1:8787> and use **设置 → 模型与服务** (Settings → Models & Services). Without a configured model, local data remains browsable but model tasks do not run. The interface is currently primarily Chinese.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `PORT` | Web-service port | `8787` |
 | `CLOWNFISH_HOME` | User-data directory | `~/.clownfish` |
+| `COMPANION_USER` | Local user namespace | `local-user` |
 | `CLOWNFISH_SYNC_TOKEN` | Optional self-hosted sync token | unset |
 
 ### Windows portable client
@@ -109,46 +134,40 @@ cd sdk\typescript
 powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-Clownfish.ps1
 ```
 
-The output is `examples\companion\client\dist\portable\小丑鱼`. The portable package is a desktop shell; model configuration and user data still use local storage.
+Extract the generated portable ZIP completely and launch `小丑鱼.exe` from the `小丑鱼` directory. The package includes the desktop shell and required runtime, while model configuration and user data remain in the local user profile. Check that no user data is included before redistribution.
 
-## Data and security boundaries
-
-- The web service listens on `127.0.0.1` by default, and user data is stored under `~/.clownfish`;
-- Windows encrypts model credentials for the current user with DPAPI, and APIs never echo a complete key;
-- opening a page does not send attachments, tasks, or memory to a model; relevant selected material may leave the machine only when a task actually runs against the configured provider;
-- extensions and tools are subject to permission, network, and runtime auditing; the UI states when a capability needs local processes or external access;
-- the optional sync service stores AES-256-GCM encrypted snapshots while the local copy remains authoritative; remote deployment requires HTTPS.
+### Optional self-hosted sync
 
 ```powershell
 $env:CLOWNFISH_SYNC_TOKEN="replace-with-a-random-token-of-at-least-24-characters"
 docker compose up -d --build
 ```
 
-See [PRIVACY.en.md](PRIVACY.en.md) for storage and deletion rules. Report security issues privately as described in [SECURITY.md](SECURITY.md).
+A loopback URL is suitable locally. Any remote sync deployment must be placed behind HTTPS.
 
-## Current limitations
+## Current boundaries
 
-- The product is **Alpha**; data models and public APIs may change;
-- the UI is primarily Chinese, and desktop capabilities are primarily verified on Windows;
-- the official skill market is not open; no ordinary-user built-in account connectors are provided for online email, calendars, GitHub, or enterprise documents;
-- no built-in adapter performs live rail, flight, hotel, or restaurant transactions; a live result is marked confirmed only after a reliable source returns it;
-- external models, media services, and complex Office files depend on the environment, so automated coverage is not proof that every account, model, or layout has been manually verified;
-- a task waiting for input or blocked normally needs a new task to continue today; mid-run steering is not arbitrary lossless resume at every stage.
+- The product is **Alpha**; schemas, interfaces, and public APIs can change.
+- The UI is primarily Chinese, and desktop behavior is primarily verified on Windows.
+- Current automated acceptance used fake providers. It did not use real user keys or verify every external account, model, or media entitlement.
+- Complex Office layouts, third-party website changes, and live data need separate acceptance in the target environment.
+- Tasks waiting for input or blocked normally require a new task to continue; arbitrary lossless resume at every stage is not promised.
+- Pantheon sessions do not currently survive a service-process restart, while approved private thought units are stored locally.
 
 ## Repository layout
 
 | Directory | Contents |
 | --- | --- |
 | [`sdk/typescript/`](sdk/typescript/) | TypeScript integration and auditable Agent runtime |
-| [`sdk/typescript/examples/companion/`](sdk/typescript/examples/companion/) | Clownfish server, web interface, capabilities, and client |
+| [`sdk/typescript/examples/companion/`](sdk/typescript/examples/companion/) | Clownfish server, web interface, capabilities, and Windows client |
 | [`sync-service/`](sync-service/) | Optional self-hosted encrypted synchronization |
 | [`docs/`](docs/) | Current architecture, decisions, operations, and verification notes |
 | [`bench/`](bench/) | Memory benchmarks and frozen results |
-| [`spec/`](spec/) · [`rfcs/`](rfcs/) · [`archive/`](archive/) | Archived early specifications, RFCs, and process material |
+| [`spec/`](spec/) · [`rfcs/`](rfcs/) · [`archive/`](archive/) | Early specifications, RFCs, and archived process material |
 
 ## Verification and development
 
-The current revision has build and type checks plus **841 automated tests with no failures**. Tests that require Blender or platform-specific facilities are explicitly skipped when those facilities are unavailable. This count describes covered code paths, not manual acceptance of every external service.
+The current product-source baseline completed build, dual type checks, dependency-license and release-metadata checks, with **1066 automated tests with no failures** (one conditionally skipped). Documentation and package metadata are checked separately by the commands below. This establishes coverage of the tested local paths, not real-account acceptance of every external service.
 
 ```powershell
 cd sdk\typescript
@@ -157,4 +176,10 @@ cd ..\..
 node scripts\verify-docs.mjs
 ```
 
-See the [application guide](sdk/typescript/examples/companion/README.md), [Agent runtime design](sdk/typescript/examples/companion/docs/agent-runtime-design.md), and [documentation index](docs/README.en.md). Contributions are welcome, but a new capability needs a real implementation and verification rather than copy or prompts alone. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+See the [application guide](sdk/typescript/examples/companion/README.md) and [documentation index](docs/README.en.md). Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
+
+## License
+
+Copyright © 2026 **mmlong818 (猫叔)**. The current version is made available under the [Clownfish Source-Available Non-Commercial License 1.0](LICENSE): personal, educational, and nonprofit research uses are allowed; all commercial use requires separate written authorization. Modified or redistributed copies must remain noncommercial and retain the copyright and license text.
+
+This license does not retroactively revoke rights validly granted for earlier versions; those versions remain governed by the licenses distributed with them. Third-party terms are not replaced by the project license. See [LICENSING.md](LICENSING.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

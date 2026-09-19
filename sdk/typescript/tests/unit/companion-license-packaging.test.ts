@@ -10,6 +10,8 @@ const buildScript = readFileSync(
 );
 const licensing = readFileSync(join(repoRoot, "LICENSING.md"), "utf8");
 const notices = readFileSync(join(repoRoot, "THIRD_PARTY_NOTICES.md"), "utf8");
+const rootLicense = readFileSync(join(repoRoot, "LICENSE"), "utf8");
+const sdkLicense = readFileSync(join(repoRoot, "sdk", "typescript", "LICENSE"), "utf8");
 
 test("便携包携带项目和第三方授权文件", () => {
   assert.match(buildScript, /"LICENSE", "LICENSING\.md", "THIRD_PARTY_NOTICES\.md"/);
@@ -40,18 +42,23 @@ test("Buzz 适配代码保留上游许可和固定提交，并沿用随包目录
 });
 
 test("公开授权说明不把仓库整体误称为单一开源许可证项目", () => {
-  assert.match(licensing, /唯一的“包名 \+ 版本”条目/);
+  assert.match(licensing, /当前锁文件和实际安装树/);
   assert.match(licensing, /LGPL-3\.0-or-later/);
   assert.match(notices, /本仓库的许可证不会覆盖或替代这些条款/);
   assert.doesNotMatch(notices, /Pi Agent|OpenAI Codex CLI/);
 });
 
-test("应用目录不再单独授权，说明与打包脚本同步", () => {
-  // 2026-09-09 起应用与仓库其余代码同一许可证。这条守卫钉住三件事同时成立，
+test("应用目录不再单独授权，非商业许可说明与打包脚本同步", () => {
+  // 应用与仓库其余自有代码使用同一许可证。这条守卫钉住三件事同时成立，
   // 避免只改了文档而目录里还留着一份互相矛盾的权利保留声明。
   const companionLicense = join(repoRoot, "sdk", "typescript", "examples", "companion", "LICENSE");
   assert.equal(existsSync(companionLicense), false, "应用目录不应再有单独的许可证文件");
   assert.doesNotMatch(buildScript, /Clownfish-LICENSE\.txt/);
-  assert.match(licensing, /\*\*小丑鱼应用\*\* \| `sdk\/typescript\/examples\/companion\/` \| PolyForm Noncommercial 1\.0\.0/);
-  assert.match(licensing, /## 为什么统一到一个许可证/);
+  assert.match(licensing, /\*\*小丑鱼应用\*\* \| `sdk\/typescript\/examples\/companion\/` \| Clownfish Source-Available Non-Commercial License 1\.0/);
+  assert.match(licensing, /## 旧版本不追溯变更/);
+  assert.equal(sdkLicense, rootLicense, "SDK 分发许可证应与根许可证逐字一致");
+  assert.match(rootLicense, /Complete Prohibition on Commercial Use/);
+  assert.match(rootLicense, /internal business operations/);
+  assert.match(rootLicense, /SaaS, hosted service/);
+  assert.match(rootLicense, /Earlier Versions and Effective Scope/);
 });
