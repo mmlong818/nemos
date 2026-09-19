@@ -48,7 +48,7 @@ const TIME_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   hour12: false,
 });
 
-export type ArtifactFormat = "md" | "html" | "txt" | "json" | "doc" | "pptx" | "pdf" | "xlsx";
+export type ArtifactFormat = "md" | "html" | "txt" | "json" | "doc" | "pptx" | "pdf" | "xlsx" | "png";
 
 export interface CapabilityPersona {
   id: string;
@@ -458,6 +458,21 @@ export class CapabilityRuntime {
       recentIntakes: [...this.intakes].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20),
       skillAudit: this.auditSkills(),
     };
+  }
+
+  saveGeneratedImage(data: Buffer, title = "AI 生成图片"): CapabilityArtifact {
+    if (!data.length || data.length > 20 * 1024 * 1024) throw new Error("图片为空或超过 20MB 限制。");
+    const png = data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    if (!png) throw new Error("生成结果不是有效 PNG 图片。");
+    const id = uniqueId("artifact");
+    const file = join(this.artifactDir, `${id}.png`);
+    writeFileSync(file, data, { flag: "wx" });
+    const createdAt = new Date().toISOString();
+    const artifact: CapabilityArtifact = { id, taskId: `generated-image-${id}`, capabilityId: "image-generation", personaId: "clownfish", title: text(title, "AI 生成图片", 120), format: "png", file, createdAt, summary: "由已配置的图片生成模型创建并安全保存在本机成果库。" };
+    withArtifactProof(artifact);
+    this.artifacts.push(artifact);
+    this.saveArtifacts();
+    return artifact;
   }
 
   listAbilities(): Capability[] {
@@ -1914,7 +1929,7 @@ export class CapabilityRuntime {
       res.end();
       return true;
     }
-    if (artifact.format === "pdf") {
+    if (artifact.format === "pdf" || artifact.format === "png") {
       res.writeHead(200, {
         "Content-Type": contentType(artifact.format),
         "Content-Disposition": "inline",
@@ -3180,7 +3195,7 @@ function firstParagraph(content: string): string {
 }
 
 function normalizeFormat(format?: string): ArtifactFormat {
-  if (format === "html" || format === "txt" || format === "json" || format === "doc" || format === "pptx" || format === "pdf" || format === "xlsx") return format;
+  if (format === "html" || format === "txt" || format === "json" || format === "doc" || format === "pptx" || format === "pdf" || format === "xlsx" || format === "png") return format;
   return "md";
 }
 
@@ -3500,6 +3515,7 @@ function extension(format: ArtifactFormat): string {
   if (format === "doc") return "docx";
   if (format === "pdf") return "pdf";
   if (format === "xlsx") return "xlsx";
+  if (format === "png") return "png";
   if (format === "html") return "html";
   if (format === "txt") return "txt";
   if (format === "json") return "json";
@@ -3511,6 +3527,7 @@ function contentType(format: ArtifactFormat): string {
   if (format === "doc") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   if (format === "pdf") return "application/pdf";
   if (format === "xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (format === "png") return "image/png";
   if (format === "html") return "text/html; charset=utf-8";
   if (format === "json") return "application/json; charset=utf-8";
   return "text/plain; charset=utf-8";
@@ -3520,6 +3537,7 @@ function formatLabel(format: ArtifactFormat): string {
   if (format === "pptx") return "可编辑 PowerPoint";
   if (format === "pdf") return "PDF";
   if (format === "xlsx") return "Excel";
+  if (format === "png") return "PNG 图片";
   if (format === "html") return "HTML";
   if (format === "json") return "JSON";
   if (format === "txt") return "纯文本";

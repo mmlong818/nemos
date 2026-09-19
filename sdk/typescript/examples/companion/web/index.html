@@ -2700,7 +2700,7 @@
         <div class="model-actions">
           <button id="modelOffline" class="btn-secondary" type="button">使用离线模式</button>
           <span id="llmstatus" role="status" aria-live="polite"></span>
-          <button id="modelSave" class="btn-primary" type="submit">保存（不检查）</button>
+          <button id="modelSave" class="btn-primary" type="submit">保存连接</button>
         </div>
       </form>
     </div>
@@ -7338,26 +7338,28 @@ $("#modelForm").onsubmit = async (event) => {
   btn.disabled = true;
   btn.textContent = "正在保存…";
   $("#llmstatus").className = "";
-  $("#llmstatus").textContent = "正在保存连接；不会读取目录或检查模型…";
+  $("#llmstatus").textContent = "正在加密保存连接；不会联网或改变默认模型…";
   try {
-    const state = await api("/api/llm-config", {
+    const payload = {
+      connectionId: modelConnectionState?.resourceCenter?.connections?.find((item) => item.active)?.id,
       provider: $("#modelProvider").value,
       protocol: $("#modelProtocol").value,
       baseUrl: $("#modelBaseUrl").value.trim(),
       model: $("#modelName").value.trim(),
       selectionMode: $("#modelSelectionMode").value,
       key: $("#modelKey").value.trim()
-    });
+    };
+    const state = await api("/api/llm-connection/save", payload);
     renderModelConnectionStatus(state, true);
     $("#llmstatus").className = "success";
-    $("#llmstatus").textContent = "已保存 " + state.model + "；当前为" + window.ClownfishModelShortlist.checkLabel(state.check, state) + "。" + (state.catalogWarning || "");
+    $("#llmstatus").textContent = "连接已保存；可到模型设置刷新目录、测试型号并单独设置默认模型。";
     await loadState();
   } catch (error) {
     $("#llmstatus").className = "error";
-    $("#llmstatus").textContent = "连接失败：" + (error && error.message ? error.message : "请检查配置");
+    $("#llmstatus").textContent = "保存失败：" + (error && error.message ? error.message : "请检查配置");
   } finally {
     btn.disabled = false;
-    btn.textContent = "保存（不检查）";
+    btn.textContent = "保存连接";
   }
 };
 $("#modelOffline").onclick = async () => {
@@ -7365,7 +7367,7 @@ $("#modelOffline").onclick = async () => {
   $("#llmstatus").className = "";
   $("#llmstatus").textContent = "正在切换到离线模式…";
   try {
-    const state = await api("/api/llm-config", { offline: true });
+    const state = await api("/api/llm-disconnect", {});
     renderModelConnectionStatus(state, true);
     $("#llmstatus").className = "success";
     $("#llmstatus").textContent = "已切换到离线模式。";

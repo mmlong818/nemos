@@ -45,6 +45,26 @@ test("checks actual text, fragmented streaming tools and the synthetic result ro
   });
 });
 
+test("GLM-5.3 readiness uses its documented thinking profile and starts with no optional parameters", async () => {
+  const zhipu = ensureConnectionRevision(normalizeCompanionModelConnection({ provider: "zhipu", model: "glm-5.3", apiKey: "fixture-key" }));
+  const requests: any[] = [];
+  await withFetch(async (_url, init) => {
+    const body = JSON.parse(String(init?.body)); requests.push(body);
+    return compatibleReply(body);
+  }, async () => {
+    const result = await checkCompanionModel(zhipu);
+    assert.equal(result.chat, "passed");
+    assert.equal(result.streaming, "passed");
+  });
+  assert.deepEqual(Object.keys(requests[0]).sort(), ["messages", "model", "stream", "thinking"]);
+  assert.equal(requests[0].stream, false);
+  assert.deepEqual(requests[0].thinking, { type: "enabled" });
+  assert.equal(requests[0].max_tokens, undefined);
+  assert.equal(requests[0].temperature, undefined);
+  assert.equal(requests[1].stream, true);
+  assert.deepEqual(requests[1].thinking, { type: "enabled" });
+});
+
 test("a JSON-only gateway falls back to buffered output and still checks tools", async () => {
   await withFetch(async (_url, init) => compatibleReply({ ...JSON.parse(String(init?.body)), stream: false }), async () => {
     const check = await checkCompanionModel(connection);
@@ -62,6 +82,29 @@ test("malformed function arguments are not counted as working tools", async () =
     assert.equal(check.chat, "passed"); assert.equal(check.tools, "failed");
     const model = makeConnectionAgentModel({ connection: { ...connection, modelChecks: { chosen: check } }, model: "chosen", stream: false, temperature: 0, maxTokens: 30 });
     assert.throws(() => model.complete({ messages: [], tools: [{ name: "actual_tool", description: "", inputSchema: {} }], signal: new AbortController().signal }), /工具调用检查未通过/);
+  });
+});
+
+test("a failed text probe retains only a classified status and safe request ID", async () => {
+  await withFetch(async () => new Response("fixture-secret-should-not-escape", {
+    status: 400, headers: { "x-request-id": "req_safe-123" },
+  }), async () => {
+    const check = await checkCompanionModel(connection);
+    assert.equal(check.chat, "failed");
+    assert.deepEqual(check.diagnostic, { category: "parameter", httpStatus: 400, requestId: "req_safe-123" });
+    assert.doesNotMatch(JSON.stringify(check), /secret/);
+  });
+});
+
+test("a Zhipu failure retains only its numeric error code, never the provider message", async () => {
+  const zhipu = ensureConnectionRevision(normalizeCompanionModelConnection({ provider: "zhipu", model: "glm-5.3", apiKey: "fixture-key" }));
+  await withFetch(async () => new Response(JSON.stringify({ error: { code: 1213, message: "provider-secret-message" } }), {
+    status: 400, headers: { "x-request-id": "req_zhipu-7" },
+  }), async () => {
+    const check = await checkCompanionModel(zhipu);
+    assert.equal(check.chat, "failed");
+    assert.deepEqual(check.diagnostic, { category: "parameter", httpStatus: 400, requestId: "req_zhipu-7", providerCode: "1213" });
+    assert.doesNotMatch(JSON.stringify(check), /secret-message/);
   });
 });
 

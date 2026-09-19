@@ -19,9 +19,10 @@
  * 于是它会在一部分用户那里静默无效。改用 undici 的 dispatcher，22 以上都工作。
  */
 
+import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 
-export type OutboundProxyMode = "off" | "environment" | "explicit";
+export type OutboundProxyMode = "auto" | "system" | "direct" | "off" | "environment" | "explicit";
 
 export interface OutboundProxySettings {
   version: 1;
@@ -37,6 +38,16 @@ export interface ResolvedOutboundProxy {
   httpsProxy: string;
   /** 逗号分隔，交给 undici 的 EnvHttpProxyAgent 做后缀与端口匹配。 */
   noProxy: string;
+}
+
+export interface WindowsSystemProxySnapshot {
+  httpProxy?: string;
+  httpsProxy?: string;
+  bypass: string[];
+  /** PAC/WPAD is deliberately not evaluated by the application. */
+  pacUrl?: string;
+  autoDetect?: boolean;
+  source: "internet-settings" | "winhttp" | "none";
 }
 
 export class OutboundProxyError extends Error {
@@ -60,7 +71,7 @@ export const OUTBOUND_PROXY_LIMITS = {
 const ALWAYS_BYPASS = ["localhost", "127.0.0.1", "::1"] as const;
 
 export function defaultOutboundProxySettings(): OutboundProxySettings {
-  return { version: 1, mode: "off", noProxy: [] };
+  return { version: 1, mode: process.platform === "win32" ? "auto" : "direct", noProxy: [] };
 }
 
 export function normalizeOutboundProxySettings(value: unknown): OutboundProxySettings {
@@ -69,8 +80,8 @@ export function normalizeOutboundProxySettings(value: unknown): OutboundProxySet
   const raw = value as Partial<OutboundProxySettings>;
   if (raw.version !== undefined && raw.version !== 1) throw new OutboundProxyError("代理设置版本不受支持");
   const mode = raw.mode ?? "off";
-  if (mode !== "off" && mode !== "environment" && mode !== "explicit") {
-    throw new OutboundProxyError("代理模式只能是 off、environment 或 explicit");
+  if (!["auto", "system", "direct", "off", "environment", "explicit"].includes(mode)) {
+    throw new OutboundProxyError("代理模式只能是 auto、system、direct、environment 或 explicit");
   }
   const noProxy = normalizeNoProxyList(raw.noProxy);
   if (mode !== "explicit") return { version: 1, mode, noProxy };
@@ -135,8 +146,9 @@ export function resolveOutboundProxy(
   settings: OutboundProxySettings,
   env: Record<string, string | undefined> = {},
   directHosts: readonly string[] = [],
+  windowsSystem?: WindowsSystemProxySnapshot,
 ): ResolvedOutboundProxy | undefined {
-  if (settings.mode === "off") return undefined;
+  if (settings.mode === "off" || settings.mode === "direct") return undefined;
   const bypass = new Set<string>([...ALWAYS_BYPASS, ...settings.noProxy]);
   for (const host of directHosts) {
     const value = normalizeBypassHost(host);
@@ -146,6 +158,28 @@ export function resolveOutboundProxy(
     const url = settings.url ? normalizeProxyUrl(settings.url) : "";
     if (!url) return undefined;
     return { httpProxy: url, httpsProxy: url, noProxy: [...bypass].join(",") };
+  }
+  if (settings.mode === "auto" || settings.mode === "system") {
+    if (process.platform !== "win32" && settings.mode === "auto") return undefined;
+    if (!windowsSystem) throw new OutboundProxyError("无法读取当前 Windows 用户的系统代理设置；已阻止模型请求，未回退直连");
+    if (windowsSystem.pacUrl || windowsSystem.autoDetect) {
+      throw new OutboundProxyError("检测到 PAC/WPAD/自动代理；小丑鱼不会下载或执行动态代理脚本。请改用系统中的固定 HTTP/HTTPS 代理，或在高级设置选择直连");
+    }
+    for (const entry of windowsSystem.bypass) {
+      const value = entry.trim().toLowerCase();
+      if (value) bypass.add(value);
+    }
+    const httpProxy = String(windowsSystem.httpProxy || windowsSystem.httpsProxy || "").trim();
+    const httpsProxy = String(windowsSystem.httpsProxy || windowsSystem.httpProxy || "").trim();
+    if (!httpProxy && !httpsProxy) {
+      if (settings.mode === "auto") return undefined;
+      throw new OutboundProxyError("当前 Windows 用户没有可用的固定系统代理；已阻止模型请求，未回退直连");
+    }
+    return {
+      httpProxy: normalizeProxyUrl(httpProxy),
+      httpsProxy: normalizeProxyUrl(httpsProxy),
+      noProxy: [...bypass].join(","),
+    };
   }
   const httpProxy = String(env.http_proxy ?? env.HTTP_PROXY ?? "").trim();
   const httpsProxy = String(env.https_proxy ?? env.HTTPS_PROXY ?? "").trim();
@@ -205,6 +239,24 @@ export function publicOutboundProxy(
     host: resolved ? safeProxyHost(resolved.httpsProxy || resolved.httpProxy) : "",
     bypass: resolved ? resolved.noProxy.split(",").filter(Boolean) : [],
   };
+}
+
+/** Public transport identity only; credentials are rejected before this point. */
+export function outboundProxyFingerprint(
+  settings: OutboundProxySettings,
+  resolved: ResolvedOutboundProxy | undefined,
+  error = "",
+  generation = 0,
+): string {
+  const material = JSON.stringify({
+    mode: settings.mode === "off" ? "direct" : settings.mode,
+    http: resolved ? safeProxyHost(resolved.httpProxy) : "direct",
+    https: resolved ? safeProxyHost(resolved.httpsProxy) : "direct",
+    noProxy: resolved?.noProxy.split(",").filter(Boolean).sort() || [],
+    error,
+    generation,
+  });
+  return createHash("sha256").update(material).digest("hex").slice(0, 24);
 }
 
 function safeProxyHost(value: string): string {

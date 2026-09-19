@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveReasoningEffort, supportedReasoningEfforts } from "../../examples/companion/model-reasoning.js";
+import { resolveReasoningEffort, resolveReasoningPreference, supportedReasoningEfforts } from "../../examples/companion/model-reasoning.js";
 import { makeConnectionAgentModel, resolveLLM } from "../../examples/companion/llm.js";
 import { usesOpenAIResponses, type CompanionModelConnection } from "../../examples/companion/model-connection.js";
 
@@ -13,6 +13,18 @@ test("supported efforts are model/protocol specific, auto omits overrides, inval
   for (const value of ["none", "ultra", "", null, { effort: "low" }]) assert.throws(() => resolveReasoningEffort(connection, connection.model, value));
   assert.throws(() => resolveReasoningEffort({ ...connection, provider: "custom" }, connection.model, "high"));
   assert.throws(() => resolveReasoningEffort(connection, "unknown", "high"));
+  const zhipu: CompanionModelConnection = { provider: "zhipu", protocol: "openai-compatible", model: "glm-5.3", baseUrl: "https://open.bigmodel.cn/api/paas/v4", apiKey: "fixture-only" };
+  assert.deepEqual(supportedReasoningEfforts(zhipu, zhipu.model), ["low", "high", "max"]);
+  assert.equal(resolveReasoningEffort(zhipu, zhipu.model, "high"), "high");
+  assert.throws(() => resolveReasoningEffort(zhipu, zhipu.model, "medium"));
+});
+
+test("request, scene and system reasoning preferences have one strict precedence order", () => {
+  assert.equal(resolveReasoningPreference(connection, connection.model, { request: "low", scene: "medium", system: "high" }), "low");
+  assert.equal(resolveReasoningPreference(connection, connection.model, { scene: "medium", system: "high" }), "medium");
+  assert.equal(resolveReasoningPreference(connection, connection.model, { system: "high" }), "high");
+  assert.equal(resolveReasoningPreference(connection, connection.model, { request: "auto", scene: "high", system: "medium" }), undefined);
+  assert.throws(() => resolveReasoningPreference(connection, connection.model, { scene: "none", system: "high" }));
 });
 
 test("model adapters forward exact efforts on Responses and Chat Completions without budget changes", async () => {

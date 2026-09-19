@@ -17,6 +17,7 @@ export interface SourceDeps {
   readonly agentUserActions: AgentUserActionGateway;
   readonly clearSavedXToken: () => void;
   readonly completeXOAuth: (code: string, state: string) => Promise<{ userId: string; username?: string; name?: string }>;
+  readonly consumePendingXOAuthState: (state: string) => unknown;
   readonly knowledgeLibrary: KnowledgeLibrary;
   readonly marketData: ReturnType<typeof createMarketDataAdapter>;
   readonly modelConnectionUserMessage: (detail: string) => string;
@@ -30,7 +31,7 @@ export interface SourceDeps {
 }
 
 export function createSourceRoutes(deps: SourceDeps): RouteEntry[] {
-  const { DATA_DIR, X_OAUTH_REDIRECT, agentUserActions, clearSavedXToken, completeXOAuth, knowledgeLibrary, marketData, modelConnectionUserMessage, readBody, saveSavedXToken, savedXTokenExists, send, startXOAuth, xOAuthCallbackHtml } = deps;
+  const { DATA_DIR, X_OAUTH_REDIRECT, agentUserActions, clearSavedXToken, completeXOAuth, consumePendingXOAuthState, knowledgeLibrary, marketData, modelConnectionUserMessage, readBody, saveSavedXToken, savedXTokenExists, send, startXOAuth, xOAuthCallbackHtml } = deps;
   // TSC_DESTRUCTURE
   void deps;
   return [
@@ -161,8 +162,12 @@ export function createSourceRoutes(deps: SourceDeps): RouteEntry[] {
       const state = q.get("state") || "";
       const denied = q.get("error") || "";
       try {
-        if (denied) throw new Error(`X 授权取消或失败：${denied}`);
-        if (!code || !state) throw new Error("X 回调缺少 code 或 state");
+        if (!state) throw new Error("X 回调缺少 state");
+        if (denied || !code) {
+          consumePendingXOAuthState(state);
+          if (denied) throw new Error(`X 授权取消或失败：${denied}`);
+          throw new Error("X 回调缺少 code");
+        }
         const action = await agentUserActions.execute({
           name: "source_x_oauth_complete",
           description: "完成用户已在 X 授权页确认的 OAuth 连接",
@@ -172,10 +177,28 @@ export function createSourceRoutes(deps: SourceDeps): RouteEntry[] {
           summarizeResult: (me) => ({ ok: true, provider: "x", userId: me.userId, username: me.username }),
         });
         const me = action.value;
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "cross-origin-opener-policy": "same-origin",
+          "cross-origin-resource-policy": "same-origin",
+          "permissions-policy": "camera=(), microphone=(), geolocation=()",
+          "referrer-policy": "no-referrer",
+          "x-content-type-options": "nosniff",
+        });
         res.end(xOAuthCallbackHtml(true, `已连接 @${me.username || me.userId}，Home Timeline 会在小丑鱼执行任务时作为私域来源读取。`));
       } catch (e) {
-        res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        res.writeHead(400, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "cross-origin-opener-policy": "same-origin",
+          "cross-origin-resource-policy": "same-origin",
+          "permissions-policy": "camera=(), microphone=(), geolocation=()",
+          "referrer-policy": "no-referrer",
+          "x-content-type-options": "nosniff",
+        });
         res.end(xOAuthCallbackHtml(false, "授权未完成，请返回设置后重试。"));
       }
       return;

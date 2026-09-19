@@ -12,6 +12,9 @@ import {
   modelConnectionEndpoint,
   modelTransport,
   normalizeCompanionModelConnection,
+  companionModelFailureDiagnostic,
+  safeProviderRequestId,
+  safeZhipuProviderErrorCode,
   selectCompanionConversationModel,
   withConnectionRevision,
 } from "../../examples/companion/model-connection.js";
@@ -64,6 +67,47 @@ test("Anthropic model catalog uses its native headers and parses creation dates"
   }
 });
 
+test("model catalog failures keep only a classified status and validated request ID", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("provider-secret-body", {
+    status: 400, headers: { "x-request-id": "req_catalog-7" },
+  });
+  try {
+    await assert.rejects(fetchCompanionModelCatalog(normalizeCompanionModelConnection({ provider: "zhipu", apiKey: "fixture-key" })), (error: unknown) => {
+      const diagnostic = companionModelFailureDiagnostic(error);
+      assert.deepEqual(diagnostic, { category: "parameter", httpStatus: 400, requestId: "req_catalog-7" });
+      assert.doesNotMatch(String(error), /secret/);
+      return true;
+    });
+  } finally { globalThis.fetch = previousFetch; }
+});
+
+test("network failures expose only actionable machine categories", () => {
+  const cases = [
+    ["ENOTFOUND", "dns"],
+    ["ECONNREFUSED", "refused"],
+    ["UND_ERR_CONNECT_TIMEOUT", "timeout"],
+    ["CERT_HAS_EXPIRED", "tls"],
+  ] as const;
+  for (const [code, networkKind] of cases) {
+    const error = new TypeError("fetch failed", { cause: Object.assign(new Error("private upstream detail"), { code }) });
+    assert.deepEqual(companionModelFailureDiagnostic(error), { category: "network", networkKind });
+  }
+});
+
+test("provider request IDs are emitted only when they match the safe format", () => {
+  assert.equal(safeProviderRequestId(new Headers({ "x-request-id": "req_catalog-7:/_" })), "req_catalog-7:/_");
+  assert.equal(safeProviderRequestId(new Headers({ "x-request-id": "provider body: secret" })), undefined);
+  assert.equal(safeProviderRequestId(new Headers({ "x-request-id": "x".repeat(129) })), undefined);
+});
+
+test("Zhipu error parsing retains only the documented numeric machine code", async () => {
+  const response = new Response(JSON.stringify({ error: { code: 1213, message: "provider-secret-body" } }), { status: 400 });
+  assert.equal(await safeZhipuProviderErrorCode(response), "1213");
+  const rejected = new Response(JSON.stringify({ error: { code: "provider secret body" } }), { status: 400 });
+  assert.equal(await safeZhipuProviderErrorCode(rejected), undefined);
+});
+
 test("model connection applies provider presets and protects remote transport", () => {
   assert.match(companionModelProviderPreset("anthropic").note, /原生 SSE.*显式检查.*完整 JSON/);
   const connection = normalizeCompanionModelConnection({
@@ -72,7 +116,8 @@ test("model connection applies provider presets and protects remote transport", 
   });
   assert.equal(connection.protocol, "openai-compatible");
   assert.equal(connection.baseUrl, "https://api.deepseek.com");
-  assert.equal(connection.model, "deepseek-v4-pro");
+  assert.equal(connection.model, "deepseek-flash");
+  assert.equal(companionModelProviderPreset("minimax").baseUrl, "https://api.minimax.cn/v1");
   assert.equal(modelConnectionEndpoint(connection), "https://api.deepseek.com/chat/completions");
 
   assert.throws(() => normalizeCompanionModelConnection({
@@ -83,9 +128,9 @@ test("model connection applies provider presets and protects remote transport", 
   assert.throws(() => normalizeCompanionModelConnection({ provider: "unknown-provider" as never }), /不支持的模型服务商/);
 });
 
-test("connection revisions preserve favourites but never reuse checks after an endpoint or credential change", () => {
+test("connection revisions preserve registered models but never reuse checks after an endpoint or credential change", () => {
   const original = ensureConnectionRevision(normalizeCompanionModelConnection({
-    provider: "custom", baseUrl: "http://127.0.0.1:1234/v1", model: "any/model:id", favoriteModels: ["any/model:id", "  pinned  ", "pinned"],
+    provider: "custom", baseUrl: "http://127.0.0.1:1234/v1", model: "any/model:id", registeredModels: ["any/model:id", "  pinned  ", "pinned"],
   }));
   const checked = {
     ...original,
@@ -102,21 +147,24 @@ test("connection revisions preserve favourites but never reuse checks after an e
   assert.deepEqual(injected.modelChecks, {});
   const changed = withConnectionRevision({ ...checked, baseUrl: "http://127.0.0.1:2345/v1" }, checked);
   assert.notEqual(changed.connectionRevision, checked.connectionRevision);
-  assert.deepEqual(changed.favoriteModels, ["any/model:id", "pinned"]);
+  assert.deepEqual(changed.registeredModels, ["any/model:id", "pinned"]);
   assert.deepEqual(changed.modelChecks, {});
   const rotatedKey = withConnectionRevision(checked, checked, true);
   assert.notEqual(rotatedKey.connectionRevision, checked.connectionRevision);
   assert.deepEqual(rotatedKey.modelChecks, {});
+  const changedNetwork = withConnectionRevision({ ...checked, networkFingerprint: "a".repeat(24) }, checked);
+  assert.notEqual(changedNetwork.connectionRevision, checked.connectionRevision);
+  assert.deepEqual(changedNetwork.modelChecks, {});
 });
 
 test("daily conversations use provider chat models while experts and explicit overrides keep the main route", () => {
   const connection = normalizeCompanionModelConnection({ provider: "zhipu", apiKey: "test-key" });
-  assert.equal(dailyChatModelForConnection(connection), "glm-5.2");
+  assert.equal(dailyChatModelForConnection(connection), "glm-5.3");
   assert.equal(selectCompanionConversationModel({
     connection,
     target: { kind: "persona", id: "clownfish" },
     expertPersonaIds: new Set(["product_advisor"]),
-  }), "glm-5.2");
+  }), "glm-5.3");
   assert.equal(selectCompanionConversationModel({
     connection,
     target: { kind: "persona", id: "clownfish" },
@@ -126,7 +174,7 @@ test("daily conversations use provider chat models while experts and explicit ov
     connection,
     target: { kind: "persona", id: "clownfish" },
     instruction: "今天还在加班，有点累",
-  }), "glm-5.2");
+  }), "glm-5.3");
   assert.equal(selectCompanionConversationModel({
     connection,
     target: { kind: "persona", id: "clownfish" },
@@ -185,6 +233,7 @@ test("Anthropic connection keeps Companion tools available", async () => {
     assert.equal(String(input), "https://api.anthropic.com/v1/messages");
     const headers = init?.headers as Record<string, string>;
     assert.equal(headers["x-api-key"], "anthropic-test-key");
+    assert.equal(headers.Authorization, undefined);
     const body = JSON.parse(String(init?.body)) as { messages: Array<{ role: string; content: unknown }> };
     if (calls === 1) {
       return Response.json({

@@ -159,16 +159,23 @@ test("持锁期间发起切换：以 model_update_busy 拒绝", async () => {
 // 协调器的价值全在"每个改连接的入口都走它"。漏掉一个就等于那条路径没有闸门，
 // 所以这里钉住接线本身，而不只是协调器的内部行为。
 
-test("四个模型设置入口都经过协调器，且旧的布尔量已彻底移除", () => {
+test("统一连接与离线入口经过协调器，旧写入口只返回迁移错误", () => {
   const server = readServerRouteSurface();
-  // 改连接的两个入口走完整切换（含排空与任务领取闸门）。
+  const connect = server.slice(server.indexOf('url === "/api/llm-connect"'), server.indexOf('url === "/api/llm-disconnect"'));
+  assert.match(connect, /modelSwitch\.run\(/);
+  assert.match(connect, /waitForJobsMs/, "要允许调用方给排空预算");
+  const disconnect = server.slice(server.indexOf('url === "/api/llm-disconnect"'), server.indexOf('url === "/api/llm-routing"'));
+  assert.match(disconnect, /modelSwitch\.run\(/);
   const config = server.slice(server.indexOf('url === "/api/llm-config"'), server.indexOf('url === "/api/llm-key"'));
-  assert.match(config, /modelSwitch\.run\(/);
-  assert.match(config, /waitForJobsMs/, "要允许调用方给排空预算");
-  const key = server.slice(server.indexOf('url === "/api/llm-key"'), server.indexOf('url === "/api/llm-key"') + 2_000);
-  assert.match(key, /modelSwitch\.run\(/);
+  assert.match(config, /deprecated_endpoint/);
+  assert.match(config, /migrateTo: "\/api\/llm-connect"/);
+  assert.doesNotMatch(config, /rebuildLLM|modelSwitch\.run|saveSavedLLMConnection/);
+  const key = server.slice(server.indexOf('url === "/api/llm-key"'), server.indexOf('url === "/api/llm-key"') + 600);
+  assert.match(key, /deprecated_endpoint/);
+  assert.match(key, /migrateTo: "\/api\/llm-connect"/);
+  assert.doesNotMatch(key, /rebuildLLM|modelSwitch\.run|saveSavedLLMConnection/);
   // 不改连接但必须与切换互斥的两个入口只上锁。
-  assert.equal((server.match(/modelSwitch\.tryLock\(\)/g) || []).length, 2, "显式检查与目录读取各上一次锁");
+  assert.equal((server.match(/modelSwitch\.tryLock\(\)/g) || []).length, 3, "目录、模型检查与能力检查各上一次锁");
   // 原来那个进程内布尔量不能再存在，否则会出现两套互斥机制。
   assert.doesNotMatch(server, /modelConnectionUpdating/);
   // 切换进展要能被界面读到。

@@ -12,7 +12,7 @@ import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, r
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import Database from "better-sqlite3";
 import {
   AgentExtensionRegistry,
@@ -59,27 +59,72 @@ import {
 } from "./expert-contracts.js";
 import { resolveLLM, searchWeb, type ResolvedLLM } from "./llm.js";
 import { FileLlmCallLedger } from "./llm-call-ledger.js";
-import { checkSingleCompanionModel } from "./model-readiness.js";
-import { supportedReasoningEfforts, resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
+import { checkCompanionChatModel, checkSingleCompanionModel } from "./model-readiness.js";
+import { supportedReasoningEfforts, resolveReasoningPreference, type ReasoningEffort } from "./model-reasoning.js";
 import {
   COMPANION_MODEL_PROVIDER_PRESETS,
+  CompanionModelHttpError,
+  companionModelFailureDiagnostic,
   defaultCompanionModelConnection,
-  bindModelChecksToRevision,
   ensureConnectionRevision,
   fetchCompanionModelCatalog,
   normalizeCompanionModelConnection,
   normalizeFavoriteModels,
   publicModelConnection,
-  retainModelChecksForRevision,
   dailyChatModelForConnection,
-  selectCompanionConversationModel,
   withConnectionRevision,
   isModelCheckEligible,
+  modelTransport,
+  type CompanionModelCheck,
   type CompanionModelConnection,
   type CompanionModelInfo,
   type CompanionModelProvider,
   type CompanionModelProtocol,
 } from "./model-connection.js";
+import {
+  CURATED_MODEL_CATALOG,
+  MODEL_APPLICATION_SCENES,
+  MODEL_CAPABILITIES,
+  MODEL_SCENES,
+  allResourcesForConnection,
+  providerCapabilityAdapterSupport,
+  curatedProviderCatalog,
+  curatedModelEntry,
+  detectCompanionProvider,
+  eligibleCuratedCatalog,
+  explainAutomaticRoute,
+  normalizeCapabilityAssignments,
+  planOnboardingModel,
+  validateFixedAssignment,
+  type CapabilityAssignment,
+  type ModelCapability,
+  type ModelResource,
+  type ModelScene,
+} from "./model-resource-center.js";
+import {
+  activeVaultRecord,
+  defaultChatInvocationPreferences,
+  decodeModelVault,
+  encodeModelVault,
+  runAtomicVaultActivation,
+  type RuntimeModelConnectionRecord,
+  type RuntimeModelVault,
+  type SavedModelVaultFile,
+  type SavedReasoningEffort,
+} from "./model-vault.js";
+import {
+  QUICK_SETUP_CAPABILITIES,
+  QUICK_SETUP_PROVIDERS,
+  ModelQuickSetupBusyError,
+  ModelQuickSetupCoordinator,
+  runModelQuickSetup,
+  type QuickSetupCapability,
+  type QuickSetupProvider,
+  type QuickSetupTarget,
+} from "./model-quick-setup.js";
+import { openAIImage, openAISpeech, openAITranscribe, openAIVision, type OpenAIMediaCapability } from "./openai-media.js";
+import { PROVIDER_CATALOG, officialProviderEndpoint, providerCatalogEntry, type ProviderId } from "./provider-catalog.js";
+import { discoverOfficialProviderCatalog, resolveOfficialProviderBaseUrl } from "./provider-catalog-discovery.js";
 import { COMPANION_MEMORY_FEATURES } from "./memory-config.js";
 import {
   aggregateCompanionCosts,
@@ -132,12 +177,14 @@ import { defaultNetworkPolicy, normalizeNetworkPolicy, NetworkPolicyError } from
 import {
   defaultOutboundProxySettings,
   normalizeOutboundProxySettings,
+  outboundProxyFingerprint,
   publicOutboundProxy,
   resolveOutboundProxy,
   OutboundProxyError,
   type OutboundProxySettings,
 } from "./outbound-proxy.js";
-import { installOutboundProxy, outboundProxyInstalled } from "./proxy-dispatcher.js";
+import { createDynamicOutboundDispatcher, createOutboundDispatcher, installOutboundProxy, outboundProxyInstalled } from "./proxy-dispatcher.js";
+import { assertLoopbackProxyReady, readWindowsSystemProxy } from "./windows-system-proxy.js";
 import {
   loadPrivateSourcesConfig,
   savePrivateSourcesConfig,
@@ -169,8 +216,16 @@ import { createToolRoutes } from "./routes/tools.js";
 import { createSystemRoutes } from "./routes/system.js";
 import { createSourceRoutes } from "./routes/sources.js";
 import { createCapabilityRoutes } from "./routes/capabilities.js";
+import { createPantheonRoutes } from "./routes/pantheon.js";
+import { PantheonService } from "./pantheon.js";
+import { ThoughtLibraryStore } from "./thought-library.js";
 
-const PORT = Number(process.env.PORT || 8787);
+const REQUESTED_PORT = Number(process.env.PORT ?? 8787);
+let PORT = Number.isInteger(REQUESTED_PORT) && REQUESTED_PORT >= 0 && REQUESTED_PORT <= 65535 ? REQUESTED_PORT : 8787;
+const CLIENT_TOKEN = process.env.CLOWNFISH_CLIENT_TOKEN?.trim() || "";
+const CLIENT_SESSION = process.env.CLOWNFISH_CLIENT_SESSION?.trim() || "";
+delete process.env.CLOWNFISH_CLIENT_TOKEN;
+delete process.env.CLOWNFISH_CLIENT_SESSION;
 const USER = process.env.COMPANION_USER || "me";
 const defaultDataDir = join(homedir(), ".clownfish");
 const legacyDataDir = join(homedir(), String.fromCharCode(46, 110, 101, 109, 111, 115, 45, 99, 111, 109, 112, 97, 110, 105, 111, 110));
@@ -242,9 +297,8 @@ const OUTBOUND_PROXY_FILE = runtimePath("COMPANION_OUTBOUND_PROXY", "outbound-pr
 const UNSANDBOXED_NOTICE_FILE = runtimePath("COMPANION_UNSANDBOXED_NOTICE", "unsandboxed-notice.json");
 /** 投递用尽重试的编号；从注册表取，避免编号在两处各写一遍。 */
 const DELIVERY_EXHAUSTED_CODE = failureShapeByName("deliveryAttemptsExhausted")!.code;
-const X_OAUTH_REDIRECT = `http://127.0.0.1:${PORT}/api/sources/x/oauth/callback`;
+let X_OAUTH_REDIRECT = `http://127.0.0.1:${PORT}/api/sources/x/oauth/callback`;
 const TOOL_ZHIPU_CHAT_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-const TOOL_ZHIPU_ASR_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/audio/transcriptions";
 const agentEventClients = new Set<ServerResponse>();
 
 function broadcastAgentSse(name: "job" | "run" | "approval", event: unknown): void {
@@ -349,9 +403,11 @@ function backupSummary(): { dir: string; count: number; latest: string | null } 
   }
 }
 
-/** Set when this process bound a pre-v4 file's checks; the migration must then be persisted. */
+/** Set when an older connection file was loaded and must be persisted in the current vault schema. */
 let legacyConnectionFileMigrated = false;
-let modelConnection = loadSavedLLMConnection();
+let modelVault = loadSavedLLMVault();
+let initialModelRecord = activeVaultRecord(modelVault);
+let modelConnection = initialModelRecord?.connection;
 if (modelConnection) modelConnection.modelChecks ??= {};
 /** Passed chat probes stay valid for a week; failures are always re-probed. */
 export const MODEL_CHECK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -360,9 +416,9 @@ export function isFreshModelCheck(check: { chat: string; checkedAt: string } | u
   const at = Date.parse(check.checkedAt);
   return Number.isFinite(at) && now - at < MODEL_CHECK_TTL_MS;
 }
-let modelCatalog = loadSavedLLMModelCatalog();
-let modelCatalogFetchedAt = loadSavedLLMModelCatalogFetchedAt();
-let modelCatalogConnectionRevision = loadSavedLLMModelCatalogConnectionRevision();
+let modelCatalog = initialModelRecord?.catalog || [];
+let modelCatalogFetchedAt = initialModelRecord?.catalogFetchedAt || "";
+let modelCatalogConnectionRevision = initialModelRecord?.catalogConnectionRevision || "";
 // Binding a v2/v3 file's checks is a one-time migration, so persist it as v4 now. Without
 // this write the file stays legacy and every restart mints a fresh revision and re-blesses
 // the same stale checks, which would defeat the revision guard entirely.
@@ -374,13 +430,102 @@ if (modelConnection && legacyConnectionFileMigrated) {
     console.error(`[companion] 旧模型连接文件升级为 v4 失败，本次仍按迁移结果运行：${error instanceof Error ? error.message : String(error)}`);
   }
 }
+initialModelRecord = undefined;
 loadSavedXToken();
 let userProfile = loadUserProfile();
 
+// Every provider HTTP request resolves one immutable network snapshot. The callback is
+// invoked only after module initialization, when outboundProxy has been loaded below.
+const dynamicModelDispatcher = createDynamicOutboundDispatcher(() => currentNetworkPolicySnapshot());
+function runtimeModelConnection(connection: CompanionModelConnection | undefined): CompanionModelConnection | undefined {
+  if (!connection) return undefined;
+  const detection = detectCompanionProvider(connection.baseUrl);
+  if (connection.provider !== "custom" && (detection.confidence !== "exact" || detection.provider !== connection.provider)) return undefined;
+  return connection.transportDispatcher ? connection : { ...connection, transportDispatcher: dynamicModelDispatcher };
+}
 // llm / mem / engine 可在运行时随 LLM key 变更而重建（见 rebuildLLM）。key 用当前 Windows 用户 DPAPI 加密保存。
-let llm = resolveLLM(modelConnection);
+let llm = resolveLLM(runtimeModelConnection(modelConnection));
 let mem = makeMem();
 let engine = makeEngine();
+
+function resolveChatInvocation(scene: ModelScene, requestModel?: string, requestEffort?: ReasoningEffort | "auto"): { model?: string; reasoningEffort?: ReasoningEffort } {
+  const sceneAssignment = modelVault.assignments.scenes[scene]?.chat;
+  const assignment = sceneAssignment || modelVault.assignments.system.chat;
+  const routed = assignment.mode === "fixed"
+    ? assignment.ref
+    : explainAutomaticRoute("chat", modelVaultResources()).selected;
+  const selectedModel = String(requestModel || routed?.modelId || "").trim();
+  if (!selectedModel) throw new Error("没有可用于文字对话的已验证模型，请先在设置中检查并选择模型。");
+  const selectedConnectionId = requestModel ? modelVault.activeConnectionId : routed?.connectionId;
+  // A model override is executed by the active connection's adapter. Cross-
+  // connection scene routing requires a per-call connection runtime, which is
+  // deliberately not claimed here.
+  if (selectedConnectionId !== modelVault.activeConnectionId) {
+    throw new Error("此应用设置的模型连接当前未启用；请先把该连接设为系统默认，系统没有改用其他模型。");
+  }
+  const record = activeVaultRecord(modelVault);
+  const resource = modelVaultResources().find((item) => item.connectionId === selectedConnectionId && item.modelId === selectedModel
+    && item.enabled === true && item.capabilities.includes("chat") && item.evidence.verified && item.executionState?.chat === "available");
+  if (!record || !resource) throw new Error(`模型 ${selectedModel} 尚未通过当前连接的文字检查；系统没有改用其他模型。`);
+  return { model: selectedModel, reasoningEffort: resolveReasoningPreference(record.connection, selectedModel, {
+    request: requestEffort,
+    scene: modelVault.chatPreferences.scenes[scene]?.reasoningEffort,
+    system: modelVault.chatPreferences.system.reasoningEffort,
+  }) };
+}
+const thoughtLibrary = new ThoughtLibraryStore(join(DATA_DIR, "pantheon-thought-library.json"), {
+  scopeId: USER,
+  completion: (request) => {
+    const policy = resolveChatInvocation("distillation");
+    return llm.chat(
+    request.system,
+    request.user,
+    policy.model,
+    request.maxTokens,
+    {
+      userId: USER,
+      personaId: "pantheon:distiller",
+      instruction: request.user,
+      scope: "pantheon:thought-library",
+      memoryScopes: [],
+      mode: "task",
+      surface: "task",
+      sessionId: request.sessionId,
+      runId: request.runId,
+      toolMode: "off",
+      reasoningEffort: policy.reasoningEffort,
+      runtimeLimits: { maxRounds: 1, maxToolRounds: 0, maxTotalTokens: request.maxTokens, maxOutputChars: 8_000 },
+      llmPurpose: "other",
+    },
+  ); },
+});
+const pantheon = new PantheonService({
+  thoughtLibrary,
+  scopeId: `${USER}:${CLIENT_SESSION || "local"}`,
+  completion: (request) => {
+    const policy = resolveChatInvocation("pantheon");
+    return llm.chat(
+    request.system,
+    request.user,
+    policy.model,
+    request.maxTokens,
+    {
+      userId: USER,
+      personaId: request.seatId ? `pantheon:${request.seatId}` : "pantheon:moderator",
+      instruction: request.user,
+      scope: "pantheon:debate",
+      memoryScopes: [],
+      mode: "task",
+      surface: "task",
+      sessionId: request.sessionId,
+      runId: request.runId,
+      toolMode: "off",
+      reasoningEffort: policy.reasoningEffort,
+      runtimeLimits: { maxRounds: 1, maxToolRounds: 0, maxTotalTokens: request.maxTokens, maxOutputChars: 4_000 },
+      llmPurpose: "other",
+    },
+  ); },
+});
 const agentRunStore = new FileAgentRunStore(AGENT_RUNS_FILE);
 const llmCallLedger = new FileLlmCallLedger(LLM_CALL_LEDGER_FILE);
 const agentApprovalStore = new FileAgentApprovalStore(AGENT_APPROVALS_FILE, { onChange: broadcastApprovalEvent });
@@ -417,12 +562,51 @@ try {
 }
 
 /** 模型地址里的回环与私网主机要直连，否则配了代理的人用不了本机模型服务。 */
-function outboundProxyDirectHosts(): string[] {
-  return [modelConnection?.baseUrl || "", ...COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => preset.baseUrl)].filter(Boolean);
+function outboundProxyDirectHosts(extra: readonly string[] = []): string[] {
+  return [modelConnection?.baseUrl || "", ...extra, ...COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => preset.baseUrl)].filter(Boolean);
+}
+
+function resolveCurrentOutboundProxy(settings = outboundProxy, directHosts: readonly string[] = []) {
+  try {
+    return { resolved: resolveOutboundProxy(settings, process.env, outboundProxyDirectHosts(directHosts), readWindowsSystemProxy()), error: "" };
+  } catch (error) {
+    return { resolved: undefined, error: error instanceof OutboundProxyError ? error.message : "无法读取系统代理设置" };
+  }
+}
+
+let networkPolicyGeneration = 0;
+let networkPolicyIdentity = "";
+function currentNetworkPolicySnapshot() {
+  const state = resolveCurrentOutboundProxy();
+  const identity = outboundProxyFingerprint(outboundProxy, state.resolved, state.error, 0);
+  if (identity !== networkPolicyIdentity) {
+    networkPolicyIdentity = identity;
+    networkPolicyGeneration += 1;
+  }
+  return {
+    ...state,
+    generation: networkPolicyGeneration,
+    fingerprint: outboundProxyFingerprint(outboundProxy, state.resolved, state.error, networkPolicyGeneration),
+  };
 }
 
 function applyOutboundProxy(): boolean {
-  return installOutboundProxy(resolveOutboundProxy(outboundProxy, process.env, outboundProxyDirectHosts()));
+  const state = resolveCurrentOutboundProxy();
+  return installOutboundProxy(state.resolved, Boolean(state.error));
+}
+
+async function assertOutboundProxyAvailable(settings = outboundProxy, directHosts: readonly string[] = []): Promise<ReturnType<typeof resolveCurrentOutboundProxy>> {
+  const state = resolveCurrentOutboundProxy(settings, directHosts);
+  if (state.error) throw new OutboundProxyError(state.error);
+  try { await assertLoopbackProxyReady(state.resolved); }
+  catch { throw new OutboundProxyError("系统代理端口未监听；已阻止模型请求，未回退直连。请先启动代理，或在高级连接参数中选择直连"); }
+  return state;
+}
+
+function writeOutboundProxySettings(settings: OutboundProxySettings): void {
+  const temp = `${OUTBOUND_PROXY_FILE}.${process.pid}.tmp`;
+  writeFileSync(temp, JSON.stringify(settings, null, 2), "utf8");
+  renameSync(temp, OUTBOUND_PROXY_FILE);
 }
 applyOutboundProxy();
 const agentRunObserver: AgentRunObserver = {
@@ -502,8 +686,9 @@ for (const extension of agentExtensions.list()) {
 const marketData = createMarketDataAdapter({ dataDir: DATA_DIR });
 const capabilityTools = createDefaultCapabilityToolRegistry(DATA_DIR, {
   hasLiveSearch: () => Boolean(process.env.ZHIPU_API_KEY || (modelConnection?.provider === "zhipu" && modelConnection.apiKey)),
-  hasVision: () => !!llm.vision,
-  hasVoice: () => !!llm.tts || !!llm.asr,
+  hasVision: () => Boolean(explainAutomaticRoute("vision", modelVaultResources()).selected),
+  hasVoice: () => Boolean(explainAutomaticRoute("text_to_speech", modelVaultResources()).selected
+    || explainAutomaticRoute("speech_to_text", modelVaultResources()).selected),
   executionHistoryFile: join(DATA_DIR, "capability-tool-executions.json"),
   marketData,
   runLiveSearch: async (query, signal) => {
@@ -540,11 +725,13 @@ const capabilities = new CapabilityRuntime({
   counterpartContext: (counterpartId) => relationships.buildPromptBlock(counterpartId),
   toolBinding: (personaId) => personaToolBindings.get(personaId),
   notify: async (personaId, text, signal, runtimeLimits, runId, memoryMode, surface, contextSources) => {
-    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, model: runtimeLimits?.model, reasoningEffort: runtimeLimits?.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability", ...contextSources });
+    const policy = resolveChatInvocation(surface === "task" ? "task_workspace" : "assistant_chat", runtimeLimits?.model, runtimeLimits?.reasoningEffort);
+    const r = await engine.notify(USER, personaId, text, { signal, runtimeLimits, runId, memoryMode, model: policy.model, reasoningEffort: policy.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability", ...contextSources });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
   notifyStream: async (personaId, text, cb, signal, runtimeLimits, runId, memoryMode, surface, contextSources) => {
-    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, model: runtimeLimits?.model, reasoningEffort: runtimeLimits?.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability", ...contextSources });
+    const policy = resolveChatInvocation(surface === "task" ? "task_workspace" : "assistant_chat", runtimeLimits?.model, runtimeLimits?.reasoningEffort);
+    const r = await engine.notifyStream(USER, personaId, text, cb, { signal, runtimeLimits, runId, memoryMode, model: policy.model, reasoningEffort: policy.reasoningEffort, toolMode: runtimeLimits?.toolMode, surface: surface || "capability", ...contextSources });
     return { reply: r.reply, facts: bullets(r.context.userFacts) };
   },
 });
@@ -561,10 +748,11 @@ attachScheduledTaskHandoffProjection(agentJobQueue, scheduledTaskHandoffs, {
 // 验证的摘要（CodeQL #43）。connectionRevision 本来就在这四项任一变化时铸新 UUID，
 // 语义等价且完全不碰密钥；model-scheduler.ts 那边早就用每进程 HMAC 盐避开同一问题了。
 function teamConnectionFingerprint(): string {
-  return modelConnection?.connectionRevision || "";
+  return `${modelConnection?.connectionRevision || ""}:${currentNetworkPolicySnapshot().fingerprint}`;
 }
+let activeImmediateModelRequests = 0;
 function hasActiveModelJobs(): boolean {
-  return agentJobQueue.list({ limit: 5000 }).some((job) => job.status === "running"
+  return activeImmediateModelRequests > 0 || agentJobQueue.list({ limit: 5000 }).some((job) => job.status === "running"
     && ["assistant-team", "capability-task", "capability-adhoc", "orchestration"].includes(job.type));
 }
 function enqueueAssistantTeam(raw: Record<string, unknown>) {
@@ -600,6 +788,20 @@ const modelSwitch = new ModelSwitchCoordinator({
     return () => agentJobWorker.start();
   },
 });
+
+function beginImmediateModelRequest(res: ServerResponse): boolean {
+  if (modelSwitch.state().phase !== "idle") return false;
+  activeImmediateModelRequests += 1;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    activeImmediateModelRequests = Math.max(0, activeImmediateModelRequests - 1);
+  };
+  res.once("finish", release);
+  res.once("close", release);
+  return true;
+}
 
 /** 把协调器的两种拒绝映射回原有的 409 契约；不是这两种就返回 false 交给原有处理。 */
 function sendModelSwitchRefusal(res: ServerResponse, error: unknown): boolean {
@@ -1334,7 +1536,7 @@ function commitModelConnection(
 
 async function rebuildModelRuntime(): Promise<void> {
   const superseded = mem;
-  llm = resolveLLM(modelConnection);
+  llm = resolveLLM(runtimeModelConnection(modelConnection));
   capabilityTools.invalidateReadiness();
   wireAgentTools(llm);
   mem = makeMem();
@@ -1408,91 +1610,60 @@ function unprotectSecret(cipher: string): string {
   );
 }
 
-type SavedLLMConnectionFile = {
-  version?: number;
-  encryption?: string;
-  provider?: string;
-  protocol?: CompanionModelProtocol;
-  baseUrl?: string;
-  model?: string;
-  cipher?: string;
-  models?: CompanionModelInfo[];
-  modelsFetchedAt?: string;
-  /** Catalog identity is separate from its timestamp so stale data can be displayed safely. */
-  catalogConnectionRevision?: string;
-  connectionRevision?: string;
-  selectionMode?: "auto" | "manual";
-  modelChecks?: CompanionModelConnection["modelChecks"];
-  favoriteModels?: string[];
-};
-
-function loadSavedLLMConnection(): CompanionModelConnection | undefined {
+function loadSavedLLMVault(): RuntimeModelVault {
   const environmentKey = process.env.ZHIPU_API_KEY?.trim();
   if (environmentKey) {
     const connection = defaultCompanionModelConnection("zhipu", environmentKey);
     connection.model = process.env.ZHIPU_MODEL || connection.model;
-    return connection;
+    connection.enabledModels = [connection.model];
+    const id = randomUUID();
+    return { activeConnectionId: id, connections: [{ id, label: "环境变量 · 智谱 GLM", connection: ensureConnectionRevision(connection), rawCatalog: [], catalog: [], catalogFetchedAt: "", catalogConnectionRevision: "", catalogSource: "none" }], assignments: normalizeCapabilityAssignments(), chatPreferences: defaultChatInvocationPreferences() };
   }
-  if (!existsSync(LLM_KEY_FILE)) return undefined;
+  if (!existsSync(LLM_KEY_FILE)) return decodeModelVault(undefined, unprotectSecret, randomUUID);
   try {
-    const saved = JSON.parse(readFileSync(LLM_KEY_FILE, "utf8")) as SavedLLMConnectionFile;
-    if ((saved.version === 2 || saved.version === 3 || saved.version === 4) && saved.provider) {
-      const apiKey = saved.cipher ? unprotectSecret(saved.cipher).trim() : "";
-      const loaded = ensureConnectionRevision(normalizeCompanionModelConnection({
-        provider: saved.provider as CompanionModelProvider,
-        protocol: saved.protocol,
-        baseUrl: saved.baseUrl,
-        model: saved.model,
-        apiKey,
-        selectionMode: saved.selectionMode === "auto" ? "auto" : "manual",
-        favoriteModels: saved.favoriteModels,
-        connectionRevision: saved.connectionRevision,
-      }));
-      // v2/v3 had one saved connection file, so their existing checks can be bound
-      // once to that incumbent connection. v4 has an identity already: never
-      // rebind a mismatched value merely because the process restarted.
-      loaded.modelChecks = saved.version === 4
-        ? retainModelChecksForRevision(saved.modelChecks, loaded.connectionRevision!)
-        : bindModelChecksToRevision(saved.modelChecks, loaded.connectionRevision!);
-      if (saved.version !== 4) legacyConnectionFileMigrated = true;
-      return loaded;
-    }
+    const saved = JSON.parse(readFileSync(LLM_KEY_FILE, "utf8")) as SavedModelVaultFile;
     // 兼容旧版仅保存智谱 Key 的文件，成功读取后会在下次保存时自动升级结构。
     if (saved.provider === "windows-dpapi" && saved.cipher) {
       const key = unprotectSecret(saved.cipher).trim();
-      if (key) return defaultCompanionModelConnection("zhipu", key);
+      if (key) {
+        legacyConnectionFileMigrated = true;
+        const connection = ensureConnectionRevision(defaultCompanionModelConnection("zhipu", key));
+        connection.enabledModels = [connection.model];
+        const id = randomUUID();
+        return { activeConnectionId: id, connections: [{ id, label: "智谱 GLM", connection, rawCatalog: [], catalog: [], catalogFetchedAt: "", catalogConnectionRevision: "", catalogSource: "none" }], assignments: normalizeCapabilityAssignments(), chatPreferences: defaultChatInvocationPreferences() };
+      }
     }
-  } catch { /* 保存的连接读不出来就按离线启动 */ }
-  return undefined;
+    if (saved.version !== 9) legacyConnectionFileMigrated = true;
+    return decodeModelVault(saved, unprotectSecret, randomUUID);
+  } catch (error) {
+    const kind = error instanceof SyntaxError ? "JSON 格式损坏" : "凭据解密或结构校验失败";
+    console.error(`[companion] 模型连接文件读取失败（${kind}）；已保持原文件不变并以离线模式启动。`);
+  }
+  return decodeModelVault(undefined, unprotectSecret, randomUUID);
 }
 
-function readSavedLLMConnectionFile(): SavedLLMConnectionFile | undefined {
-  if (!existsSync(LLM_KEY_FILE)) return undefined;
-  try { return JSON.parse(readFileSync(LLM_KEY_FILE, "utf8")) as SavedLLMConnectionFile; }
-  catch { return undefined; }
+function writeSavedLLMVault(vault = modelVault): void {
+  const serialized = JSON.stringify({ ...encodeModelVault(vault, protectSecret), savedAt: new Date().toISOString() }, null, 2);
+  const temporary = `${LLM_KEY_FILE}.${randomUUID()}.tmp`;
+  try { writeFileSync(temporary, serialized, { mode: 0o600 }); renameSync(temporary, LLM_KEY_FILE); }
+  finally { if (existsSync(temporary)) unlinkSync(temporary); }
 }
 
-function loadSavedLLMModelCatalog(): CompanionModelInfo[] {
-  if (process.env.ZHIPU_API_KEY?.trim()) return [];
-  const saved = readSavedLLMConnectionFile();
-  return (saved?.version === 3 || saved?.version === 4) && Array.isArray(saved.models) ? saved.models : [];
-}
-
-function loadSavedLLMModelCatalogFetchedAt(): string {
-  if (process.env.ZHIPU_API_KEY?.trim()) return "";
-  const saved = readSavedLLMConnectionFile();
-  return (saved?.version === 3 || saved?.version === 4) && typeof saved.modelsFetchedAt === "string" ? saved.modelsFetchedAt : "";
-}
-
-function loadSavedLLMModelCatalogConnectionRevision(): string {
-  if (process.env.ZHIPU_API_KEY?.trim()) return "";
-  const saved = readSavedLLMConnectionFile();
-  if (!modelConnection?.connectionRevision) return "";
-  // v3's catalog was atomically saved with its single connection, so it is safe to
-  // bind during migration. Any subsequent connection change marks it stale.
-  return saved?.version === 4 && typeof saved.catalogConnectionRevision === "string"
-    ? saved.catalogConnectionRevision
-    : modelConnection.connectionRevision;
+async function activateModelVaultRecord(record: RuntimeModelConnectionRecord, assignments = modelVault.assignments): Promise<void> {
+  const previousVault = modelVault;
+  const previous = { connection: modelConnection, catalog: modelCatalog, fetchedAt: modelCatalogFetchedAt, revision: modelCatalogConnectionRevision };
+  const nextVault = { ...modelVault, assignments, activeConnectionId: record.id, connections: [...modelVault.connections.filter((item) => item.id !== record.id), record] };
+  await runAtomicVaultActivation(previousVault, nextVault, {
+    persist: (vault) => writeSavedLLMVault(vault),
+    activate: async (vault) => {
+      modelVault = vault; modelConnection = record.connection; modelCatalog = record.catalog; modelCatalogFetchedAt = record.catalogFetchedAt; modelCatalogConnectionRevision = record.catalogConnectionRevision;
+      await rebuildModelRuntime();
+    },
+    restore: async (vault) => {
+      modelVault = vault; modelConnection = previous.connection; modelCatalog = previous.catalog; modelCatalogFetchedAt = previous.fetchedAt; modelCatalogConnectionRevision = previous.revision;
+      await rebuildModelRuntime().catch(() => undefined);
+    },
+  });
 }
 
 function saveSavedLLMConnection(
@@ -1500,77 +1671,254 @@ function saveSavedLLMConnection(
   catalog: readonly CompanionModelInfo[] = modelCatalog,
   fetchedAt = modelCatalogFetchedAt,
   catalogConnectionRevision = modelCatalogConnectionRevision,
+  rawCatalog?: readonly CompanionModelInfo[],
 ): void {
-  const serialized = JSON.stringify({
-    version: 4,
-    encryption: "windows-dpapi",
-    provider: connection.provider,
-    protocol: connection.protocol,
-    baseUrl: connection.baseUrl,
-    model: connection.model,
-    selectionMode: connection.selectionMode || "manual",
-    connectionRevision: connection.connectionRevision,
-    // Normal saves must not turn an unbound or mismatched check into a valid one.
-    // Only the v2/v3 load migration is allowed to bind legacy single-connection data.
-    modelChecks: retainModelChecksForRevision(connection.modelChecks, connection.connectionRevision || ""),
-    favoriteModels: connection.favoriteModels || [],
-    models: catalog,
-    modelsFetchedAt: fetchedAt,
-    catalogConnectionRevision,
-    savedAt: new Date().toISOString(),
-    ...(connection.apiKey ? { cipher: protectSecret(connection.apiKey) } : {}),
-  }, null, 2);
-  const temporary = `${LLM_KEY_FILE}.${randomUUID()}.tmp`;
-  try {
-    writeFileSync(temporary, serialized, { mode: 0o600 });
-    renameSync(temporary, LLM_KEY_FILE);
-  } finally {
-    if (existsSync(temporary)) unlinkSync(temporary);
+  const id = modelVault.activeConnectionId || randomUUID();
+  const old = modelVault.connections.find((item) => item.id === id);
+  const record: RuntimeModelConnectionRecord = { id, label: old?.label || `${connection.provider} · ${connection.baseUrl}`, connection, rawCatalog: [...(rawCatalog || old?.rawCatalog || [])], catalog: [...catalog], catalogFetchedAt: fetchedAt, catalogConnectionRevision, catalogSource: old?.catalogSource || "provider" };
+  modelVault = { ...modelVault, activeConnectionId: id, connections: [...modelVault.connections.filter((item) => item.id !== id), record] };
+  writeSavedLLMVault();
+}
+
+function saveModelVaultRecord(
+  record: RuntimeModelConnectionRecord,
+  options: { syncRuntime?: boolean; deactivateEditedActive?: boolean } = {},
+): void {
+  const editedActive = modelVault.activeConnectionId === record.id;
+  modelVault = {
+    ...modelVault,
+    activeConnectionId: editedActive && options.deactivateEditedActive ? null : modelVault.activeConnectionId,
+    connections: [...modelVault.connections.filter((item) => item.id !== record.id), record],
+  };
+  writeSavedLLMVault();
+  if (options.syncRuntime !== false && modelVault.activeConnectionId === record.id) {
+    modelConnection = record.connection;
+    modelCatalog = [...record.catalog];
+    modelCatalogFetchedAt = record.catalogFetchedAt;
+    modelCatalogConnectionRevision = record.catalogConnectionRevision;
   }
 }
 
 function clearSavedLLMKey(): void {
   try { if (existsSync(LLM_KEY_FILE)) unlinkSync(LLM_KEY_FILE); } catch { /* ignore */ }
+  modelVault = { activeConnectionId: null, connections: [], assignments: normalizeCapabilityAssignments(), chatPreferences: defaultChatInvocationPreferences() };
 }
 
 function savedLLMKeyExists(): boolean {
   return existsSync(LLM_KEY_FILE);
 }
 
+function modelVaultResources() {
+  return modelVault.connections.flatMap((record) => allResourcesForConnection({
+    id: record.id,
+    provider: record.connection.provider,
+    baseUrl: record.connection.baseUrl,
+    catalog: [...new Map([...record.catalog, ...record.rawCatalog].map((item) => [item.id, item])).values()],
+    checks: Object.fromEntries(Object.entries(record.connection.modelChecks || {}).filter(([id, check]) => isModelCheckEligible(record.connection, check, id, "chat"))),
+    enabledModels: record.connection.enabledModels || [],
+    reasoningModels: Object.keys(record.connection.modelChecks || {}).filter((id) => supportedReasoningEfforts(record.connection, id).length > 0),
+    capabilityChecks: record.connection.capabilityChecks,
+  }));
+}
+
+function resolveMediaRoute(capability: OpenAIMediaCapability): { record: RuntimeModelConnectionRecord; modelId: string } {
+  const assignment = modelVault.assignments.system[capability];
+  const selected = assignment.mode === "fixed" ? assignment.ref : explainAutomaticRoute(capability, modelVaultResources()).selected;
+  if (!selected) {
+    const active = activeVaultRecord(modelVault);
+    const support = providerCapabilityAdapterSupport(active?.connection.provider || "custom", active?.connection.baseUrl || "", capability);
+    const error = new Error(support.state === "available" ? `没有可用于${capability}的已启用且已验证模型。` : support.reason);
+    if (support.state !== "available") error.name = "IntegrationPendingError";
+    throw error;
+  }
+  const record = modelVault.connections.find((item) => item.id === selected.connectionId);
+  const support = record && providerCapabilityAdapterSupport(record.connection.provider, record.connection.baseUrl, capability);
+  if (support?.state !== "available") {
+    const error = new Error(support?.reason || "所选连接尚未接入此能力。"); error.name = "IntegrationPendingError"; throw error;
+  }
+  const resource = modelVaultResources().find((item) => item.connectionId === selected.connectionId && item.modelId === selected.modelId
+    && item.enabled === true && item.capabilities.includes(capability) && item.evidence.verified && item.executionState?.[capability] === "available");
+  if (!record || !resource) throw new Error(`模型 ${selected.modelId} 尚未通过 ${capability} 能力验证。`);
+  const runtime = runtimeModelConnection(record.connection);
+  if (!runtime) throw new Error("模型连接端点不受信任或当前不可用。");
+  return { record: { ...record, connection: runtime }, modelId: selected.modelId };
+}
+
+function modelAssignmentReferences(connectionId: string, modelId: string): string[] {
+  const references: string[] = [];
+  for (const capability of MODEL_CAPABILITIES) {
+    const assignment = modelVault.assignments.system[capability];
+    if (assignment.mode === "fixed" && assignment.ref.connectionId === connectionId && assignment.ref.modelId === modelId) {
+      references.push(`系统默认 · ${capability}`);
+    }
+  }
+  for (const scene of MODEL_APPLICATION_SCENES) {
+    for (const capability of MODEL_CAPABILITIES) {
+      const assignment = modelVault.assignments.scenes[scene.id]?.[capability];
+      if (assignment?.mode === "fixed" && assignment.ref.connectionId === connectionId && assignment.ref.modelId === modelId) {
+        references.push(`${scene.name} · ${capability}`);
+      }
+    }
+  }
+  return references;
+}
+
+function failedModelCheck(connection: CompanionModelConnection, modelId: string, error: unknown): CompanionModelCheck {
+  return {
+    ...(connection.connectionRevision ? { connectionRevision: connection.connectionRevision } : {}),
+    transport: modelTransport(connection, modelId),
+    checkedAt: new Date().toISOString(),
+    chat: "failed",
+    streaming: "not-tested",
+    tools: "not-tested",
+    detail: modelConnectionUserMessage(error, "probe"),
+    ...(companionModelFailureDiagnostic(error) ? { diagnostic: companionModelFailureDiagnostic(error) } : {}),
+  };
+}
+
+function publicModelVaultConnections() {
+  return modelVault.connections.map((record) => {
+    const modelIds = normalizeFavoriteModels([
+      ...(record.connection.enabledModels || []),
+      ...(record.connection.registeredModels || []),
+      ...Object.keys(record.connection.modelChecks || {}),
+    ]);
+    return ({
+    id: record.id, label: record.label, active: record.id === modelVault.activeConnectionId,
+    ...publicModelConnection(record.connection), hasKey: Boolean(record.connection.apiKey || Object.values(record.connection.credentials || {}).some(Boolean)),
+    credentialStatus: Object.fromEntries((providerCatalogEntry(record.connection.provider)?.credentialFields || []).map((field) => [field.id, Boolean(record.connection.credentials?.[field.id] || (field.id === "apiKey" && record.connection.apiKey))])),
+    providerSettings: record.connection.providerSettings || {},
+    models: record.catalog, rawModels: record.rawCatalog, modelsFetchedAt: record.catalogFetchedAt || null, catalogSource: record.catalogSource,
+    connectionRevision: record.connection.connectionRevision,
+    modelChecks: record.connection.modelChecks || {}, registeredModels: record.connection.registeredModels || [],
+    capabilityChecks: record.connection.capabilityChecks || {},
+    capabilitySupport: Object.fromEntries(MODEL_CAPABILITIES.map((capability) => [capability,
+      providerCapabilityAdapterSupport(record.connection.provider, record.connection.baseUrl, capability)])),
+    enabledModels: record.connection.enabledModels || [],
+    modelStates: modelIds.map((modelId) => {
+      const check = record.connection.modelChecks?.[modelId];
+      return {
+        modelId,
+        enabled: record.connection.enabledModels?.includes(modelId) === true,
+        verified: isModelCheckEligible(record.connection, check, modelId, "chat"),
+        status: check?.chat || "not-tested",
+        capabilities: check?.chat === "passed" ? ["chat"] : [],
+        connectionRevision: check?.connectionRevision || record.connection.connectionRevision,
+        checkedAt: check?.checkedAt || null,
+        error: check?.chat === "failed" ? { detail: check.detail, diagnostic: check.diagnostic || null } : null,
+      };
+    }),
+    endpointWarning: record.connection.provider !== "custom" && detectCompanionProvider(record.connection.baseUrl).provider !== record.connection.provider
+      ? "历史连接地址不再属于官方受信端点；已阻止自动发送，请编辑并重新验证。" : undefined,
+  });
+  });
+}
+
 function modelConnectionStatus(): Record<string, unknown> {
   const connection = publicModelConnection(modelConnection);
+  const endpointWarning = modelConnection && modelConnection.provider !== "custom" && detectCompanionProvider(modelConnection.baseUrl || "").provider !== modelConnection.provider
+    ? "历史连接地址不再属于官方受信端点；已阻止自动发送，请编辑并重新验证。" : undefined;
+  const proxyState = currentNetworkPolicySnapshot();
   const isZhipu = connection.provider === "zhipu";
   const isOpenAI = connection.provider === "openai"
     && connection.baseUrl === "https://api.openai.com/v1";
   const activeChatReady = Boolean(modelConnection
+    && modelConnection.enabledModels?.includes(modelConnection.model)
     && isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], modelConnection.model, "chat"));
+  let resources = modelVaultResources();
+  const fixedChat = modelVault.assignments.system.chat;
+  const runtimeSnapshotStaged = Boolean(modelConnection && fixedChat.mode === "fixed" && (
+    fixedChat.ref.modelId === modelConnection.model
+    && !resources.some((item) => item.connectionId === fixedChat.ref.connectionId && item.modelId === fixedChat.ref.modelId
+      && item.evidence.verified && item.executionState?.chat === "available")
+  ));
+  if (runtimeSnapshotStaged && modelConnection && fixedChat.mode === "fixed") {
+    const check = modelConnection.modelChecks?.[modelConnection.model];
+    const snapshot: ModelResource = {
+      connectionId: fixedChat.ref.connectionId,
+      modelId: modelConnection.model,
+      capabilities: ["chat"],
+      evidence: {
+        source: "explicit-check",
+        updatedAt: check?.checkedAt || new Date().toISOString(),
+        verified: Boolean(llm.live),
+        health: llm.live ? "healthy" : "degraded",
+      },
+      executionState: { chat: llm.live ? "available" : "integration_pending" },
+      tags: ["当前仍在运行"],
+      enabled: true,
+      reason: "已保存连接配置发生变化；当前进程仍使用修改前的运行快照。测试并显式启用新配置后替换。",
+      autoEligible: false,
+      runtimeSnapshot: true,
+      readOnly: true,
+    };
+    resources = [...resources, snapshot];
+  }
+  const activeRecord = activeVaultRecord(modelVault);
+  const routes = Object.fromEntries(MODEL_CAPABILITIES.map((capability) => {
+    const assignment = modelVault.assignments.system[capability];
+    if (assignment.mode === "auto") return [capability, explainAutomaticRoute(capability, resources)];
+    const selected = resources.find((item) => item.connectionId === assignment.ref.connectionId
+      && item.modelId === assignment.ref.modelId && item.capabilities.includes(capability)) || null;
+    return [capability, { selected, fallbacks: [], reason: selected ? "使用你设置的系统默认模型。" : "已保存的默认模型当前不可用，请重新验证或选择其他模型。" }];
+  }));
+  const sceneRoutes = Object.fromEntries(MODEL_SCENES.map((scene) => [scene,
+    Object.fromEntries(MODEL_CAPABILITIES.map((capability) => {
+      const override = modelVault.assignments.scenes[scene]?.[capability];
+      return [capability, override ? { source: "scene", assignment: override } : { source: "system", assignment: modelVault.assignments.system[capability] }];
+    })),
+  ]));
   return {
     live: llm.live,
     label: llm.label,
     ...connection,
+    endpointWarning,
     dailyChatModel: modelConnection ? dailyChatModelForConnection(modelConnection) : "",
     taskModel: connection.model,
     models: modelCatalog,
-    reasoningEfforts: Object.fromEntries([...new Set([connection.model, ...modelCatalog.map(item => item.id)])].map(id => [id, supportedReasoningEfforts(modelConnection, id)])),
+    rawModels: activeRecord?.rawCatalog || [],
+    reasoningEfforts: Object.fromEntries([...new Set([connection.model, ...(modelConnection?.enabledModels || []), ...modelCatalog.map(item => item.id)])].map(id => [id, supportedReasoningEfforts(modelConnection, id)])),
     modelsFetchedAt: modelCatalogFetchedAt || null,
     connectionRevision: modelConnection?.connectionRevision || null,
     catalogConnectionRevision: modelCatalogConnectionRevision || null,
-    catalogStale: Boolean(modelCatalog.length && modelCatalogConnectionRevision !== modelConnection?.connectionRevision),
+    catalogStale: Boolean((modelCatalog.length || activeRecord?.rawCatalog.length) && modelCatalogConnectionRevision !== modelConnection?.connectionRevision),
     // 切换进展：界面本来只能从 409 反推"是不是正忙"，现在能直接看到阶段与上次结果。
     switchState: modelSwitch.state(),
     selectionMode: modelConnection?.selectionMode || "manual",
     modelChecks: modelConnection?.modelChecks || {},
-    favoriteModels: modelConnection?.favoriteModels || [],
+    registeredModels: modelConnection?.registeredModels || [],
+    enabledModels: modelConnection?.enabledModels || [],
     check: modelConnection?.modelChecks?.[modelConnection.model] || null,
     requiresVerification: Boolean(llm.live && modelConnection?.connectionRevision && !activeChatReady),
     savedConnection: savedLLMKeyExists(),
     savedKey: savedLLMKeyExists() && connection.hasKey,
+    network: {
+      settings: { mode: outboundProxy.mode },
+      status: { ...publicOutboundProxy(outboundProxy, proxyState.resolved), error: proxyState.error || undefined, fingerprint: proxyState.fingerprint, generation: proxyState.generation },
+    },
     supports: {
       tools: Boolean(modelConnection && isModelCheckEligible(modelConnection, modelConnection.modelChecks?.[modelConnection.model], modelConnection.model, "tools")),
       vectorMemory: isZhipu || isOpenAI,
       webSearch: isZhipu,
       vision: isZhipu,
       speech: isZhipu,
+    },
+    resourceCenter: {
+      version: 1,
+      providerCatalog: PROVIDER_CATALOG,
+      curatedCatalog: CURATED_MODEL_CATALOG,
+      capabilities: MODEL_CAPABILITIES,
+      capabilitySupport: Object.fromEntries(MODEL_CAPABILITIES.map((capability) => [capability,
+        activeRecord ? providerCapabilityAdapterSupport(activeRecord.connection.provider, activeRecord.connection.baseUrl, capability) : providerCapabilityAdapterSupport("custom", "", capability)])),
+      scenes: MODEL_APPLICATION_SCENES,
+      connections: publicModelVaultConnections(),
+      resources,
+      runtimeSnapshotStaged,
+      assignments: modelVault.assignments,
+      chatPreferences: modelVault.chatPreferences,
+      automaticRoutes: routes,
+      effectiveSceneRoutes: sceneRoutes,
+      executionNotice: "这里只开放已通过统一连接、验证与执行路由的用途；其余用途会说明尚缺的执行环节。",
     },
     providers: COMPANION_MODEL_PROVIDER_PRESETS.map((preset) => ({ ...preset })),
   };
@@ -1580,6 +1928,9 @@ async function discoverCompanionModels(connection: CompanionModelConnection): Pr
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
+    if (connection.provider !== "custom") {
+      return (await discoverOfficialProviderCatalog(connection, controller.signal)).models;
+    }
     return await fetchCompanionModelCatalog(connection, controller.signal);
   } catch (error) {
     if (controller.signal.aborted) throw new Error("读取模型列表超时，请检查 API 地址、网络和代理设置。");
@@ -1589,29 +1940,209 @@ async function discoverCompanionModels(connection: CompanionModelConnection): Pr
   }
 }
 
-function modelConnectionUserMessage(detail: string): string {
-  if (/fetch failed|ECONNRESET|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|CONNECT_TIMEOUT/i.test(detail)) {
-    return "无法连接模型服务。请确认网络或代理已启动后重试。";
+const modelQuickSetupCoordinator = new ModelQuickSetupCoordinator();
+
+function quickSetupPublicState(): Record<string, unknown> {
+  return {
+    snapshot: modelVault.quickSetup || null,
+    providers: QUICK_SETUP_PROVIDERS.map((provider) => {
+      const record = modelVault.connections.find((item) => item.connection.provider === provider);
+      return {
+        provider,
+        name: provider === "openai" ? "OpenAI" : "智谱 BigModel",
+        configured: Boolean(record?.connection.apiKey || record?.connection.credentials?.apiKey),
+        connectionId: record?.id || null,
+        active: record?.id === modelVault.activeConnectionId,
+      };
+    }),
+    supportedCapabilities: [...QUICK_SETUP_CAPABILITIES],
+    unsupportedCapabilities: [{ capability: "video_generation", detail: "当前版本尚未接入视频生成执行器。" }],
+  };
+}
+
+function saveQuickSetupProvider(provider: QuickSetupProvider, submittedKey?: string): { connectionId: string } {
+  const existing = modelVault.connections.find((item) => item.connection.provider === provider);
+  const savedKey = existing?.connection.credentials?.apiKey || existing?.connection.apiKey || "";
+  const key = String(submittedKey || savedKey).trim();
+  if (!key) return { connectionId: "" };
+  if (key.length > 4096 || /[\r\n]/.test(key)) throw new Error("密钥格式不正确。");
+  const definition = providerCatalogEntry(provider)!;
+  const preset = COMPANION_MODEL_PROVIDER_PRESETS.find((item) => item.id === provider)!;
+  const model = eligibleCuratedCatalog(provider, definition.defaultEndpoint)[0]?.id || preset.model;
+  const normalized = normalizeCompanionModelConnection({
+    provider,
+    protocol: preset.protocol,
+    baseUrl: definition.defaultEndpoint,
+    model,
+    selectionMode: "auto",
+    apiKey: key,
+    credentials: { ...(existing?.connection.credentials || {}), apiKey: key },
+    registeredModels: existing?.connection.registeredModels,
+    enabledModels: existing?.connection.enabledModels,
+    modelChecks: existing?.connection.modelChecks,
+    capabilityChecks: existing?.connection.capabilityChecks,
+  });
+  const credentialChanged = Boolean(submittedKey && submittedKey.trim() !== savedKey);
+  const connection = withConnectionRevision(normalized, existing?.connection, credentialChanged);
+  const sameRevision = connection.connectionRevision === existing?.connection.connectionRevision;
+  const record: RuntimeModelConnectionRecord = {
+    id: existing?.id || randomUUID(),
+    label: existing?.label || preset.name,
+    connection,
+    rawCatalog: sameRevision ? existing?.rawCatalog || [] : [],
+    catalog: eligibleCuratedCatalog(provider, definition.defaultEndpoint),
+    catalogFetchedAt: sameRevision ? existing?.catalogFetchedAt || "" : "",
+    catalogConnectionRevision: sameRevision ? existing?.catalogConnectionRevision || "" : "",
+    catalogSource: sameRevision ? existing?.catalogSource || "none" : "none",
+  };
+  const editedActive = modelVault.activeConnectionId === record.id && !sameRevision;
+  saveModelVaultRecord(record, { syncRuntime: false, deactivateEditedActive: editedActive });
+  return { connectionId: record.id };
+}
+
+async function discoverQuickSetupTargets(provider: QuickSetupProvider, connectionId: string): Promise<{ targets: QuickSetupTarget[]; detail: string }> {
+  const record = modelVault.connections.find((item) => item.id === connectionId && item.connection.provider === provider);
+  if (!record) throw new Error("已保存的连接不存在，请重新执行。");
+  let rawCatalog: CompanionModelInfo[];
+  let catalogSource: RuntimeModelConnectionRecord["catalogSource"];
+  if (provider === "openai") {
+    await assertOutboundProxyAvailable(outboundProxy, [record.connection.baseUrl]);
+    rawCatalog = await discoverCompanionModels(runtimeModelConnection(record.connection)!);
+    catalogSource = "provider";
+  } else {
+    rawCatalog = (providerCatalogEntry("zhipu")?.models || [])
+      .filter((item) => item.lifecycle === "active")
+      .map((item) => ({ id: item.id, displayName: item.displayName || item.id }));
+    catalogSource = "maintained";
   }
-  if (/连接超时|aborted|timeout/i.test(detail)) {
-    return "连接模型服务超时。请检查 API 地址、网络和代理设置。";
+  const rawIds = new Set(rawCatalog.map((item) => item.id));
+  const maintained = curatedProviderCatalog(provider, record.connection.baseUrl)?.models || [];
+  const targets: QuickSetupTarget[] = [];
+  for (const capability of QUICK_SETUP_CAPABILITIES) {
+    const entry = maintained.find((item) => item.lifecycle === "active"
+      && item.execution.status === "wired"
+      && item.capabilities.includes(capability)
+      && providerCapabilityAdapterSupport(provider, record.connection.baseUrl, capability).state === "available"
+      && (provider !== "openai" || rawIds.has(item.exactId)));
+    if (entry) targets.push({ provider, connectionId, modelId: entry.exactId, capability });
   }
-  if (/HTTP\s+(401|403)\b/i.test(detail)) {
-    return "API Key 无效，或该 Key 没有访问所选模型的权限。";
+  if (!targets.length) throw new Error(provider === "openai"
+    ? "账号目录中没有当前版本支持的推荐模型。"
+    : "当前版本没有可执行的智谱推荐模型。");
+  const enabled = normalizeFavoriteModels([...(record.connection.enabledModels || []), ...targets.map((item) => item.modelId)]);
+  const registered = normalizeFavoriteModels([...(record.connection.registeredModels || []), ...targets.map((item) => item.modelId)]);
+  saveModelVaultRecord({
+    ...record,
+    rawCatalog,
+    catalog: eligibleCuratedCatalog(provider, record.connection.baseUrl),
+    catalogFetchedAt: new Date().toISOString(),
+    catalogConnectionRevision: record.connection.connectionRevision || "",
+    catalogSource,
+    connection: { ...record.connection, enabledModels: enabled, registeredModels: registered },
+  }, { syncRuntime: false });
+  return {
+    targets,
+    detail: provider === "openai"
+      ? `已从账号目录筛选 ${targets.length} 项当前推荐能力。`
+      : `已载入智谱官方维护清单中的 ${targets.length} 项已接入能力。`,
+  };
+}
+
+async function verifyQuickSetupTarget(target: QuickSetupTarget): Promise<{ passed: boolean; detail: string }> {
+  const record = modelVault.connections.find((item) => item.id === target.connectionId);
+  if (!record) throw new Error("连接已不存在，请重新执行。");
+  await assertOutboundProxyAvailable(outboundProxy, [record.connection.baseUrl]);
+  const startedAt = Date.now();
+  if (target.capability === "chat") {
+    try {
+      const check = { ...(await checkCompanionChatModel({ ...runtimeModelConnection(record.connection)!, model: target.modelId })), latencyMs: Date.now() - startedAt };
+      saveModelVaultRecord({ ...record, connection: { ...record.connection, modelChecks: { ...(record.connection.modelChecks || {}), [target.modelId]: check } } }, { syncRuntime: false });
+      return { passed: check.chat === "passed", detail: check.chat === "passed" ? "文字模型已通过一次合成轻量验证。" : check.detail };
+    } catch (error) {
+      const check = failedModelCheck(record.connection, target.modelId, error);
+      saveModelVaultRecord({ ...record, connection: { ...record.connection, modelChecks: { ...(record.connection.modelChecks || {}), [target.modelId]: check } } }, { syncRuntime: false });
+      throw error;
+    }
   }
-  if (/HTTP\s+404\b/i.test(detail)) {
-    return "接口地址或模型名称不存在，请检查服务地址和模型名。";
+  const key = `${target.capability}:${target.modelId}`;
+  try {
+    const connection = runtimeModelConnection(record.connection)!;
+    if (target.capability === "vision") await openAIVision(connection, target.modelId, "只回答 test", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+    else if (target.capability === "speech_to_text") {
+      const wav = Buffer.from("UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=", "base64");
+      await openAITranscribe(connection, target.modelId, wav, "audio/wav");
+    } else if (target.capability === "text_to_speech") await openAISpeech(connection, target.modelId, "测试", { voice: "alloy", format: "mp3", speed: 1 });
+    else await openAIImage(connection, target.modelId, "A single small blue circle on white background", { size: "1024x1024", quality: "low" });
+    const check = { connectionRevision: record.connection.connectionRevision, modelId: target.modelId, capability: target.capability, checkedAt: new Date().toISOString(), status: "passed" as const, detail: "已通过一次合成最小能力验证。", latencyMs: Date.now() - startedAt };
+    saveModelVaultRecord({ ...record, connection: { ...record.connection, capabilityChecks: { ...(record.connection.capabilityChecks || {}), [key]: check } } }, { syncRuntime: false });
+    return { passed: true, detail: check.detail };
+  } catch (error) {
+    const check = { connectionRevision: record.connection.connectionRevision, modelId: target.modelId, capability: target.capability, checkedAt: new Date().toISOString(), status: "failed" as const, detail: modelConnectionUserMessage(error, "probe"), ...(companionModelFailureDiagnostic(error) ? { diagnostic: companionModelFailureDiagnostic(error) } : {}) };
+    saveModelVaultRecord({ ...record, connection: { ...record.connection, capabilityChecks: { ...(record.connection.capabilityChecks || {}), [key]: check } } }, { syncRuntime: false });
+    throw error;
   }
-  if (/HTTP\s+429\b/i.test(detail)) {
-    return "模型服务额度不足或请求过于频繁，请检查账户额度后重试。";
+}
+
+async function assignQuickSetupTargets(passed: readonly QuickSetupTarget[], resetRecommendations: boolean) {
+  const assignments = structuredClone(modelVault.assignments);
+  const resources = modelVaultResources();
+  const results: Array<{ capability: QuickSetupCapability; status: "ready" | "preserved" | "failed" | "pending"; target?: QuickSetupTarget; detail: string }> = [];
+  const healthyFixed = (capability: QuickSetupCapability) => {
+    const assignment = assignments.system[capability];
+    return assignment.mode === "fixed" && resources.some((item) => item.connectionId === assignment.ref.connectionId
+      && item.modelId === assignment.ref.modelId && item.capabilities.includes(capability) && item.enabled !== false
+      && item.evidence.verified && item.executionState?.[capability] === "available");
+  };
+  for (const capability of QUICK_SETUP_CAPABILITIES) {
+    if (!resetRecommendations && healthyFixed(capability)) {
+      results.push({ capability, status: "preserved", detail: "保留了仍然健康的手工默认模型。" });
+      continue;
+    }
+    const target = passed.find((item) => item.capability === capability);
+    if (!target) {
+      results.push({ capability, status: "pending", detail: "当前连接尚未提供通过验证的可用模型。" });
+      continue;
+    }
+    assignments.system[capability] = { mode: "fixed", ref: { connectionId: target.connectionId, modelId: target.modelId, capability } };
+    results.push({ capability, status: "ready", target, detail: `已自动设为 ${target.modelId}。` });
   }
-  if (/HTTP\s+400\b/i.test(detail)) {
-    return "模型服务拒绝了连接测试，请检查模型名称和接口参数。";
-  }
-  if (/HTTP\s+5\d\d\b/i.test(detail)) {
-    return "模型服务暂时不可用，请稍后重试。";
-  }
-  return detail.trim().slice(0, 300) || "模型连接验证失败。";
+  const chat = assignments.system.chat;
+  if (chat.mode === "fixed") {
+    const record = modelVault.connections.find((item) => item.id === chat.ref.connectionId);
+    if (record) await activateModelVaultRecord({ ...record, connection: { ...record.connection, model: chat.ref.modelId } }, assignments);
+    else { modelVault = { ...modelVault, assignments }; writeSavedLLMVault(); }
+  } else { modelVault = { ...modelVault, assignments }; writeSavedLLMVault(); }
+  return results;
+}
+
+type ModelConnectionFailureStage = "catalog" | "probe" | "request" | "save";
+
+class ModelConfirmationRequiredError extends Error {
+  readonly code = "model_confirmation_required";
+}
+
+function modelConnectionUserMessage(error: unknown, stage: ModelConnectionFailureStage = "request"): string {
+  const supplied = error && typeof error === "object" && "category" in error ? error as ReturnType<typeof companionModelFailureDiagnostic> : undefined;
+  const diagnostic = supplied || companionModelFailureDiagnostic(error);
+  const prefix = stage === "catalog" ? "读取模型目录失败" : stage === "probe" ? "轻量验证失败"
+    : stage === "save" ? "保存连接失败" : "模型请求失败";
+  if (diagnostic?.networkKind === "proxy_unavailable") return `${prefix}：系统代理不可用；请求已被阻止且没有回退直连。请启动固定 HTTP/HTTPS 代理，或在高级连接参数中选择直连。`;
+  if (diagnostic?.networkKind === "dns") return `${prefix}：域名无法解析。请检查 API 地址、DNS 或代理模式。`;
+  if (diagnostic?.networkKind === "refused") return `${prefix}：目标拒绝连接。请检查服务地址、端口或代理是否正在监听。`;
+  if (diagnostic?.networkKind === "timeout") return `${prefix}：连接超时。请检查网络出口与代理模式。`;
+  if (diagnostic?.networkKind === "tls") return `${prefix}：TLS 证书或安全握手失败。请检查系统时间、证书链与代理的 HTTPS 支持。`;
+  if (diagnostic?.category === "network") return `${prefix}：网络连接失败。请检查网络出口与代理模式。`;
+  if (diagnostic?.httpStatus === 401) return `${prefix}：API Key 无效或未被服务接受（HTTP 401）。`;
+  if (diagnostic?.httpStatus === 403) return `${prefix}：API Key 没有访问该服务或模型的权限（HTTP 403）。`;
+  if (diagnostic?.httpStatus === 404) return stage === "catalog"
+    ? `${prefix}：服务没有提供该模型目录端点（HTTP 404）。请检查 API 基础地址。`
+    : `${prefix}：所选模型或接口不存在（HTTP 404）。请从当前目录选择可用模型。`;
+  if (diagnostic?.httpStatus === 429) return `${prefix}：服务额度不足或请求过于频繁（HTTP 429）。`;
+  if (diagnostic?.httpStatus === 400 || diagnostic?.httpStatus === 422) return `${prefix}：服务拒绝了请求参数；所选模型可能不兼容（HTTP ${diagnostic.httpStatus}）。`;
+  if (diagnostic?.httpStatus && diagnostic.httpStatus >= 500) return `${prefix}：服务暂时不可用（HTTP ${diagnostic.httpStatus}）。请稍后重试。`;
+  if (error instanceof SyntaxError) return `${prefix}：服务返回的 JSON 格式无效。请检查基础地址和协议。`;
+  if (error instanceof OutboundProxyError) return `${prefix}：${error.message}`;
+  return `${prefix}：发生未分类错误；连接未提交。请检查基础地址和协议。`;
 }
 
 function currentPlatformConnectors() {
@@ -1646,15 +2177,15 @@ function capabilityProviderSummaries(): CapabilityProviderSummary[] {
       id: "voice",
       name: "语音",
       kind: "voice",
-      available: Boolean(llm.tts || llm.asr),
-      detail: llm.tts || llm.asr ? "语音服务可用" : "尚未配置语音服务",
+      available: Boolean(explainAutomaticRoute("speech_to_text", modelVaultResources()).selected),
+      detail: explainAutomaticRoute("speech_to_text", modelVaultResources()).selected ? "语音输入模型已验证并接入" : "尚无已验证的语音输入模型",
     },
     {
       id: "vision",
       name: "图像理解",
       kind: "vision",
-      available: Boolean(llm.vision),
-      detail: llm.vision ? "图像理解可用" : "尚未配置图像理解服务",
+      available: Boolean(explainAutomaticRoute("vision", modelVaultResources()).selected),
+      detail: explainAutomaticRoute("vision", modelVaultResources()).selected ? "图像理解模型已验证并接入" : "尚无已验证的图像理解模型",
     },
   ];
   const extensions: CapabilityProviderSummary[] = agentExtensions.list().map((extension) => {
@@ -1949,24 +2480,6 @@ async function zhipuToolChat(apiKey: string, model: string, system: string, user
   return data.choices?.[0]?.message?.content?.trim() || "";
 }
 
-async function zhipuToolAsr(apiKey: string, audio: Buffer, filename: string, mime: string, model: string): Promise<string> {
-  const fd = new FormData();
-  fd.append("model", model || DEFAULT_TOOL_SETTINGS.asrModel);
-  fd.append("stream", "false");
-  const fileBytes = new Uint8Array(audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) as ArrayBuffer);
-  fd.append("file", new Blob([fileBytes], { type: mime || "audio/webm" }), filename || "audio.webm");
-  const resp = await fetch(TOOL_ZHIPU_ASR_ENDPOINT, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: fd,
-  });
-  if (!resp.ok) {
-    throw new Error(`[tool] zhipu asr HTTP ${resp.status}: ${(await resp.text()).slice(0, 180)}`);
-  }
-  const data = (await resp.json()) as { text?: string; result?: string; data?: { text?: string } };
-  return (data.text ?? data.result ?? data.data?.text ?? "").trim();
-}
-
 async function runToolTranslateText(text: string): Promise<{ text: string; provider: string }> {
   const settings = loadToolSettings();
   const source = text.trim();
@@ -2066,6 +2579,22 @@ type PendingXOAuth = {
 };
 
 const pendingXOAuth = new Map<string, PendingXOAuth>();
+const X_OAUTH_STATE_TTL_MS = 30 * 60 * 1000;
+
+/** 仅供请求守卫预检；绝不在通用 HTTP 防护层消费一次性 state。 */
+function hasValidPendingXOAuthState(state: string | null, now = Date.now()): boolean {
+  if (!state) return false;
+  const pending = pendingXOAuth.get(state);
+  return !!pending && now - pending.createdAt <= X_OAUTH_STATE_TTL_MS;
+}
+
+function consumePendingXOAuthState(state: string, now = Date.now()): PendingXOAuth {
+  const pending = pendingXOAuth.get(state);
+  if (pending) pendingXOAuth.delete(state);
+  if (!pending) throw new Error("OAuth state 已过期，请回客户端重新点连接");
+  if (now - pending.createdAt > X_OAUTH_STATE_TTL_MS) throw new Error("OAuth state 已超过 30 分钟，请重新点连接");
+  return pending;
+}
 
 type HttpJsonResult = {
   ok: boolean;
@@ -2178,10 +2707,7 @@ function startXOAuth(input: { clientId?: string; clientSecret?: string }): { aut
 }
 
 async function completeXOAuth(code: string, state: string): Promise<{ userId: string; username?: string; name?: string }> {
-  const pending = pendingXOAuth.get(state);
-  pendingXOAuth.delete(state);
-  if (!pending) throw new Error("OAuth state 已过期，请回客户端重新点连接");
-  if (Date.now() - pending.createdAt > 30 * 60 * 1000) throw new Error("OAuth state 已超过 30 分钟，请重新点连接");
+  const pending = consumePendingXOAuthState(state);
   const body = new URLSearchParams();
   body.set("grant_type", "authorization_code");
   body.set("code", code);
@@ -2238,7 +2764,7 @@ function xOAuthCallbackHtml(ok: boolean, detail: string): string {
     "'": "&#39;",
   })[character]!);
   const title = ok ? "X 主页时间线已连接" : "X 连接失败";
-  return `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:Segoe UI,Arial,sans-serif;background:#f6f2ff;color:#1f2340;display:grid;place-items:center;min-height:100vh;margin:0"><main style="background:#fff;border:1px solid #e4dcff;border-radius:18px;box-shadow:0 24px 60px rgba(31,35,64,.14);padding:28px;max-width:560px"><h1 style="margin:0 0 12px;font-size:22px">${title}</h1><p style="line-height:1.7;color:#657085">${detail}</p><p style="line-height:1.7;color:#657085">可以关闭这个页面，回到 小丑鱼。</p></main><script>setTimeout(()=>window.close(),2500)</script></body>`;
+  return `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:Segoe UI,Arial,sans-serif;background:#f6f2ff;color:#1f2340;display:grid;place-items:center;min-height:100vh;margin:0"><main style="background:#fff;border:1px solid #e4dcff;border-radius:18px;box-shadow:0 24px 60px rgba(31,35,64,.14);padding:28px;max-width:560px"><h1 style="margin:0 0 12px;font-size:22px">${title}</h1><p style="line-height:1.7;color:#657085">${detail}</p><p style="line-height:1.7;color:#657085">可以关闭这个页面，回到 小丑鱼。</p></main></body>`;
 }
 
 interface GroupInfo {
@@ -3055,15 +3581,9 @@ function conversationSendOptions(body: ChatBody): {
   const model = String(body.model || "").trim();
   const requestedModel = model && model !== "default" ? model : undefined;
   const toolMode = body.toolMode === "off" ? "off" : body.toolMode === "read-only" ? "read-only" : "auto";
-  const selectedModel = selectCompanionConversationModel({
-    connection: modelConnection,
-    requestedModel,
-    target: body.target,
-    expertPersonaIds: LONG_FORM_EXPERT_IDS,
-    instruction: body.text,
-    forceTaskModel: body.reasoning === "deep" || body.workMode === "task" || body.workMode === "study",
-  });
-  const selectedModelId = selectedModel || modelConnection?.model || "";
+  const scene: ModelScene = body.workMode === "task" || body.workMode === "study" ? "task_workspace" : "assistant_chat";
+  const policy = resolveChatInvocation(scene, requestedModel, body.reasoningEffort === "auto" ? undefined : body.reasoningEffort);
+  const selectedModelId = policy.model || "";
   // Persisted connections use a server-owned revision. Request metadata cannot
   // grant readiness, and a failed model is never silently replaced.
   if (modelConnection?.connectionRevision) {
@@ -3079,9 +3599,9 @@ function conversationSendOptions(body: ChatBody): {
   const teachingMethod = teacherCore.split("\n\n").slice(1).join("\n\n").trim();
   return {
     sessionId: body.sessionId ? String(body.sessionId).slice(0, 120) : undefined,
-    reasoningEffort: resolveReasoningEffort(modelConnection, requestedModel || modelConnection?.model || "", body.reasoningEffort),
+    reasoningEffort: policy.reasoningEffort,
     sourceMessageId: body.messageId && /^[a-z0-9:_-]{1,160}$/i.test(body.messageId) ? body.messageId : undefined,
-    model: selectedModel,
+    model: policy.model,
     toolMode,
     memoryWriteMode: conversationMemoryWriteMode(body),
     taskAttachments: body.attachment?.name
@@ -3930,7 +4450,8 @@ function extensionAuditArguments(
   };
 }
 
-const apiRoutes = new RouteTable().add(...createFileRoutes({
+function buildApiRoutes(): RouteTable {
+  return new RouteTable().add(...createFileRoutes({
   send,
   readBody,
   taskFiles,
@@ -3939,33 +4460,104 @@ const apiRoutes = new RouteTable().add(...createFileRoutes({
   agentUserActions,
 }))
   .add(...createCapabilityRoutes({ USER, WEB_DIR, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, readBody, send, teamConnectionFingerprint }))
-  .add(...createSourceRoutes({ DATA_DIR, X_OAUTH_REDIRECT, agentUserActions, clearSavedXToken, completeXOAuth, knowledgeLibrary, marketData, modelConnectionUserMessage, readBody, saveSavedXToken, savedXTokenExists, send, startXOAuth, xOAuthCallbackHtml }))
+  .add(...createSourceRoutes({ DATA_DIR, X_OAUTH_REDIRECT, agentUserActions, clearSavedXToken, completeXOAuth, consumePendingXOAuthState, knowledgeLibrary, marketData, modelConnectionUserMessage, readBody, saveSavedXToken, savedXTokenExists, send, startXOAuth, xOAuthCallbackHtml }))
   .add(...createSystemRoutes({ APP_MANIFEST, MANIFEST_FILE, MEMORY_CORE_INFO, UNSANDBOXED_NOTICE_FILE, USER, agentApprovalStore, agentExtensions, agentJobQueue, agentUserActions, capabilities, createExtensionProvider, currentPlatformConnectors, jobWithDelivery, knowledgeLibrary, listAgentRuns, llmCallLedger, memoryConsolidationStatus, modelConnectionStatus, pendingSyncRestore, personalWork, productReviewRuns, readBody, readDataSyncSettings, relationships, saveDataSyncSettings, send, unsandboxedNotice }))
   .add(...createToolRoutes({ agentUserActions, loadToolSettings, personaToolBindings, readBody, runToolAsrCorrectText, runToolPolishText, runToolTranslateText, saveToolSettings, send, toolSettingsSummary }))
   .add(...createReminderRoutes({ agentJobQueue, agentUserActions, backgroundScheduler, createHkReminderDelivery, loadHkReminders, readBody, sanitizeHkReminder, saveHkReminders, send }))
   .add(...createProfileRoutes({ agentUserActions, completeOnboarding, generateConversationTitle, publicUserProfile, readBody, saveUserProfile, send }))
-  .add(...createPeopleRoutes({ addedContactIds, agentUserActions, allPersonaIdsInOrder, applyRel, currentContactIds, loadAvatarOverrides, readBody, relOf, relationships, saveAvatarOverride, saveContacts, saveRel, send }));
+  .add(...createPeopleRoutes({ addedContactIds, agentUserActions, allPersonaIdsInOrder, applyRel, currentContactIds, loadAvatarOverrides, readBody, relOf, relationships, saveAvatarOverride, saveContacts, saveRel, send }))
+  .add(...createPantheonRoutes({ pantheon, thoughtLibrary, send }));
+}
+
+let apiRoutes: RouteTable | undefined;
+
+function clientTokenMatches(value: string | string[] | undefined): boolean {
+  if (!CLIENT_TOKEN) return true;
+  const supplied = Array.isArray(value) ? value[0] || "" : value || "";
+  const expectedDigest = createHash("sha256").update(CLIENT_TOKEN).digest();
+  const suppliedDigest = createHash("sha256").update(supplied).digest();
+  return timingSafeEqual(expectedDigest, suppliedDigest);
+}
+
+let shutdownStarted = false;
+
+async function closeDynamicModelRoutesBounded(): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      dynamicModelDispatcher.closeRoutes(),
+      new Promise<void>((resolve) => { timeout = setTimeout(resolve, 1500); timeout.unref?.(); }),
+    ]);
+  } catch {
+    // Shutdown must remain bounded even when a provider socket is already broken.
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function beginGracefulShutdown(): void {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  void closeDynamicModelRoutesBounded();
+  server.close(() => {
+    process.exitCode = 0;
+  });
+  const forceClose = setTimeout(() => server.closeAllConnections(), 1500);
+  forceClose.unref?.();
+  const forceExit = setTimeout(() => process.exit(0), 5000);
+  forceExit.unref?.();
+}
 
 const server = createServer(async (req, res) => {
   try {
+    const url = req.url || "/";
+    if (!url.startsWith("/") || url.startsWith("//")) {
+      send(res, 403, { error: "仅允许本机同源访问" });
+      return;
+    }
+    const parsedUrl = new URL(url, "http://127.0.0.1");
+    const pathname = parsedUrl.pathname;
+    const oauthCallback = req.method === "GET" && pathname === "/api/sources/x/oauth/callback";
+    const validXOAuthTopLevelReturn = oauthCallback
+      && hasValidPendingXOAuthState(parsedUrl.searchParams.get("state"));
     if (!isAllowedLocalRequest({
       remoteAddress: req.socket.remoteAddress,
       host: req.headers.host,
       origin: typeof req.headers.origin === "string" ? req.headers.origin : undefined,
       secFetchSite: typeof req.headers["sec-fetch-site"] === "string" ? req.headers["sec-fetch-site"] : undefined,
+      secFetchMode: typeof req.headers["sec-fetch-mode"] === "string" ? req.headers["sec-fetch-mode"] : undefined,
+      secFetchDest: typeof req.headers["sec-fetch-dest"] === "string" ? req.headers["sec-fetch-dest"] : undefined,
+      allowCrossSiteTopLevelNavigation: validXOAuthTopLevelReturn,
       port: PORT,
     })) {
       send(res, 403, { error: "仅允许本机同源访问" });
       return;
     }
-    const url = req.url || "/";
-    const pathname = url.split("?", 1)[0];
+    if (!oauthCallback && !clientTokenMatches(req.headers["x-clownfish-client"])) {
+      send(res, 401, { error: "客户端认证失败" });
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/health") {
+      send(res, 200, {
+        ok: true,
+        appId: APP_MANIFEST.appId,
+        version: APP_MANIFEST.version,
+        pid: process.pid,
+        clientSession: CLIENT_SESSION || null,
+      });
+      return;
+    }
+    if (req.method === "POST" && pathname === "/api/shutdown") {
+      send(res, 202, { ok: true, shuttingDown: true });
+      setImmediate(beginGracefulShutdown);
+      return;
+    }
     const pageRoute = appRoute(pathname);
     if (req.method === "GET" && pageRoute) {
       send(res, 200, renderAppPage(readFileSync(join(WEB_DIR, pageRoute.file), "utf-8"), pathname), "text/html");
       return;
     }
-    const matchedRoute = apiRoutes.find(req.method, pathname);
+    const matchedRoute = apiRoutes?.find(req.method, pathname);
     if (matchedRoute) {
       await runRoute(
         matchedRoute,
@@ -4192,12 +4784,17 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/outbound-proxy") {
-      const resolved = resolveOutboundProxy(outboundProxy, process.env, outboundProxyDirectHosts());
+      const proxyState = currentNetworkPolicySnapshot();
+      let readinessError = proxyState.error;
+      if (!readinessError) {
+        try { await assertLoopbackProxyReady(proxyState.resolved); }
+        catch { readinessError = "系统代理端口未监听；模型请求会被阻止且不会回退直连"; }
+      }
       send(res, 200, {
         ok: true,
         settings: { version: outboundProxy.version, mode: outboundProxy.mode, url: outboundProxy.url || "", noProxy: outboundProxy.noProxy },
-        status: { ...publicOutboundProxy(outboundProxy, resolved), installed: outboundProxyInstalled() },
-        loadError: outboundProxyLoadError || undefined,
+        status: { ...publicOutboundProxy(outboundProxy, proxyState.resolved), installed: outboundProxyInstalled(), error: readinessError || undefined, fingerprint: proxyState.fingerprint, generation: proxyState.generation },
+        loadError: outboundProxyLoadError || readinessError || undefined,
         // 说清边界，否则很容易被当成"整个应用都走代理"。
         scope: "进程内基于 fetch 的出站调用（含模型调用）；网页读取走 node:https 并钉住解析地址，不经代理；被 spawn 的 MCP 子进程不受约束",
         credentials: "显式地址不接受内嵌用户名密码；需要登录的代理请用跟随环境变量模式，凭据不会被本程序保存",
@@ -4209,17 +4806,15 @@ const server = createServer(async (req, res) => {
       try {
         const next = normalizeOutboundProxySettings(body);
         // 先落盘再切换，写失败时仍按旧设置工作。
-        const temp = `${OUTBOUND_PROXY_FILE}.${process.pid}.tmp`;
-        writeFileSync(temp, JSON.stringify(next, null, 2), "utf8");
-        renameSync(temp, OUTBOUND_PROXY_FILE);
+        writeOutboundProxySettings(next);
         outboundProxy = next;
         outboundProxyLoadError = "";
-        const resolved = resolveOutboundProxy(outboundProxy, process.env, outboundProxyDirectHosts());
-        installOutboundProxy(resolved);
+        const proxyState = currentNetworkPolicySnapshot();
+        installOutboundProxy(proxyState.resolved, Boolean(proxyState.error));
         send(res, 200, {
           ok: true,
           settings: { version: next.version, mode: next.mode, url: next.url || "", noProxy: next.noProxy },
-          status: { ...publicOutboundProxy(outboundProxy, resolved), installed: outboundProxyInstalled() },
+          status: { ...publicOutboundProxy(outboundProxy, proxyState.resolved), installed: outboundProxyInstalled(), error: proxyState.error || undefined, fingerprint: proxyState.fingerprint, generation: proxyState.generation },
         });
       } catch (error) {
         // 校验文案是我们自己写的、不含异常原文，因此显式透出；否则 send() 会换成通用提示，
@@ -4926,165 +5521,603 @@ const server = createServer(async (req, res) => {
       send(res, 200, { executions: capabilityTools.listExecutionHistory(requested) });
       return;
     }
+    if (req.method === "GET" && url === "/api/model-quick-setup") {
+      send(res, 200, { ok: true, ...quickSetupPublicState() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/model-quick-setup") {
+      const body = (await readBody(req)) as { requestId?: string; keys?: Partial<Record<QuickSetupProvider, string>>; resetRecommendations?: boolean };
+      const requestId = String(body.requestId || "").trim();
+      if (!/^[A-Za-z0-9._-]{8,100}$/.test(requestId)) {
+        send(res, 400, { ok: false, error: "invalid_request_id", userMessage: "配置请求编号无效，请刷新页面后重试。" }); return;
+      }
+      const keys = Object.fromEntries(QUICK_SETUP_PROVIDERS.map((provider) => [provider, String(body.keys?.[provider] || "").trim()])) as Record<QuickSetupProvider, string>;
+      if (Object.values(keys).some((key) => key.length > 4096 || /[\r\n]/.test(key))) {
+        send(res, 400, { ok: false, error: "invalid_credential", userMessage: "密钥格式不正确。" }); return;
+      }
+      const hasExisting = modelVault.connections.some((item) => QUICK_SETUP_PROVIDERS.includes(item.connection.provider as QuickSetupProvider)
+        && Boolean(item.connection.apiKey || item.connection.credentials?.apiKey));
+      if (!hasExisting && !Object.values(keys).some(Boolean)) {
+        send(res, 400, { ok: false, error: "missing_credential", userMessage: "请至少填写一个 OpenAI 或智谱 API Key。" }); return;
+      }
+      try {
+        const run = modelQuickSetupCoordinator.run(requestId, modelVault.quickSetup, () => runModelQuickSetup({ requestId, keys, resetRecommendations: body.resetRecommendations === true }, {
+          persist: (snapshot) => { modelVault = { ...modelVault, quickSetup: snapshot }; writeSavedLLMVault(); },
+          save: async (provider, key) => saveQuickSetupProvider(provider, key),
+          discover: discoverQuickSetupTargets,
+          verify: verifyQuickSetupTarget,
+          assign: assignQuickSetupTargets,
+        }));
+        const snapshot = await run.promise;
+        send(res, 200, { ok: snapshot.stage !== "failed", idempotent: run.reused, ...quickSetupPublicState() });
+      } catch (error) {
+        if (error instanceof ModelQuickSetupBusyError) {
+          send(res, 409, { ok: false, error: "model_setup_busy", userMessage: error.message, ...quickSetupPublicState() }); return;
+        }
+        const detail = modelConnectionUserMessage(error, "request");
+        send(res, 400, { ok: false, error: detail, userMessage: detail, ...quickSetupPublicState() });
+      }
+      return;
+    }
+    if (req.method === "GET" && url === "/api/model-provider-catalog") {
+      send(res, 200, PROVIDER_CATALOG);
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-connection/save") {
+      const b = (await readBody(req)) as { connectionId?: string; label?: string; provider?: CompanionModelProvider; protocol?: CompanionModelProtocol; baseUrl?: string; model?: string; selectionMode?: "auto" | "manual"; key?: string; credentials?: Record<string, string>; providerSettings?: Record<string, string> };
+      try {
+        const existing = modelVault.connections.find((item) => item.id === b.connectionId);
+        const provider = providerCatalogEntry(b.provider)?.providerId || existing?.connection.provider || "custom";
+        const definition = providerCatalogEntry(provider)!;
+        const preset = COMPANION_MODEL_PROVIDER_PRESETS.find((item) => item.id === provider)!;
+        const submittedCredentials = Object.fromEntries(Object.entries(b.credentials || {}).map(([name, value]) => [name, String(value || "").trim()]).filter(([, value]) => Boolean(value)));
+        const submittedKey = String(b.key || "").trim();
+        if (submittedKey) submittedCredentials.apiKey = submittedKey;
+        const sameProvider = existing?.connection.provider === provider;
+        const credentials = { ...(sameProvider ? existing?.connection.credentials || (existing.connection.apiKey ? { apiKey: existing.connection.apiKey } : {}) : {}), ...submittedCredentials };
+        const providerSettings = { ...(sameProvider ? existing?.connection.providerSettings || {} : {}), ...(b.providerSettings || {}) };
+        const provisionalBase = provider === "custom" ? String(b.baseUrl || existing?.connection.baseUrl || preset.baseUrl) : definition.defaultEndpoint;
+        const baseUrl = resolveOfficialProviderBaseUrl({ provider, baseUrl: provisionalBase, providerSettings });
+        const protocol = provider === "custom" ? b.protocol || existing?.connection.protocol || preset.protocol : preset.protocol;
+        const key = credentials.apiKey || "";
+        const requestedModel = String(b.model || existing?.connection.model || preset.model).trim();
+        const retired = curatedModelEntry(provider, baseUrl, requestedModel);
+        if (retired?.lifecycle === "retired") throw new Error(`指定型号 ${requestedModel} 已停止使用${retired.replacement ? `；请改用 ${retired.replacement}` : ""}。`);
+        const normalized = normalizeCompanionModelConnection({ provider, protocol, baseUrl, model: requestedModel, selectionMode: b.selectionMode || existing?.connection.selectionMode || "manual", apiKey: key, credentials, providerSettings,
+          registeredModels: existing?.connection.registeredModels, modelChecks: existing?.connection.modelChecks });
+        const connection = withConnectionRevision(normalized, existing?.connection, Boolean(Object.keys(submittedCredentials).length));
+        const sameRevision = connection.connectionRevision === existing?.connection.connectionRevision;
+        const record: RuntimeModelConnectionRecord = {
+          id: existing?.id || randomUUID(),
+          label: String(b.label || existing?.label || `${preset.name} · ${new URL(connection.baseUrl).host}`).slice(0, 120),
+          connection,
+          rawCatalog: sameRevision ? [...(existing?.rawCatalog || [])] : [],
+          catalog: eligibleCuratedCatalog(provider, baseUrl),
+          catalogFetchedAt: sameRevision ? existing?.catalogFetchedAt || "" : "",
+          catalogConnectionRevision: sameRevision ? existing?.catalogConnectionRevision || "" : "",
+          catalogSource: sameRevision ? existing?.catalogSource || "none" : "none",
+        };
+        const executionChanged = Boolean(existing && modelVault.activeConnectionId === existing.id && (
+          existing.connection.provider !== connection.provider
+          || existing.connection.protocol !== connection.protocol
+          || existing.connection.baseUrl !== connection.baseUrl
+          || existing.connection.model !== connection.model
+          || existing.connection.apiKey !== connection.apiKey
+        ));
+        saveModelVaultRecord(record, { syncRuntime: false, deactivateEditedActive: executionChanged });
+        send(res, 200, { ok: true, savedConnectionId: record.id, activationRequired: executionChanged,
+          userMessage: executionChanged
+            ? "更改已加密保存；正在运行的模型保持不变。请测试新配置并显式设为默认后启用。"
+            : "连接已加密保存；尚未联网测试，也没有改变默认模型。",
+          ...modelConnectionStatus() });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        send(res, 400, { ok: false, error: detail, userMessage: detail, ...modelConnectionStatus() });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-connect") {
+      send(res, 410, {
+        ok: false,
+        error: "deprecated_endpoint",
+        code: "deprecated_endpoint",
+        userMessage: "旧的一步连接接口已停用，请使用模型设置中的“保存并自动配置”。",
+        migrateTo: "/api/llm-connection/save",
+      });
+      return;
+    }
+    // Kept temporarily as unreachable migration reference while the split,
+    // save-first onboarding endpoints replace the old transaction.
+    if (req.method === "POST" && url === "/api/_disabled/llm-connect") {
+      const b = (await readBody(req)) as { connectionId?: string; label?: string; provider?: CompanionModelProvider; protocol?: CompanionModelProtocol; baseUrl?: string; model?: string; selectionMode?: "auto" | "manual"; confirmUnlistedModel?: boolean; key?: string; networkMode?: string; waitForJobsMs?: number };
+      const progress: Array<{ id: string; state: "complete" | "warning"; detail: string }> = [];
+      let failureStage: ModelConnectionFailureStage = "save";
+      try {
+        const outcome = await modelSwitch.run({ target: `connect/${b.provider || "auto"}`, drainMs: Number(b.waitForJobsMs) || 0 }, async () => {
+          const steps = progress;
+          const previousProxy = outboundProxy;
+          const previousProxyFile = existsSync(OUTBOUND_PROXY_FILE) ? readFileSync(OUTBOUND_PROXY_FILE, "utf8") : undefined;
+          const requestedNetworkMode = String(b.networkMode || outboundProxy.mode || "auto");
+          if (b.networkMode && ![/^auto$/, /^system$/, /^direct$/].some((pattern) => pattern.test(requestedNetworkMode))) {
+            throw new OutboundProxyError("模型连接的网络模式只能是自动、系统代理或直连");
+          }
+          const stagedProxy = b.networkMode
+            ? normalizeOutboundProxySettings({ version: 1, mode: requestedNetworkMode, noProxy: outboundProxy.noProxy })
+            : outboundProxy;
+          const stagedProxyState = await assertOutboundProxyAvailable(stagedProxy, [String(b.baseUrl || "")]);
+          const stagedIdentity = outboundProxyFingerprint(stagedProxy, stagedProxyState.resolved, stagedProxyState.error, 0);
+          const stagedGeneration = stagedIdentity === networkPolicyIdentity ? networkPolicyGeneration : networkPolicyGeneration + 1;
+          const stagedFingerprint = outboundProxyFingerprint(stagedProxy, stagedProxyState.resolved, stagedProxyState.error, stagedGeneration);
+          const stagedDispatcher = createOutboundDispatcher(stagedProxyState.resolved);
+          let stagedDispatcherClosed = false;
+          let globalProxySwitched = false;
+          let keepStagedProxy = false;
+          let proxyFileWritten = false;
+          try {
+          const submittedKey = String(b.key || "").trim();
+          const existing = modelVault.connections.find((item) => item.id === b.connectionId);
+          const detection = detectCompanionProvider(String(b.baseUrl || existing?.connection.baseUrl || ""));
+          // A provider selector is only a protocol/display hint. Official identity and
+          // maintained fallback require an exact allowlisted host + path match.
+          const provider = detection.confidence === "exact" ? detection.provider : "custom";
+          const preset = COMPANION_MODEL_PROVIDER_PRESETS.find((item) => item.id === provider)!;
+          const baseUrl = String(b.baseUrl || existing?.connection.baseUrl || preset.baseUrl);
+          const protocol = b.protocol || existing?.connection.protocol || preset.protocol;
+          const sameEndpoint = existing && existing.connection.provider === provider && existing.connection.protocol === protocol
+            && existing.connection.baseUrl.replace(/\/+$/, "") === baseUrl.replace(/\/+$/, "");
+          const key = submittedKey || (sameEndpoint ? existing.connection.apiKey : "");
+          let connection = withConnectionRevision(normalizeCompanionModelConnection({ provider, protocol, baseUrl, model: b.model || existing?.connection.model || preset.model, selectionMode: b.selectionMode || existing?.connection.selectionMode, apiKey: key, networkFingerprint: stagedFingerprint, transportDispatcher: stagedDispatcher }), existing?.connection, Boolean(submittedKey && submittedKey !== existing?.connection.apiKey));
+          const id = existing?.id || randomUUID();
+          const label = String(b.label || existing?.label || `${preset.name} · ${new URL(connection.baseUrl).host}`).slice(0, 120);
+          steps.push({ id: "saved", state: "complete", detail: "连接已在内存中暂存；全部验证成功后才会加密提交。" });
+          steps.push({ id: "provider", state: "complete", detail: `${detection.evidence}：${preset.name}` });
+          let rawCatalog: CompanionModelInfo[] = [];
+          const catalog = eligibleCuratedCatalog(provider, baseUrl);
+          let catalogSource: RuntimeModelConnectionRecord["catalogSource"] = "provider";
+          failureStage = "catalog";
+          try {
+            rawCatalog = await discoverCompanionModels(runtimeModelConnection(connection)!);
+            steps.push({ id: "catalog", state: "complete", detail: `已读取账号目录 ${rawCatalog.length} 项；官方主列表 ${catalog.length} 项。` });
+          } catch (error) {
+            if (provider === "custom" || !(error instanceof CompanionModelHttpError) || ![404, 405].includes(error.status)) throw error;
+            catalogSource = "maintained";
+            steps.push({ id: "catalog", state: "warning", detail: `服务商未提供账号目录；官方维护主列表仍有 ${catalog.length} 项。` });
+          }
+          const requested = String(b.model || "").trim();
+          const selection = planOnboardingModel({ provider, baseUrl, rawCatalog, requestedModel: requested, selectionMode: b.selectionMode });
+          const candidate = selection.model;
+          if (selection.requiresUnlistedConfirmation && b.confirmUnlistedModel !== true) throw new ModelConfirmationRequiredError(`账号模型目录未列出 ${candidate}。如仍要仅验证这个官方短名单型号，请再次明确确认；不会替换成其他型号。`);
+          connection = { ...connection, model: candidate, modelChecks: { ...(connection.modelChecks || {}) } };
+          let record: RuntimeModelConnectionRecord = { id, label, connection, rawCatalog, catalog, catalogFetchedAt: new Date().toISOString(), catalogConnectionRevision: connection.connectionRevision || "", catalogSource };
+          steps.push({ id: "recommend", state: "complete", detail: requested ? `保留用户明确指定的 ${candidate}；未作替换。` : `自动选择官方推荐 ${candidate}；没有循环试探其他型号。` });
+          const startedAt = Date.now();
+          let check;
+          failureStage = "probe";
+          try { check = { ...(await checkCompanionChatModel(connection)), latencyMs: Date.now() - startedAt }; }
+          catch (error) {
+            if (!(error instanceof CompanionModelHttpError) || ![400, 404, 422].includes(error.status)) throw error;
+            check = { connectionRevision: connection.connectionRevision, checkedAt: new Date().toISOString(), chat: "failed" as const, streaming: "not-tested" as const, tools: "not-tested" as const, transport: undefined, detail: "推荐模型的文字轻量验证未通过。", diagnostic: companionModelFailureDiagnostic(error), latencyMs: Date.now() - startedAt };
+          }
+          connection = { ...connection, modelChecks: { ...(connection.modelChecks || {}), [candidate]: check } };
+          record = { ...record, connection };
+          if (check.chat !== "passed") return { ok: false as const, steps, record, check };
+          steps.push({ id: "verify", state: "complete", detail: `${check.detail} 用时 ${Date.now() - startedAt}ms。` });
+          await stagedDispatcher.close();
+          stagedDispatcherClosed = true;
+          const { transportDispatcher: _stagedDispatcher, ...committedConnection } = connection;
+          connection = committedConnection;
+          record = { ...record, connection };
+          const assignments = structuredClone(modelVault.assignments);
+          assignments.system.chat = { mode: "fixed", ref: { connectionId: id, modelId: candidate, capability: "chat" } };
+          failureStage = "save";
+          writeOutboundProxySettings(stagedProxy);
+          proxyFileWritten = true;
+          installOutboundProxy(stagedProxyState.resolved);
+          globalProxySwitched = true;
+          try {
+            await activateModelVaultRecord(record, assignments);
+          } catch (error) {
+            if (previousProxyFile === undefined) {
+              try { if (existsSync(OUTBOUND_PROXY_FILE)) unlinkSync(OUTBOUND_PROXY_FILE); } catch { /* surfaced by the original transaction error */ }
+            } else {
+              const restoreTemp = `${OUTBOUND_PROXY_FILE}.${process.pid}.restore.tmp`;
+              writeFileSync(restoreTemp, previousProxyFile, "utf8");
+              renameSync(restoreTemp, OUTBOUND_PROXY_FILE);
+            }
+            proxyFileWritten = false;
+            throw error;
+          }
+          outboundProxy = stagedProxy;
+          outboundProxyLoadError = "";
+          keepStagedProxy = true;
+          steps.push({ id: "ready", state: "complete", detail: `${candidate} 已成为默认文字任务模型。` });
+          return { ok: true as const, steps, record, check };
+          } finally {
+            if (!keepStagedProxy) {
+              if (proxyFileWritten) {
+                if (previousProxyFile === undefined) {
+                  try { if (existsSync(OUTBOUND_PROXY_FILE)) unlinkSync(OUTBOUND_PROXY_FILE); } catch { /* keep the original actionable failure */ }
+                } else {
+                  const restoreTemp = `${OUTBOUND_PROXY_FILE}.${process.pid}.restore.tmp`;
+                  writeFileSync(restoreTemp, previousProxyFile, "utf8");
+                  renameSync(restoreTemp, OUTBOUND_PROXY_FILE);
+                }
+              }
+              outboundProxy = previousProxy;
+              if (globalProxySwitched) applyOutboundProxy();
+            }
+            if (!stagedDispatcherClosed) await stagedDispatcher.close();
+          }
+        });
+        if (!outcome.ok) {
+          const draft = { id: outcome.record.id, label: outcome.record.label, ...publicModelConnection(outcome.record.connection), hasKey: false, models: outcome.record.catalog, rawModels: outcome.record.rawCatalog, modelChecks: outcome.record.connection.modelChecks || {}, connectionRevision: outcome.record.connection.connectionRevision, catalogConnectionRevision: outcome.record.catalogConnectionRevision };
+          send(res, 400, { ok: false, userMessage: `${modelConnectionUserMessage(outcome.check.diagnostic, "probe")} 连接未提交；原连接和默认模型保持不变。`, steps: outcome.steps, checked: outcome.check, draft, ...modelConnectionStatus() }); return;
+        }
+        send(res, 200, { ok: true, steps: outcome.steps, checked: outcome.check, ...modelConnectionStatus() });
+      } catch (error) {
+        if (sendModelSwitchRefusal(res, error)) return;
+        if (error instanceof ModelConfirmationRequiredError) {
+          send(res, 409, { error: error.message, userMessage: error.message, code: error.code, confirmationRequired: true, steps: progress, ...modelConnectionStatus() });
+          return;
+        }
+        const detail = error instanceof Error && /^(账号模型目录未发现指定型号|指定型号 .+ 已停止推荐|未指定模型|此端点没有处于有效期)/.test(error.message)
+          ? error.message
+          : modelConnectionUserMessage(error, failureStage);
+        send(res, 400, { ok: false, error: detail, userMessage: detail, steps: progress, diagnostic: companionModelFailureDiagnostic(error), ...modelConnectionStatus() });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-disconnect") {
+      const b = (await readBody(req)) as { waitForJobsMs?: number };
+      try {
+        const action = await modelSwitch.run(
+          { target: "offline", drainMs: Number(b.waitForJobsMs) || 0 },
+          () => agentUserActions.execute({
+            name: "llm_connection_disconnect",
+            description: "切换到离线模式并移除已保存的模型连接",
+            arguments: { offline: true },
+            execute: async () => {
+              await rebuildLLM(undefined);
+              return modelConnectionStatus();
+            },
+            summarizeResult: (value) => ({ ok: true, live: value.live }),
+          }),
+        );
+        send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
+      } catch (error) {
+        if (sendModelSwitchRefusal(res, error)) return;
+        const detail = modelConnectionUserMessage(error, "request");
+        send(res, 400, { ok: false, error: detail, userMessage: detail });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-routing") {
+      const b = (await readBody(req)) as { scope?: "system" | "scene"; scene?: ModelScene; capability?: ModelCapability; assignment?: CapabilityAssignment | { mode: "inherit" } };
+      try {
+        if (!MODEL_CAPABILITIES.includes(b.capability as ModelCapability)) throw new Error("不支持的模型能力。 ");
+        const capability = b.capability as ModelCapability;
+        const assignment = b.assignment?.mode === "fixed" ? b.assignment : b.assignment?.mode === "inherit" ? b.assignment : { mode: "auto" as const };
+        if (assignment.mode === "fixed" && assignment.ref.capability !== capability) throw new Error("所选模型引用与目标能力不一致。 ");
+        if (b.scope === "scene" && capability !== "chat") throw new Error("应用场景目前只支持单独覆盖文字模型；媒体能力由系统用途设置统一路由。 ");
+        if (assignment.mode === "fixed") {
+          const target = modelVault.connections.find((item) => item.id === assignment.ref.connectionId);
+          const support = target && providerCapabilityAdapterSupport(target.connection.provider, target.connection.baseUrl, capability);
+          if (support?.state !== "available") {
+            const pending = new Error(`${support?.reason || "所选连接尚未接入此能力。"} 当前不能设置固定模型。`);
+            pending.name = "IntegrationPendingError";
+            throw pending;
+          }
+        }
+        if (assignment.mode !== "inherit") validateFixedAssignment(assignment, modelVaultResources());
+        const assignments = structuredClone(modelVault.assignments);
+        if (b.scope === "scene") {
+          if (!MODEL_SCENES.includes(b.scene as ModelScene)) throw new Error("不支持的应用场景。 ");
+          if (assignment.mode === "fixed" && assignment.ref.connectionId !== modelVault.activeConnectionId)
+            throw new Error("场景覆盖目前只能选择当前连接中已验证的模型；请先把该连接设为系统默认。 ");
+          if (assignment.mode === "inherit") delete assignments.scenes[b.scene as ModelScene][capability];
+          else assignments.scenes[b.scene as ModelScene][capability] = assignment;
+          modelVault = { ...modelVault, assignments };
+          writeSavedLLMVault();
+          if (capability === "chat" && assignment.mode === "fixed") await rebuildModelRuntime();
+        } else {
+          if (assignment.mode === "inherit") throw new Error("系统级能力不能继承；请选择自动或固定模型。 ");
+          assignments.system[capability] = assignment;
+          if (capability === "chat") {
+            const selected = assignment.mode === "fixed"
+              ? assignment.ref
+              : explainAutomaticRoute("chat", modelVaultResources()).selected;
+            const selectedRecord = selected && modelVault.connections.find((item) => item.id === selected.connectionId);
+            if (selectedRecord) await activateModelVaultRecord({ ...selectedRecord, connection: { ...selectedRecord.connection, model: selected.modelId } }, assignments);
+            else { modelVault = { ...modelVault, assignments }; writeSavedLLMVault(); }
+          } else { modelVault = { ...modelVault, assignments }; writeSavedLLMVault(); }
+        }
+        send(res, 200, { ok: true, ...modelConnectionStatus() });
+      } catch (error) { const detail = error instanceof Error ? error.message : String(error); send(res, error instanceof Error && error.name === "IntegrationPendingError" ? 409 : 400, { ok: false, error: detail, userMessage: detail }); }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-chat-policy") {
+      const b = (await readBody(req)) as { scope?: "system" | "scene"; scene?: ModelScene; reasoningEffort?: SavedReasoningEffort | "inherit" };
+      try {
+        const value = b.reasoningEffort || "auto";
+        if (!["auto", "none", "low", "medium", "high", "xhigh", "max", "inherit"].includes(value)) throw new Error("不支持的思考强度。");
+        const scene = b.scope === "scene" ? b.scene : "assistant_chat";
+        if (b.scope === "scene" && !MODEL_SCENES.includes(scene as ModelScene)) throw new Error("不支持的应用场景。");
+        // Resolve first so unsupported values never reach persisted preferences.
+        if (value !== "inherit") resolveChatInvocation(scene as ModelScene, undefined, value);
+        const chatPreferences = structuredClone(modelVault.chatPreferences);
+        if (b.scope === "scene" && value === "inherit") delete chatPreferences.scenes[scene as ModelScene];
+        else if (b.scope === "scene") chatPreferences.scenes[scene as ModelScene] = { reasoningEffort: value as SavedReasoningEffort };
+        else if (value === "inherit") throw new Error("系统默认不能继承，请选择模型默认或具体强度。");
+        else chatPreferences.system.reasoningEffort = value;
+        modelVault = { ...modelVault, chatPreferences };
+        writeSavedLLMVault();
+        send(res, 200, { ok: true, ...modelConnectionStatus() });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        send(res, 400, { ok: false, error: detail, userMessage: detail });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-model/enabled") {
+      const b = (await readBody(req)) as { connectionId?: string; models?: string[]; enabled?: boolean };
+      const targetRecord = b.connectionId ? modelVault.connections.find((item) => item.id === b.connectionId) : activeVaultRecord(modelVault);
+      try {
+        if (!targetRecord) throw new Error("请先保存模型连接。");
+        const requested = Array.isArray(b.models) ? b.models : [];
+        const models = normalizeFavoriteModels(requested);
+        if (!models.length || models.length !== requested.length) throw new Error("请选择至少一个格式正确且不重复的模型 ID。");
+        const enable = b.enabled !== false;
+        if (enable) {
+          for (const modelId of models) {
+            const entry = curatedModelEntry(targetRecord.connection.provider, targetRecord.connection.baseUrl, modelId);
+            if (entry?.lifecycle === "retired") throw new Error(`型号 ${modelId} 已停止使用${entry.replacement ? `；请改用 ${entry.replacement}` : ""}。`);
+          }
+        } else {
+          const blocked = models.flatMap((modelId) => modelAssignmentReferences(targetRecord.id, modelId).map((reference) => ({ modelId, reference })));
+          if (blocked.length) {
+            const detail = blocked.map((item) => `${item.modelId}（${item.reference}）`).join("、");
+            send(res, 409, { ok: false, error: "model_in_use", code: "model_in_use", userMessage: `以下模型仍被引用，不能停用：${detail}。请先修改对应用途。`, references: blocked, ...modelConnectionStatus() });
+            return;
+          }
+        }
+        const enabled = new Set(targetRecord.connection.enabledModels || []);
+        for (const modelId of models) enable ? enabled.add(modelId) : enabled.delete(modelId);
+        const connection = { ...targetRecord.connection, enabledModels: normalizeFavoriteModels([...enabled]) };
+        saveModelVaultRecord({ ...targetRecord, connection });
+        send(res, 200, { ok: true, changedModels: models, enabled: enable, ...modelConnectionStatus() });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        send(res, 400, { ok: false, error: detail, userMessage: detail, ...modelConnectionStatus() });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-capability/check") {
+      const b = (await readBody(req)) as { connectionId?: string; model?: string; capability?: OpenAIMediaCapability };
+      const targetRecord = modelVault.connections.find((item) => item.id === b.connectionId);
+      const modelId = String(b.model || "").trim();
+      const capability = b.capability;
+      const allowed: OpenAIMediaCapability[] = ["vision", "speech_to_text", "text_to_speech", "image_generation"];
+      if (!targetRecord || !modelId || !capability || !allowed.includes(capability)) { send(res, 400, { error: "能力检查参数不完整。" }); return; }
+      const entry = curatedModelEntry(targetRecord.connection.provider, targetRecord.connection.baseUrl, modelId);
+      if (!entry?.capabilities.includes(capability) || providerCapabilityAdapterSupport(targetRecord.connection.provider, targetRecord.connection.baseUrl, capability).state !== "available") {
+        send(res, 400, { error: "该型号没有此能力的官方维护记录，或当前端点尚未接入对应执行器。" }); return;
+      }
+      if (entry.lifecycle === "retired") { send(res, 400, { error: `型号 ${modelId} 已停止使用${entry.replacement ? `；请改用 ${entry.replacement}` : ""}。` }); return; }
+      if (!targetRecord.connection.enabledModels?.includes(modelId)) {
+        const connection = {
+          ...targetRecord.connection,
+          enabledModels: normalizeFavoriteModels([...(targetRecord.connection.enabledModels || []), modelId]),
+          registeredModels: normalizeFavoriteModels([...(targetRecord.connection.registeredModels || []), modelId]),
+        };
+        saveModelVaultRecord({ ...targetRecord, connection });
+        targetRecord.connection = connection;
+      }
+      const started = Date.now();
+      const key = `${capability}:${modelId}`;
+      try {
+        const connection = runtimeModelConnection(targetRecord.connection)!;
+        if (capability === "vision") await openAIVision(connection, modelId, "只回答 test", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+        else if (capability === "speech_to_text") {
+          const wav = Buffer.from("UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=", "base64");
+          await openAITranscribe(connection, modelId, wav, "audio/wav");
+        } else if (capability === "text_to_speech") await openAISpeech(connection, modelId, "测试", { voice: "alloy", format: "mp3", speed: 1 });
+        else await openAIImage(connection, modelId, "A single small blue circle on white background", { size: "1024x1024", quality: "low" });
+        const check = { connectionRevision: targetRecord.connection.connectionRevision, modelId, capability, checkedAt: new Date().toISOString(), status: "passed" as const, detail: "已通过当前连接的显式最小能力检查。", latencyMs: Date.now() - started };
+        saveModelVaultRecord({ ...targetRecord, connection: { ...targetRecord.connection, capabilityChecks: { ...targetRecord.connection.capabilityChecks, [key]: check } } });
+        send(res, 200, { ok: true, check, ...modelConnectionStatus() });
+      } catch (error) {
+        const check = { connectionRevision: targetRecord.connection.connectionRevision, modelId, capability, checkedAt: new Date().toISOString(), status: "failed" as const, detail: modelConnectionUserMessage(error, "probe"), ...(companionModelFailureDiagnostic(error) ? { diagnostic: companionModelFailureDiagnostic(error) } : {}) };
+        saveModelVaultRecord({ ...targetRecord, connection: { ...targetRecord.connection, capabilityChecks: { ...targetRecord.connection.capabilityChecks, [key]: check } } });
+        send(res, 400, { ok: false, error: check.detail, check, ...modelConnectionStatus() });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-model/check-batch") {
+      const b = (await readBody(req)) as { connectionId?: string; models?: string[] };
+      const targetRecord = b.connectionId ? modelVault.connections.find((item) => item.id === b.connectionId) : activeVaultRecord(modelVault);
+      const requested = Array.isArray(b.models) ? b.models : [];
+      const models = normalizeFavoriteModels(requested);
+      if (!targetRecord) { send(res, 400, { ok: false, error: "请先保存模型连接。", userMessage: "请先保存模型连接。" }); return; }
+      if (!models.length || models.length !== requested.length || models.length > 12) {
+        send(res, 400, { ok: false, error: "批量测试每次需要选择 1–12 个不重复的有效模型 ID。", userMessage: "批量测试每次需要选择 1–12 个不重复的有效模型 ID。" }); return;
+      }
+      const notEnabled = models.filter((id) => !targetRecord.connection.enabledModels?.includes(id));
+      if (notEnabled.length) { send(res, 400, { ok: false, error: "model_not_enabled", userMessage: `请先启用这些模型：${notEnabled.join("、")}。` }); return; }
+      const releaseModelLock = modelSwitch.tryLock();
+      if (!releaseModelLock) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
+      try {
+        await assertOutboundProxyAvailable(outboundProxy, [targetRecord.connection.baseUrl]);
+        const checks = { ...(targetRecord.connection.modelChecks || {}) };
+        const results: Array<{ modelId: string; ok: boolean; check: CompanionModelCheck }> = [];
+        let cursor = 0;
+        const worker = async () => {
+          while (cursor < models.length) {
+            const modelId = models[cursor++];
+            let check: CompanionModelCheck;
+            try { check = await checkSingleCompanionModel(runtimeModelConnection(targetRecord.connection)!, modelId); }
+            catch (error) { check = failedModelCheck(targetRecord.connection, modelId, error); }
+            checks[modelId] = check;
+            results.push({ modelId, ok: check.chat === "passed", check });
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(2, models.length) }, () => worker()));
+        saveModelVaultRecord({ ...targetRecord, connection: { ...targetRecord.connection, modelChecks: checks } });
+        send(res, 200, { ok: results.every((item) => item.ok), results, concurrency: 2, ...modelConnectionStatus() });
+      } catch (error) {
+        const detail = modelConnectionUserMessage(error, "probe");
+        send(res, 400, { ok: false, error: detail, userMessage: detail, ...(companionModelFailureDiagnostic(error) ? { diagnostic: companionModelFailureDiagnostic(error) } : {}) });
+      } finally { releaseModelLock(); }
+      return;
+    }
     if (req.method === "POST" && url === "/api/llm-model/check") {
-      const b = (await readBody(req)) as { model?: string; force?: boolean };
-      const id = String(b.model || "").trim();
+      const b = (await readBody(req)) as { connectionId?: string; model?: string; candidateModel?: string; force?: boolean; onboarding?: boolean };
+      const targetRecord = b.connectionId
+        ? modelVault.connections.find((item) => item.id === b.connectionId)
+        : activeVaultRecord(modelVault);
+      const targetConnection = targetRecord?.connection;
+      const candidateRequested = typeof b.candidateModel === "string";
+      const id = String(candidateRequested ? b.candidateModel : b.model || "").trim();
       // A model that already passed the chat probe recently is reused as-is: re-probing on every
       // switch costs four model calls and freezes the picker for seconds. `force` re-runs the probe.
-      const cached = modelConnection?.modelChecks?.[id];
-      if (modelConnection && cached && b.force !== true && isFreshModelCheck(cached)
-        && isModelCheckEligible(modelConnection, cached, id, "chat")) {
+      const cached = targetConnection?.modelChecks?.[id];
+      if (targetConnection && cached && b.force !== true && isFreshModelCheck(cached)
+        && isModelCheckEligible(targetConnection, cached, id, "chat")) {
         send(res, 200, { ok: true, ...modelConnectionStatus(), checkedModel: id, checked: cached, cached: true });
         return;
       }
       const releaseModelLock = modelSwitch.tryLock();
       if (!releaseModelLock) { send(res, 409, { error: "model_update_busy", userMessage: "正在检查或保存模型，请稍后重试。" }); return; }
+      let candidateAdmitted = false;
       try {
-        if (!modelConnection) throw new Error("请先保存模型连接。");
-        const check = await checkSingleCompanionModel(modelConnection, id);
-        const updated = { ...modelConnection, modelChecks: { ...modelConnection.modelChecks, [id]: check } };
-        saveSavedLLMConnection(updated);
-        // The active adapter shares this map; switching a task model need not rebuild memory.
-        Object.assign(modelConnection.modelChecks!, { [id]: check });
+        if (!targetRecord || !targetConnection) throw new Error("请先保存模型连接。");
+        const definition = providerCatalogEntry(targetConnection.provider);
+        const providerCandidate = definition?.models.find((item) => item.id === id);
+        const maintainedCandidate = curatedModelEntry(targetConnection.provider, targetConnection.baseUrl, id);
+        const catalogCurrent = targetRecord.catalogConnectionRevision === targetConnection.connectionRevision;
+        const inCurrentCatalog = catalogCurrent
+          && [...targetRecord.catalog, ...targetRecord.rawCatalog].some((item) => item.id === id);
+        const alreadyRegistered = targetConnection.model === id
+          || (targetConnection.registeredModels || []).includes(id)
+          || (targetConnection.enabledModels || []).includes(id)
+          || Object.prototype.hasOwnProperty.call(targetConnection.modelChecks || {}, id);
+        const officialCandidate = Boolean(providerCandidate
+          && providerCandidate.lifecycle !== "retired"
+          && officialProviderEndpoint(targetConnection.provider as ProviderId, targetConnection.baseUrl));
+        const maintainedActive = Boolean(maintainedCandidate && maintainedCandidate.lifecycle !== "retired");
+        if (candidateRequested) {
+          if (!inCurrentCatalog && !alreadyRegistered && !officialCandidate && !maintainedActive) {
+            throw new Error("这个型号不属于当前连接的账号目录或可用候选；请检查厂商与型号。");
+          }
+          if (providerCandidate?.lifecycle === "retired" || maintainedCandidate?.lifecycle === "retired") {
+            throw new Error(`型号 ${id} 已停止使用${maintainedCandidate?.replacement ? `；请改用 ${maintainedCandidate.replacement}` : ""}。`);
+          }
+          if (providerCandidate && !providerCandidate.capabilities.includes("chat")) {
+            throw new Error("这个型号不是文字模型，请在对应用途中测试。");
+          }
+          if (providerCandidate && definition?.adapterStatus.chat !== "wired") {
+            throw new Error("当前版本尚未接入这个厂商的文字执行器，暂时不能测试。");
+          }
+          // An explicit click on a visible official/account candidate is also the user's
+          // request to add it to this connection.  Persist that zero-cost choice before
+          // the paid probe so a failed probe remains visible and can be retried.
+          if (!alreadyRegistered) {
+            const registered = {
+              ...targetConnection,
+              registeredModels: normalizeFavoriteModels([...(targetConnection.registeredModels || []), id]),
+              enabledModels: normalizeFavoriteModels([...(targetConnection.enabledModels || []), id]),
+            };
+            saveModelVaultRecord({ ...targetRecord, connection: registered });
+            targetRecord.connection = registered;
+          }
+        } else if (!alreadyRegistered) {
+          throw new Error("请先把这个型号添加到当前连接。");
+        }
+        candidateAdmitted = true;
+        await assertOutboundProxyAvailable(outboundProxy, [targetConnection.baseUrl]);
+        const check = await checkSingleCompanionModel(
+          runtimeModelConnection(targetRecord.connection)!, id,
+          b.onboarding === true ? (connection) => checkCompanionChatModel(connection) : undefined,
+        );
+        const enabledModels = (b.onboarding === true || candidateRequested) && check.chat === "passed"
+          ? normalizeFavoriteModels([...(targetRecord.connection.enabledModels || []), id])
+          : targetRecord.connection.enabledModels || [];
+        const updated = { ...targetRecord.connection, enabledModels, modelChecks: { ...targetRecord.connection.modelChecks, [id]: check } };
+        saveModelVaultRecord({ ...targetRecord, connection: updated });
         send(res, 200, { ok: check.chat === "passed", ...modelConnectionStatus(), checkedModel: id, checked: check });
       } catch (error) {
-        const detail = modelConnectionUserMessage(error instanceof Error ? error.message : String(error));
-        send(res, 400, { error: detail, userMessage: detail });
+        if (candidateAdmitted && targetRecord && id) {
+          const connection = targetRecord.connection;
+          const failed = failedModelCheck(connection, id, error);
+          saveModelVaultRecord({ ...targetRecord, connection: { ...connection, modelChecks: { ...connection.modelChecks, [id]: failed } } });
+        }
+        const detail = error instanceof Error && /^(请先保存模型连接|请先把这个型号|这个型号|型号 .*已停止使用|当前版本)/.test(error.message)
+          ? error.message
+          : modelConnectionUserMessage(error, "probe");
+        const diagnostic = companionModelFailureDiagnostic(error);
+        send(res, 400, { error: detail, userMessage: detail, ...(diagnostic ? { diagnostic } : {}) });
       } finally { releaseModelLock(); }
       return;
     }
-    if (req.method === "POST" && url === "/api/llm-model/favorite") {
-      const b = (await readBody(req)) as { model?: string; favorite?: boolean };
-      if (!modelConnection) { send(res, 400, { error: "请先保存模型连接。", userMessage: "请先保存模型连接。" }); return; }
+    if (req.method === "POST" && url === "/api/llm-model/register-enable") {
+      const b = (await readBody(req)) as { connectionId?: string; model?: string };
+      const targetRecord = b.connectionId ? modelVault.connections.find((item) => item.id === b.connectionId) : activeVaultRecord(modelVault);
+      if (!targetRecord) { send(res, 400, { error: "请先保存模型连接。", userMessage: "请先保存模型连接。" }); return; }
       const id = normalizeFavoriteModels([b.model])[0];
       if (!id) { send(res, 400, { error: "模型名称格式不正确。", userMessage: "模型名称格式不正确。" }); return; }
-      const favorites = new Set(modelConnection.favoriteModels || []);
-      if (b.favorite === false) favorites.delete(id); else favorites.add(id);
-      const updated = { ...modelConnection, favoriteModels: normalizeFavoriteModels([...favorites]) };
-      saveSavedLLMConnection(updated);
-      modelConnection = updated;
+      const retired = curatedModelEntry(targetRecord.connection.provider, targetRecord.connection.baseUrl, id);
+      if (retired?.lifecycle === "retired") { send(res, 400, { error: `该型号已停止使用${retired.replacement ? `；请改用 ${retired.replacement}` : ""}。`, userMessage: `该型号已停止使用${retired.replacement ? `；请改用 ${retired.replacement}` : ""}。` }); return; }
+      const updated = {
+        ...targetRecord.connection,
+        registeredModels: normalizeFavoriteModels([...(targetRecord.connection.registeredModels || []), id]),
+        enabledModels: normalizeFavoriteModels([...(targetRecord.connection.enabledModels || []), id]),
+      };
+      saveModelVaultRecord({ ...targetRecord, connection: updated });
       send(res, 200, { ok: true, ...modelConnectionStatus() });
       return;
     }
+    if (req.method === "POST" && url === "/api/llm-model/favorite") {
+      await readBody(req);
+      send(res, 410, { error: "deprecated_endpoint", userMessage: "旧版模型接口已停用，请更新客户端。", migrateTo: "/api/llm-model/register-enable" });
+      return;
+    }
     if (req.method === "POST" && url === "/api/llm-model/catalog") {
-      if (!modelConnection) { send(res, 400, { error: "请先保存模型连接。", userMessage: "请先保存模型连接。" }); return; }
+      const b = (await readBody(req)) as { connectionId?: string };
+      const targetRecord = b.connectionId ? modelVault.connections.find((item) => item.id === b.connectionId) : activeVaultRecord(modelVault);
+      if (!targetRecord) { send(res, 400, { error: "请先保存模型连接。", userMessage: "请先保存模型连接。" }); return; }
       const releaseModelLock = modelSwitch.tryLock();
       if (!releaseModelLock) { send(res, 409, { error: "model_update_busy", userMessage: "正在读取模型目录，请稍后重试。" }); return; }
       try {
-        const catalog = await discoverCompanionModels(modelConnection);
-        modelCatalog = catalog;
-        modelCatalogFetchedAt = new Date().toISOString();
-        modelCatalogConnectionRevision = modelConnection.connectionRevision || "";
-        saveSavedLLMConnection(modelConnection, catalog, modelCatalogFetchedAt, modelCatalogConnectionRevision);
+        await assertOutboundProxyAvailable(outboundProxy, [targetRecord.connection.baseUrl]);
+        const rawCatalog = await discoverCompanionModels(runtimeModelConnection(targetRecord.connection)!);
+        const catalog = eligibleCuratedCatalog(targetRecord.connection.provider, targetRecord.connection.baseUrl);
+        const fetchedAt = new Date().toISOString();
+        saveModelVaultRecord({ ...targetRecord, rawCatalog, catalog, catalogFetchedAt: fetchedAt, catalogConnectionRevision: targetRecord.connection.connectionRevision || "", catalogSource: "provider" });
         send(res, 200, { ok: true, ...modelConnectionStatus() });
       } catch (error) {
-        const detail = modelConnectionUserMessage(error instanceof Error ? error.message : String(error));
-        send(res, 400, { error: detail, userMessage: detail });
+        const detail = modelConnectionUserMessage(error, "catalog");
+        const diagnostic = companionModelFailureDiagnostic(error);
+        send(res, 400, { error: detail, userMessage: detail, ...(diagnostic ? { diagnostic } : {}), ...modelConnectionStatus() });
       } finally { releaseModelLock(); }
       return;
     }
     if (req.method === "POST" && url === "/api/llm-config") {
-      const b = (await readBody(req)) as {
-        provider?: CompanionModelProvider;
-        protocol?: CompanionModelProtocol;
-        baseUrl?: string;
-        model?: string;
-        key?: string;
-        offline?: boolean;
-        selectionMode?: "auto" | "manual";
-        /** 有模型任务在跑时，愿意等多久让它们结束；0（默认）表示直接拒绝，与原行为一致。 */
-        waitForJobsMs?: number;
-      };
-      try {
-        // 读取 body 在锁外（不碰连接状态）；normalize 与重建都在锁内，
-        // 并且整个窗口内后台 worker 不再领新任务。
-        const outcome = await modelSwitch.run(
-          {
-            target: b.offline ? "offline" : `${b.provider ?? modelConnection?.provider ?? "zhipu"}/${b.model ?? ""}`,
-            drainMs: Number(b.waitForJobsMs) || 0,
-          },
-          async () => {
-            const provider = b.provider ?? modelConnection?.provider ?? "zhipu";
-            const submittedKey = String(b.key ?? "").trim();
-            const key = submittedKey
-              || (modelConnection?.provider === provider ? modelConnection.apiKey : "");
-            let next = b.offline
-              ? undefined
-              : normalizeCompanionModelConnection({
-                  provider,
-                  protocol: b.protocol,
-                  baseUrl: b.baseUrl,
-                  model: b.model,
-                  apiKey: key,
-                });
-            const nextCatalog = modelCatalog;
-            const nextCatalogFetchedAt = modelCatalogFetchedAt;
-            const nextCatalogRevision = modelCatalogConnectionRevision;
-            let catalogWarning = "连接已保存；请按需刷新目录，并显式检查要执行的模型。";
-            if (next) {
-              const connectionChanged = !modelConnection
-                || modelConnection.provider !== next.provider
-                || modelConnection.protocol !== next.protocol
-                || modelConnection.baseUrl !== next.baseUrl;
-              // Never forward a saved secret to a different endpoint, even for the same provider.
-              if (connectionChanged && !submittedKey) next = normalizeCompanionModelConnection({ ...next, apiKey: "" });
-              next.selectionMode = "manual";
-              next.favoriteModels = normalizeFavoriteModels(modelConnection?.favoriteModels || []);
-              next.modelChecks = { ...(modelConnection?.modelChecks || {}) };
-              next = withConnectionRevision(next, modelConnection, key !== modelConnection?.apiKey);
-              if (!connectionChanged && key === modelConnection?.apiKey) catalogWarning = "连接与目录保持不变；未发起模型检查。";
-            }
-            const action = await agentUserActions.execute({
-              name: "llm_connection_update",
-              description: next ? `验证并保存 ${next.provider} 模型连接` : "切换到离线模式",
-              arguments: next
-                ? { provider: next.provider, protocol: next.protocol, baseUrl: next.baseUrl, model: next.model, keyUpdated: Boolean(b.key) }
-                : { offline: true },
-              execute: async () => {
-                await rebuildLLM(next, next ? nextCatalog : [], next ? nextCatalogFetchedAt : "", next ? nextCatalogRevision : "");
-                return modelConnectionStatus();
-              },
-              summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider, model: value.model }),
-            });
-            return { action, catalogWarning };
-          },
-        );
-        send(res, 200, { ok: true, ...outcome.action.value, catalogWarning: outcome.catalogWarning, auditRunId: outcome.action.runId });
-      } catch (e) {
-        if (sendModelSwitchRefusal(res, e)) return;
-        const detail = e instanceof Error ? e.message : String(e);
-        console.error(`[companion] 模型连接验证失败：${detail}`);
-        send(res, 400, { ok: false, error: detail, userMessage: modelConnectionUserMessage(detail) });
-      }
+      send(res, 410, {
+        ok: false,
+        error: "deprecated_endpoint",
+        code: "deprecated_endpoint",
+        userMessage: "旧模型配置入口已停用，请使用 /api/llm-connect 完成目录校验与单模型验证。",
+        migrateTo: "/api/llm-connect",
+      });
       return;
     }
     if (req.method === "POST" && url === "/api/llm-key") {
-      // 兼容旧客户端：该入口仍按智谱连接处理。
-      const b = (await readBody(req)) as { key?: string; waitForJobsMs?: number };
-      const key = String(b.key ?? "").trim();
-      try {
-        // 读取 body 在锁外（不碰连接状态）；从这里往后都在锁内，
-        // 并且整个窗口内后台 worker 不再领新任务。
-        const action = await modelSwitch.run(
-          { target: key ? "zhipu" : "offline", drainMs: Number(b.waitForJobsMs) || 0 },
-          () => agentUserActions.execute({
-            name: "llm_key_update",
-            description: key ? "保存旧客户端提交的智谱 Key（等待显式模型检查）" : "清除用户保存的模型连接",
-            arguments: { configured: Boolean(key) },
-            execute: async () => {
-              const next = key ? withConnectionRevision(defaultCompanionModelConnection("zhipu", key), modelConnection, key !== modelConnection?.apiKey) : undefined;
-              await rebuildLLM(next, next ? modelCatalog : [], next ? modelCatalogFetchedAt : "", next ? modelCatalogConnectionRevision : "");
-              return modelConnectionStatus();
-            },
-            summarizeResult: (value) => ({ ok: true, live: value.live, provider: value.provider }),
-          }),
-        );
-        send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
-      } catch (e) {
-        if (sendModelSwitchRefusal(res, e)) return;
-        const detail = modelConnectionUserMessage(e instanceof Error ? e.message : String(e));
-        send(res, 400, { ok: false, error: detail, userMessage: detail });
-      }
+      send(res, 410, {
+        ok: false,
+        error: "deprecated_endpoint",
+        code: "deprecated_endpoint",
+        userMessage: "旧 Key 写入口已停用，请使用 /api/llm-connect 完成受控连接。",
+        migrateTo: "/api/llm-connect",
+      });
       return;
     }
     if (pathname === "/api/assistant-team" || pathname.startsWith("/api/assistant-team/")) {
@@ -5472,7 +6505,7 @@ const server = createServer(async (req, res) => {
         });
         send(res, 200, { ok: true, auditRunId: action.runId });
       } catch (e) {
-        send(res, 400, { error: e instanceof Error ? e.message : String(e) });
+        send(res, e instanceof Error && e.name === "IntegrationPendingError" ? 409 : 400, { error: e instanceof Error ? e.message : String(e) });
       }
       return;
     }
@@ -5518,41 +6551,52 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/tts") {
-      if (!llm.tts) { send(res, 503, { error: "TTS 不可用（离线模式）" }); return; }
-      const b = (await readBody(req)) as { personaId: string; text: string };
-      const voice = PERSONAS.find((p) => p.id === b.personaId)?.voice || "tongtong";
+      const b = (await readBody(req)) as { personaId?: string; text?: string; voice?: string; format?: string; speed?: number };
       try {
-        const audio = await llm.tts(b.text || "", voice);
-        res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": audio.length });
-        res.end(audio);
+        const route = resolveMediaRoute("text_to_speech");
+        const audio = await openAISpeech(route.record.connection, route.modelId, b.text || "", { voice: b.voice, format: b.format, speed: b.speed });
+        res.writeHead(200, { "Content-Type": audio.contentType, "Content-Length": audio.data.length, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+        res.end(audio.data);
       } catch (e) {
-        send(res, 500, { error: e instanceof Error ? e.message : String(e) });
+        send(res, e instanceof Error && e.name === "IntegrationPendingError" ? 409 : 400, { error: e instanceof Error ? e.message : String(e) });
       }
       return;
     }
     if (req.method === "POST" && url === "/api/asr") {
-      const toolKey = toolZhipuKey();
-      if (!toolKey.key && !llm.asr) { send(res, 503, { error: "ASR 不可用：工具智谱 Key 未配置" }); return; }
       const mime = req.headers["content-type"] || "audio/webm";
       const audio = await readRawBody(req, 12 * 1024 * 1024);
-      const ext = /wav/.test(mime) ? "wav" : /mp3|mpeg/.test(mime) ? "mp3" : /mp4|m4a|aac/.test(mime) ? "m4a" : /ogg/.test(mime) ? "ogg" : "webm";
       try {
-        const settings = loadToolSettings();
-        const text = toolKey.key
-          ? await zhipuToolAsr(toolKey.key, audio, "audio." + ext, mime, settings.asrModel)
-          : await llm.asr!(audio, "audio." + ext, mime);
-        send(res, 200, { text, keySource: toolKey.source, model: settings.asrModel });
+        const route = resolveMediaRoute("speech_to_text");
+        const language = String(req.headers["x-clownfish-language"] || "auto");
+        const text = await openAITranscribe(route.record.connection, route.modelId, audio, String(mime), language);
+        send(res, 200, { text, model: route.modelId });
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        const hint = /0-30秒|0-30|1214/.test(message)
-          ? "ASR 单段音频限制为 30 秒；客户端会自动分段，若仍出现此错误请重新启动客户端后再试。"
-          : message;
-        send(res, 500, { error: hint });
+        send(res, 400, { error: e instanceof Error ? e.message : String(e) });
       }
       return;
     }
+    if (req.method === "POST" && url === "/api/image-generation") {
+      try {
+        const b = (await readBody(req, 128 * 1024)) as { prompt?: string; size?: string; quality?: string };
+        const route = resolveMediaRoute("image_generation");
+        const image = await openAIImage(route.record.connection, route.modelId, b.prompt || "", { size: b.size, quality: b.quality });
+        const artifact = capabilities.saveGeneratedImage(image.data, String(b.prompt || "AI 生成图片").slice(0, 80));
+        send(res, 200, { model: route.modelId, mime: image.mime, artifact: { id: artifact.id, title: artifact.title, previewUrl: `/api/capabilities/artifact/preview?id=${encodeURIComponent(artifact.id)}`, downloadUrl: `/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}` } });
+      } catch (e) { send(res, e instanceof Error && e.name === "IntegrationPendingError" ? 409 : 400, { error: e instanceof Error ? e.message : String(e) }); }
+      return;
+    }
     if (req.method === "POST" && url === "/api/chat/stream") {
+      if (!beginImmediateModelRequest(res)) { send(res, 409, { error: "model_update_busy", userMessage: "模型连接正在切换，请稍后发送。" }); return; }
       const b = (await readBody(req)) as ChatBody;
+      if (b.image) {
+        try {
+          const route = resolveMediaRoute("vision");
+          const text = await openAIVision(route.record.connection, route.modelId, b.text || "请描述这张图片。", b.image);
+          res.writeHead(200, { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" });
+          res.end(`${JSON.stringify({ type: "token", text })}\n${JSON.stringify({ type: "done", facts: [] })}\n`);
+        } catch (error) { send(res, error instanceof Error && error.name === "IntegrationPendingError" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) }); }
+        return;
+      }
       let conversationOptions: ReturnType<typeof conversationSendOptions>;
       try { conversationOptions = conversationSendOptions(b); }
       catch (error) {
@@ -5652,7 +6696,16 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url === "/api/chat") {
+      if (!beginImmediateModelRequest(res)) { send(res, 409, { error: "model_update_busy", userMessage: "模型连接正在切换，请稍后发送。" }); return; }
       const b = (await readBody(req)) as ChatBody;
+      if (b.image) {
+        try {
+          const route = resolveMediaRoute("vision");
+          const reply = await openAIVision(route.record.connection, route.modelId, b.text || "请描述这张图片。", b.image);
+          send(res, 200, { replies: [{ personaId: b.target.id, name: PERSONAS.find((p) => p.id === b.target.id)?.name || b.target.id, reply, messages: splitBubbles(reply), facts: [] }], taskReplies: [] });
+        } catch (error) { send(res, error instanceof Error && error.name === "IntegrationPendingError" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) }); }
+        return;
+      }
       let conversationOptions: ReturnType<typeof conversationSendOptions>;
       try { conversationOptions = conversationSendOptions(b); }
       catch (error) {
@@ -5810,6 +6863,11 @@ function startPeriodicDataSync(): void {
 boot().then(() => {
   agentJobWorker.start();
   server.listen(PORT, "127.0.0.1", () => {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("无法确定本机服务端口");
+    PORT = address.port;
+    X_OAUTH_REDIRECT = `http://127.0.0.1:${PORT}/api/sources/x/oauth/callback`;
+    apiRoutes = buildApiRoutes();
     backgroundScheduler.start();
     resumeInterruptedAgentRuns();
     seedPersonaBiosInBackground(engine);
@@ -5822,9 +6880,21 @@ boot().then(() => {
     console.log("  LLM: " + llm.label);
     console.log("  记忆库: " + DB);
     console.log("");
+    console.log("CLOWNFISH_READY " + JSON.stringify({
+      appId: APP_MANIFEST.appId,
+      version: APP_MANIFEST.version,
+      pid: process.pid,
+      port: PORT,
+      clientSession: CLIENT_SESSION || null,
+    }));
   });
 });
 server.on("close", () => {
   backgroundScheduler.stop();
   agentJobWorker.stop();
+  try { personalWork.close(); } catch { /* shutdown is best effort after requests drain */ }
+  try { assistantBots.close(); } catch { /* shutdown is best effort after requests drain */ }
+  try { mem.close(); } catch { /* shutdown is best effort after requests drain */ }
 });
+process.once("SIGINT", beginGracefulShutdown);
+process.once("SIGTERM", beginGracefulShutdown);

@@ -9,8 +9,6 @@
     return { supported, value };
   }
   let active = null;
-  const names = { "gpt-6-astra": "GPT-6 Astra", "gpt-5.6-terra": "GPT-5.6 Terra", "gpt-5.6-luna": "GPT-5.6 Luna" };
-  const purposes = { "gpt-6-astra": "主力 · 复杂分析与多步骤任务", "gpt-5.6-terra": "均衡 · 日常写作与资料整理", "gpt-5.6-luna": "轻量 · 摘要、分类与短问答" };
   function element(tag, className, text) {
     const node = document.createElement(tag);
     node.className = className;
@@ -47,9 +45,9 @@
       row.setAttribute("aria-checked", String(option.value === select.value));
       row.disabled = option.disabled;
       const copy = element("span", "cf-model-copy");
-      const title = element("span", "cf-model-title", names[id] || id);
+      const title = element("span", "cf-model-title", id);
       if (option.value === "default") title.append(element("span", "cf-model-tag", "跟随默认"));
-      copy.append(title, element("span", "cf-model-purpose", purposes[id] || "当前会话固定的型号"));
+      copy.append(title, element("span", "cf-model-purpose", "当前会话固定的型号"));
       copy.append(element("span", "cf-model-check", option.disabled ? window.ClownfishModelShortlist.checkLabel(state.modelChecks?.[id], state) + " · 请到设置中检查" : window.ClownfishModelShortlist.checkLabel(state.modelChecks?.[id], state)));
       const mark = element("span", "cf-model-selected", option.value === select.value ? "✓" : "");
       mark.setAttribute("aria-hidden", "true");
@@ -142,7 +140,7 @@
     button.hidden = select.hidden;
     button.disabled = select.disabled;
     const id = select.value === "default" ? state?.model : select.value;
-    const name = names[id] || id || "选择模型";
+    const name = id || "选择模型";
     const effort = effortState(instance);
     const effortLabel = efforts[effort.value];
     button.replaceChildren(element("span", "cf-model-name", name), element("span", "cf-model-trigger-tag", select.disabled ? "检查中…" : effort.supported.length ? effortLabel : "默认"), element("span", "cf-model-chevron", "⌄"));

@@ -25,19 +25,31 @@ export function isAllowedLocalRequest(input: {
   host?: string;
   origin?: string;
   secFetchSite?: string;
+  secFetchMode?: string;
+  secFetchDest?: string;
+  allowCrossSiteTopLevelNavigation?: boolean;
   port: number;
 }): boolean {
   if (!isLoopbackAddress(input.remoteAddress)) return false;
-  if (input.secFetchSite?.toLowerCase() === "cross-site") return false;
   try {
-    const host = new URL(`http://${input.host || ""}`);
+    const hostHeader = input.host || "";
+    if (hostHeader.trim() !== hostHeader) return false;
+    const host = new URL(`http://${hostHeader}`);
+    if (host.username || host.password || host.pathname !== "/" || host.search || host.hash) return false;
+    if (host.host.toLowerCase() !== hostHeader.toLowerCase()) return false;
     if (!LOOPBACK_HOSTS.has(normalizeAddress(host.hostname))) return false;
-    if (host.port && host.port !== String(input.port)) return false;
-    if (!input.origin) return true;
-    const origin = new URL(input.origin);
-    return origin.protocol === "http:"
-      && LOOPBACK_HOSTS.has(normalizeAddress(origin.hostname))
-      && (origin.port || "80") === String(input.port);
+    if ((host.port || "80") !== String(input.port)) return false;
+    if (input.origin) {
+      const origin = new URL(input.origin);
+      if (origin.protocol !== "http:"
+        || origin.origin !== input.origin
+        || !LOOPBACK_HOSTS.has(normalizeAddress(origin.hostname))
+        || (origin.port || "80") !== String(input.port)) return false;
+    }
+    if (input.secFetchSite?.trim().toLowerCase() !== "cross-site") return true;
+    return input.allowCrossSiteTopLevelNavigation === true
+      && input.secFetchMode?.trim().toLowerCase() === "navigate"
+      && input.secFetchDest?.trim().toLowerCase() === "document";
   } catch {
     return false;
   }

@@ -8,6 +8,7 @@
 //   bash:        ZHIPU_API_KEY=... npx tsx examples/companion/chat-cli.ts
 
 import { randomUUID } from "node:crypto";
+import { fetch as undiciFetch } from "undici";
 import { modelResourceKey, modelScheduler } from "./model-scheduler.js";
 import { AGENT_BUDGET, resolveAgentBudget, type AgentBudget } from "./runtime-limits.js";
 import { parseUnifiedTaskContext } from "./unified-task-context.js";
@@ -35,6 +36,9 @@ import { makeAnthropicMessagesAgentModel } from "./anthropic-messages.js";
 import { resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
 import {
   CompanionModelHttpError,
+  companionModelCapabilities,
+  safeProviderRequestId,
+  safeZhipuProviderErrorCode,
   companionModelProviderPreset,
   defaultCompanionModelConnection,
   isModelCheckEligible,
@@ -761,6 +765,8 @@ interface ConnectionAgentModelOptions {
   runId?: string;
   purpose?: LlmCallPurpose;
   ledger?: FileLlmCallLedger;
+  /** Synthetic readiness requests omit optional sampling/limit parameters. */
+  readinessProbe?: boolean;
 }
 
 interface ZhipuToolCall {
@@ -798,7 +804,7 @@ function makeConnectionAgentModelInternal(options: ConnectionAgentModelOptions, 
     ? makeAnthropicMessagesAgentModel(effective)
     : transport === "openai-responses"
       ? makeOpenAIResponsesAgentModel(effective)
-      : makeOpenAICompatibleAgentModel(effective);
+      : makeOpenAICompatibleAgentModel({ ...effective, readinessProbe });
   return { complete: (request) => {
     if (check?.chat === "failed") throw new Error("当前模型连接检查未通过，请在设置中重新检查或选择其他模型。");
     // A resumed checkpoint is rebuilt through this same adapter. Its historical
@@ -862,19 +868,21 @@ function safelyFinishLedger(entry: ReturnType<FileLlmCallLedger["start"]> | unde
 function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): AgentModel {
   return {
     complete: async (request) => {
+      const capabilities = companionModelCapabilities(options.connection, options.model);
+      const minimalZhipuReadiness = options.readinessProbe && options.connection.provider === "zhipu";
       const body: Record<string, unknown> = {
         model: options.model,
         messages: request.messages.map(toZhipuMessage),
         ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
       };
       const outputTokens = Math.max(1, Math.min(options.maxTokens, request.maxOutputTokens ?? options.maxTokens));
-      if (options.connection.provider === "openai") {
+      if (options.connection.provider === "openai" && !minimalZhipuReadiness) {
         body.max_completion_tokens = outputTokens;
-      } else {
+      } else if (!minimalZhipuReadiness) {
         body.max_tokens = outputTokens;
         body.temperature = options.temperature;
       }
-      if (options.connection.provider === "zhipu") body.thinking = { type: "disabled" };
+      if (capabilities.thinking !== "omit") body.thinking = { type: capabilities.thinking };
       if (request.tools.length > 0) body.tools = request.tools.map((tool) => ({
         type: "function",
         function: {
@@ -883,19 +891,26 @@ function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): A
           parameters: tool.inputSchema,
         },
       }));
-      if (options.stream) body.stream = true;
+      if (options.stream || minimalZhipuReadiness) body.stream = options.stream;
 
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (options.connection.apiKey) headers.Authorization = `Bearer ${options.connection.apiKey}`;
-      const resp = await fetch(modelConnectionEndpoint(options.connection), {
+      const requestInit = {
         method: "POST",
         headers,
         body: JSON.stringify(body),
         signal: request.signal,
-      });
+      };
+      const resp = options.connection.transportDispatcher
+        ? await undiciFetch(modelConnectionEndpoint(options.connection), { ...requestInit, dispatcher: options.connection.transportDispatcher })
+        : await fetch(modelConnectionEndpoint(options.connection), requestInit);
       if (!resp.ok) {
-        await resp.body?.cancel();
-        throw new CompanionModelHttpError(resp.status);
+        const requestId = safeProviderRequestId(resp.headers);
+        const providerCode = options.connection.provider === "zhipu"
+          ? await safeZhipuProviderErrorCode(resp)
+          : undefined;
+        if (options.connection.provider !== "zhipu") await resp.body?.cancel();
+        throw new CompanionModelHttpError(resp.status, "模型请求", requestId, providerCode);
       }
       if (options.stream) return readZhipuStream(resp, request.onTextDelta);
       const result = await readZhipuResponse(resp);

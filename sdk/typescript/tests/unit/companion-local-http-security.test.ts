@@ -14,8 +14,30 @@ test("本机服务只接受回环地址、正确 Host 和同源浏览器请求",
   assert.equal(isAllowedLocalRequest({ remoteAddress: "127.0.0.1", host: "127.0.0.1:8791", origin: "http://127.0.0.1:8791", port: 8791 }), true);
   assert.equal(isAllowedLocalRequest({ remoteAddress: "192.168.1.5", host: "127.0.0.1:8791", port: 8791 }), false);
   assert.equal(isAllowedLocalRequest({ remoteAddress: "127.0.0.1", host: "attacker.example", port: 8791 }), false);
+  assert.equal(isAllowedLocalRequest({ remoteAddress: "127.0.0.1", host: "127.0.0.1", port: 8791 }), false);
+  assert.equal(isAllowedLocalRequest({ remoteAddress: "127.0.0.1", host: "attacker@127.0.0.1:8791", port: 8791 }), false);
   assert.equal(isAllowedLocalRequest({ remoteAddress: "127.0.0.1", host: "127.0.0.1:8791", origin: "https://attacker.example", port: 8791 }), false);
+  assert.equal(isAllowedLocalRequest({ remoteAddress: "127.0.0.1", host: "127.0.0.1:8791", origin: "http://attacker@127.0.0.1:8791", port: 8791 }), false);
   assert.equal(isAllowedLocalRequest({ remoteAddress: "127.0.0.1", host: "localhost:8791", secFetchSite: "cross-site", port: 8791 }), false);
+});
+
+test("cross-site 例外只放行已经由专用路由确认的顶层文档导航", () => {
+  const base = {
+    remoteAddress: "127.0.0.1",
+    host: "127.0.0.1:8791",
+    secFetchSite: "cross-site",
+    secFetchMode: "navigate",
+    secFetchDest: "document",
+    allowCrossSiteTopLevelNavigation: true,
+    port: 8791,
+  } as const;
+  assert.equal(isAllowedLocalRequest(base), true);
+  assert.equal(isAllowedLocalRequest({ ...base, allowCrossSiteTopLevelNavigation: false }), false);
+  assert.equal(isAllowedLocalRequest({ ...base, secFetchMode: "cors" }), false);
+  assert.equal(isAllowedLocalRequest({ ...base, secFetchDest: "empty" }), false);
+  assert.equal(isAllowedLocalRequest({ ...base, host: "attacker.example:8791" }), false);
+  assert.equal(isAllowedLocalRequest({ ...base, origin: "https://attacker.example" }), false);
+  assert.equal(isAllowedLocalRequest({ ...base, origin: "http://127.0.0.1:8791" }), true);
 });
 
 test("网页读取拒绝常见本机、内网和特殊用途地址", async () => {

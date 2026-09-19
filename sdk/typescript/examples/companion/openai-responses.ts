@@ -1,4 +1,5 @@
 import type { AgentMessage, AgentModel, AgentModelResponse, AgentToolCall } from "../../src/agent/types.js";
+import { fetch as undiciFetch } from "undici";
 import { CompanionModelHttpError, type CompanionModelConnection } from "./model-connection.js";
 import { resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
 
@@ -29,10 +30,13 @@ export function makeOpenAIResponsesAgentModel(options: {
       })) } : {}),
       ...(options.stream ? { stream: true } : {}),
     };
-    const response = await fetch(endpoint, { method: "POST", signal: request.signal, redirect: "error",
+    const requestInit = { method: "POST", signal: request.signal, redirect: "error" as const,
       headers: { "Content-Type": "application/json", ...(options.connection.apiKey ? { Authorization: `Bearer ${options.connection.apiKey}` } : {}) },
       body: JSON.stringify(body),
-    });
+    };
+    const response = options.connection.transportDispatcher
+      ? await undiciFetch(endpoint, { ...requestInit, dispatcher: options.connection.transportDispatcher })
+      : await fetch(endpoint, requestInit);
     if (!response.ok) {
       await response.body?.cancel();
       throw new CompanionModelHttpError(response.status);

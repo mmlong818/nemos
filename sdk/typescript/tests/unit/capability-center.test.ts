@@ -53,6 +53,22 @@ test("能力中心所需的内置能力可直接使用", () => {
   }
 });
 
+test("生成图片以受限 PNG 成果保存，不把 base64 塞进成果索引", () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-image-artifact-"));
+  try {
+    const runtime = new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "", facts: [] }) });
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("fixture")]);
+    const artifact = runtime.saveGeneratedImage(png, "测试图片");
+    assert.equal(artifact.format, "png"); assert.ok(existsSync(artifact.file));
+    assert.equal(readFileSync(artifact.file).equals(png), true);
+    assert.equal(runtime.snapshot().artifacts.some((item) => item.id === artifact.id), true);
+    assert.doesNotMatch(JSON.stringify(runtime.snapshot()), /iVBOR/);
+    const restarted = new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "", facts: [] }) });
+    assert.equal(restarted.snapshot().artifacts.some((item) => item.id === artifact.id && existsSync(item.file)), true);
+    assert.throws(() => runtime.saveGeneratedImage(Buffer.from("fake")), /有效 PNG/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("单次能力任务只使用偏好记忆或完全关闭召回", async () => {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-capability-memory-"));
   const receivedMemoryModes: Array<"default" | "preferences" | "off" | undefined> = [];
@@ -513,7 +529,7 @@ test("能力中心页面包含独立对话、手动归档和受保护删除", ()
   assert.match(html, /class="task-advanced"/);
   assert.doesNotMatch(html, /id="recentStrip"|id="recentTask"/);
   assert.match(script, /name: "做 PPT"/);
-  assert.match(script, /name: "深度研究"/);
+  assert.match(script, /name: "深度研究与核验"/);
   assert.match(script, /name: "查港股资料"/);
   assert.match(script, /name: "扩展构建（高级）"/);
   assert.doesNotMatch(script, /name: "开发项目"/);

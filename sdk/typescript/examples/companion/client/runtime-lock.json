@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "mainNode": {
+    "version": "24.20.0",
+    "archive": "node-v24.20.0-win-x64.zip",
+    "sha256": "6cac9ffbca8f6a47091e4b5c772e0606049c3871cb67d900c0cedde630e545ba"
+  },
+  "mcpNode": {
+    "version": "26.5.0",
+    "archive": "node-v26.5.0-win-x64.zip",
+    "sha256": "d3b2277dbcccfdf24ef6302928f64f484cff1d77a6d3caa3a28f4d20ce9158f6"
+  },
+  "mcpPython": {
+    "version": "3.14.6",
+    "archive": "python-3.14.6-embed-amd64.zip",
+    "sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c"
+  },
+  "webView2Sdk": {
+    "version": "1.0.4022.49",
+    "nupkgSha256": "ee9de67e5bb9ef3a96c5689b2efc8188e2df160a0e79234c0404243782fde5fb",
+    "coreDllSha256": "3c6831b6178b299d951017c3d7bf323b57cab1b7039af277526b88e3116259b2",
+    "winFormsDllSha256": "f9fb385db61724794c8a122504e34f07335b83844f301eaa9fc853bcde14fe85",
+    "loaderDllSha256": "12f7708910e1aac5cc9ac43603d122f1d2e770ae2651830a07ef8b3117f28c55"
+  }
+}

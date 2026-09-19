@@ -1,4 +1,5 @@
 import type { AgentMessage, AgentModel, AgentModelResponse, AgentToolCall } from "../../src/agent/types.js";
+import { fetch as undiciFetch } from "undici";
 import { CompanionModelHttpError, modelConnectionEndpoint, type CompanionModelConnection } from "./model-connection.js";
 
 type Item = Record<string, unknown>;
@@ -33,9 +34,13 @@ export function makeAnthropicMessagesAgentModel(options: {
     };
     const headers: Record<string, string> = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
     if (options.connection.apiKey) headers["x-api-key"] = options.connection.apiKey;
-    const response = await fetch(modelConnectionEndpoint(options.connection), {
+    if (options.connection.providerSettings?.workspaceId) headers["anthropic-workspace-id"] = options.connection.providerSettings.workspaceId;
+    const requestInit = {
       method: "POST", headers, body: JSON.stringify(body), signal: request.signal,
-    });
+    };
+    const response = options.connection.transportDispatcher
+      ? await undiciFetch(modelConnectionEndpoint(options.connection), { ...requestInit, dispatcher: options.connection.transportDispatcher })
+      : await fetch(modelConnectionEndpoint(options.connection), requestInit);
     if (!response.ok) {
       await response.body?.cancel();
       throw new CompanionModelHttpError(response.status);

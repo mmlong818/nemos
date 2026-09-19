@@ -1,14 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {startModelHarness} from '../fixtures/companion-model-harness.js';
+import {onboardModel} from '../helpers/onboard-model.js';
 
 test('自主协作 HTTP 入口校验同意、保存规划和预算并完成文字交付', {timeout:60000}, async()=>{
   const h=await startModelHarness();
   const post=async(path:string,body:unknown)=>fetch(h.base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   try{
-    const config=await post('/api/llm-config',{provider:'custom',protocol:'openai-compatible',baseUrl:h.modelBase+'/v1',model:'manual',selectionMode:'manual'});
-    await post('/api/llm-model/check',{model:'manual',force:true});
-    assert.equal(config.ok,true);
+    await onboardModel(h.base,{provider:'custom',protocol:'openai-compatible',baseUrl:h.modelBase+'/v1',model:'manual',selectionMode:'manual'});
     const info=await (await fetch(h.base+'/api/assistant-team')).json() as any;
     assert.equal(info.planningVersion,1);
     const request={requestId:'autonomous-http',objective:'整理合成测试材料',assignmentMode:'auto',planningBudget:5};

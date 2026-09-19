@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>万神殿 · 小丑鱼</title><link rel="icon" href="/assets/brand/clownfish-mark.png">
+  <link rel="stylesheet" href="/assets/clownfish-theme.css"><link rel="stylesheet" href="/assets/pantheon.css">
+  <script src="/assets/unsandboxed-notice.js" defer></script>
+  <script src="/assets/pantheon.js" defer></script>
+</head><body><div class="personal-shell pantheon-shell"><!-- APP_NAVIGATION -->
+<main class="pantheon-main">
+  <header class="pantheon-head">
+    <div><p class="pantheon-kicker">结构化多视角推演</p><h1>万神殿</h1><p>先由系统理解议题并安排思维席位，再逐阶段立论、质询与回应。席位是方法，不是真人的替身。</p></div>
+    <div class="pantheon-status" id="phaseStatus" role="status"><span>尚未开议</span><small>写下议题即可自动配席</small></div>
+  </header>
+
+  <section class="issue-bench" aria-labelledby="issueTitle">
+    <div class="section-label"><span>01</span><div><h2 id="issueTitle">提出议题</h2><p>无需预选人物或模型；你随时可以查看并调整系统的选择。</p></div></div>
+    <form id="issueForm">
+      <label for="pantheonIssue">你真正想厘清什么？</label>
+      <textarea id="pantheonIssue" maxlength="12000" required placeholder="例如：我们是否应该把核心服务迁移到新架构？哪些假设最值得先验证？"></textarea>
+      <div class="issue-actions"><label>讨论方式 <select id="intentMode"><option value="auto">自动识别</option><option value="explore">探索可能性</option><option value="challenge">挑战一个主张</option><option value="decision">形成决策</option><option value="answer">只要答案</option></select></label><button class="primary-action" type="submit">分析议题并配席</button></div>
+    </form>
+    <p class="inline-error" id="pantheonError" role="alert" hidden></p>
+  </section>
+
+  <div class="hall-layout">
+    <aside class="seat-rail" aria-labelledby="seatTitle">
+      <div class="section-label compact"><span>02</span><div><h2 id="seatTitle">入席理由</h2><p id="intentReason">等待议题</p></div></div>
+      <div id="seatRationale" data-empty="true"><p class="empty-copy">系统会选择 1–3 个互补方法，并公开命中线索和边界。</p></div>
+      <button id="saveSeats" class="quiet-action" type="button" hidden>应用席位调整</button>
+      <details class="audit-drawer"><summary>查看选择审计与预算</summary><div id="auditTrail"><p>暂无审计记录。</p></div></details>
+    </aside>
+
+    <section class="debate-stage" aria-labelledby="stageTitle">
+      <header><div class="section-label compact"><span>03</span><div><h2 id="stageTitle">对话舞台</h2><p>立论彼此独立；质询必须指向具体席位。</p></div></div><span class="round-meter" id="roundMeter">第 0 / 2 轮</span></header>
+      <ol id="debateStage" data-empty="true"><li class="stage-empty"><strong>大殿尚未开场</strong><span>提交议题后，先核对自动识别的意图与入席理由。</span></li></ol>
+      <div class="stage-controls">
+        <button id="advancePhase" class="primary-action" type="button" disabled>开始立论</button>
+        <button id="continueRound" class="quiet-action" type="button" hidden>继续一轮</button>
+        <button id="convergeDebate" class="quiet-action danger-edge" type="button" disabled>收束成结论</button>
+      </div>
+      <form id="interjectionForm" class="interjection-form">
+        <label for="interjectionText">随时插话 <span>新观点会进入下一阶段的所有席位上下文</span></label>
+        <div><input id="interjectionText" maxlength="2000" placeholder="补充约束、纠正事实，或追问某个席位…" disabled><button type="submit" disabled>加入舞台</button></div>
+      </form>
+    </section>
+  </div>
+
+  <details class="thought-library" id="thoughtLibraryPanel">
+    <summary><span>思维库 / 蒸馏</span><small>创建与审阅本地私有思维单元</small></summary>
+    <div class="library-body">
+      <div class="library-intro"><h2>把材料蒸馏成方法，而不是复刻一个人</h2><p>这里生成的是公开思想与材料的结构化蒸馏。第一版不联网抓取；没有材料时只建立“用户定义框架”，不会补写人物事实。草案只有经你审阅并确认后才会参与自动配席。</p></div>
+      <form id="distillForm" class="distill-form">
+        <label>名称<input id="thoughtName" maxlength="80" required placeholder="例如：我的证据校准法"></label>
+        <label>类型<select id="thoughtKind"><option value="framework">思想体系 / 框架</option><option value="role">角色方法</option><option value="person">人物思想材料</option></select></label>
+        <label>来源标签<input id="sourceLabel" maxlength="160" placeholder="例如：用户提供的公开访谈摘录"></label>
+        <label class="wide">可选自有材料<textarea id="thoughtMaterial" maxlength="20000" placeholder="粘贴你有权使用的材料。系统只根据这里的内容整理，不联网补充。"></textarea></label>
+        <button class="primary-action" type="submit">生成可审阅草案</button>
+      </form>
+      <p id="libraryStatus" role="status">正在读取本地思维库…</p>
+      <div id="thoughtUnits" class="thought-units"></div>
+    </div>
+  </details>
+  <footer>万神殿会话暂存于当前进程；私有思维单元仅保存在本机。模型调用关闭工具并受轮数、并发和输出预算限制。</footer>
+</main></div></body></html>

@@ -70,6 +70,10 @@ coverage/
 # 本机 QA 产物（截图、录屏、审计报告），不进仓库
 outputs/
 
+# 本机参考资料、过渡性审计证据与工具快照的统一工作台。
+# 这里的内容可按需保留或恢复，但不得作为产品源码、正式文档或发布物提交。
+.local-workbench/
+
 # 论文的生成物：渲染 PDF 与 arXiv 投稿包，都按 paper/BUILD.md 的步骤重新生成
 paper/*.pdf
 paper/*.tar.gz

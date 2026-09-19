@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { CapabilityRuntime } from "../../examples/companion/capabilities.js";
+import { onboardModel } from "../helpers/onboard-model.js";
 
 const root = resolve(__dirname, "../..");
 
@@ -91,9 +92,17 @@ test("完整服务：无页面自动交付、状态接口只读、保存模型�
     start();
     await until(async () => { try { return (await fetch(base + "/api/runtime")).ok; } catch { return false; } }, "service startup");
     const connection = { provider: "custom", protocol: "openai-compatible", baseUrl: `http://127.0.0.1:${modelPort}/v1`, model: "regression-model" };
-    await request("/api/llm-config", connection);
-    const checked = await request("/api/llm-model/check", { model: "regression-model" });
+    await onboardModel(base, connection);
+    const active = await request("/api/llm");
+    const activeConnectionId = active.resourceCenter.connections.find((item: any) => item.active)?.id;
+    assert.ok(activeConnectionId);
+    const checked = await request("/api/llm-model/check", {
+      connectionId: activeConnectionId,
+      model: "regression-model",
+      force: true,
+    });
     assert.equal(checked.checked.chat, "passed");
+    assert.equal(checked.checked.tools, "passed");
     // Create the due task only after the verified connection is durable. This
     // preserves the no-browser scheduler assertion without letting first boot
     // consume the task under an intentionally offline default.
@@ -127,7 +136,15 @@ test("完整服务：无页面自动交付、状态接口只读、保存模型�
     const send = (text: string, sessionId: string) => request("/api/chat", { text, sessionId, target: { kind: "persona", id: "clownfish" }, workMode: "task", toolMode: "off" });
     await send("CONTINUITY_HTTP_A_4731", "session-a");
     await send("CONTINUITY_HTTP_B_8822", "session-b");
-    await request("/api/llm-config", connection); // Rebuild without restarting server.
+    await request("/api/llm-connection/save", { ...connection, connectionId: activeConnectionId });
+    await request("/api/llm-routing", {
+      scope: "system",
+      capability: "chat",
+      assignment: {
+        mode: "fixed",
+        ref: { connectionId: activeConnectionId, modelId: "regression-model", capability: "chat" },
+      },
+    }); // Rebuild through the current split settings flow without restarting the server.
     await send("CONTINUE_AFTER_MODEL_SAVE", "session-a");
     const promptAfterSave = JSON.stringify(modelRequests.at(-1)?.messages);
     assert.match(promptAfterSave, /CONTINUITY_HTTP_A_4731/);

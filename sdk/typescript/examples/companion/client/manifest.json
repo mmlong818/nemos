@@ -5,11 +5,11 @@
   "channel": "local",
   "schemaVersion": 1,
   "server": {
-    "defaultPort": 8787,
-    "entry": "app/examples/companion/server.ts"
+    "defaultPort": 0,
+    "entry": "app/examples/companion/portable-launcher.js"
   },
   "data": {
     "defaultDirName": ".clownfish",
-    "backupOnStartup": true
+    "backupBeforeUpgrade": true
   }
 }

@@ -19,8 +19,8 @@ test("便携包携带项目和第三方授权文件", () => {
 });
 
 test("便携包包含实际运行所需的开源文档引擎及其目录内许可证", () => {
-  assert.match(buildScript, /Get-ChildItem -LiteralPath \(Join-Path \$SdkRoot "examples\\companion"\) -Directory/);
-  assert.match(buildScript, /\.Name -notin @\("client", "docs"\)/);
+  assert.match(buildScript, /Copy-RuntimeAssetTree -Source \(Join-Path \$SdkRoot "examples\\companion"\)/);
+  assert.match(buildScript, /\/XD client docs \/XF \*\.ts \*\.tsx \*\.map \*\.cmd \*\.ps1/);
   assert.match(notices, /vendor\/docx-engine/);
   assert.match(notices, /vendor\/pptx-engine/);
 });
@@ -36,7 +36,7 @@ test("Buzz 适配代码保留上游许可和固定提交，并沿用随包目录
   assert.match(license, /Copyright 2026 Block, Inc/);
   assert.match(provenance, /3c7f288c60d67df78577b237e27c3dfc8831aaa1/);
   assert.match(notices, /vendor\/buzz/);
-  assert.match(buildScript, /\.Name -notin @\("client", "docs"\)/);
+  assert.match(buildScript, /\/XD client docs \/XF \*\.ts \*\.tsx \*\.map \*\.cmd \*\.ps1/);
 });
 
 test("公开授权说明不把仓库整体误称为单一开源许可证项目", () => {

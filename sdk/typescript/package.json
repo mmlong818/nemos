@@ -107,5 +107,9 @@
   "engines": {
     "node": ">=22.19"
   },
-  "private": true
+  "private": true,
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.2": true
+  }
 }

@@ -55,7 +55,8 @@ test("办公文件工作台拥有独立入口且三个主界面导航一致", ()
 });
 
 test("带结果参数的办公文件地址可以打开，并通过浏览器下载通道导出", () => {
-  assert.match(server, /const pathname = url\.split\("\?", 1\)\[0\]/);
+  assert.match(server, /const parsedUrl = new URL\(url, "http:\/\/127\.0\.0\.1"\)/);
+  assert.match(server, /const pathname = parsedUrl\.pathname/);
   assert.equal(appRoute("/office?artifact=example")?.file, "office.html");
   assert.match(server, /renderAppPage/);
   assert.match(server, /preparedOfficeExports/);

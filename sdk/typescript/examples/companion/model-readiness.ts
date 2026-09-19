@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentMessage, AgentToolDefinition } from "../../src/index.js";
 import { makeReadinessProbeAgentModel } from "./llm.js";
 import {
+  companionModelFailureDiagnostic,
   CompanionModelHttpError,
   modelTransport,
   usesOpenAIResponses,
@@ -9,6 +10,32 @@ import {
   type CompanionModelConnection,
   type CompanionModelInfo,
 } from "./model-connection.js";
+
+/** One synthetic text request for the primary onboarding action; no stream/tool probes. */
+export async function checkCompanionChatModel(
+  input: CompanionModelConnection,
+  timeoutMs = usesOpenAIResponses(input) ? 60_000 : 20_000,
+): Promise<CompanionModelCheck> {
+  const connection = { ...input, modelChecks: undefined };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const checkedAt = new Date().toISOString();
+  try {
+    const maxTokens = usesOpenAIResponses(connection) ? 256 : 64;
+    const response = await makeReadinessProbeAgentModel({ connection, model: connection.model, maxTokens, temperature: 0, stream: false })
+      .complete({ messages: [{ role: "user", content: "Connection check. Reply only OK." }], tools: [], signal: controller.signal, maxOutputTokens: maxTokens });
+    const passed = Boolean(response.text.trim()) && !response.toolCalls?.length;
+    return {
+      ...(connection.connectionRevision ? { connectionRevision: connection.connectionRevision } : {}),
+      transport: modelTransport(connection, connection.model), checkedAt,
+      chat: passed ? "passed" : "failed", streaming: "not-tested", tools: "not-tested",
+      detail: passed ? "文字连接已轻量验证；流式与工具能力尚未单独检查。" : "文字连接轻量验证未通过。",
+    };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("模型轻量验证超时，请检查网络或稍后重试。");
+    throw error;
+  } finally { clearTimeout(timeout); }
+}
 
 /** Synthetic only: never passes user history to the service or invokes real tools. */
 export async function checkCompanionModel(
@@ -28,6 +55,10 @@ export async function checkCompanionModel(
   const complete = (messages: AgentMessage[], stream: boolean, tools: AgentToolDefinition[] = []) =>
     makeReadinessProbeAgentModel({ connection, model: connection.model, maxTokens, temperature: 0, stream })
       .complete({ messages, tools, signal: controller.signal, maxOutputTokens: maxTokens });
+  const recordDiagnostic = (error: unknown) => {
+    const diagnostic = companionModelFailureDiagnostic(error);
+    if (diagnostic) check.diagnostic = diagnostic;
+  };
   const ping: AgentMessage[] = [{ role: "user", content: "Connection check. Reply only OK." }];
   // Auth, quota, outages and network failures should not trigger paid retries on other models.
   const stopOnGlobalFailure = (error: unknown): void => {
@@ -40,13 +71,13 @@ export async function checkCompanionModel(
       const response = await complete(ping, false);
       if (!response.text.trim() || response.toolCalls?.length) return check;
       check.chat = "passed";
-    } catch (error) { stopOnGlobalFailure(error); return check; }
+    } catch (error) { recordDiagnostic(error); stopOnGlobalFailure(error); return check; }
 
     check.streaming = "failed";
     try {
       const response = await complete(ping, true);
       if (response.text.trim() && !response.toolCalls?.length) check.streaming = "passed";
-    } catch (error) { stopOnGlobalFailure(error); }
+    } catch (error) { recordDiagnostic(error); stopOnGlobalFailure(error); }
     check.tools = "failed";
     check.detail = "文字回复已验证；工具调用未通过检查，可关闭工具后对话。";
     const tool: AgentToolDefinition = {
@@ -73,6 +104,7 @@ export async function checkCompanionModel(
         ? "文字回复、流式输出和模拟工具往返已验证。"
         : "文字回复和模拟工具往返已验证；当前使用完整回复输出。";
     } catch (error) {
+      recordDiagnostic(error);
       stopOnGlobalFailure(error);
       if (error instanceof CompanionModelHttpError) check.detail += ` 工具请求 HTTP ${error.status}，请检查服务的工具接口兼容性。`;
     }

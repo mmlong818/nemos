@@ -3,6 +3,15 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { startModelHarness } from "../fixtures/companion-model-harness.js";
+import { onboardModel } from "../helpers/onboard-model.js";
+
+const modelConfig = (modelBase: string) => ({
+  provider: "custom",
+  protocol: "openai-compatible",
+  baseUrl: modelBase + "/v1",
+  model: "manual",
+  selectionMode: "manual",
+});
 
 test("助理团队 HTTP：配置、实际队列执行、自动收尾、回执恢复、取消与重启", { timeout: 90000 }, async () => {
   const h = await startModelHarness();
@@ -21,8 +30,7 @@ test("助理团队 HTTP：配置、实际队列执行、自动收尾、回执恢
     assert.equal((await fetch(h.base + "/bots")).status, 200);
     assert.equal((await team()).bots.length, 2);
     await team("/start", payload, 409); // never claim offline echo is execution
-    await request("/api/llm-config", { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual" });
-    await request("/api/llm-model/check", { model: "manual", force: true });
+    await onboardModel(h.base, modelConfig(h.modelBase));
     let badFinal = false;
     h.state.replyFor = (body) => body.messages?.[0]?.content.includes("最终交付协议")
       ? JSON.stringify({ summary: "合成简报", fields: badFinal ? [] : [{ label: "日期", value: "10月6日", sources: ["S1"] }] }) : "[S1] 合成资料已核对";
@@ -86,11 +94,10 @@ test("进程中断后自动接续：复用已保存整理回执，不重做已�
   };
   const read = async (id: string) => (await (await fetch(h.base + "/api/assistant-team/job?id=" + id)).json() as any).job;
   try {
-    await post("/api/llm-config", { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual" });
-    await post("/api/llm-model/check", { model: "manual", force: true });
+    await onboardModel(h.base, modelConfig(h.modelBase));
     h.state.replyFor = (body) => {
       const system = body.messages[0].content;
-      if (system.includes("提取带来源的事实")) { h.state.delayMs = 3000; return "已保存的整理回执 S1"; }
+      if (system.includes("梳理带来源的事实")) { h.state.delayMs = 3000; return "已保存的整理回执 S1"; }
       return system.includes("最终交付协议") ? '{"summary":"重启后自动交付","fields":[]}' : "核验回执 S1";
     };
     const { record } = await post("/api/assistant-team/start", { requestId: "restart-in-flight", objective: "QA-RESTART", materials: "[S1] 合成材料", workerIds: ["bot-organizer"], reviewerId: "bot-reviewer" });
@@ -110,7 +117,7 @@ test("进程中断后自动接续：复用已保存整理回执，不重做已�
     }
     assert.equal(result.status, "succeeded", result.error);
     assert.equal(result.result.summary, "重启后自动交付");
-    const organizerCalls = h.requests.filter((r) => String(r.body?.messages?.[0]?.content).includes("提取带来源的事实"));
+    const organizerCalls = h.requests.filter((r) => String(r.body?.messages?.[0]?.content).includes("梳理带来源的事实"));
     assert.equal(organizerCalls.length, 1);
     assert.equal(result.result.data.receipts.length, 3);
   } finally { await h.stop(); }
@@ -128,8 +135,7 @@ test("运行中转向经 HTTP 原子记录并明确中止旧阶段，最终核�
     throw new Error("assistant-team state did not arrive");
   };
   try {
-    await request("/api/llm-config", { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual" });
-    await request("/api/llm-model/check", { model: "manual", force: true });
+    await onboardModel(h.base, modelConfig(h.modelBase));
     h.state.replyFor = (body) => body.messages?.[0]?.content.includes("最终交付协议")
       ? '{"summary":"done","fields":[]}' : "old stage output";
     h.state.delayMs = 500;
@@ -163,8 +169,7 @@ test("语义损坏的权威步骤历史阻断 checkpoint 恢复且不调用模�
     throw new Error("assistant-team state did not arrive");
   };
   try {
-    await request("/api/llm-config", { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual" });
-    await request("/api/llm-model/check", { model: "manual", force: true });
+    await onboardModel(h.base, modelConfig(h.modelBase));
     h.state.replyFor = (body) => body.messages?.[0]?.content.includes("最终交付协议")
       ? '{"summary":"bad","fields":[]}' : "[S1] saved prerequisite";
     const objective = "QA-DAMAGED-STEP-STORE";

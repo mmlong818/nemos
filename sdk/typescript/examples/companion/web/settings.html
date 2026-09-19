@@ -1,20 +1,469 @@
 <!doctype html>
-<html lang="zh-CN"><head><script src="/assets/product-structure.js" defer></script><script src="/assets/unsandboxed-notice.js" defer></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><link rel="icon" href="/assets/brand/clownfish-mark.png"><title>设置 · 小丑鱼</title><link rel="stylesheet" href="/assets/system-center.css"><link rel="stylesheet" href="/assets/clownfish-theme.css"><link rel="stylesheet" href="/assets/app-navigation-labels.css"><link rel="stylesheet" href="/assets/retained-output.css"><link rel="stylesheet" href="/assets/model-picker.css"><style>[hidden]{display:none!important}</style>
-  <link rel="stylesheet" href="/assets/scramble-theme.css">
-</head>
-<body data-page="settings" data-ui><div class="app-shell">
-  <!-- APP_NAVIGATION -->
-  <main><div class="page"><header class="page-head"><p class="eyebrow">应用设置</p><h1>连接和数据，都在这里</h1><p class="lede">模型服务和外部数据采用同一套状态表达：能否使用、由谁提供、下一步做什么，一眼就能看懂。</p></header>
-    <div class="settings-layout"><nav class="surface settings-nav" aria-label="设置分类"><button class="is-current" data-section="models">模型与服务</button><button data-section="connections">数据连接</button><button data-section="storage">数据保存</button><button data-section="privacy">数据与隐私</button><button data-section="appearance">外观</button><button data-section="advanced">高级</button></nav><div class="surface">
-      <section class="settings-section is-current" data-panel="models"><header class="section-head"><h2>模型与服务</h2><p>目录只表示服务商声明的型号；常用和能力检查分开保存。任何型号都可登记，能否处理当前任务以实测为准。</p></header><div class="current-line"><div><b id="modelCurrentTitle"><span class="cf-skeleton is-inline"></span></b><small id="modelCurrentDetail">读取当前连接状态</small></div><span class="dot" id="modelDot"></span></div><form class="form-grid" id="modelForm"><label class="field"><span>服务商</span><select id="modelProvider"></select></label><label class="field"><span>连接协议</span><select id="modelProtocol"><option value="openai-compatible">OpenAI 兼容</option><option value="anthropic">Anthropic</option></select></label><label class="field full"><span>服务地址</span><input id="modelBaseUrl" required placeholder="https://api.example.com/v1"></label><input id="modelSelectionMode" type="hidden" value="manual"><div class="field"><span>默认任务模型</span><input id="modelName" type="hidden"><button id="modelChoiceOpen" class="cf-model-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="modelCatalogPanel"><span class="cf-model-name">读取中</span><span class="cf-model-trigger-tag">未验证</span><span class="cf-model-chevron">⌄</span></button><small id="modelCatalogHint">默认型号与能力检查独立；保存不会发起模型请求。</small></div><div class="field"><span>模型目录</span><button id="modelCatalogToggle" type="button" aria-controls="modelCatalogPanel">搜索与管理模型</button><small>刷新目录只读取服务商列表；只有点击“检查模型”才可能产生费用。</small></div><section id="modelCatalogPanel" class="model-catalog-panel field full" role="dialog" aria-label="选择与管理模型" hidden><header><div><strong>选择与管理模型</strong><small id="modelCatalogSummary"></small></div><button id="modelCatalogClose" type="button" aria-label="关闭模型选择器">关闭</button></header><label class="field"><span>搜索完整目录</span><input id="modelCatalogSearch" type="search" autocomplete="off" placeholder="输入模型 ID 或名称"></label><div id="modelCatalogResults" class="model-catalog-results" role="list"></div><details class="model-catalog-more"><summary>添加其他型号或刷新目录</summary><div class="model-custom-row"><label class="field"><span>手动登记目录外 ID</span><input id="modelCustomId" maxlength="160" placeholder="例如 private-model-v2"></label><button id="modelCustomAdd" type="button">加入常用（不检查）</button><button id="modelCatalogRefresh" type="button">刷新目录（不检查）</button></div></details><p class="status" id="modelCatalogStatus" role="status"></p></section><label class="field"><span>API Key</span><input id="modelKey" type="password" autocomplete="new-password" placeholder="留空则继续使用已保存密钥"><small id="modelKeyHint">密钥不会显示在页面中。</small></label><div class="form-actions"><button class="primary" id="modelSave" type="submit">保存连接与默认型号（不检查）</button><button id="modelOffline" type="button">使用离线模式</button></div></form><p class="status" id="modelStatus" role="status"></p><div id="modelCheckList" class="connection-list" aria-label="模型检查记录"></div></section>
-      <section class="settings-section" data-panel="connections"><header class="section-head"><h2>数据连接</h2><p>连接状态来自运行环境；运行时就绪不等于账号数据已验证，具体访问以实际操作结果为准。</p></header><input id="extensionFile" type="file" accept="application/json,.json" hidden><div class="connection-list" id="connectionList"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span></div><h3>可安装能力</h3><p>预置能力会明确说明是否依赖外部服务，安装后统一接受权限和运行审计。</p><div class="connection-list" id="bundledPluginList"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span></div><h3>自定义插件</h3><p>用于导入第三方、本地或自建 MCP 插件；普通用户无需配置。</p><div class="form-actions"><button id="importExtension" type="button">导入自定义插件</button><button id="extensionUpdateCheck" type="button">检查自定义插件更新</button></div><h3>已安装插件</h3><div class="connection-list" id="extensionList"></div><h3>能力运行状态</h3><div class="connection-list" id="capabilityRuntimeList"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span></div><p class="status" id="connectionStatus" role="status"></p></section>
-      <section class="settings-section" data-panel="storage"><header class="section-head"><h2>数据保存</h2><p>默认只保存在本机；也可以连接自己的 Docker 服务器，端到端加密同步。</p></header><form class="form-grid" id="storageForm"><label class="field full"><span>保存方式</span><select id="storageMode"><option value="local">纯本地</option><option value="server">本地使用 + 自托管服务器同步</option></select></label><div class="form-grid field full" id="serverStorageFields"><label class="field full"><span>同步服务器地址</span><input id="syncEndpoint" placeholder="http://127.0.0.1:8799"></label><label class="field"><span>同步用户编号</span><input id="syncUserId" maxlength="80" placeholder="me"></label><label class="field"><span>服务器访问令牌</span><input id="syncToken" type="password" autocomplete="new-password" placeholder="留空则沿用已保存令牌"><small id="syncTokenHint">令牌只加密保存在本机。</small></label><label class="field full"><span>同步加密口令</span><input id="syncPassphrase" type="password" autocomplete="new-password" minlength="12" placeholder="至少 12 个字符；服务器无法读取"><small id="syncPassphraseHint">丢失后服务器快照无法恢复，请妥善保管。</small></label></div><div class="form-actions"><button class="primary" id="saveStorage" type="submit">保存</button><button id="testStorage" type="button">测试连接</button><button id="pushStorage" type="button">立即备份</button><button id="pullStorage" type="button">从服务器恢复</button></div></form><div class="current-line"><div><b id="storageCurrentTitle"><span class="cf-skeleton is-inline"></span></b><small id="storageCurrentDetail">读取数据保存状态</small></div><span class="dot" id="storageDot"></span></div><p class="status" id="storageStatus" role="status"></p></section>
-      <section class="settings-section" data-panel="privacy"><header class="section-head"><h2>数据与隐私</h2><p>小丑鱼默认在本机保存数据。这里集中查看数据位置与可恢复记录。</p></header><div id="privacyList"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span><span class="cf-skeleton is-short"></span></div></section>
-      <section class="settings-section" data-panel="advanced"><header class="section-head"><h2>高级与排错</h2><p>日常任务进度和成果在任务工作区查看。这里保留运行日志、异常核对与审批入口。</p></header><a class="wb-primary-link" href="/runs">打开运行日志</a><p>查看日志不会执行任务；批准、重试、恢复等操作仍需你明确选择。</p></section>
-      <section class="settings-section" data-panel="appearance"><header class="section-head"><h2>外观</h2><p>调整工作台的配色、阅读密度和动效。偏好只保存在本机浏览器，所有工作区页面立即生效。</p></header><div class="appearance-preferences" aria-label="工作台显示偏好"><label class="field"><span>界面配色</span><select id="wbColor"><option value="teal">海松绿</option><option value="coral">珊瑚红</option><option value="blue">海湾蓝</option><option value="violet">暮紫</option></select><small>只改变强调色，不改变任务内容和数据。</small></label><label class="field"><span>信息密度</span><select id="wbDensity"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select><small>紧凑适合同时查看更多任务；舒适保留更宽的留白。</small></label><label class="field"><span>界面动效</span><select id="wbMotion"><option value="full">完整动效</option><option value="reduced">减少动效</option></select><small>减少动效会关闭过渡和滚动动画。</small></label></div></section>
-    </div></div>
-  </div></main>
-</div><script src="/assets/app-icons.js"></script><script src="/assets/model-shortlist.js"></script><script src="/assets/settings-center.js"></script>
-  <script src="/assets/settings-wallpaper.js"></script>
-  <script src="/assets/scramble-confetti.js" defer></script>
-</body></html>
+<html lang="zh-CN">
+  <head>
+    <script src="/assets/product-structure.js" defer></script>
+    <script src="/assets/unsandboxed-notice.js" defer></script>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <link rel="icon" href="/assets/brand/clownfish-mark.png" />
+    <title>设置 · 小丑鱼</title>
+    <link rel="stylesheet" href="/assets/system-center.css" />
+    <link rel="stylesheet" href="/assets/clownfish-theme.css" />
+    <link rel="stylesheet" href="/assets/app-navigation-labels.css" />
+    <link rel="stylesheet" href="/assets/retained-output.css" />
+    <link rel="stylesheet" href="/assets/model-picker.css" />
+    <style>
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+    <link rel="stylesheet" href="/assets/scramble-theme.css" />
+  </head>
+  <body data-page="settings" data-ui>
+    <div class="app-shell">
+      <!-- APP_NAVIGATION -->
+      <main>
+        <div class="page">
+          <header class="page-head">
+            <p class="eyebrow">应用设置</p>
+            <h1>连接和数据，都在这里</h1>
+            <p class="lede">
+              模型服务和外部数据采用同一套状态表达：能否使用、由谁提供、下一步做什么，一眼就能看懂。
+            </p>
+          </header>
+          <div class="settings-layout">
+            <nav class="surface settings-nav" aria-label="设置分类">
+              <button class="is-current" data-section="models">
+                模型与服务</button
+              ><button data-section="connections">数据连接</button
+              ><button data-section="storage">数据保存</button
+              ><button data-section="privacy">数据与隐私</button
+              ><button data-section="appearance">外观</button
+              ><button data-section="advanced">高级</button>
+            </nav>
+            <div class="surface">
+              <section class="settings-section is-current" data-panel="models">
+                <header class="section-head">
+                  <h2>连接 AI 模型</h2>
+                  <p>
+                    最多填写两个 Key，小丑鱼会自动筛选、验证并配置当前需要的推荐模型。
+                  </p>
+                </header>
+                <section class="model-quick-setup" aria-labelledby="modelQuickSetupTitle">
+                  <div class="model-quick-intro">
+                    <div>
+                      <h3 id="modelQuickSetupTitle">一次配置，自动完成</h3>
+                      <p>只连接你拥有的服务。一个 Key 可以先用，两个 Key 可以互为补充。</p>
+                    </div>
+                    <span class="model-quick-security">Key 仅加密保存在本机</span>
+                  </div>
+                  <div class="model-key-cards">
+                    <label class="model-key-card" data-quick-provider="openai">
+                      <span class="model-key-card-head"><b>OpenAI</b><em id="modelQuickOpenAIState">未配置</em></span>
+                      <span class="model-key-card-copy">文字、看图、语音和图像能力的主要来源</span>
+                      <input id="modelQuickOpenAIKey" type="password" autocomplete="new-password" placeholder="粘贴 OpenAI API Key" />
+                      <small id="modelQuickOpenAIDetail">留空会继续使用已保存的 Key。</small>
+                    </label>
+                    <label class="model-key-card" data-quick-provider="zhipu">
+                      <span class="model-key-card-head"><b>智谱 BigModel</b><em id="modelQuickZhipuState">未配置</em></span>
+                      <span class="model-key-card-copy">中文文字任务与备用模型</span>
+                      <input id="modelQuickZhipuKey" type="password" autocomplete="new-password" placeholder="粘贴智谱 API Key" />
+                      <small id="modelQuickZhipuDetail">留空会继续使用已保存的 Key。</small>
+                    </label>
+                  </div>
+                  <div class="model-quick-action">
+                    <div>
+                      <button class="primary" id="modelQuickSubmit" type="button">保存并完成配置</button>
+                      <p>会为每个 Key 验证一次连接，并为每项额外能力发送一次合成最小验证，可能产生少量模型费用。</p>
+                    </div>
+                    <span id="modelQuickStatus" class="status" role="status"></span>
+                  </div>
+                  <ol class="model-quick-progress" id="modelQuickProgress" aria-label="自动配置进度">
+                    <li data-stage="saving">安全保存</li>
+                    <li data-stage="discovering">筛选推荐</li>
+                    <li data-stage="verifying">能力验证</li>
+                    <li data-stage="assigning">自动分配</li>
+                  </ol>
+                  <div class="model-quick-results" id="modelQuickResults" aria-live="polite"></div>
+                  <details class="model-quick-more">
+                    <summary>重新检测或恢复系统推荐</summary>
+                    <p>“重新检测”保留仍健康的手工默认值；“恢复系统推荐”会用本次验证通过的模型重新分配。</p>
+                    <div class="form-actions">
+                      <button id="modelQuickRetry" type="button">重新检测</button>
+                      <button id="modelQuickReset" type="button">恢复系统推荐</button>
+                    </div>
+                  </details>
+                </section>
+                <details class="model-resource-section model-legacy-settings" id="modelLegacySettings">
+                  <summary>高级设置与手工覆盖</summary>
+                  <div class="model-legacy-settings-body">
+                <div class="current-line">
+                  <div>
+                    <b id="modelCurrentTitle"
+                      ><span class="cf-skeleton is-inline"></span></b
+                    ><small id="modelCurrentDetail">读取当前连接状态</small>
+                  </div>
+                  <span class="dot" id="modelDot"></span>
+                </div>
+                <form class="form-grid model-connect-form" id="modelForm">
+                  <label class="field full"
+                    ><span>AI 服务</span><select id="modelProvider"></select
+                    ><small id="modelProviderNote"
+                      >选择服务后只填写该厂商需要的凭据和区域。</small
+                    ></label
+                  ><div id="modelProviderFields" class="form-grid field full"></div>
+                  <label class="field full" id="modelBaseUrlField" hidden
+                    ><span>API 服务地址</span
+                    ><input
+                      id="modelBaseUrl"
+                      placeholder="仅高级自定义服务需要填写"
+                      inputmode="url"
+                    /><small
+                      >官方服务使用内置受信端点，不需要普通用户填写地址。</small
+                    ></label
+                  ><label class="field full" id="modelLegacyKeyField" hidden
+                    ><span>API Key</span
+                    ><input
+                      id="modelKey"
+                      type="password"
+                      autocomplete="new-password"
+                      placeholder="留空则继续使用同一连接已保存的密钥"
+                    /><small id="modelKeyHint"
+                      >密钥提交后立即清空，只由当前 Windows
+                      用户加密保存在本机。</small
+                    ></label
+                  ><input id="modelConnectionId" type="hidden" /><input
+                    id="modelName"
+                    type="hidden"
+                  /><input
+                    id="modelSelectionMode"
+                    type="hidden"
+                    value="manual"
+                  />
+                  <details class="field full model-advanced-fields">
+                    <summary>高级自定义连接</summary>
+                    <div class="form-grid">
+                      <label class="field"
+                        ><span>连接协议</span
+                        ><select id="modelProtocol">
+                          <option value="openai-compatible">OpenAI 兼容</option>
+                          <option value="anthropic">Anthropic</option>
+                          <option value="gemini-native">Gemini 原生</option>
+                          <option value="dashscope-native">百炼原生</option>
+                          <option value="ark">火山方舟</option>
+                          <option value="async-media">异步媒体</option>
+                          <option value="tencent-tc3">腾讯 TC3</option>
+                        </select></label
+                      >
+                    </div>
+                  </details>
+                  <div class="form-actions">
+                    <button class="primary" id="modelSave" type="submit">
+                      保存并连接</button
+                    ><button id="modelOffline" type="button">
+                      使用离线模式
+                    </button>
+                  </div>
+                  <small class="field full"
+                    >连接时仅对选中的一个文字模型发送一次合成轻量请求，可能产生极少量费用；不会循环试探其他型号。</small
+                  >
+                </form>
+                <ol
+                  id="modelConnectProgress"
+                  class="model-connect-progress"
+                  aria-label="连接进度"
+                  aria-live="polite"
+                >
+                  <li data-step="saved">加密保存</li>
+                  <li data-step="provider">识别服务</li>
+                  <li data-step="catalog">读取目录</li>
+                  <li data-step="recommend">生成推荐</li>
+                  <li data-step="verify">轻量验证</li>
+                  <li data-step="ready">可用于任务</li>
+                </ol>
+                <p class="status" id="modelStatus" role="status"></p>
+                <section class="model-resource-section">
+                  <h3>已连接服务</h3>
+                  <div id="modelProviderConnections" class="connection-list">
+                    <span class="cf-skeleton"></span>
+                  </div>
+                </section>
+                <section class="model-resource-section">
+                  <div class="section-head">
+                    <h3>能力分配</h3>
+                    <p>
+                      自动模式只使用已验证证据；固定模式会校验连接、型号和能力。未接执行层的能力会显示“已配置，功能接入中”。
+                    </p>
+                  </div>
+                  <div
+                    id="modelCapabilityAssignments"
+                    class="model-capability-grid"
+                  ></div>
+                </section>
+                <section class="model-resource-section">
+                  <h3>推荐型号</h3>
+                  <p id="modelRecommendationHint">
+                    连接后显示少量有依据的推荐。
+                  </p>
+                  <div
+                    id="modelRecommendations"
+                    class="model-recommendations"
+                  ></div>
+                </section>
+                <details class="model-resource-section model-diagnostics">
+                  <summary>高级选择与诊断</summary>
+                  <div class="form-actions">
+                    <button
+                      id="modelChoiceOpen"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                      aria-controls="modelCatalogPanel"
+                    >
+                      搜索完整目录</button
+                    ><button id="modelCatalogRefresh" type="button">
+                      手动刷新当前目录
+                    </button>
+                  </div>
+                  <section
+                    id="modelCatalogPanel"
+                    class="model-catalog-panel"
+                    role="dialog"
+                    aria-label="高级模型选择"
+                    hidden
+                  >
+                    <header>
+                      <div>
+                        <strong>完整目录与单独验证</strong
+                        ><small id="modelCatalogSummary"></small>
+                      </div>
+                      <button
+                        id="modelCatalogClose"
+                        type="button"
+                        aria-label="关闭模型选择器"
+                      >
+                        关闭
+                      </button>
+                    </header>
+                    <label class="field"
+                      ><span>搜索模型 ID 或名称</span
+                      ><input
+                        id="modelCatalogSearch"
+                        type="search"
+                        autocomplete="off"
+                    /></label>
+                    <p id="modelCatalogHint">目录存在不代表模型已验证。</p>
+                    <div
+                      id="modelCatalogResults"
+                      class="model-catalog-results"
+                      role="list"
+                    ></div>
+                    <div class="model-custom-row">
+                      <label class="field"
+                        ><span>添加模型 ID</span
+                        ><input id="modelCustomId" maxlength="160" /></label
+                      ><button id="modelCustomAdd" type="button">
+                        添加并启用
+                      </button>
+                    </div>
+                    <p class="status" id="modelCatalogStatus" role="status"></p>
+                  </section>
+                  <div
+                    id="modelCheckList"
+                    class="connection-list"
+                    aria-label="模型检查记录"
+                  ></div>
+                </details>
+                  </div>
+                </details>
+              </section>
+              <section class="settings-section" data-panel="connections">
+                <header class="section-head">
+                  <h2>数据连接</h2>
+                  <p>
+                    连接状态来自运行环境；运行时就绪不等于账号数据已验证，具体访问以实际操作结果为准。
+                  </p>
+                </header>
+                <input
+                  id="extensionFile"
+                  type="file"
+                  accept="application/json,.json"
+                  hidden
+                />
+                <div class="connection-list" id="connectionList">
+                  <span class="cf-skeleton"></span
+                  ><span class="cf-skeleton is-mid"></span>
+                </div>
+                <h3>可安装能力</h3>
+                <p>
+                  预置能力会明确说明是否依赖外部服务，安装后统一接受权限和运行审计。
+                </p>
+                <div class="connection-list" id="bundledPluginList">
+                  <span class="cf-skeleton"></span
+                  ><span class="cf-skeleton is-mid"></span>
+                </div>
+                <h3>自定义插件</h3>
+                <p>用于导入第三方、本地或自建 MCP 插件；普通用户无需配置。</p>
+                <div class="form-actions">
+                  <button id="importExtension" type="button">
+                    导入自定义插件</button
+                  ><button id="extensionUpdateCheck" type="button">
+                    检查自定义插件更新
+                  </button>
+                </div>
+                <h3>已安装插件</h3>
+                <div class="connection-list" id="extensionList"></div>
+                <h3>能力运行状态</h3>
+                <div class="connection-list" id="capabilityRuntimeList">
+                  <span class="cf-skeleton"></span
+                  ><span class="cf-skeleton is-mid"></span>
+                </div>
+                <p class="status" id="connectionStatus" role="status"></p>
+              </section>
+              <section class="settings-section" data-panel="storage">
+                <header class="section-head">
+                  <h2>数据保存</h2>
+                  <p>
+                    默认只保存在本机；也可以连接自己的 Docker
+                    服务器，端到端加密同步。
+                  </p>
+                </header>
+                <form class="form-grid" id="storageForm">
+                  <label class="field full"
+                    ><span>保存方式</span
+                    ><select id="storageMode">
+                      <option value="local">纯本地</option>
+                      <option value="server">
+                        本地使用 + 自托管服务器同步
+                      </option>
+                    </select></label
+                  >
+                  <div class="form-grid field full" id="serverStorageFields">
+                    <label class="field full"
+                      ><span>同步服务器地址</span
+                      ><input
+                        id="syncEndpoint"
+                        placeholder="http://127.0.0.1:8799" /></label
+                    ><label class="field"
+                      ><span>同步用户编号</span
+                      ><input
+                        id="syncUserId"
+                        maxlength="80"
+                        placeholder="me" /></label
+                    ><label class="field"
+                      ><span>服务器访问令牌</span
+                      ><input
+                        id="syncToken"
+                        type="password"
+                        autocomplete="new-password"
+                        placeholder="留空则沿用已保存令牌"
+                      /><small id="syncTokenHint"
+                        >令牌只加密保存在本机。</small
+                      ></label
+                    ><label class="field full"
+                      ><span>同步加密口令</span
+                      ><input
+                        id="syncPassphrase"
+                        type="password"
+                        autocomplete="new-password"
+                        minlength="12"
+                        placeholder="至少 12 个字符；服务器无法读取"
+                      /><small id="syncPassphraseHint"
+                        >丢失后服务器快照无法恢复，请妥善保管。</small
+                      ></label
+                    >
+                  </div>
+                  <div class="form-actions">
+                    <button class="primary" id="saveStorage" type="submit">
+                      保存</button
+                    ><button id="testStorage" type="button">测试连接</button
+                    ><button id="pushStorage" type="button">立即备份</button
+                    ><button id="pullStorage" type="button">
+                      从服务器恢复
+                    </button>
+                  </div>
+                </form>
+                <div class="current-line">
+                  <div>
+                    <b id="storageCurrentTitle"
+                      ><span class="cf-skeleton is-inline"></span></b
+                    ><small id="storageCurrentDetail">读取数据保存状态</small>
+                  </div>
+                  <span class="dot" id="storageDot"></span>
+                </div>
+                <p class="status" id="storageStatus" role="status"></p>
+              </section>
+              <section class="settings-section" data-panel="privacy">
+                <header class="section-head">
+                  <h2>数据与隐私</h2>
+                  <p>
+                    小丑鱼默认在本机保存数据。这里集中查看数据位置与可恢复记录。
+                  </p>
+                </header>
+                <div id="privacyList">
+                  <span class="cf-skeleton"></span
+                  ><span class="cf-skeleton is-mid"></span
+                  ><span class="cf-skeleton is-short"></span>
+                </div>
+              </section>
+              <section class="settings-section" data-panel="advanced">
+                <header class="section-head">
+                  <h2>高级与排错</h2>
+                  <p>
+                    日常任务进度和成果在任务工作区查看。这里保留运行日志、异常核对与审批入口。
+                  </p>
+                </header>
+                <a class="wb-primary-link" href="/runs">打开运行日志</a>
+                <p>
+                  查看日志不会执行任务；批准、重试、恢复等操作仍需你明确选择。
+                </p>
+              </section>
+              <section class="settings-section" data-panel="appearance">
+                <header class="section-head">
+                  <h2>外观</h2>
+                  <p>
+                    调整工作台的配色、阅读密度和动效。偏好只保存在本机浏览器，所有工作区页面立即生效。
+                  </p>
+                </header>
+                <div class="appearance-preferences" aria-label="工作台显示偏好">
+                  <label class="field"
+                    ><span>界面配色</span
+                    ><select id="wbColor">
+                      <option value="teal">海松绿</option>
+                      <option value="coral">珊瑚红</option>
+                      <option value="blue">海湾蓝</option>
+                      <option value="violet">暮紫</option></select
+                    ><small>只改变强调色，不改变任务内容和数据。</small></label
+                  ><label class="field"
+                    ><span>信息密度</span
+                    ><select id="wbDensity">
+                      <option value="comfortable">舒适</option>
+                      <option value="compact">紧凑</option></select
+                    ><small
+                      >紧凑适合同时查看更多任务；舒适保留更宽的留白。</small
+                    ></label
+                  ><label class="field"
+                    ><span>界面动效</span
+                    ><select id="wbMotion">
+                      <option value="full">完整动效</option>
+                      <option value="reduced">减少动效</option></select
+                    ><small>减少动效会关闭过渡和滚动动画。</small></label
+                  >
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script src="/assets/app-icons.js"></script>
+    <script src="/assets/model-shortlist.js"></script>
+    <script src="/assets/model-policy-save-queue.js?v=0.7.6-policy2"></script>
+    <script src="/assets/tts-preview-player.js?v=0.7.6-media1"></script>
+    <script src="/assets/model-quick-setup.js?v=0.7.6-quick1"></script>
+    <script src="/assets/settings-center.js?v=0.7.6-modelux4"></script>
+    <script src="/assets/settings-wallpaper.js"></script>
+    <script src="/assets/scramble-confetti.js" defer></script>
+  </body>
+</html>

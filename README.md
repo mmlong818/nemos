@@ -109,7 +109,7 @@ cd sdk\typescript
 powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Build-Clownfish.ps1
 ```
 
-构建产物位于 `examples\companion\client\dist\portable\小丑鱼`。便携包是独立客户端外壳，模型与用户数据仍按本机配置保存。
+交付时使用 `dist` 中生成的 portable ZIP；完整解压后，启动“小丑鱼”目录内的 `小丑鱼.exe`。不要单独复制或分发构建目录顶层的 EXE；该文件仅是定位 `portable\小丑鱼\小丑鱼.exe` 的安全内部启动器。便携包是独立客户端外壳，模型与用户数据仍按本机配置保存。
 
 ## 数据与安全边界
 

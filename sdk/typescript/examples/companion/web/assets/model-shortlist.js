@@ -7,6 +7,11 @@
       .filter(item => item && typeof item.id === "string" && item.id)
       .map(item => [item.id, item])).values()];
   }
+  function rawCatalog(state) {
+    return [...new Map((Array.isArray(state?.rawModels) ? state.rawModels : [])
+      .filter(item => item && typeof item.id === "string" && item.id)
+      .map(item => [item.id, item])).values()];
+  }
   function catalogState(state) {
     return state?.connectionRevision && state?.catalogConnectionRevision && state.connectionRevision !== state.catalogConnectionRevision ? "stale" : "current";
   }
@@ -32,17 +37,25 @@
     return "通用候选；目录名称不代表能力已验证";
   }
   function decorate(state, id, extra = {}) {
-    const found = catalog(state).find(item => item.id === id);
-    const favorites = new Set(Array.isArray(state?.favoriteModels) ? state.favoriteModels : []);
+    const found = catalog(state).find(item => item.id === id) || rawCatalog(state).find(item => item.id === id);
+    const favorites = new Set(Array.isArray(state?.registeredModels) ? state.registeredModels : []);
+    const hasEnabledPool = Array.isArray(state?.enabledModels);
+    const enabled = new Set(hasEnabledPool ? state.enabledModels : []);
     return { ...(found || { id }), ...extra, current: id === state?.model, favorite: favorites.has(id), directory: !!found,
+      enabled: !hasEnabledPool || enabled.has(id),
       catalogStale: catalogState(state) === "stale", check: eligibleCheck(state, id) };
   }
   function shortlist(state) {
     const result = [], seen = new Set();
     const add = (id, extra) => { if (typeof id !== "string" || !id || seen.has(id)) return; seen.add(id); result.push(decorate(state, id, extra)); };
-    add(state?.model);
-    for (const id of Array.isArray(state?.favoriteModels) ? state.favoriteModels : []) add(id);
-    for (const id of Object.keys(state?.modelChecks || {})) if (eligibleCheck(state, id)?.chat === "passed") add(id);
+    if (!Array.isArray(state?.enabledModels)) {
+      add(state?.model, catalog(state).some(item => item.id === state?.model) ? {} : { legacyWarning: true });
+      for (const id of Array.isArray(state?.registeredModels) ? state.registeredModels : []) if (catalog(state).some(item => item.id === id) && eligibleCheck(state, id)?.chat === "passed") add(id);
+      for (const id of Object.keys(state?.modelChecks || {})) if (catalog(state).some(item => item.id === id) && eligibleCheck(state, id)?.chat === "passed") add(id);
+      return result;
+    }
+    if (state.enabledModels.includes(state?.model)) add(state?.model, catalog(state).some(item => item.id === state?.model) ? {} : { legacyWarning: true });
+    for (const id of state.enabledModels) if (eligibleCheck(state, id)?.chat === "passed") add(id);
     return result;
   }
   function taskModels(state, selected = "default") {
@@ -52,7 +65,7 @@
   }
   function label(item, state) {
     const sources = [item.current ? "当前默认" : "", item.favorite ? "用户添加" : "", item.check?.chat === "passed" ? "已验证" : ""].filter(Boolean);
-    return [item.displayName || item.id, sources.join(" + "), item.missing ? "已不在目录" : item.catalogStale ? "目录已过期" : "", checkLabel(state?.modelChecks?.[item.id], state)].filter(Boolean).join(" · ");
+    return [item.displayName || item.id, sources.join(" + "), item.legacyWarning ? "旧引用，仅保留查看" : item.missing ? "已不在目录" : item.catalogStale ? "目录已过期" : "", checkLabel(state?.modelChecks?.[item.id], state)].filter(Boolean).join(" · ");
   }
-  window.ClownfishModelShortlist = Object.freeze({ catalog, catalogState, eligibleCheck, shortlist, taskModels, label, checkLabel, recommendation });
+  window.ClownfishModelShortlist = Object.freeze({ catalog, rawCatalog, catalogState, eligibleCheck, shortlist, taskModels, label, checkLabel, recommendation });
 })();

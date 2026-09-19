@@ -17,7 +17,7 @@ export async function startModelHarness() {
   let child: ChildProcess | undefined;
   let logs = "";
   let stopHarness: (() => Promise<void>) | undefined;
-  const state = { status: 0, delayMs: 0, beforeReply: undefined as (() => Promise<void>) | undefined, replyFor: undefined as ((body: any) => string) | undefined };
+  const state = { status: 0, delayMs: 0, catalogDelayMs: 0, beforeReply: undefined as (() => Promise<void>) | undefined, replyFor: undefined as ((body: any) => string) | undefined };
   const provider = createServer(async (req, res) => {
     if (req.url === "/__qa/stop" && req.method === "POST") {
       res.end("stopping"); setTimeout(() => { void stopHarness?.(); }, 50); return;
@@ -26,6 +26,7 @@ export async function startModelHarness() {
     if (status) { res.writeHead(status); res.end("private-provider-body-fixture"); return; }
     res.setHeader("content-type", "application/json");
     if (req.url?.endsWith("/models")) {
+      if (state.catalogDelayMs) await new Promise((done) => setTimeout(done, state.catalogDelayMs));
       requests.push({ url: req.url, authorization: req.headers.authorization, body: null });
       if (req.url.startsWith("/no-catalog/")) { res.writeHead(404); res.end("No directory"); return; }
       res.end(JSON.stringify({ data: [{ id: "unavailable", created: 40 }, { id: "chat-only", created: 30 }, { id: "ready", created: 20 }, { id: "manual", created: 10 }] })); return;

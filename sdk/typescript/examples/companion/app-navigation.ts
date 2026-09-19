@@ -3,6 +3,7 @@ import { renderWorkbenchNavigation, renderWorkbenchBar } from "./workbench-shell
 export const APP_ROUTES = [
   { path: "/overview", file: "overview.html", section: "overview", title: "总览" },
   { path: "/", file: "index.html", section: "assistant", title: "助理" },
+  { path: "/pantheon", file: "pantheon.html", section: "pantheon", title: "万神殿" },
   { path: "/matters", file: "matters.html", section: "matters", title: "事项" },
   { path: "/bots", file: "bots.html", section: "matters", title: "任务" },
   { path: "/skills", file: "bots.html", section: "bots", title: "技能库" },

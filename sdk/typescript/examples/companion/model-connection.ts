@@ -1,16 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { fetch as undiciFetch, type Dispatcher } from "undici";
 import type { ReasoningEffort } from "./model-reasoning.js";
+import { providerCatalogEntry, type ProviderId, type ProviderProtocol } from "./provider-catalog.js";
 
-export type CompanionModelProtocol = "openai-compatible" | "anthropic";
+export type CompanionModelProtocol = ProviderProtocol;
 
-export type CompanionModelProvider =
-  | "zhipu"
-  | "openai"
-  | "anthropic"
-  | "deepseek"
-  | "qwen"
-  | "minimax"
-  | "custom";
+export type CompanionModelProvider = ProviderId;
 
 export interface CompanionModelConnection {
   provider: CompanionModelProvider;
@@ -18,13 +13,36 @@ export interface CompanionModelConnection {
   baseUrl: string;
   model: string;
   apiKey: string;
+  /** Generic provider credentials. `apiKey` remains a compatibility mirror. */
+  credentials?: Record<string, string>;
+  /** Non-secret provider configuration such as region, workspace or endpoint ID. */
+  providerSettings?: Record<string, string>;
   selectionMode?: "auto" | "manual";
   /** Opaque local revision; it is never derived from or exposed with the API key. */
   connectionRevision?: string;
-  /** User preference only. A favourite is not evidence that the model is usable. */
-  favoriteModels?: string[];
+  /** Public transport-policy identity; changing proxy/direct routing invalidates checks and queued work. */
+  networkFingerprint?: string;
+  /** Runtime-only dispatcher used to stage a connection without changing other requests' global route. */
+  transportDispatcher?: Dispatcher;
+  /** Models explicitly added to this connection. Registration is local and never probes. */
+  registeredModels?: string[];
+  /** Models intentionally enabled under this shared credential. Enabling is local and never probes. */
+  enabledModels?: string[];
   /** Only checks made with this exact connection and credential belong here. */
   modelChecks?: Record<string, CompanionModelCheck>;
+  /** Explicit per-capability probes. A /models row never populates this map. */
+  capabilityChecks?: Record<string, CompanionCapabilityCheck>;
+}
+
+export interface CompanionCapabilityCheck {
+  connectionRevision?: string;
+  modelId: string;
+  capability: "vision" | "speech_to_text" | "text_to_speech" | "image_generation";
+  checkedAt: string;
+  status: "passed" | "failed";
+  detail: string;
+  latencyMs?: number;
+  diagnostic?: CompanionModelFailureDiagnostic;
 }
 
 export interface CompanionModelCheck {
@@ -37,21 +55,105 @@ export interface CompanionModelCheck {
   streaming: "passed" | "failed" | "buffered" | "not-tested";
   tools: "passed" | "failed" | "not-tested";
   detail: string;
+  /** Measured synthetic round-trip only; absent means latency is unknown. */
+  latencyMs?: number;
+  /** Safe troubleshooting metadata; provider response content is never retained. */
+  diagnostic?: CompanionModelFailureDiagnostic;
 }
 
 export const COMPANION_MODEL_CHECK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+export type CompanionModelFailureCategory = "auth" | "quota" | "model" | "parameter" | "network" | "protocol";
+
+/** Deliberately excludes response bodies, endpoints, credentials and prompts. */
+export interface CompanionModelFailureDiagnostic {
+  category: CompanionModelFailureCategory;
+  httpStatus?: number;
+  requestId?: string;
+  /** Official, numeric provider error code only; provider messages are never retained. */
+  providerCode?: string;
+  networkKind?: "dns" | "refused" | "timeout" | "tls" | "proxy_unavailable";
+}
+
 export class CompanionModelHttpError extends Error {
-  constructor(readonly status: number, operation = "模型请求") {
+  constructor(readonly status: number, operation = "模型请求", readonly requestId?: string, readonly providerCode?: string) {
     // Never persist or expose a provider's raw response: gateways can echo keys.
     super(`${operation}失败 HTTP ${status}。`);
   }
+}
+
+/** Request IDs are useful for provider support, but arbitrary response headers are not trusted. */
+export function safeProviderRequestId(headers: Headers): string | undefined {
+  const value = headers.get("x-request-id") || headers.get("request-id") || headers.get("x-correlation-id");
+  return value && /^[A-Za-z0-9._:/-]{1,128}$/.test(value) ? value : undefined;
+}
+
+/**
+ * Zhipu's documented error envelope carries a numeric `error.code`.  Parse no
+ * other response content: gateway messages can include prompts or credentials.
+ */
+export async function safeZhipuProviderErrorCode(response: Response): Promise<string | undefined> {
+  let payload: unknown;
+  try { payload = await response.json(); } catch { return undefined; }
+  const error = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>).error : undefined;
+  const code = error && typeof error === "object" && !Array.isArray(error)
+    ? (error as Record<string, unknown>).code : undefined;
+  const value = typeof code === "number" && Number.isSafeInteger(code) ? String(code) : code;
+  // Current official codes are compact numeric identifiers (for example 1213,
+  // 1310).  Reject text, whitespace, and unbounded values rather than echoing
+  // an untrusted provider body.
+  return typeof value === "string" && /^\d{3,5}$/.test(value) ? value : undefined;
+}
+
+export function companionModelFailureDiagnostic(error: unknown): CompanionModelFailureDiagnostic | undefined {
+  if (error instanceof CompanionModelHttpError) {
+    const category: CompanionModelFailureCategory = error.status === 401 || error.status === 403 ? "auth"
+      : error.status === 429 ? "quota"
+      : error.status === 404 ? "model"
+      : error.status === 400 || error.status === 422 ? "parameter"
+      : "protocol";
+    return { category, httpStatus: error.status, ...(error.requestId ? { requestId: error.requestId } : {}), ...(error.providerCode ? { providerCode: error.providerCode } : {}) };
+  }
+  const networkKind = companionNetworkFailureKind(error);
+  if (networkKind || error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError")) {
+    return { category: "network", ...(networkKind ? { networkKind } : {}) };
+  }
+  return undefined;
+}
+
+function companionNetworkFailureKind(error: unknown): CompanionModelFailureDiagnostic["networkKind"] | undefined {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; current && depth < 5 && !seen.has(current); depth++) {
+    seen.add(current);
+    const record = typeof current === "object" ? current as Record<string, unknown> : {};
+    const code = String(record.code || "").toUpperCase();
+    const name = String(record.name || "").toUpperCase();
+    const message = current instanceof Error ? current.message : String(record.message || "");
+    if (/ENOTFOUND|EAI_AGAIN|DNS/.test(`${code} ${name} ${message}`)) return "dns";
+    if (/PROXY.*(?:UNAVAILABLE|LISTEN)|系统代理|代理端口未监听|PAC(?:\/WPAD|\/自动配置脚本)?|WPAD/i.test(`${code} ${name} ${message}`)) return "proxy_unavailable";
+    if (/ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|ABORTERROR|TIMEOUT|超时/i.test(`${code} ${name} ${message}`)) return "timeout";
+    if (/CERT|TLS|SSL|ERR_SSL|UNABLE_TO_VERIFY|SELF_SIGNED/i.test(`${code} ${name} ${message}`)) return "tls";
+    if (/ECONNRESET|ENETUNREACH|EHOSTUNREACH|ECONNREFUSED/i.test(`${code} ${name} ${message}`)) return "refused";
+    current = record.cause;
+  }
+  return undefined;
 }
 
 export interface CompanionModelInfo {
   id: string;
   created?: number;
   displayName?: string;
+  /** Provider directory metadata. It describes visibility, never verification. */
+  directory?: {
+    supportedActions?: string[];
+    capabilities?: string[];
+    modalities?: string[];
+    contextTokens?: number;
+    outputTokens?: number;
+    pricing?: Record<string, string | number>;
+  };
 }
 
 export interface CompanionModelProviderPreset {
@@ -71,18 +173,18 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     name: "智谱 GLM",
     protocol: "openai-compatible",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-    model: "glm-5.2",
-    dailyChatModel: "glm-5.2",
+    model: "glm-5.3",
+    dailyChatModel: "glm-5.3",
     keyRequired: true,
-    note: "日常对话与任务默认使用 glm-5.2。",
+    note: "日常对话与任务默认使用官方维护目录中的 glm-5.3；仍需当前账号轻量验证。",
   },
   {
     id: "openai",
     name: "OpenAI",
     protocol: "openai-compatible",
     baseUrl: "https://api.openai.com/v1",
-    model: "gpt-5.6-terra",
-    dailyChatModel: "gpt-5.6-luna",
+    model: "gpt-5.4",
+    dailyChatModel: "gpt-5.4",
     keyRequired: true,
     note: "日常对话与任务使用已选择的模型，不会自动切到未经检查的预设型号。",
   },
@@ -90,9 +192,9 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     id: "anthropic",
     name: "Anthropic Claude",
     protocol: "anthropic",
-    baseUrl: "https://api.anthropic.com/v1",
+    baseUrl: "https://api.anthropic.com",
     model: "claude-sonnet-5",
-    dailyChatModel: "claude-haiku-4-5",
+    dailyChatModel: "claude-haiku-4-5-20251001",
     keyRequired: true,
     note: "原生 SSE 流式在显式检查通过后启用；检查失败或旧版 buffered 记录继续使用完整 JSON。",
   },
@@ -101,8 +203,8 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     name: "DeepSeek",
     protocol: "openai-compatible",
     baseUrl: "https://api.deepseek.com",
-    model: "deepseek-v4-pro",
-    dailyChatModel: "deepseek-v4-flash",
+    model: "deepseek-flash",
+    dailyChatModel: "deepseek-flash",
     keyRequired: true,
     note: "日常对话与任务使用已选择的模型，不会自动切到未经检查的预设型号。",
   },
@@ -111,21 +213,27 @@ export const COMPANION_MODEL_PROVIDER_PRESETS: readonly CompanionModelProviderPr
     name: "通义千问",
     protocol: "openai-compatible",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    model: "qwen3.7-max",
-    dailyChatModel: "qwen3.6-flash",
+    model: "qwen3.8-max",
+    dailyChatModel: "qwen3.8-flash",
     keyRequired: true,
     note: "日常对话与任务使用已选择的模型，不会自动切到未经检查的预设型号。",
   },
   {
     id: "minimax",
-    name: "MiniMax",
+    name: "MiniMax 中国",
     protocol: "openai-compatible",
-    baseUrl: "https://api.minimaxi.com/v1",
+    baseUrl: "https://api.minimax.cn/v1",
     model: "MiniMax-M3",
-    dailyChatModel: "MiniMax-M2.7-highspeed",
+    dailyChatModel: "MiniMax-M3",
     keyRequired: true,
-    note: "日常对话与任务使用已选择的模型，不会自动切到未经检查的预设型号。",
+    note: "官方端点已更新；当前执行适配仍待验证，不能自动设为可执行模型。",
   },
+  { id: "gemini", name: "Google Gemini", protocol: "gemini-native", baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-3.8-flash", keyRequired: true, note: "原生 models.list 读取账号目录；能力需要单独验证。" },
+  { id: "volcengine", name: "火山方舟 / 豆包 / Seedance", protocol: "ark", baseUrl: "https://ark.cn-beijing.volces.com/api/v3", model: "configured-endpoint", keyRequired: true, note: "实际调用必须填写账号推理接入点 ID。" },
+  { id: "kling", name: "可灵 Kling", protocol: "async-media", baseUrl: "", model: "kling-v2-6", keyRequired: true, note: "只保存凭据；不会自动创建付费任务。" },
+  { id: "vidu", name: "Vidu", protocol: "async-media", baseUrl: "https://api.vidu.com", model: "viduq3-pro", keyRequired: true, note: "只保存凭据；不会自动创建付费任务。" },
+  { id: "pixverse", name: "拍我 AI / PixVerse", protocol: "async-media", baseUrl: "https://app-api.pixverse.ai/openapi/v2", model: "v6", keyRequired: true, note: "只保存凭据；不会自动创建付费任务。" },
+  { id: "hunyuan", name: "腾讯混元视频", protocol: "tencent-tc3", baseUrl: "https://vclm.tencentcloudapi.com", model: "hunyuan-video", keyRequired: false, note: "使用 SecretId 与 SecretKey 的 TC3 签名。" },
   {
     id: "custom",
     name: "自定义服务",
@@ -161,22 +269,38 @@ export function normalizeCompanionModelConnection(
   input: Partial<CompanionModelConnection>,
 ): CompanionModelConnection {
   const preset = companionModelProviderPreset(input.provider ?? "zhipu");
+  const definition = providerCatalogEntry(preset.id);
   const protocol = preset.id === "custom"
     ? normalizeProtocol(input.protocol)
     : preset.protocol;
-  const baseUrl = normalizeBaseUrl(String(input.baseUrl || preset.baseUrl));
+  const normalizedBaseUrl = definition?.discoveryMode === "asyncMediaNoFreeProbe" && !definition.defaultEndpoint
+    ? `clownfish-unconfigured://${preset.id}`
+    : normalizeBaseUrl(String(input.baseUrl || preset.baseUrl));
+  const baseUrl = protocol === "anthropic" ? normalizedBaseUrl.replace(/\/v1$/, "") : normalizedBaseUrl;
   const model = String(input.model || preset.model).trim();
   const apiKey = String(input.apiKey || "").trim();
+  const credentials = normalizeStringMap(input.credentials);
+  if (apiKey && !credentials.apiKey) credentials.apiKey = apiKey;
+  const providerSettings = normalizeStringMap(input.providerSettings, false);
 
   if (!model) throw new Error("请填写模型名称。");
   if (model.length > 160 || /[\r\n]/.test(model)) throw new Error("模型名称格式不正确。");
-  if (preset.keyRequired && !apiKey) throw new Error(`请填写 ${preset.name} 的 API Key。`);
+  for (const field of definition?.credentialFields || []) {
+    if (field.required && !credentials[field.id]) throw new Error(`请填写 ${preset.name} 的${field.label}。`);
+  }
+  for (const field of definition?.settingFields || []) {
+    if (field.required && field.id !== "baseUrl" && field.id !== "protocol" && !providerSettings[field.id]) throw new Error(`请填写 ${preset.name} 的${field.label}。`);
+  }
 
-  return { provider: preset.id, protocol, baseUrl, model, apiKey,
+  return { provider: preset.id, protocol, baseUrl, model, apiKey: credentials.apiKey || apiKey, credentials, providerSettings,
     ...(input.selectionMode ? { selectionMode: input.selectionMode } : {}),
     ...(isConnectionRevision(input.connectionRevision) ? { connectionRevision: input.connectionRevision } : {}),
-    ...(input.favoriteModels ? { favoriteModels: normalizeFavoriteModels(input.favoriteModels) } : {}),
+    ...(typeof input.networkFingerprint === "string" && /^[a-f0-9]{24}$/.test(input.networkFingerprint) ? { networkFingerprint: input.networkFingerprint } : {}),
+    ...(input.transportDispatcher ? { transportDispatcher: input.transportDispatcher } : {}),
+    ...(input.registeredModels ? { registeredModels: normalizeFavoriteModels(input.registeredModels) } : {}),
+    ...(input.enabledModels ? { enabledModels: normalizeFavoriteModels(input.enabledModels) } : {}),
     ...(input.modelChecks ? { modelChecks: input.modelChecks } : {}),
+    ...(input.capabilityChecks ? { capabilityChecks: input.capabilityChecks } : {}),
   };
 }
 
@@ -205,15 +329,34 @@ export function withConnectionRevision(
     && normalized.provider === previous!.provider
     && normalized.protocol === previous!.protocol
     && normalized.baseUrl === previous!.baseUrl
+    && normalized.networkFingerprint === previous!.networkFingerprint
+    && JSON.stringify(normalized.credentials || {}) === JSON.stringify(previous!.credentials || { ...(previous!.apiKey ? { apiKey: previous!.apiKey } : {}) })
+    && JSON.stringify(normalized.providerSettings || {}) === JSON.stringify(previous!.providerSettings || {})
     && !credentialChanged;
   const connectionRevision = sameConnection && isConnectionRevision(previous!.connectionRevision)
     ? previous!.connectionRevision!
     : createConnectionRevision();
-  const favoriteModels = normalizeFavoriteModels(next.favoriteModels ?? previous?.favoriteModels ?? []);
+  const registeredModels = normalizeFavoriteModels(next.registeredModels ?? previous?.registeredModels ?? []);
+  const enabledModels = normalizeFavoriteModels(next.enabledModels ?? previous?.enabledModels ?? []);
   const modelChecks = sameConnection
     ? retainModelChecksForRevision(next.modelChecks ?? previous?.modelChecks, connectionRevision)
     : {};
-  return { ...normalized, connectionRevision, favoriteModels, modelChecks };
+  const capabilityChecks = sameConnection
+    ? Object.fromEntries(Object.entries(next.capabilityChecks ?? previous?.capabilityChecks ?? {}).filter(([, check]) => check?.connectionRevision === connectionRevision))
+    : {};
+  return { ...normalized, connectionRevision, registeredModels, enabledModels, modelChecks, capabilityChecks };
+}
+
+function normalizeStringMap(value: unknown, secret = true): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const normalized: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(rawKey)) continue;
+    const text = String(rawValue ?? "").trim();
+    if (!text || text.length > (secret ? 4096 : 512) || /[\r\n]/.test(text)) continue;
+    normalized[rawKey] = text;
+  }
+  return normalized;
 }
 
 export function bindModelChecksToRevision(
@@ -281,13 +424,48 @@ function isModelId(value: string): boolean {
 }
 
 export function modelConnectionEndpoint(connection: CompanionModelConnection): string {
-  const suffix = connection.protocol === "anthropic" ? "/messages" : "/chat/completions";
+  const suffix = connection.protocol === "anthropic" ? "/v1/messages" : "/chat/completions";
   if (connection.baseUrl.endsWith(suffix)) return connection.baseUrl;
   return `${connection.baseUrl}${suffix}`;
 }
 
 /** Which wire protocol a model is actually reached over. One source for adapter choice and checks. */
 export type CompanionModelTransport = "openai-responses" | "openai-chat-completions" | "anthropic-messages";
+
+export type CompanionReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
+export type CompanionThinkingMode = "enabled" | "disabled" | "omit";
+export interface CompanionModelCapabilityProfile {
+  thinking: CompanionThinkingMode;
+  reasoningEfforts?: readonly CompanionReasoningEffort[];
+}
+
+/**
+ * Wire-level capabilities are provider profiles, not UI-name exceptions.  New
+ * families belong here only when their provider documentation establishes a
+ * different request contract.
+ */
+const COMPANION_MODEL_CAPABILITY_PROFILES: readonly {
+  provider: CompanionModelProvider;
+  model: RegExp;
+  profile: CompanionModelCapabilityProfile;
+}[] = [
+  {
+    provider: "zhipu",
+    model: /^glm-5\.3(?:$|[-_])/i,
+    profile: { thinking: "enabled", reasoningEfforts: ["low", "high", "max"] },
+  },
+  // Earlier Zhipu chat families accept disabled thinking; retain the existing
+  // latency-oriented default unless a newer explicit profile supersedes it.
+  { provider: "zhipu", model: /.+/, profile: { thinking: "disabled" } },
+];
+
+export function companionModelCapabilities(
+  connection: Pick<CompanionModelConnection, "provider" | "protocol"> | undefined,
+  model: string,
+): CompanionModelCapabilityProfile {
+  return COMPANION_MODEL_CAPABILITY_PROFILES.find((entry) => entry.provider === connection?.provider && entry.model.test(model))?.profile
+    ?? { thinking: "omit" };
+}
 
 /**
  * OpenAI reasoning families, matched by prefix so a dated snapshot inherits its family.
@@ -355,6 +533,7 @@ export function sortCompanionModels(models: readonly CompanionModelInfo[]): Comp
       id,
       ...(Number.isFinite(created) && created > 0 ? { created } : {}),
       ...(item.displayName ? { displayName: String(item.displayName).trim().slice(0, 160) } : {}),
+      ...(item.directory ? { directory: normalizeDirectoryMetadata(item.directory) } : {}),
     });
   }
   return [...unique.values()].sort((left, right) => {
@@ -365,19 +544,40 @@ export function sortCompanionModels(models: readonly CompanionModelInfo[]): Comp
   });
 }
 
+function normalizeDirectoryMetadata(value: CompanionModelInfo["directory"]): CompanionModelInfo["directory"] {
+  if (!value) return undefined;
+  const strings = (items: unknown) => Array.isArray(items)
+    ? [...new Set(items.map((item) => String(item || "").trim()).filter((item) => item && item.length <= 80))].slice(0, 50)
+    : undefined;
+  const positive = (item: unknown) => Number.isFinite(Number(item)) && Number(item) > 0 ? Number(item) : undefined;
+  const pricing = value.pricing && typeof value.pricing === "object"
+    ? Object.fromEntries(Object.entries(value.pricing).filter(([key, item]) => /^[A-Za-z0-9._-]{1,60}$/.test(key) && (typeof item === "number" || typeof item === "string")).slice(0, 30))
+    : undefined;
+  const normalized = {
+    supportedActions: strings(value.supportedActions), capabilities: strings(value.capabilities), modalities: strings(value.modalities),
+    contextTokens: positive(value.contextTokens), outputTokens: positive(value.outputTokens), pricing,
+  };
+  return Object.fromEntries(Object.entries(normalized).filter(([, item]) => item !== undefined)) as CompanionModelInfo["directory"];
+}
+
 export async function fetchCompanionModelCatalog(
   input: CompanionModelConnection,
   signal?: AbortSignal,
 ): Promise<CompanionModelInfo[]> {
   const connection = normalizeCompanionModelConnection(input);
-  const endpoint = `${connection.baseUrl}/models${connection.protocol === "anthropic" ? "?limit=1000" : ""}`;
+  const endpoint = connection.protocol === "anthropic"
+    ? `${connection.baseUrl}/v1/models?limit=1000`
+    : `${connection.baseUrl}/models`;
   const headers: Record<string, string> = connection.protocol === "anthropic"
-    ? { "anthropic-version": "2023-06-01", ...(connection.apiKey ? { "x-api-key": connection.apiKey } : {}) }
+    ? { "anthropic-version": "2023-06-01", ...(connection.apiKey ? { "x-api-key": connection.apiKey } : {}), ...(connection.providerSettings?.workspaceId ? { "anthropic-workspace-id": connection.providerSettings.workspaceId } : {}) }
     : connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
-  const response = await fetch(endpoint, { headers, signal });
+  const response = connection.transportDispatcher
+    ? await undiciFetch(endpoint, { headers, signal, dispatcher: connection.transportDispatcher })
+    : await fetch(endpoint, { headers, signal });
   if (!response.ok) {
+    const requestId = safeProviderRequestId(response.headers);
     await response.body?.cancel();
-    throw new CompanionModelHttpError(response.status, "读取模型列表");
+    throw new CompanionModelHttpError(response.status, "读取模型列表", requestId);
   }
   const payload = await response.json().catch(() => { throw new Error("模型目录不是有效的 JSON，请检查服务地址和接口兼容性。"); }) as {
     data?: Array<{ id?: unknown; created?: unknown; created_at?: unknown; display_name?: unknown }>;
@@ -439,6 +639,7 @@ export function publicModelConnection(connection?: CompanionModelConnection): {
   baseUrl: string;
   model: string;
   hasKey: boolean;
+  networkFingerprint?: string;
 } {
   if (!connection) {
     return { provider: null, providerName: "离线模式", protocol: null, baseUrl: "", model: "", hasKey: false };
@@ -450,7 +651,8 @@ export function publicModelConnection(connection?: CompanionModelConnection): {
     protocol: connection.protocol,
     baseUrl: connection.baseUrl,
     model: connection.model,
-    hasKey: Boolean(connection.apiKey),
+    hasKey: Boolean(connection.apiKey || Object.values(connection.credentials || {}).some(Boolean)),
+    ...(connection.networkFingerprint ? { networkFingerprint: connection.networkFingerprint } : {}),
   };
 }
 

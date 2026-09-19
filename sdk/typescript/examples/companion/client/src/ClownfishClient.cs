@@ -1,6 +1,7 @@
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -16,26 +17,58 @@ using System.Windows.Forms;
 
 namespace ClownfishClient
 {
+    internal static class ClientBuildConfiguration
+    {
+#if CLOWNFISH_DEVELOPMENT
+        public const bool DevelopmentFeatures = true;
+#else
+        public const bool DevelopmentFeatures = false;
+#endif
+    }
+
     internal static class Program
     {
+        private static Mutex instanceMutex;
+
         [STAThread]
         private static void Main()
         {
+            bool createdNew;
+            instanceMutex = new Mutex(true, @"Local\Clownfish.Client", out createdNew);
+            if (!createdNew)
+            {
+                MessageBox.Show("小丑鱼已经在运行。", "小丑鱼", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                instanceMutex.Dispose();
+                return;
+            }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            try
+            {
+                Application.Run(new MainForm());
+            }
+            finally
+            {
+                try { instanceMutex.ReleaseMutex(); } catch { }
+                instanceMutex.Dispose();
+            }
         }
     }
 
     internal sealed class MainForm : Form
     {
-        private readonly int port;
-        private readonly string baseUrl;
+        private int port;
+        private string baseUrl;
         private readonly string dataDir;
+        private readonly string packageRoot;
         private readonly string sdkRoot;
         private readonly string bundledNode;
+        private readonly string sidecarEntry;
         private readonly string logDir;
         private readonly string appVersion;
+        private readonly string clientToken;
+        private readonly string clientSession;
+        private readonly string pidFile;
         private readonly WebView2 webView;
         private readonly Icon appIcon;
         private Process serverProcess;
@@ -49,11 +82,20 @@ namespace ClownfishClient
         private System.Windows.Forms.Timer reminderTimer;
         private bool reminderPollRunning;
         private string lastReminderToken;
+        private readonly ManualResetEventSlim readySignal = new ManualResetEventSlim(false);
+        private readonly ChildProcessJob serverJob = new ChildProcessJob();
+        private string readyFailure;
+        private const string WebView2DownloadUrl = "https://developer.microsoft.com/en-us/microsoft-edge/webview2/";
+        private const long ServerLogMaxBytes = 4L * 1024L * 1024L;
+        private const int ServerLogArchiveCount = 4;
+        private static readonly object ServerLogLock = new object();
 
         public MainForm()
         {
-            port = ReadPort();
-            baseUrl = "http://127.0.0.1:" + port;
+            port = 0;
+            baseUrl = "";
+            clientToken = CreateClientToken();
+            clientSession = Guid.NewGuid().ToString("N");
             dataDir = Environment.GetEnvironmentVariable("CLOWNFISH_HOME");
             if (string.IsNullOrWhiteSpace(dataDir)) dataDir = Environment.GetEnvironmentVariable(new string(new[] { (char)78, (char)69, (char)77, (char)79, (char)83, (char)95, (char)67, (char)79, (char)77, (char)80, (char)65, (char)78, (char)73, (char)79, (char)78, (char)95, (char)72, (char)79, (char)77, (char)69 }));
             if (string.IsNullOrWhiteSpace(dataDir))
@@ -63,9 +105,12 @@ namespace ClownfishClient
                 var legacy = Path.Combine(profile, new string(new[] { (char)46, (char)110, (char)101, (char)109, (char)111, (char)115, (char)45, (char)99, (char)111, (char)109, (char)112, (char)97, (char)110, (char)105, (char)111, (char)110 }));
                 dataDir = Directory.Exists(preferred) || !Directory.Exists(legacy) ? preferred : legacy;
             }
-            sdkRoot = ResolveAppRoot();
-            bundledNode = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "node", "node.exe");
+            packageRoot = Path.GetFullPath(AppContext.BaseDirectory);
+            sdkRoot = ResolveAppRoot(packageRoot);
+            bundledNode = Path.Combine(packageRoot, "node", "node.exe");
+            sidecarEntry = Path.Combine(sdkRoot, "examples", "companion", "portable-launcher.js");
             logDir = Path.Combine(dataDir, "logs");
+            pidFile = Path.Combine(dataDir, "companion-server.pid");
             appVersion = ReadManifestValue("version", "0.1.0");
             closeBehavior = ReadClientPreference("closeBehavior", "ask");
             notificationPermission = ReadClientPreference("notificationPermission", "ask");
@@ -105,6 +150,8 @@ namespace ClownfishClient
             FormClosed += (sender, args) =>
             {
                 StopServerIfOwned();
+                readySignal.Dispose();
+                serverJob.Dispose();
                 if (reminderTimer != null) reminderTimer.Dispose();
                 Microsoft.Win32.SystemEvents.PowerModeChanged -= HandlePowerModeChanged;
                 if (trayIcon != null) trayIcon.Dispose();
@@ -127,11 +174,11 @@ namespace ClownfishClient
             webView.SetBounds(0, menuHeight, ClientSize.Width, Math.Max(0, ClientSize.Height - menuHeight));
         }
 
-        private static int ReadPort()
+        private static string CreateClientToken()
         {
-            var raw = Environment.GetEnvironmentVariable("PORT");
-            int parsed;
-            return int.TryParse(raw, out parsed) ? parsed : 8787;
+            var bytes = new byte[32];
+            using (var random = RandomNumberGenerator.Create()) random.GetBytes(bytes);
+            return Convert.ToBase64String(bytes);
         }
 
         private MenuStrip BuildMenu()
@@ -191,7 +238,7 @@ namespace ClownfishClient
                 Icon = Icon ?? SystemIcons.Application,
                 Text = "小丑鱼",
                 ContextMenuStrip = trayMenu,
-                Visible = false
+                Visible = true
             };
             trayIcon.DoubleClick += (sender, args) => RestoreFromTray();
             trayIcon.BalloonTipClicked += (sender, args) => { RestoreFromTray(); if (webView.CoreWebView2 != null) webView.CoreWebView2.Navigate(baseUrl + "/matters"); };
@@ -318,14 +365,15 @@ namespace ClownfishClient
             {
                 Directory.CreateDirectory(dataDir);
                 Directory.CreateDirectory(logDir);
-                BackupDataOnStartup();
-
-                if (!await IsServerReadyAsync())
+                if (!EnsureWebView2RuntimeAvailable())
                 {
-                    StartServer();
-                    spawnedServer = true;
+                    forcedExit = true;
+                    Close();
+                    return;
                 }
-
+                CleanupStalePidFile();
+                StartServer();
+                spawnedServer = true;
                 await WaitForServerAsync();
                 await InitWebViewAsync();
                 webView.CoreWebView2.Navigate(baseUrl);
@@ -356,10 +404,16 @@ namespace ClownfishClient
             {
                 // Only restart an exited backend owned by this client. Never
                 // replace another process; the durable worker handles recovery.
-                if (spawnedServer && serverProcess != null && serverProcess.HasExited && !await IsServerReadyAsync()) StartServer();
+                if (spawnedServer && serverProcess != null && serverProcess.HasExited)
+                {
+                    StartServer();
+                    await WaitForServerAsync();
+                    if (webView.CoreWebView2 != null) webView.CoreWebView2.Navigate(baseUrl);
+                }
                 if (notificationPermission != "allowed") return;
                 var json = await Task.Run(() => {
                     var request = (HttpWebRequest)WebRequest.Create(baseUrl + "/api/personal-work/reminder-summary");
+                    request.Headers["X-Clownfish-Client"] = clientToken;
                     request.Proxy = null; request.Timeout = 5000; request.ReadWriteTimeout = 5000;
                     using (var response = request.GetResponse())
                     using (var reader = new StreamReader(response.GetResponseStream())) return reader.ReadToEnd();
@@ -388,15 +442,52 @@ namespace ClownfishClient
             var profileDir = Path.Combine(dataDir, "webview-profile");
             var env = await CoreWebView2Environment.CreateAsync(null, profileDir);
             await webView.EnsureCoreWebView2Async(env);
-            webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
-            webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            webView.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+            webView.CoreWebView2.WebResourceRequested += (sender, args) =>
+            {
+                if (IsTrustedSidecarUri(args.Request.Uri, port))
+                {
+                    args.Request.Headers.SetHeader("X-Clownfish-Client", clientToken);
+                }
+                else
+                {
+                    // Redirects can carry headers from the initiating request. Always
+                    // strip the capability outside the exact runtime sidecar origin.
+                    args.Request.Headers.RemoveHeader("X-Clownfish-Client");
+                }
+            };
+            webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = ClientBuildConfiguration.DevelopmentFeatures;
+            webView.CoreWebView2.Settings.AreDevToolsEnabled = ClientBuildConfiguration.DevelopmentFeatures;
+            webView.CoreWebView2.NavigationStarting += (sender, args) =>
+            {
+                if (IsTrustedSidecarUri(args.Uri, port)) return;
+                args.Cancel = true;
+                if (IsSafeExternalHttpUri(args.Uri)) OpenExternalHttpUriSafely(args.Uri);
+            };
+            webView.CoreWebView2.FrameNavigationStarting += (sender, args) =>
+            {
+                if (!IsTrustedSidecarUri(args.Uri, port)) args.Cancel = true;
+            };
             webView.CoreWebView2.NewWindowRequested += (sender, args) =>
             {
                 args.Handled = true;
-                Process.Start(new ProcessStartInfo(args.Uri) { UseShellExecute = true });
+                if (IsTrustedSidecarUri(args.Uri, port))
+                {
+                    webView.CoreWebView2.Navigate(args.Uri);
+                }
+                else if (IsSafeExternalHttpUri(args.Uri))
+                {
+                    OpenExternalHttpUriSafely(args.Uri);
+                }
             };
             webView.CoreWebView2.PermissionRequested += (sender, args) =>
             {
+                if (!IsTrustedSidecarUri(args.Uri, port))
+                {
+                    args.Handled = true;
+                    args.State = CoreWebView2PermissionState.Deny;
+                    return;
+                }
                 if (args.PermissionKind == CoreWebView2PermissionKind.Notifications)
                 {
                     args.Handled = true;
@@ -405,17 +496,59 @@ namespace ClownfishClient
             };
             webView.CoreWebView2.WebMessageReceived += (sender, args) =>
             {
-                var message = args.TryGetWebMessageAsString() ?? "";
+                if (!IsTrustedWebMessageSource(args.Source, webView.CoreWebView2.Source, port)) return;
+                string message;
+                try { message = args.TryGetWebMessageAsString() ?? ""; }
+                catch { return; }
                 if (message == "open-desktop-tool")
                 {
                     OpenDesktopTool();
                     return;
                 }
-                if (message.IndexOf("capture-screen", StringComparison.OrdinalIgnoreCase) >= 0)
+                if (message == "capture-screen")
                 {
                     CaptureScreenForComposer();
                 }
             };
+        }
+
+        internal static bool IsTrustedWebMessageSource(string source, string currentDocument, int expectedPort)
+        {
+            if (!IsTrustedSidecarUri(source, expectedPort) || !IsTrustedSidecarUri(currentDocument, expectedPort)) return false;
+            Uri sourceUri;
+            Uri currentUri;
+            return Uri.TryCreate(source, UriKind.Absolute, out sourceUri)
+                && Uri.TryCreate(currentDocument, UriKind.Absolute, out currentUri)
+                && string.Equals(sourceUri.Scheme, currentUri.Scheme, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(sourceUri.Host, currentUri.Host, StringComparison.Ordinal)
+                && sourceUri.Port == currentUri.Port;
+        }
+
+        internal static bool IsTrustedSidecarUri(string value, int expectedPort)
+        {
+            Uri uri;
+            return expectedPort > 0
+                && Uri.TryCreate(value, UriKind.Absolute, out uri)
+                && string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Host, "127.0.0.1", StringComparison.Ordinal)
+                && uri.Port == expectedPort
+                && string.IsNullOrEmpty(uri.UserInfo);
+        }
+
+        internal static bool IsSafeExternalHttpUri(string value)
+        {
+            Uri uri;
+            return Uri.TryCreate(value, UriKind.Absolute, out uri)
+                && (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                && string.IsNullOrEmpty(uri.UserInfo);
+        }
+
+        private static void OpenExternalHttpUriSafely(string value)
+        {
+            if (!IsSafeExternalHttpUri(value)) return;
+            var uri = new Uri(value, UriKind.Absolute);
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
         }
 
         private async void CaptureScreenForComposer()
@@ -494,7 +627,7 @@ namespace ClownfishClient
 
         private Task DispatchWebEventAsync(string eventName, string detail)
         {
-            if (webView.CoreWebView2 == null) return Task.CompletedTask;
+            if (webView.CoreWebView2 == null || !IsTrustedSidecarUri(webView.CoreWebView2.Source, port)) return Task.CompletedTask;
             var script = "window.dispatchEvent(new CustomEvent('" + eventName + "', { detail: " + JsString(detail ?? "") + " }));";
             return webView.CoreWebView2.ExecuteScriptAsync(script);
         }
@@ -510,32 +643,137 @@ namespace ClownfishClient
                 .Replace(">", "\\u003e") + "\"";
         }
 
+        private bool EnsureWebView2RuntimeAvailable()
+        {
+            while (true)
+            {
+                try
+                {
+                    var version = CoreWebView2Environment.GetAvailableBrowserVersionString();
+                    if (!string.IsNullOrWhiteSpace(version)) return true;
+                }
+                catch (WebView2RuntimeNotFoundException)
+                {
+                    // Offer an explicit trusted install path below.
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException("无法检测 Microsoft Edge WebView2 Runtime：" + ex.Message, ex);
+                }
+
+                var choice = MessageBox.Show(
+                    this,
+                    "运行小丑鱼需要 Microsoft Edge WebView2 Runtime。\n\n"
+                    + "选择“是”：打开微软官方下载页并退出小丑鱼；安装或修复完成后请重新启动。\n"
+                    + "选择“否”：如果你刚完成安装或修复，立即重新检测。\n"
+                    + "选择“取消”：退出。",
+                    "需要安装或修复 WebView2 Runtime",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Warning);
+                if (choice == DialogResult.No) continue;
+                if (choice == DialogResult.Yes) OpenOfficialWebView2DownloadPage();
+                return false;
+            }
+        }
+
+        private static void OpenOfficialWebView2DownloadPage()
+        {
+            Uri uri;
+            if (!Uri.TryCreate(WebView2DownloadUrl, UriKind.Absolute, out uri)
+                || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(uri.Host, "developer.microsoft.com", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("WebView2 下载地址未通过安全校验。");
+            }
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
+
+        private static string RedactServerLogText(string value)
+        {
+            var redacted = value ?? "";
+            redacted = Regex.Replace(redacted, @"(?i)(\bBearer\s+)[A-Za-z0-9._~+/=-]+", "$1[REDACTED]");
+            redacted = Regex.Replace(
+                redacted,
+                "(?i)((?:[\\\"']?(?:api[_-]?key|token|client[_-]?token|session|client[_-]?session|authorization|password|passphrase|client[_-]?secret)[\\\"']?)\\s*[:=]\\s*[\\\"']?)[^\\\"'\\s,;]+",
+                "$1[REDACTED]");
+            redacted = Regex.Replace(
+                redacted,
+                @"(?i)(\b(?:OPENAI_API_KEY|ZHIPU_API_KEY|ANTHROPIC_API_KEY|ALIYUN_API_KEY|CLOWNFISH_CLIENT_TOKEN|CLOWNFISH_CLIENT_SESSION)\s*=\s*)[^\r\n\s]+",
+                "$1[REDACTED]");
+            redacted = Regex.Replace(redacted, @"(?i)\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED]");
+            return redacted;
+        }
+
+        internal static void AppendServerLog(string path, string value)
+        {
+            try
+            {
+                lock (ServerLogLock)
+                {
+                    var safeValue = RedactServerLogText(value);
+                    var incomingBytes = Encoding.UTF8.GetByteCount(safeValue);
+                    RotateServerLogIfNeeded(path, incomingBytes);
+                    File.AppendAllText(path, safeValue, Encoding.UTF8);
+                }
+            }
+            catch
+            {
+                // A diagnostics write must never take down the desktop host.
+            }
+        }
+
+        private static void RotateServerLogIfNeeded(string path, int incomingBytes)
+        {
+            var existingBytes = File.Exists(path) ? new FileInfo(path).Length : 0L;
+            if (existingBytes == 0L || existingBytes + incomingBytes <= ServerLogMaxBytes) return;
+
+            for (var index = ServerLogArchiveCount; index >= 2; index--)
+            {
+                var destination = path + "." + index;
+                var source = path + "." + (index - 1);
+                if (File.Exists(destination)) File.Delete(destination);
+                if (File.Exists(source)) File.Move(source, destination);
+            }
+            var firstArchive = path + ".1";
+            if (File.Exists(firstArchive)) File.Delete(firstArchive);
+            if (File.Exists(path)) File.Move(path, firstArchive);
+        }
+
         private void StartServer()
         {
+            readySignal.Reset();
+            readyFailure = null;
+            port = 0;
+            baseUrl = "";
             var logPath = Path.Combine(logDir, "client-server.log");
             var errPath = Path.Combine(logDir, "client-server.err.log");
-            File.AppendAllText(logPath, Environment.NewLine + "[" + DateTime.Now.ToString("s") + "] starting " + baseUrl + Environment.NewLine);
+            AppendServerLog(logPath, Environment.NewLine + "[" + DateTime.Now.ToString("s") + "] starting authenticated sidecar" + Environment.NewLine);
 
-            var command = ResolveServerCommand();
-            var arguments = ResolveServerArguments();
-            File.AppendAllText(logPath,
+            var launch = ResolveServerLaunch();
+            var command = launch[0];
+            var arguments = launch[1];
+            var workingDirectory = launch[2];
+            AppendServerLog(logPath,
                 "command: " + command + Environment.NewLine
                 + "arguments: " + arguments + Environment.NewLine
-                + "working directory: " + sdkRoot + Environment.NewLine);
+                + "working directory: " + workingDirectory + Environment.NewLine);
 
             var info = new ProcessStartInfo
             {
                 FileName = command,
                 Arguments = arguments,
-                WorkingDirectory = sdkRoot,
+                WorkingDirectory = workingDirectory,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            info.EnvironmentVariables["PORT"] = port.ToString();
+            HardenPortableNodeEnvironment(info, command);
+            info.EnvironmentVariables["PORT"] = "0";
             info.EnvironmentVariables["CLOWNFISH_HOME"] = dataDir;
             info.EnvironmentVariables["CLOWNFISH_MANIFEST"] = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "manifest.json");
+            info.EnvironmentVariables["CLOWNFISH_CLIENT_TOKEN"] = clientToken;
+            info.EnvironmentVariables["CLOWNFISH_CLIENT_SESSION"] = clientSession;
             // Node fetch does not use HTTP_PROXY / HTTPS_PROXY unless environment proxy support is enabled.
             // Keep NO_PROXY semantics so local services continue to connect directly.
             info.EnvironmentVariables["NODE_USE_ENV_PROXY"] = "1";
@@ -567,39 +805,104 @@ namespace ClownfishClient
                 }
             }
 
-            serverProcess = new Process { StartInfo = info, EnableRaisingEvents = true };
-            serverProcess.OutputDataReceived += (sender, args) =>
+            var startedProcess = new Process { StartInfo = info, EnableRaisingEvents = true };
+            startedProcess.OutputDataReceived += (sender, args) =>
             {
-                if (args.Data != null) File.AppendAllText(logPath, args.Data + Environment.NewLine);
+                if (args.Data == null) return;
+                AppendServerLog(logPath, args.Data + Environment.NewLine);
+                if (args.Data.StartsWith("CLOWNFISH_READY ", StringComparison.Ordinal)) AcceptReadyLine(args.Data, startedProcess);
             };
-            serverProcess.ErrorDataReceived += (sender, args) =>
+            startedProcess.ErrorDataReceived += (sender, args) =>
             {
-                if (args.Data != null) File.AppendAllText(errPath, args.Data + Environment.NewLine);
+                if (args.Data != null) AppendServerLog(errPath, args.Data + Environment.NewLine);
             };
-            serverProcess.Exited += (sender, args) =>
+            startedProcess.Exited += (sender, args) =>
             {
                 try
                 {
-                    File.AppendAllText(logPath, "[" + DateTime.Now.ToString("s") + "] server exited with code " + serverProcess.ExitCode + Environment.NewLine);
+                    AppendServerLog(logPath, "[" + DateTime.Now.ToString("s") + "] server exited with code " + startedProcess.ExitCode + Environment.NewLine);
+                    DeletePidIfOwned(startedProcess.Id);
+                    if (!readySignal.IsSet)
+                    {
+                        readyFailure = "本机服务在报告就绪前退出。";
+                        readySignal.Set();
+                    }
                 }
                 catch
                 {
                 }
             };
-            serverProcess.Start();
-            serverProcess.BeginOutputReadLine();
-            serverProcess.BeginErrorReadLine();
-            File.WriteAllText(Path.Combine(dataDir, "companion-server.pid"), serverProcess.Id.ToString());
+            startedProcess.Start();
+            try
+            {
+                serverJob.AddProcess(startedProcess);
+            }
+            catch
+            {
+                try { startedProcess.Kill(); } catch { }
+                throw;
+            }
+            serverProcess = startedProcess;
+            startedProcess.BeginOutputReadLine();
+            startedProcess.BeginErrorReadLine();
+            File.WriteAllText(pidFile, "{\"pid\":" + startedProcess.Id + ",\"clientSession\":\"" + clientSession + "\"}", Encoding.UTF8);
         }
 
-        private string ResolveAppRoot()
+        private void AcceptReadyLine(string line, Process process)
         {
-            var portableRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app");
-            if (File.Exists(Path.Combine(portableRoot, "examples", "companion", "server.ts")))
+            try
+            {
+                var json = line.Substring("CLOWNFISH_READY ".Length);
+                var appId = ReadJsonValue(json, "appId");
+                var version = ReadJsonValue(json, "version");
+                var session = ReadJsonValue(json, "clientSession");
+                var portText = ReadJsonNumber(json, "port");
+                var pidText = ReadJsonNumber(json, "pid");
+                int reportedPort;
+                int reportedPid;
+                if (appId != "clownfish" || version != appVersion || session != clientSession
+                    || !int.TryParse(portText, out reportedPort) || reportedPort < 1 || reportedPort > 65535
+                    || !int.TryParse(pidText, out reportedPid) || reportedPid != process.Id)
+                {
+                    throw new InvalidOperationException("本机服务身份或版本校验失败。");
+                }
+                port = reportedPort;
+                baseUrl = "http://127.0.0.1:" + reportedPort;
+            }
+            catch (Exception ex)
+            {
+                readyFailure = ex.Message;
+            }
+            finally
+            {
+                readySignal.Set();
+            }
+        }
+
+        private static string ReadJsonValue(string json, string key)
+        {
+            var match = Regex.Match(json ?? "", "\"" + Regex.Escape(key) + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"");
+            return match.Success ? Regex.Unescape(match.Groups[1].Value) : "";
+        }
+
+        private static string ReadJsonNumber(string json, string key)
+        {
+            var match = Regex.Match(json ?? "", "\"" + Regex.Escape(key) + "\"\\s*:\\s*(\\d+)");
+            return match.Success ? match.Groups[1].Value : "";
+        }
+
+        private static string ResolveAppRoot(string root)
+        {
+            var portableRoot = Path.Combine(root, "app");
+            if (File.Exists(Path.Combine(portableRoot, "examples", "companion", "portable-launcher.js")))
             {
                 return portableRoot;
             }
-            return Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
+#if CLOWNFISH_DEVELOPMENT
+            return Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+#else
+            return portableRoot;
+#endif
         }
 
         private string ReadManifestValue(string key, string fallback)
@@ -671,75 +974,101 @@ namespace ClownfishClient
                 .Replace("\n", "\\n");
         }
 
-        private void BackupDataOnStartup()
+        private void CleanupStalePidFile()
         {
-            var backupRoot = Path.Combine(dataDir, "backups");
-            var backupDir = Path.Combine(backupRoot, DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-v" + appVersion);
-            Directory.CreateDirectory(backupDir);
-
-            var copied = 0;
-            copied += CopyIfExists(Path.Combine(dataDir, "companion.db"), Path.Combine(backupDir, "companion.db"));
-            copied += CopyIfExists(Path.Combine(dataDir, "relationships.json"), Path.Combine(backupDir, "relationships.json"));
-            copied += CopyIfExists(Path.Combine(dataDir, "personas.json"), Path.Combine(backupDir, "personas.json"));
-            copied += CopyIfExists(Path.Combine(dataDir, "familiarity.json"), Path.Combine(backupDir, "familiarity.json"));
-            copied += CopyIfExists(Path.Combine(dataDir, "groups.json"), Path.Combine(backupDir, "groups.json"));
-
-            if (copied == 0)
+            try
             {
-                Directory.Delete(backupDir, true);
+                if (!File.Exists(pidFile)) return;
+                var text = File.ReadAllText(pidFile, Encoding.UTF8);
+                var pidText = text.TrimStart().StartsWith("{") ? ReadJsonNumber(text, "pid") : text.Trim();
+                int pid;
+                if (!int.TryParse(pidText, out pid)) { File.Delete(pidFile); return; }
+                try
+                {
+                    using (var process = Process.GetProcessById(pid))
+                    {
+                        if (!process.HasExited) return;
+                    }
+                }
+                catch (ArgumentException) { }
+                File.Delete(pidFile);
             }
-            else
-            {
-                File.WriteAllText(Path.Combine(backupDir, "README.txt"), "小丑鱼启动前自动备份，应用版本：" + appVersion + Environment.NewLine);
-            }
-
-            File.WriteAllText(Path.Combine(dataDir, "app-version.json"), "{\"version\":\"" + appVersion + "\",\"updatedAt\":\"" + DateTime.UtcNow.ToString("o") + "\"}");
-            PruneBackups(backupRoot, 10);
+            catch { }
         }
 
-        private static int CopyIfExists(string source, string destination)
+        private void DeletePidIfOwned(int pid)
         {
-            if (File.Exists(source))
+            try
             {
-                File.Copy(source, destination, true);
-                return 1;
+                if (!File.Exists(pidFile)) return;
+                var text = File.ReadAllText(pidFile, Encoding.UTF8);
+                if (ReadJsonNumber(text, "pid") == pid.ToString() && ReadJsonValue(text, "clientSession") == clientSession)
+                {
+                    File.Delete(pidFile);
+                }
             }
-            return 0;
+            catch { }
         }
 
-        private static void PruneBackups(string backupRoot, int keep)
+        internal static string[] ResolvePackagedServerLaunch(string root)
         {
-            if (!Directory.Exists(backupRoot)) return;
-            var dirs = new DirectoryInfo(backupRoot).GetDirectories();
-            Array.Sort(dirs, (a, b) => string.CompareOrdinal(b.Name, a.Name));
-            for (var i = keep; i < dirs.Length; i++)
-            {
-                try { dirs[i].Delete(true); } catch { }
-            }
+            if (string.IsNullOrWhiteSpace(root)) throw new InvalidOperationException("便携包根目录无效。");
+            var package = Path.GetFullPath(root);
+            var app = Path.GetFullPath(Path.Combine(package, "app"));
+            var node = Path.GetFullPath(Path.Combine(package, "node", "node.exe"));
+            var entry = Path.GetFullPath(Path.Combine(app, "examples", "companion", "portable-launcher.js"));
+            var prefix = package.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!node.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                || !app.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                || !entry.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("便携包运行路径超出安装目录。");
+            if (!File.Exists(node))
+                throw new InvalidOperationException("便携包不完整：缺少包内固定 Node 运行时 node\\node.exe。请完整解压便携包后，从包内启动小丑鱼。");
+            if (!File.Exists(entry))
+                throw new InvalidOperationException("便携包不完整：缺少已构建的本机服务入口 app\\examples\\companion\\portable-launcher.js。请重新完整解压便携包。");
+            return new[] { node, "\"" + entry + "\"", app };
         }
 
-        private string ResolveServerCommand()
+        private string[] ResolveServerLaunch()
         {
-            if (File.Exists(bundledNode))
-            {
-                return bundledNode;
-            }
-            return Environment.OSVersion.Platform == PlatformID.Win32NT ? "npm.cmd" : "npm";
+            if (File.Exists(bundledNode) && File.Exists(sidecarEntry)) return ResolvePackagedServerLaunch(packageRoot);
+#if CLOWNFISH_DEVELOPMENT
+            return new[] { Environment.OSVersion.Platform == PlatformID.Win32NT ? "npm.cmd" : "npm", "run companion", sdkRoot };
+#else
+            return ResolvePackagedServerLaunch(packageRoot);
+#endif
         }
 
-        private string ResolveServerArguments()
+        internal static void HardenPortableNodeEnvironment(ProcessStartInfo info, string nodeExecutable)
         {
-            if (File.Exists(bundledNode))
+            if (info == null) throw new ArgumentNullException("info");
+            var remove = new List<string>();
+            foreach (string key in info.EnvironmentVariables.Keys)
             {
-                // Keep the server itself as our child, not a tsx CLI wrapper
-                // whose exit can leave an unowned listener behind.
-                return "--import tsx \"examples\\companion\\server.ts\"";
+                if (key.StartsWith("npm_", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(key, "NODE_OPTIONS", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(key, "NODE_PATH", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(key, "INIT_CWD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(key, "PNPM_HOME", StringComparison.OrdinalIgnoreCase)
+                    || key.StartsWith("YARN_", StringComparison.OrdinalIgnoreCase)
+                    || key.StartsWith("COREPACK_", StringComparison.OrdinalIgnoreCase)) remove.Add(key);
             }
-            return "run companion";
+            foreach (var key in remove) info.EnvironmentVariables.Remove(key);
+            var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            var safePath = new List<string> { Path.GetDirectoryName(Path.GetFullPath(nodeExecutable)) };
+            if (!string.IsNullOrWhiteSpace(windows))
+            {
+                safePath.Add(Path.Combine(windows, "System32"));
+                safePath.Add(windows);
+            }
+            info.EnvironmentVariables["PATH"] = string.Join(";", safePath.ToArray());
         }
 
         private async Task WaitForServerAsync()
         {
+            var signaled = await Task.Run(() => readySignal.Wait(TimeSpan.FromSeconds(30)));
+            if (!signaled) throw new TimeoutException(BuildServerFailureMessage("本机服务没有报告启动身份。"));
+            if (!string.IsNullOrWhiteSpace(readyFailure)) throw new InvalidOperationException(BuildServerFailureMessage(readyFailure));
             var deadline = DateTime.UtcNow.AddSeconds(30);
             while (DateTime.UtcNow < deadline)
             {
@@ -769,7 +1098,7 @@ namespace ClownfishClient
             try
             {
                 if (!File.Exists(path)) return "";
-                var text = File.ReadAllText(path, Encoding.UTF8).Trim();
+                var text = RedactServerLogText(File.ReadAllText(path, Encoding.UTF8)).Trim();
                 return text.Length <= maxLength ? text : text.Substring(text.Length - maxLength);
             }
             catch
@@ -784,12 +1113,21 @@ namespace ClownfishClient
             {
                 try
                 {
+                    if (string.IsNullOrWhiteSpace(baseUrl)) return false;
                     var request = (HttpWebRequest)WebRequest.Create(baseUrl + "/api/health");
+                    request.Headers["X-Clownfish-Client"] = clientToken;
                     request.Timeout = 900;
                     request.ReadWriteTimeout = 900;
                     using (var response = (HttpWebResponse)request.GetResponse())
+                    using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
                     {
-                        return response.StatusCode == HttpStatusCode.OK;
+                        var json = reader.ReadToEnd();
+                        return response.StatusCode == HttpStatusCode.OK
+                            && ReadJsonValue(json, "appId") == "clownfish"
+                            && ReadJsonValue(json, "version") == appVersion
+                            && ReadJsonValue(json, "clientSession") == clientSession
+                            && serverProcess != null
+                            && ReadJsonNumber(json, "pid") == serverProcess.Id.ToString();
                     }
                 }
                 catch
@@ -801,27 +1139,140 @@ namespace ClownfishClient
 
         private void StopServerIfOwned()
         {
-            if (!spawnedServer || serverProcess == null || serverProcess.HasExited) return;
+            if (!spawnedServer || serverProcess == null) return;
             try
             {
-                var taskkill = new ProcessStartInfo
+                if (!serverProcess.HasExited && !string.IsNullOrWhiteSpace(baseUrl))
                 {
-                    FileName = "taskkill",
-                    Arguments = "/pid " + serverProcess.Id + " /t /f",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using (var terminator = Process.Start(taskkill))
-                {
-                    if (terminator != null) terminator.WaitForExit(5000);
+                    var request = (HttpWebRequest)WebRequest.Create(baseUrl + "/api/shutdown");
+                    request.Method = "POST";
+                    request.ContentLength = 0;
+                    request.Headers["X-Clownfish-Client"] = clientToken;
+                    request.Timeout = 1800;
+                    request.ReadWriteTimeout = 1800;
+                    using (var response = (HttpWebResponse)request.GetResponse()) { }
                 }
-                serverProcess.WaitForExit(5000);
+                if (!serverProcess.HasExited) serverProcess.WaitForExit(6500);
+            }
+            catch { }
+            finally
+            {
+                if (!serverProcess.HasExited) serverJob.Terminate(1);
+                try { serverProcess.WaitForExit(2000); } catch { }
+                DeletePidIfOwned(serverProcess.Id);
+            }
+        }
+    }
+
+    internal sealed class ChildProcessJob : IDisposable
+    {
+        private const uint JobObjectLimitKillOnJobClose = 0x00002000;
+        private IntPtr handle;
+
+        public ChildProcessJob()
+        {
+            handle = CreateJobObject(IntPtr.Zero, null);
+            if (handle == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "无法创建本机服务进程组。");
+
+            var limits = new JobObjectExtendedLimitInformation();
+            limits.BasicLimitInformation.LimitFlags = JobObjectLimitKillOnJobClose;
+            var length = Marshal.SizeOf(typeof(JobObjectExtendedLimitInformation));
+            var pointer = Marshal.AllocHGlobal(length);
+            try
+            {
+                Marshal.StructureToPtr(limits, pointer, false);
+                if (!SetInformationJobObject(handle, 9, pointer, (uint)length))
+                {
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "无法配置本机服务进程组。");
+                }
             }
             catch
             {
-                try { serverProcess.Kill(); } catch { }
+                CloseHandle(handle);
+                handle = IntPtr.Zero;
+                throw;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(pointer);
             }
         }
+
+        public void AddProcess(Process process)
+        {
+            if (handle == IntPtr.Zero) throw new ObjectDisposedException("ChildProcessJob");
+            if (!AssignProcessToJobObject(handle, process.Handle))
+            {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "无法接管本机服务进程树。");
+            }
+        }
+
+        public void Terminate(uint exitCode)
+        {
+            if (handle != IntPtr.Zero) TerminateJobObject(handle, exitCode);
+        }
+
+        public void Dispose()
+        {
+            if (handle == IntPtr.Zero) return;
+            CloseHandle(handle);
+            handle = IntPtr.Zero;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct IoCounters
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct BasicLimitInformation
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JobObjectExtendedLimitInformation
+        {
+            public BasicLimitInformation BasicLimitInformation;
+            public IoCounters IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateJobObject(IntPtr securityAttributes, string name);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetInformationJobObject(IntPtr job, int informationClass, IntPtr information, uint length);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool TerminateJobObject(IntPtr job, uint exitCode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
     }
 
     internal sealed class CloseBehaviorDialog : Form
@@ -1007,6 +1458,7 @@ namespace ClownfishClient
 
     internal sealed class DesktopToolForm : Form
     {
+        internal const string DesktopToolOrigin = "https://desktop-helper.clownfish.invalid";
         private readonly WebView2 webView;
         private readonly DesktopToolBridge bridge;
         private readonly string toolRoot;
@@ -1025,8 +1477,8 @@ namespace ClownfishClient
             Location = new Point(Math.Max(0, workingArea.Right - Width - 28), Math.Max(0, workingArea.Top + 48));
 
             toolRoot = ResolveDesktopToolRoot();
-            bridge = new DesktopToolBridge(this);
             webView = new WebView2 { Dock = DockStyle.Fill };
+            bridge = new DesktopToolBridge(this, IsTrustedCurrentDocument);
             Controls.Add(webView);
 
             Shown += async (sender, args) => await InitAsync();
@@ -1045,11 +1497,42 @@ namespace ClownfishClient
             var profileDir = Path.Combine(DesktopToolBridge.DataDir, "webview-profile");
             var env = await CoreWebView2Environment.CreateAsync(null, profileDir);
             await webView.EnsureCoreWebView2Async(env);
-            webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
-            webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = ClientBuildConfiguration.DevelopmentFeatures;
+            webView.CoreWebView2.Settings.AreDevToolsEnabled = ClientBuildConfiguration.DevelopmentFeatures;
+            webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "desktop-helper.clownfish.invalid",
+                toolRoot,
+                CoreWebView2HostResourceAccessKind.Deny);
+            webView.CoreWebView2.NavigationStarting += (sender, args) =>
+            {
+                if (!IsTrustedDesktopToolUri(args.Uri)) args.Cancel = true;
+            };
+            webView.CoreWebView2.FrameNavigationStarting += (sender, args) =>
+            {
+                if (!IsTrustedDesktopToolUri(args.Uri)) args.Cancel = true;
+            };
+            webView.CoreWebView2.NewWindowRequested += (sender, args) =>
+            {
+                args.Handled = true;
+            };
             webView.CoreWebView2.AddHostObjectToScript("desktopHelperHost", bridge);
             await webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(DesktopToolPreloadScript());
-            webView.CoreWebView2.Navigate(new Uri(pagePath).AbsoluteUri);
+            webView.CoreWebView2.Navigate(DesktopToolOrigin + "/index.html");
+        }
+
+        internal static bool IsTrustedDesktopToolUri(string value)
+        {
+            Uri uri;
+            return Uri.TryCreate(value, UriKind.Absolute, out uri)
+                && string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(uri.Host, "desktop-helper.clownfish.invalid", StringComparison.Ordinal)
+                && uri.Port == 443
+                && string.IsNullOrEmpty(uri.UserInfo);
+        }
+
+        private bool IsTrustedCurrentDocument()
+        {
+            return webView.CoreWebView2 != null && IsTrustedDesktopToolUri(webView.CoreWebView2.Source);
         }
 
         private static string ResolveDesktopToolRoot()
@@ -1067,6 +1550,7 @@ namespace ClownfishClient
         {
             return @"
 (function () {
+  if (window.location.origin !== 'https://desktop-helper.clownfish.invalid') return;
   const host = chrome.webview.hostObjects.desktopHelperHost;
   function parseJson(value, fallback) {
     try { return JSON.parse(value || ''); } catch { return fallback; }
@@ -1106,8 +1590,11 @@ namespace ClownfishClient
         private const string DefaultAliyunFunasrWebSocketUrl = "wss://dashscope.aliyuncs.com/api-ws/v1/inference";
         private const string DefaultPolishModel = "qwen-plus";
         private readonly Form owner;
+        private readonly Func<bool> isTrustedOrigin;
 
-        public static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DesktopHelperData");
+        // New installs share the companion data root. Existing DesktopHelperData users
+        // keep using that directory unchanged; this is compatibility discovery, not migration.
+        public static readonly string DataDir = ResolveDataDir();
         private static readonly string DataFile = Path.Combine(DataDir, "data.json");
         private static readonly string SettingsFile = Path.Combine(DataDir, "settings.json");
         private static readonly string RecordingsDir = Path.Combine(DataDir, "recordings");
@@ -1115,43 +1602,73 @@ namespace ClownfishClient
         private static readonly string AliyunFunasrScript = Path.Combine(ScriptsDir, "aliyun_funasr_realtime.py");
         private static readonly string DefaultAliyunFunasrPython = Path.Combine(DataDir, "funasr-env", "Scripts", "python.exe");
 
-        public DesktopToolBridge(Form owner)
+        public DesktopToolBridge(Form owner, Func<bool> isTrustedOrigin)
         {
             this.owner = owner;
+            if (isTrustedOrigin == null) throw new ArgumentNullException("isTrustedOrigin");
+            this.isTrustedOrigin = isTrustedOrigin;
             EnsureDataDir();
+        }
+
+        private void EnsureTrustedOrigin()
+        {
+            if (!isTrustedOrigin()) throw new UnauthorizedAccessException("DESKTOP_HELPER_ORIGIN_DENIED");
+        }
+
+        private static string ResolveDataDir()
+        {
+            var root = Environment.GetEnvironmentVariable("CLOWNFISH_HOME");
+            if (string.IsNullOrWhiteSpace(root)) root = Environment.GetEnvironmentVariable(new string(new[] { (char)78, (char)69, (char)77, (char)79, (char)83, (char)95, (char)67, (char)79, (char)80, (char)65, (char)78, (char)73, (char)79, (char)78, (char)95, (char)72, (char)79, (char)77, (char)69 }));
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var preferred = Path.Combine(profile, ".clownfish");
+                var legacyRoot = Path.Combine(profile, new string(new[] { (char)46, (char)110, (char)101, (char)109, (char)111, (char)115, (char)45, (char)99, (char)111, (char)109, (char)112, (char)97, (char)110, (char)105, (char)111, (char)110 }));
+                root = Directory.Exists(preferred) || !Directory.Exists(legacyRoot) ? preferred : legacyRoot;
+            }
+
+            var primary = Path.Combine(root, "desktop-helper");
+            var legacy = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DesktopHelperData");
+            return Directory.Exists(primary) || !Directory.Exists(legacy) ? primary : legacy;
         }
 
         public string ReadClipboard()
         {
+            EnsureTrustedOrigin();
             return Clipboard.ContainsText() ? Clipboard.GetText() : "";
         }
 
         public bool WriteClipboard(string text)
         {
+            EnsureTrustedOrigin();
             Clipboard.SetText(text ?? "");
             return true;
         }
 
         public bool Minimize()
         {
+            EnsureTrustedOrigin();
             owner.WindowState = FormWindowState.Minimized;
             return true;
         }
 
         public bool CloseTool()
         {
+            EnsureTrustedOrigin();
             owner.Close();
             return true;
         }
 
         public bool ToggleAlwaysOnTop()
         {
+            EnsureTrustedOrigin();
             owner.TopMost = !owner.TopMost;
             return owner.TopMost;
         }
 
         public string LoadData()
         {
+            EnsureTrustedOrigin();
             EnsureDataDir();
             if (!File.Exists(DataFile))
             {
@@ -1164,6 +1681,7 @@ namespace ClownfishClient
 
         public bool SaveData(string json)
         {
+            EnsureTrustedOrigin();
             EnsureDataDir();
             File.WriteAllText(DataFile, string.IsNullOrWhiteSpace(json) ? "{}" : json, Encoding.UTF8);
             return true;
@@ -1171,6 +1689,7 @@ namespace ClownfishClient
 
         public string LoadSettings()
         {
+            EnsureTrustedOrigin();
             var settings = ReadSettings();
             var apiKey = ReadApiKey(settings);
             var python = ReadJsonString(settings, "aliyunFunasrPython", DefaultAliyunFunasrPython);
@@ -1189,6 +1708,7 @@ namespace ClownfishClient
 
         public string SaveSettings(string json)
         {
+            EnsureTrustedOrigin();
             var current = ReadSettings();
             var apiKey = ReadJsonString(json, "aliyunApiKey", "");
             var nextApiKey = string.IsNullOrWhiteSpace(apiKey) ? ReadApiKey(current) : apiKey.Trim();
@@ -1207,6 +1727,7 @@ namespace ClownfishClient
 
         public string OpenDataDir()
         {
+            EnsureTrustedOrigin();
             EnsureDataDir();
             Process.Start(new ProcessStartInfo(DataDir) { UseShellExecute = true });
             return DataDir;
@@ -1214,6 +1735,7 @@ namespace ClownfishClient
 
         public string TranscribeBytes(string base64Wav)
         {
+            EnsureTrustedOrigin();
             var settings = ReadSettings();
             var apiKey = ReadApiKey(settings);
             if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("ALIYUN_API_KEY_MISSING");
@@ -1235,6 +1757,7 @@ namespace ClownfishClient
 
         public string Polish(string text)
         {
+            EnsureTrustedOrigin();
             var settings = ReadSettings();
             var apiKey = ReadApiKey(settings);
             if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("ALIYUN_API_KEY_MISSING");

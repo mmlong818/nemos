@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {startModelHarness} from '../fixtures/companion-model-harness.js';
+import {onboardModel} from '../helpers/onboard-model.js';
 
 test('助理占用模型时任务等待；取消等待任务不调用模型，后续任务继续', {timeout:60000}, async()=>{
   const h=await startModelHarness();let release!:()=>void;
@@ -18,8 +19,7 @@ test('助理占用模型时任务等待；取消等待任务不调用模型，�
     throw Error('跨入口排队状态未达到预期');
   };
   try {
-    await json('/api/llm-config',{provider:'custom',protocol:'openai-compatible',baseUrl:h.modelBase+'/v1',model:'manual',selectionMode:'manual'});
-    await json('/api/llm-model/check',{model:'manual',force:true});
+    await onboardModel(h.base,{provider:'custom',protocol:'openai-compatible',baseUrl:h.modelBase+'/v1',model:'manual',selectionMode:'manual'});
     h.state.beforeReply=()=>hold;
     h.state.replyFor=(body)=>String(body.messages[0]?.content).includes('最终交付协议')?'{"summary":"跨入口任务完成","fields":[]}':String(body.messages[0]?.content).includes('记忆分析器')?'{}':'CHAT-HELD finished';
     chat=post('/api/chat/stream',{text:'CHAT-HELD',target:{kind:'persona',id:'clownfish'},sessionId:'cross-entry-test',model:'manual',toolMode:'off'});
@@ -70,8 +70,7 @@ test('active model work blocks connection edits and queued capability work never
   };
   try {
     const config={provider:'custom',protocol:'openai-compatible',baseUrl:h.modelBase+'/v1',model:'manual',selectionMode:'manual'};
-    await post('/api/llm-config',config);
-    await post('/api/llm-model/check',{model:'manual',force:true});
+    await onboardModel(h.base,config);
     const ability=(await post('/api/capabilities/ability',{personaId:'clownfish',name:'Connection isolation fixture',goal:'Return a short result',defaultFormat:'md'})).ability;
     const task=(await post('/api/capabilities/task',{personaId:'clownfish',capabilityId:ability.id,title:'Queued capability fixture',instruction:'CAPABILITY-CROSS-CONNECTION',format:'md',schedule:{mode:'manual'},enabled:true})).task;
 
@@ -79,8 +78,8 @@ test('active model work blocks connection edits and queued capability work never
     h.state.beforeReply=()=>hold;
     await post('/api/assistant-team/start',{requestId:'connection-edit-blocker',objective:'ACTIVE-MODEL-JOB',workerIds:[],reviewerId:''},202);
     await until(async()=>h.requests.some(request=>request.body?.messages?.some((message:any)=>String(message.content).includes('ACTIVE-MODEL-JOB'))));
-    const rejected=await post('/api/llm-config',{...config,baseUrl:h.modelBase+'/other'},409);
-    assert.match(String(rejected.error),/模型任务正在执行/);
+    const staged=await post('/api/llm-connection/save',{...config,connectionId:(await (await fetch(h.base+'/api/llm')).json() as any).resourceCenter.connections[0].id,baseUrl:h.modelBase+'/other'});
+    assert.equal(staged.activationRequired,true);assert.equal(staged.model,'manual');
 
     const capabilityTask=(await post('/api/capabilities/task/run',{id:task.id},202)).job.id;
     const adhoc=(await post('/api/agent/job',{kind:'capability-adhoc',title:'Queued adhoc fixture',personaId:'clownfish',capabilityId:ability.id,instruction:'ADHOC-CROSS-CONNECTION',memoryMode:'off'},202)).job.id;
@@ -89,11 +88,12 @@ test('active model work blocks connection edits and queued capability work never
     await h.restart(()=>{
       h.state.beforeReply=undefined;release();
       const path=join(h.dir,'llm-key.dpapi.json');
-      const saved=JSON.parse(readFileSync(path,'utf8')) as Record<string,unknown>;
-      saved.baseUrl=h.modelBase+'/other';
-      saved.connectionRevision=randomUUID();
-      saved.catalogConnectionRevision='';
-      saved.modelChecks={};
+      const saved=JSON.parse(readFileSync(path,'utf8')) as any;
+      const active=saved.connections[0];
+      active.baseUrl=h.modelBase+'/other';
+      active.connectionRevision=randomUUID();
+      active.catalogConnectionRevision='';
+      active.modelChecks={};
       writeFileSync(path,JSON.stringify(saved,null,2)+'\n','utf8');
     });
     for(const id of [capabilityTask,adhoc,orchestration]){

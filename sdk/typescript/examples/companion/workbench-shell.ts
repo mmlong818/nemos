@@ -9,6 +9,7 @@ import { renderNavigationIcon, type NavigationIconName } from "./navigation-icon
 export const WORKBENCH_LINKS = [
   { href: "/overview", label: "总览", group: "primary" },
   { href: "/", label: "助理工作区", group: "primary" },
+  { href: "/pantheon", label: "万神殿", group: "primary" },
   { href: "/matters", label: "事项", group: "primary" },
   { href: "/bots?view=tasks", label: "任务工作区", group: "primary" },
   { href: "/memory", label: "记忆", group: "primary" },
@@ -39,6 +40,7 @@ export function renderWorkbenchNavigation(path: string): string {
   const primary: NavigationEntry[] = [
     { href: "/overview", label: "总览", icon: "panel", productKey: "overview" },
     { href: "/", label: "助理", icon: "message", id: "railAssistant", productKey: "assistant" },
+    { href: "/pantheon", label: "万神殿", icon: "users", id: "railPantheon", productKey: "pantheon" },
     { href: "/matters", label: "事项", icon: "matters", id: "railMatters", productKey: "matters" },
     { href: "/bots?view=tasks", label: "任务", icon: "boxes", id: "railBots", productKey: "tasks" },
     { href: "/artifacts", label: "文件", icon: "file", productKey: "files" },
