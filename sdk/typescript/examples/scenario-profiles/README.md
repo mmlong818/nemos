@@ -1,8 +1,6 @@
 # examples/scenario-profiles
 
-适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
-
-演示 v0.2 scenario profile 对同一份内容产出的分类差异。
+演示 scenario profile 对同一份内容产出的分类差异。
 
 ## 跑法
 
@@ -27,5 +25,5 @@ ANTHROPIC_API_KEY=sk-... npx tsx examples/scenario-profiles/index.ts
 
 ## 为什么需要 scenario
 
-v0.1 的单 SYSTEM_PROMPT 把研报里出现的「我」当用户偏好抽取——这是错的。
+不区分场景会把研报里出现的「我」误当成用户偏好。
 scenario 让 SDK 知道当前 context，从而决定「这个『我』是文档作者还是用户本人」。

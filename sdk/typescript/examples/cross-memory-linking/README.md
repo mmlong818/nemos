@@ -1,8 +1,6 @@
 # examples/cross-memory-linking
 
-适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
-
-演示 v0.3 跨 memory 自动连接 + spreading activation 检索。
+演示跨 memory 自动连接与 spreading activation 检索。
 
 ## 跑法
 

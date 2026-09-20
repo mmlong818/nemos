@@ -1,7 +1,5 @@
 # Governance
 
-更新：2026-08-06
-
 ## 当前阶段
 
 Nemos Memory SDK 与小丑鱼均处于 Alpha，由仓库维护者负责最终合并和发布决策。

@@ -1,8 +1,6 @@
 # examples/background-ingest
 
-适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
-
-演示 v0.3 后台 ingest 队列：archival 同步写入，derived 异步抽取。
+演示后台 ingest 队列：archival 同步写入，derived 异步抽取。
 
 ## 跑法
 

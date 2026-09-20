@@ -129,7 +129,7 @@ See [PRIVACY.en.md](PRIVACY.en.md) for storage, export, and deletion rules. Repo
 
 ## Install and run
 
-Requires **Node.js ≥ 22.19**. Windows is the primary verified platform. Linux and macOS can run the web service, but API-key persistence currently depends on Windows DPAPI and is unavailable outside Windows; see the [known limitation](docs/model-key-storage-non-windows-2026-09-08.md).
+Requires **Node.js ≥ 22.19**. Windows is the primary verified platform. Linux and macOS can run the web service, but API-key persistence currently depends on Windows DPAPI and is unavailable outside Windows; see the [known limitation](docs/model-key-storage-non-windows.md).
 
 ```powershell
 git clone https://github.com/mmlong818/nemos.git
@@ -181,13 +181,12 @@ A loopback URL is suitable locally. Any remote sync deployment must be placed be
 | [`sdk/typescript/`](sdk/typescript/) | TypeScript integration and auditable Agent runtime |
 | [`sdk/typescript/examples/companion/`](sdk/typescript/examples/companion/) | Clownfish server, web interface, capabilities, and Windows client |
 | [`sync-service/`](sync-service/) | Optional self-hosted encrypted synchronization |
-| [`docs/`](docs/) | Current architecture, decisions, operations, and verification notes |
-| [`bench/`](bench/) | Memory benchmarks and frozen results |
-| [`spec/`](spec/) · [`rfcs/`](rfcs/) · [`archive/`](archive/) | Early specifications, RFCs, and archived process material |
+| [`docs/`](docs/) | Current architecture, security boundaries, integration, and operations documentation |
+| [`rfcs/`](rfcs/) | Design decisions for public interfaces, data models, and long-term compatibility |
 
 ## Verification and development
 
-The current product-source baseline completed build, dual type checks, dependency-license and release-metadata checks, with **1066 automated tests with no failures** (one conditionally skipped). Documentation and package metadata are checked separately by the commands below. This establishes coverage of the tested local paths, not real-account acceptance of every external service.
+The current source is guarded by the build, dual type checks, dependency-license audit, release-metadata check, automated tests, and documentation-link checks. These checks cover tested local paths; they do not mean every external service has been verified with a real account.
 
 ```powershell
 cd sdk\typescript

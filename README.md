@@ -129,7 +129,7 @@ _截图中的两个 Key 输入框均为空；应用不会在此页面回显已�
 
 ## 安装与启动
 
-需要 **Node.js ≥ 22.19**。Windows 是主要验证平台；Linux 和 macOS 可以运行网页服务，但当前模型密钥持久化依赖 Windows DPAPI，非 Windows 平台不能保存密钥，详见[已知限制](docs/model-key-storage-non-windows-2026-09-08.md)。
+需要 **Node.js ≥ 22.19**。Windows 是主要验证平台；Linux 和 macOS 可以运行网页服务，但当前模型密钥持久化依赖 Windows DPAPI，非 Windows 平台不能保存密钥，详见[已知限制](docs/model-key-storage-non-windows.md)。
 
 ```powershell
 git clone https://github.com/mmlong818/nemos.git
@@ -169,7 +169,7 @@ docker compose up -d --build
 
 - 产品处于 **Alpha**，数据结构、界面和公开 API 仍可能变化；
 - 界面目前主要为中文，桌面能力主要在 Windows 验证；
-- 本轮自动化验收使用伪服务，没有使用真实用户 Key，也没有验证每个外部账号、模型或媒体权限；
+- 自动化验收使用伪服务，不使用真实用户 Key，也不代表每个外部账号、模型或媒体权限均已验证；
 - 复杂 Office 版式、第三方网页变化与实时数据需要在目标环境单独核验；
 - 等待补充或受阻的任务通常需要新建任务继续，不承诺任意阶段无损恢复；
 - 万神殿会话当前不跨服务进程持久化，私有思维单元则保存在本机。
@@ -181,13 +181,12 @@ docker compose up -d --build
 | [`sdk/typescript/`](sdk/typescript/) | TypeScript 接入层与可审计 Agent 运行时 |
 | [`sdk/typescript/examples/companion/`](sdk/typescript/examples/companion/) | 小丑鱼服务端、网页界面、能力与 Windows 客户端 |
 | [`sync-service/`](sync-service/) | 可选的自托管加密同步服务 |
-| [`docs/`](docs/) | 当前架构、设计决策、运维与验证记录 |
-| [`bench/`](bench/) | 记忆基准与冻结结果 |
-| [`spec/`](spec/) · [`rfcs/`](rfcs/) · [`archive/`](archive/) | 早期规范、RFC 与归档过程材料 |
+| [`docs/`](docs/) | 当前架构、安全边界、集成与运维文档 |
+| [`rfcs/`](rfcs/) | 公开接口、数据模型与长期兼容性的设计决策 |
 
 ## 验证与开发
 
-当前产品源码基线已完成构建、双重类型检查、依赖许可证与发布元数据检查，并有 **1066 项自动化测试无失败**（其中 1 项按环境条件跳过）。文档和包元数据由下面的命令另行检查。上述结果只证明受覆盖的本机代码路径，不等于所有外部服务都经过真实账号验收。
+当前产品源码由构建、双重类型检查、依赖许可证、发布元数据、自动化测试和文档链接检查共同守护。检查结果只证明受覆盖的本机代码路径，不等于所有外部服务都经过真实账号验收。
 
 ```powershell
 cd sdk\typescript

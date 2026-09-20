@@ -1,8 +1,6 @@
 # Nemos Memory SDK 架构总览
 
 状态：消费 `@nemos/sdk` 0.7.5-alpha.18
-更新：2026-08-13
-
 ## 1. 定位
 
 Nemos 是嵌入式 TypeScript 长期记忆引擎，源码在独立的 `nemos-memory` 仓库维护；本仓库只通过固定依赖版本消费它。它不是托管账号系统、通用向量数据库或完整 Agent 编排框架。

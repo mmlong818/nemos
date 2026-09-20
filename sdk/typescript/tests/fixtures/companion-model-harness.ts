@@ -104,7 +104,7 @@ export async function startModelHarness() {
  * 因此这几个整合测试按平台跳过，与 three-dimensional-verifier 缺 Blender 时同一处理。
  * **不要**为了让 Linux 变绿而给非 Windows 造一套更弱的落盘加密——那是在发明没有用户
  * 拥有的产品行为，而且是更不安全的那一种。真要支持，见
- * docs/model-key-storage-non-windows-2026-09-08.md。
+ * docs/model-key-storage-non-windows.md。
  */
 export const DPAPI_ONLY = process.platform === "win32"
   ? false

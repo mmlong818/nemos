@@ -1,8 +1,6 @@
 # examples/reflect-job
 
-适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
-
-v0.4 reflect consolidation 演示。
+Reflect consolidation 演示。
 
 ## 跑
 
@@ -30,7 +28,7 @@ npx tsx examples/reflect-job/index.ts
 ```ts
 features: {
   reflect: {
-    enabled: true,                  // 默认 false（v0.4 opt-in）
+    enabled: true,                  // 默认 false，需显式启用
     autoTriggerThreshold: 20,       // 累积 N 条新 episodic 自动触发
     includePersonalSemantic: true,  // 是否把现有 personal_semantic 当 anchor
   },

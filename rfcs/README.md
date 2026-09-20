@@ -2,7 +2,7 @@
 
 RFC（Request for Comments）用于记录影响公开接口、数据模型、安全边界或长期兼容性的设计决策。
 
-当前接口以 SDK 类型、README、测试和发布记录为准；RFC 解释决策背景和演进方向。
+当前接口以 SDK 类型、README、测试和发布元数据为准。已实施的设计应同步进当前架构文档，不在这里保留过时副本。
 
 ## 需要 RFC 的变化
 
@@ -48,15 +48,4 @@ RFC 至少包含：
 - Compatibility：迁移和回滚；
 - Unresolved Questions：尚未决定的事项。
 
-## 现有 RFC
-
-| 编号 | 标题 | 状态 |
-| --- | --- | --- |
-| [0001](0001-nemos-design-principles.md) | Nemos Design Principles | accepted |
-| [0002](0002-scenario-profiles-and-content-awareness.md) | Scenario Profiles & Content Awareness | implemented |
-| [0003](0003-production-pipeline.md) | Production Pipeline | implemented |
-| [0004](0004-forgetting-and-consolidation.md) | Forgetting & Consolidation | implemented |
-| [0005](0005-domain-experts-and-sparse-activation-routing.md) | Domain Experts & Sparse Activation Routing | implemented |
-| [0006](0006-prospective-memory-and-prediction-verification-loop.md) | Prospective Memory & Prediction-Verification Loop | draft |
-| [0007](0007-bitemporal-validity-and-invalidation.md) | Bi-Temporal Validity & Invalidation Semantics | implemented |
-| [0008](0008-companion-memory-topology.md) | Multi-Role Memory Visibility and Self-State Isolation | implemented |
+当前没有对外征求意见中的 RFC。新提案从 [RFC 模板](0000-template.md)开始。

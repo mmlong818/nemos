@@ -2,9 +2,7 @@
 
 [中文](README.md) · **English**
 
-This page links to the main product, integration, architecture, and research documents for Clownfish and the Nemos Memory SDK.
-
-Get-started, integration, and architecture documents describe the current implementation. RFCs, the paper, and `spec/` are research or archived records and do not define the current UI or public API.
+This page links to the main product, integration, and current architecture documents for Clownfish and the Nemos Memory SDK.
 
 ## Get started
 
@@ -32,13 +30,10 @@ Get-started, integration, and architecture documents describe the current implem
 | [Capability memory](../sdk/typescript/examples/companion/docs/capability-center-memory-design.md) | Preferences, formatting, and task context |
 | [Capability runtime](../sdk/typescript/examples/companion/docs/capability-os-design.md) | Shared execution model for chat, capabilities, files, and tasks |
 
-## Research and decision records
+## Current design decisions
 
 | Document | Purpose |
 | --- | --- |
 | [RFC index](../rfcs/README.md) | Architecture decisions and proposal status |
-| [Paper artifacts](../paper/README.md) | MnemoBench paper, source, and results |
-| [Benchmark guide](../bench/README.md) | Benchmark tasks, execution, and results |
-| [Early specifications](../spec/README.md) | Archived v0.1 design records |
 
-Current SDK types, README files, tests, and release notes define the public interface. Research and archived material provide design context but do not replace current API documentation.
+Current SDK types, README files, tests, and release metadata define the public interface.

@@ -156,7 +156,7 @@ const SHAPES: readonly FailureShape[] = [
   //
   // 仍然拿不到的是「提案无效」与「复核未通过」：两者在内核里都只是静默的 return null
   // 或 continue，既无结构化出口也彼此不可区分，合并成 CF-E0303 一条。
-  // 对内核的接口请求因此只剩这一项，见 docs/failure-registry-2026-09-08.md。
+  // 对内核的接口请求因此只剩这一项。
   {
     code: "CF-E0301",
     name: "memoryConsolidationFailed",

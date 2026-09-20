@@ -2,9 +2,7 @@
 
 **中文** · [English](README.en.md)
 
-这里汇总小丑鱼应用、Nemos Memory SDK、开发接入和研究资料的主要入口。
-
-“开始使用”“开发与集成”“架构设计”属于当前文档；RFC、论文和 `spec/` 是研究或归档记录，不代表当前界面和公开接口。
+这里汇总小丑鱼应用、Nemos Memory SDK、开发接入和当前架构资料。
 
 ## 开始使用
 
@@ -33,14 +31,10 @@
 | [能力与记忆](../sdk/typescript/examples/companion/docs/capability-center-memory-design.md) | 习惯、格式和任务上下文 |
 | [能力运行系统](../sdk/typescript/examples/companion/docs/capability-os-design.md) | 聊天、能力、文件与任务的共享执行模型 |
 
-## 研究与决策记录
+## 当前设计决策
 
 | 文档 | 内容 |
 | --- | --- |
 | [RFC 索引](../rfcs/README.md) | 架构决策与提案状态 |
-| [论文资料](../paper/README.md) | MnemoBench 论文、源码和结果说明 |
-| [评测说明](../bench/README.md) | 评测任务、运行方式和结果入口 |
-| [早期规范](../spec/README.md) | 已归档的 v0.1 设计记录 |
-| [归档目录](../archive/README.md) | 已完成或已被取代的过程记录与一次性脚本 |
 
-公开接口以当前 SDK 类型、README、测试和发布记录为准。研究论文与归档资料用于解释设计背景，不替代当前接口文档。
+公开接口以当前 SDK 类型、README、测试和发布元数据为准。

@@ -10,10 +10,10 @@
 
 | 范围 | 路径 | 对外授权 | 说明 |
 |---|---|---|---|
-| **Nemos TypeScript 接入层与研究资料** | `sdk/typescript/src/`、`spec/`、`rfcs/`、`bench/`、`docs/` | Clownfish Source-Available Non-Commercial License 1.0（见 `LICENSE`） | 本仓库的 Agent 运行时、接入层和研究资料；完全禁止未经书面授权的商业用途 |
+| **Nemos TypeScript 接入层与文档** | `sdk/typescript/src/`、`rfcs/`、`docs/` | Clownfish Source-Available Non-Commercial License 1.0（见 `LICENSE`） | 本仓库的 Agent 运行时、接入层和项目文档；完全禁止未经书面授权的商业用途 |
 | **独立记忆内核依赖** | `@nemos/sdk`，来源 `mmlong818/nemos-memory` 固定 tag | 以该依赖随附的 `LICENSE` 为准 | 本仓库不再维护第二份记忆内核源码，也不改变该依赖的授权范围 |
 | **小丑鱼应用** | `sdk/typescript/examples/companion/` | Clownfish Source-Available Non-Commercial License 1.0（见 `LICENSE`） | 与仓库其余自有代码统一；完全禁止未经书面授权的商业用途 |
-| **示例与基准** | `sdk/typescript/examples/`（companion 以外）、`bench/` | 同 SDK | 用于说明与复现 |
+| **示例** | `sdk/typescript/examples/`（companion 以外） | 同 SDK | 用于说明与复现 |
 
 ## 当前非商业许可的边界
 

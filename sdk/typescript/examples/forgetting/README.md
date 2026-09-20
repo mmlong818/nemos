@@ -1,8 +1,6 @@
 # examples/forgetting
 
-适用版本：`0.7.5-alpha.17`；复核：2026-08-06。
-
-v0.4 FSRS decay 演示。
+FSRS decay 演示。
 
 ## 跑
 
@@ -30,7 +28,7 @@ npx tsx examples/forgetting/index.ts
 ```ts
 features: {
   decay: {
-    enabled: true,            // 默认 false（v0.4 opt-in）
+    enabled: true,            // 默认 false，需显式启用
     coldThreshold: 0.1,       // R<此值进入 cold 候选
     coldDormancyDays: 7,      // 多少天不访问才能 cold
     scanIntervalMs: 24*3600*1000, // worker 周期跑 scan

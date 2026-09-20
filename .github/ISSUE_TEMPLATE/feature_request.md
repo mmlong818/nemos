@@ -33,4 +33,4 @@ labels: enhancement
 
 ## 相关引用
 
-链接到当前文档或 RFC。历史 `spec/` 只用于解释设计演变。
+链接到相关的当前文档或 RFC。

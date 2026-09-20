@@ -1,7 +1,5 @@
 # TypeScript 应用集成指南
 
-更新：2026-08-10
-
 ## 1. 选择接入方式
 
 当前正式接入面是嵌入式 TypeScript SDK。Python、独立 REST 服务和独立 MCP 记忆服务尚未交付。
