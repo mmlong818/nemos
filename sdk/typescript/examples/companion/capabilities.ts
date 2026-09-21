@@ -7,6 +7,7 @@ import type { CapabilityToolRegistry, CapabilityToolSummary, PersonaToolBinding 
 import { capabilityToolFilterForSurface } from "./capability-system-registry.js";
 import { buildCapabilityRoadmap, type CapabilityRoadmap } from "./capability-roadmap.js";
 import { ROUTINE_LIMITS } from "./runtime-limits.js";
+import { BUILTIN_SKILL_CONTRACTS, renderSkillContract, type SkillContract } from "./skill-contract.js";
 import { openQuestionsPrompt, parseOpenQuestions, skipsOpenQuestions, type OpenQuestion } from "./deliverable-alignment.js";
 import { failureShapeByName } from "./failure-registry.js";
 import { buildDemandIntakeReport, type DemandIntakeReport } from "./demand-intake.js";
@@ -65,6 +66,8 @@ export interface Capability {
   ownerPersonaId?: string;
   defaultFormat: ArtifactFormat;
   prompt: string;
+  /** 输入 / 输出 / 约束三段契约；面向用户的内置能力必须有（见 skill-contract.ts）。 */
+  contract?: SkillContract;
   createdAt: string;
   source?: "manual" | "learned" | "installed";
   learnedKey?: string;
@@ -2264,6 +2267,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
       demandIntake,
       `Capability rules:
 ${ability.prompt}`,
+      ability.contract ? renderSkillContract(ability.contract) : "",
       skillBlock,
       backendTools,
       sourceVerification,
@@ -3084,6 +3088,12 @@ const BUILTIN_ABILITIES: Capability[] = [
     createdAt: BUILTIN_CREATED_AT,
   },
 ];
+// 契约表与能力表分开维护（skill-contract.ts）；这里按 id 挂上。数组字面量的形状被
+// tests/unit/catalog-registration.test.ts 按源码切片核对，不要包成表达式。
+for (const ability of BUILTIN_ABILITIES) {
+  const contract = BUILTIN_SKILL_CONTRACTS[ability.id];
+  if (contract) ability.contract = contract;
+}
 
 function readJson<T>(file: string, fallback: T): T {
   try {
