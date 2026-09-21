@@ -43,6 +43,18 @@ test('13 项执行技能保留原后端、格式与白名单准备地址，不�
     for(const key of ['use','input','steps','output','limits','permissions','check'])assert.ok(skill[key],key);
   }
 });
+test('执行技能详情以服务端契约为准，缺契约时退回目录文案',()=>{
+  const item=window.ClownfishWorkflowCatalog.workflows.find((w:any)=>w.backendId==='meeting-minutes');
+  const ability={id:'meeting-minutes',contract:{input:'会议转写或聊天记录原文',output:'会议信息 → 摘要 → 决议 → 行动项表',constraints:'未点名的负责人写「未指定」'}};
+  const withContract=skills.workflow(item,ability);
+  assert.equal(withContract.input,ability.contract.input);assert.equal(withContract.output,ability.contract.output);
+  assert.equal(withContract.limits,ability.contract.constraints);assert.equal(withContract.contractSource,'server');
+  assert.equal(withContract.steps,item.detail,'处理步骤仍来自目录');
+  const partial=skills.workflow(item,{id:'meeting-minutes',contract:{input:'只有输入'}});
+  assert.equal(partial.contractSource,'catalog');assert.equal(partial.output,item.deliverable);
+  assert.equal(skills.workflow(item).contractSource,'catalog');
+  assert.match(read('assets/assistant-team.js'),/skills\.workflow\(b,ability\)/);
+});
 test('编译规则通过真实内存存储和冻结计划，保留现有记录及版本机制',()=>{
   const store=new AssistantBotStore(':memory:');
   try{
@@ -79,6 +91,6 @@ test('新界面保留旧选择器和深链接，技能是可选项且不伪装�
   assert.match(html,/使用技能（可选）/);assert.match(html,/官方技能市场尚未开放/);
   assert.match(html,/id="skillRecipeFields"/);assert.match(source,/ruleEditorMode\(!b\)/);
   assert.match(source,/openBot\(\);ruleEditorMode\(false\)/);
-  assert.match(source,/skills\.workflow\(b\):skills\.rule\(b\)/);
+  assert.match(source,/skills\.workflow\(b,ability\):skills\.rule\(b\)/);
   assert.match(read('assets/product-structure.js'),/href:'\/skills',label:'技能库'/);
 });

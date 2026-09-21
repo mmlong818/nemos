@@ -25,6 +25,9 @@ test("文字文件在浏览器读取，多文件保留原材料和文件来源�
   const merged = api.appendMaterials("已有材料", [a,b]);
   assert.match(merged, /^已有材料\n\n\[文件来源：说明.txt\]/);
   assert.match(merged, /清单.md\]\n# 核对清单/);
+  // 每份文件正文后跟一行回执，模型和用户都能核对"收到了多少"。
+  assert.match(merged, /\[S1\] 预算 100 元\n\[文件回执：1 行 · 13 字 · 完整\]/);
+  assert.match(merged, /# 核对清单\n\[文件回执：1 行 · 6 字 · 完整\]$/);
   assert.throws(() => api.appendMaterials("x".repeat(23999), [a]), /超过/);
   assert.throws(() => api.validate(new File(["image"], "photo.png")), /不支持/);
   assert.throws(() => api.validate(new File([], "empty.txt")), /为空/);

@@ -32,8 +32,15 @@
     if (typeof text !== 'string' || !text.trim()) throw new Error('未提取到可读文字。扫描 PDF 或图片请先转成文字再上传');
     return { name:file.name, text, notes };
   }
+  // 每个文件正文之后附一行回执（行数、字数、是否完整），让"收到了什么"可核对；
+  // 放在正文之后是为了不动 [文件来源：…] 与正文相邻的既有格式。
+  function receipt(text) {
+    const trimmed = String(text).replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+    const lines = trimmed ? trimmed.split('\n').length : 0;
+    return `[文件回执：${lines.toLocaleString('zh-CN')} 行 · ${trimmed.length.toLocaleString('zh-CN')} 字 · 完整]`;
+  }
   function appendMaterials(current, files) {
-    const blocks = files.map(file => `[文件来源：${String(file.name).replace(/[\r\n\[\]]/g,' ').slice(0,160)}]\n${file.text}${file.notes?.length?'\n[文件解析说明]\n'+file.notes.join('\n'):''}`);
+    const blocks = files.map(file => `[文件来源：${String(file.name).replace(/[\r\n\[\]]/g,' ').slice(0,160)}]\n${file.text}\n${receipt(file.text)}${file.notes?.length?'\n[文件解析说明]\n'+file.notes.join('\n'):''}`);
     const result = current + (current && blocks.length ? '\n\n' : '') + blocks.join('\n\n');
     if (result.length > MAX_CHARS) throw new Error(`附件内容与补充说明共 ${result.length} 字符，超过单次任务 ${MAX_CHARS} 字符上限，请减少附件或拆分为多个任务`);
     return result;

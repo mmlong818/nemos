@@ -44,14 +44,23 @@
       revision: record.revision
     });
   }
-  function workflow(item) {
+  /**
+   * ability 是服务端 /api/capabilities 里同 backendId 的能力记录；带 contract 时，
+   * 输入、交付与限制三段以服务端契约为准——那是真正进入运行提示的文字，不是目录里的宣传句。
+   */
+  function workflow(item, ability) {
+    const contract = ability && ability.contract && typeof ability.contract === 'object' ? ability.contract : null;
+    const complete = !!contract && ['input', 'output', 'constraints'].every(key => typeof contract[key] === 'string' && contract[key].trim());
     return Object.freeze({
       id: 'workflow:' + item.id, sourceId: item.id, kind: 'workflow', label: '执行技能',
-      name: item.name, use: item.use, input: '任务目标、受众或用途，以及本次参考材料',
-      steps: item.detail, output: item.deliverable,
+      name: item.name, use: item.use,
+      input: complete ? contract.input : '任务目标、受众或用途，以及本次参考材料',
+      steps: item.detail,
+      output: complete ? contract.output : item.deliverable,
       permissions: '工具与服务依原执行页配置和授权；偏好记忆可关闭',
-      limits: '保留原流程，不自动加入文字任务；打开准备页不会开始执行',
+      limits: complete ? contract.constraints : '保留原流程，不自动加入文字任务；打开准备页不会开始执行',
       check: '检查交付物、来源与未完成项；实际执行状态以任务记录为准',
+      contractSource: complete ? 'server' : 'catalog',
       execution: item.execution, backendId: item.backendId, href: item.href
     });
   }

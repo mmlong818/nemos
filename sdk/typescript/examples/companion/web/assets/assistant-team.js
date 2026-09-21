@@ -61,7 +61,8 @@
   function inspectBot(id, workflow=false) {
     const b=(workflow?workflows:data.bots).find(item=>item.id===id);
     if(!b)return;
-    const contract=workflow?skills.workflow(b):skills.rule(b);
+    const ability=workflow?(flowSnapshot?.abilities||[]).find(item=>item.id===b.backendId):undefined;
+    const contract=workflow?skills.workflow(b,ability):skills.rule(b);
     const facts=[['适用场景',contract.use],['输入材料',contract.input],['处理方法',contract.steps],['交付要求',contract.output],['工具与资料权限',contract.permissions],['限制',contract.limits],['如何核对',contract.check]];
     $('#botInfoContent').innerHTML=`<p class="bot-card-kind">${esc(contract.label)}${!workflow?' · '+(b.enabled?'已启用':'已停用'):''}</p><h2 id="botInfoTitle">${esc(b.name)}</h2><p>${esc(workflow?b.description:library.summary(b))}</p><dl class="bot-info-facts">${facts.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`+(workflow
       ? `<a class="wb-primary-link bot-info-start" href="${esc(b.href)}">准备任务 →</a>`
