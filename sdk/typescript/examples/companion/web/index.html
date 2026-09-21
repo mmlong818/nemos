@@ -3586,6 +3586,19 @@ function chatCharacterBannerHtml() {
 }
 let state = { personas: [], contactIds: [], contactCandidateIds: [], groups: [], relationships: [], relationOf: {}, avatars: { personas: {} }, profile: null, target: null, voice: false, pendingImage: null, pendingFile: null };
 
+// 请求失败时给用户看的一句话：服务端 JSON 只取 error 字段，去掉 "Error:" 前缀，不再把整段 JSON 贴进气泡。
+function requestErrorText(error) {
+  let message = error && error.data && typeof error.data.error === "string" && error.data.error !== "agent_turn_incomplete"
+    ? error.data.error
+    : String((error && error.message) || error || "").trim();
+  if (error && error.data && typeof error.data.userMessage === "string" && error.data.userMessage.trim()) message = error.data.userMessage;
+  message = message.replace(/^Error:\s*/i, "");
+  if (/^\{[\s\S]*\}$/.test(message)) {
+    try { const parsed = JSON.parse(message); message = parsed.userMessage || parsed.error || message; } catch {}
+  }
+  if (!message || /^HTTP \d+$/.test(message) || /Failed to fetch|NetworkError|Load failed/i.test(message)) return "无法连接到本机服务，请确认小丑鱼仍在运行后重试。";
+  return "请求失败：" + message.slice(0, 300);
+}
 async function api(path, body) {
   const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { cache: "no-store" });
   const text = await r.text();
@@ -4046,7 +4059,7 @@ function emptyStateHtml() {
       + '    <header class="role-intro-head"><h2>' + esc(content.title) + '</h2></header>'
       + '    <p>' + esc(content.desc) + '</p>'
       + '    <p class="wb-assistant-role-hint">直接说出目标，让小丑鱼帮你推进。需要复用一种工作方法？<a href="/skills">查看技能库 →</a></p>'
-      + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><select id="heroModelSelect" aria-label="任务模型" hidden></select><small id="heroModelStatus" role="status" aria-live="polite"></small><button type="button" id="heroSend">发送</button></div></div>'
+      + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><select id="heroModelSelect" aria-label="任务模型" hidden></select><button type="button" id="heroFileBtn" class="hero-file-btn' + (state.pendingFile ? ' on' : '') + '" aria-label="上传文件" title="上传文件（可与第一句话一起发送）">上传文件</button><small id="heroAttachment" class="hero-attachment" aria-live="polite">' + (state.pendingFile ? esc('已附加：' + state.pendingFile.name) : '') + '</small><small id="heroModelStatus" role="status" aria-live="polite"></small><button type="button" id="heroSend">发送</button></div></div>'
       + '  </article>'
       + '</section>';
   }
@@ -4106,6 +4119,11 @@ function setPendingFile(file) {
   $("#filebtn").classList.toggle("on", has);
   $("#attachmentName").textContent = has ? state.pendingFile.name : "";
   $("#attachmentMeta").textContent = has ? `${state.pendingFile.kind.toUpperCase()} · ${formatAttachmentSize(state.pendingFile.size)}${state.pendingFile.truncated ? " · 内容较长，已截取" : ""}` : "";
+  // 首条消息用的是 hero 输入框，主输入区还没显示；附件状态也要在那里可见。
+  const heroAttachment = document.getElementById("heroAttachment");
+  if (heroAttachment) heroAttachment.textContent = has ? `已附加：${state.pendingFile.name}` : "";
+  const heroFileBtn = document.getElementById("heroFileBtn");
+  if (heroFileBtn) heroFileBtn.classList.toggle("on", has);
 }
 async function chatFileToBase64(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -4920,7 +4938,7 @@ async function streamPersona(key, text, voice, image, attachment, messageId, req
     }));
   } catch (e) {
     inner.innerHTML = '<div class="bub"></div>';
-    inner.querySelector(".bub").textContent = "网络错误：" + e;
+    inner.querySelector(".bub").textContent = requestErrorText(e);
   }
 }
 
@@ -4995,7 +5013,7 @@ async function sendRegular(key, text, voice, image, attachment, messageId, reque
     }
     await pushCapabilityNotifications(data.taskReplies || []);
     if (data.error) addRow("other", "系统", "出错了：" + data.error);
-  } catch (e) { row.remove(); addRow("other", "系统", "网络错误：" + e); }
+  } catch (e) { row.remove(); addRow("other", "系统", requestErrorText(e)); }
 }
 
 let sending = false;
@@ -5042,11 +5060,12 @@ async function sendMsg(voiceFlag, overrideText) {
 
 $("#send").onclick = () => sendMsg();
 document.addEventListener("click", (e) => {
+  if (e.target && e.target.closest && e.target.closest("#heroFileBtn")) { $("#chatfile").click(); return; }
   const heroBtn = e.target && e.target.closest ? e.target.closest("#heroSend") : null;
   if (!heroBtn) return;
   const heroTxt = document.getElementById("heroTxt");
   const heroText = heroTxt ? heroTxt.value.trim() : "";
-  if (!heroText) return;
+  if (!heroText && !state.pendingFile) return;
   sendMsg(false, heroText);
 });
 document.addEventListener("keydown", (e) => {
@@ -5459,7 +5478,7 @@ $("#chatfile").onchange = async (event) => {
   $("#filebtn").disabled = true;
   try {
     setPendingFile(await prepareChatFile(file));
-    $("#txt").focus();
+    (document.getElementById("heroTxt") || $("#txt")).focus();
   } catch (error) {
     setPendingFile(null);
     event.target.value = "";

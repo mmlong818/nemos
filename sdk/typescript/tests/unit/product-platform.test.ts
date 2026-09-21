@@ -75,3 +75,32 @@ test("puts uncertain deliveries before approvals in the review queue", () => {
   assert.deepEqual(items.slice(0, 2).map((item) => item.priority), [0, 1]);
   assert.equal(items.some((item) => item.kind === "approval"), true);
 });
+
+test("a run owned by a settled job is not listed a second time as an interrupted run", () => {
+  const items = buildReviewQueue({
+    approvals: [],
+    jobs: [
+      { id: "job-ok", type: "hk-reminder", status: "succeeded", deliveryRequired: true, delivery: { status: "failed" } },
+      { id: "job-bad", type: "capability-task", status: "failed", title: "每日资料简报", error: "达到本次运行的轮次上限" },
+    ],
+    runs: [
+      { runId: "agent-job/job-ok", status: "failed", error: "当前模型的工具调用检查未通过。", resumable: true },
+      { runId: "agent-job/job-bad", status: "max_rounds" },
+      { runId: "agent-job/job-gone", status: "failed", resumable: false },
+      { runId: "user-action-1", status: "interrupted", resumable: true },
+    ],
+  });
+  const ids = items.map((item) => item.id).sort();
+  // The succeeded reminder is neither a run item (its job settled) nor a delivery item (time-bound, lease expired).
+  assert.deepEqual(ids, ["job:job-bad", "run:agent-job/job-gone", "run:user-action-1"]);
+  assert.equal(items.find((item) => item.id === "job:job-bad")?.status, "failed");
+  const orphan = items.find((item) => item.id === "run:agent-job/job-gone")!;
+  assert.equal(orphan.status, "failed");
+  assert.match(orphan.nextAction, /执行失败/);
+  assert.match(items.find((item) => item.id === "run:user-action-1")!.nextAction, /中断/);
+});
+
+test("a time-bound job whose delivery is still pending remains a delivery item", () => {
+  const items = buildReviewQueue({ approvals: [], jobs: [{ id: "j", type: "hk-reminder", status: "succeeded", deliveryRequired: true, delivery: { status: "pending" } }] });
+  assert.deepEqual(items.map((item) => item.kind), ["delivery"]);
+});

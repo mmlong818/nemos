@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { APP_ROUTES, appRoute, canonicalAppPath, renderAppPage } from "../../examples/companion/app-navigation.js";
+import { APP_ROUTES, appRoute, canonicalAppPath, renderAppPage, renderNotFoundPage } from "../../examples/companion/app-navigation.js";
 import { WORKBENCH_LINKS } from "../../examples/companion/workbench-shell.js";
 import { readAppHtml } from "../fixtures/render-app-page.js";
 
@@ -42,6 +42,15 @@ test("客户端导航按同一份路由清单同步高亮，未知路径不冒�
   current="/not-a-page";ctx.window.ClownfishNavigation.sync();assert.ok(nodes.every((node)=>!node.attrs["aria-current"]));
 });
 test("缺少共用导航占位符拒绝静默交付不完整页面",()=>{assert.throws(()=>renderAppPage("<html></html>","/"),/missing/);});
+test("未知地址交付带导航的 404 页面，而不是裸 JSON，且不高亮任何分区",()=>{
+  const html=renderNotFoundPage(readFileSync("examples/companion/web/not-found.html","utf8"),"/nonexistent-page?x=1");
+  assert.ok(html.includes("<title>页面不存在 · 小丑鱼</title>"));
+  assert.equal((html.match(/aria-label="主导航"/g)||[]).length,1);
+  assert.equal((html.match(/aria-current="page"/g)||[]).length,0);
+  assert.ok(html.includes('data-wb-route="/nonexistent-page"'));
+  assert.ok(html.includes('href="/overview"'));
+  assert.ok(!html.includes("<!-- APP_NAVIGATION -->"));
+});
 test("侧栏新建按钮只有一处绑定，并按当前分区打开正确表单",()=>{
   assert.ok(!readAppHtml("work.html").includes("newTaskSideBinder"));
   const script=readFileSync("examples/companion/web/assets/work-center.js","utf8");

@@ -57,7 +57,7 @@ import { LONG_FORM_EXPERT_IDS } from "./experts.js";
 import {
   dependencyArtifactBlock,
 } from "./expert-contracts.js";
-import { resolveLLM, searchWeb, type ResolvedLLM } from "./llm.js";
+import { resolveLLM, searchWeb, turnDispositionUserMessage, type ResolvedLLM } from "./llm.js";
 import { FileLlmCallLedger } from "./llm-call-ledger.js";
 import { checkCompanionChatModel, checkSingleCompanionModel } from "./model-readiness.js";
 import { supportedReasoningEfforts, resolveReasoningPreference, type ReasoningEffort } from "./model-reasoning.js";
@@ -202,7 +202,7 @@ import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamReques
 import { FileStepReceiptStore } from "./structured-handoff.js";
 import { listBotMarket } from "./bot-market.js";
 import { isEmptyRecipe, normalizeBotRecipe, recipeConsentToken, BotRecipeError } from "./bot-recipe.js";
-import { appRoute, renderAppPage } from "./app-navigation.js";
+import { appRoute, renderAppPage, renderNotFoundPage } from "./app-navigation.js";
 import {
   ModelSwitchBusyError,
   ModelSwitchCoordinator,
@@ -1013,7 +1013,8 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       `agent-job/${job.id}`,
     );
     markHkReminderFired(reminder.id, fireKey);
-    context.checkpoint("提醒已生成", 100);
+    // 兜底文案也算送出了提醒，但降级要留在作业记录里可审计，不能只剩一条孤零零的失败运行。
+    context.checkpoint(delivery.degraded ? "模型不可用，已使用本地提醒文案" : "提醒已生成", 100, delivery.degraded ? { degraded: delivery.degraded.slice(0, 300) } : undefined);
     return {
       summary: delivery.reply,
       data: delivery,
@@ -1030,14 +1031,26 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     const previousRunContext = job.metadata?.scheduled === "true"
       ? scheduledTaskHandoffs.contextFor(taskId, String(job.payload.previousRunJobId || ""))
       : undefined;
-    const notification = await capabilities.runTask(
-      taskId,
-      trigger,
-      context.signal,
-      undefined,
-      `agent-job/${job.id}`,
-      previousRunContext,
-    );
+    let notification: CapabilityNotification;
+    try {
+      notification = await capabilities.runTask(
+        taskId,
+        trigger,
+        context.signal,
+        // 能力任务带工具且走显式收尾协议：默认 4 轮 / 2 次工具里，检索就占掉两轮，正文和 finish_turn
+        // 没有余量，"每日资料简报"这类研究任务必然以 max_rounds 收场。这里给与 /api/chat "deep" 档
+        // 相同的任务级预算；resolveAgentBudget 仍按上限钳制。
+        { maxRounds: 8, maxToolRounds: 5, maxTotalTokens: 80_000, maxOutputChars: 20_000 },
+        `agent-job/${job.id}`,
+        previousRunContext,
+      );
+    } catch (error) {
+      // 运行时的判定文案是英文内部描述；作业记录、自动化卡片和运行日志都直接展示 job.error，先换成用户能懂的话。
+      if (error instanceof AgentTurnDispositionError && error.disposition.state === "blocked") {
+        throw new AgentTurnDispositionError({ ...error.disposition, blocker: turnDispositionUserMessage(error.disposition) });
+      }
+      throw error;
+    }
     context.checkpoint("产物已保存", 100, { artifactId: notification.artifact.id });
     return {
       summary: notification.text,
@@ -2033,6 +2046,17 @@ async function discoverQuickSetupTargets(provider: QuickSetupProvider, connectio
       && providerCapabilityAdapterSupport(provider, record.connection.baseUrl, capability).state === "available"
       && (provider !== "openai" || rawIds.has(item.exactId)));
     if (entry) targets.push({ provider, connectionId, modelId: entry.exactId, capability });
+  }
+  // 用户已经在这条连接上选定并启用的文字默认模型，只是检查过期时，应重新验证它而不是
+  // 静默换成推荐型号——真实使用中曾把 glm-5.3-flash 无声换成 glm-5.3。
+  const fixedChat = modelVault.assignments.system.chat;
+  const chatTarget = targets.find((item) => item.capability === "chat");
+  if (chatTarget && fixedChat.mode === "fixed" && fixedChat.ref.connectionId === connectionId
+    && fixedChat.ref.modelId !== chatTarget.modelId
+    && (record.connection.enabledModels || []).includes(fixedChat.ref.modelId)
+    && maintained.some((item) => item.exactId === fixedChat.ref.modelId && item.lifecycle === "active" && item.capabilities.includes("chat"))
+    && (provider !== "openai" || rawIds.has(fixedChat.ref.modelId))) {
+    chatTarget.modelId = fixedChat.ref.modelId;
   }
   if (!targets.length) throw new Error(provider === "openai"
     ? "账号目录中没有当前版本支持的推荐模型。"
@@ -3329,7 +3353,7 @@ async function createHkReminderDelivery(
   reminder: HkReminder,
   signal?: AbortSignal,
   runId?: string,
-): Promise<{ personaId: string; name: string; reply: string; messages: string[]; facts: string[] }> {
+): Promise<{ personaId: string; name: string; reply: string; messages: string[]; facts: string[]; degraded?: string }> {
   const prompt = [
     "现在到了一个港股交易辅助提醒时间。",
     `提醒标题：${reminder.title}`,
@@ -3340,20 +3364,27 @@ async function createHkReminderDelivery(
   ].join("\n");
   let reply: string;
   let facts: string[] = [];
+  let degraded: string | undefined;
   if (llm.live) {
     try {
       const result = await engine.notify(USER, APP_PERSONA_ID, prompt, {
         signal,
         runId,
         model: modelConnection ? dailyChatModelForConnection(modelConnection) : undefined,
+        // 提醒是一句纯文字的主动开口，用不到检索或文件工具；带着工具会撞上工具检查闸门，
+        // 真实数据里 13 次提醒有 5 次就是这样失败后静默换成了兜底文案。
+        toolMode: "off",
+        surface: "automation",
       });
       reply = result.reply;
       facts = bullets(result.context.userFacts);
     } catch (error) {
       if (signal?.aborted) throw error;
+      degraded = error instanceof Error ? error.message : String(error);
       reply = fallbackAppHkReply(reminder);
     }
   } else {
+    degraded = "模型未连接";
     reply = fallbackAppHkReply(reminder);
   }
   return {
@@ -3362,6 +3393,7 @@ async function createHkReminderDelivery(
     reply,
     messages: splitBubbles(reply),
     facts,
+    ...(degraded ? { degraded } : {}),
   };
 }
 
@@ -3731,7 +3763,10 @@ function conversationMemoryWriteMode(body: ChatBody): "default" | "archive-only"
 }
 
 interface PreparedChatText {
+  /** 发给模型的完整用户回合（可能包着附件正文、网页摘录等指令）。 */
   text: string;
+  /** 用户自己说的话；落记忆、做召回只用这一份，附件正文和产品层指令不算用户原话。缺省与 text 相同。 */
+  memoryText?: string;
   ocrIntent: boolean;
   imageError?: string;
 }
@@ -3812,7 +3847,7 @@ async function prepareChatTextWithReadableContext(b: ChatBody): Promise<Prepared
   const prepared = await prepareChatTextWithImage(b);
   registerChatAttachment(b);
   const withAttachment = appendChatAttachmentContext(prepared.text, b.attachment);
-  return { ...prepared, text: await appendWebPageContext(withAttachment) };
+  return { ...prepared, memoryText: prepared.text, text: await appendWebPageContext(withAttachment) };
 }
 
 function registerChatAttachment(b: ChatBody): void {
@@ -6625,6 +6660,7 @@ const server = createServer(async (req, res) => {
         }
         const opts = {
           ...conversationOptions,
+          memoryText: prepared.memoryText ?? prepared.text,
           ...(b.voice ? { voice: { durationSec: Math.max(2, Math.round((b.text || "").length / 4)) } } : {}),
           ...(b.target.kind === "group" ? { groupRoute: groupReplyRoute(b.target.id, intentText) } : {}),
         };
@@ -6694,7 +6730,7 @@ const server = createServer(async (req, res) => {
       } catch (e) {
         if (e instanceof AgentTurnDispositionError) {
           const disposition = e.disposition;
-          ev({ type: "error", disposition: disposition.state, text: e.message,
+          ev({ type: "error", disposition: disposition.state, text: turnDispositionUserMessage(disposition),
             ...(disposition.state === "waiting_input" ? { question: disposition.question }
               : disposition.state === "blocked" ? { blocker: disposition.blocker }
               : disposition.reason ? { reason: disposition.reason } : {}) });
@@ -6726,6 +6762,7 @@ const server = createServer(async (req, res) => {
       await maybeUpdatePersonaNicknameFromText(b.target, intentText);
       const opts = {
         ...conversationOptions,
+        memoryText: prepared.memoryText ?? prepared.text,
         ...(b.voice ? { voice: { durationSec: Math.max(2, Math.round(b.text.length / 4)) } } : {}),
         ...(b.target.kind === "group" ? { groupRoute: groupReplyRoute(b.target.id, intentText) } : {}),
       };
@@ -6773,11 +6810,16 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
-    send(res, 404, { error: "not found" });
+    // 浏览器直接打开一个不存在的地址时给完整页面；程序调用（/api/*、非 HTML 期望）仍返回 JSON。
+    if (req.method === "GET" && !url.startsWith("/api/") && String(req.headers.accept || "").includes("text/html")) {
+      send(res, 404, renderNotFoundPage(readFileSync(join(WEB_DIR, "not-found.html"), "utf-8"), url), "text/html");
+      return;
+    }
+    send(res, 404, { error: "not found", userMessage: "没有这个地址。" });
   } catch (e) {
     if (e instanceof AgentTurnDispositionError) {
       const disposition = e.disposition;
-      send(res, 409, { error: "agent_turn_incomplete", disposition: disposition.state, userMessage: e.message,
+      send(res, 409, { error: "agent_turn_incomplete", disposition: disposition.state, userMessage: turnDispositionUserMessage(disposition),
         ...(disposition.state === "waiting_input" ? { question: disposition.question }
           : disposition.state === "blocked" ? { blocker: disposition.blocker }
           : disposition.reason ? { reason: disposition.reason } : {}) });

@@ -124,6 +124,11 @@ export interface SendOptions {
    * archive-only 只保留可恢复的对话原文，不把测试、附件或虚构材料抽取成长期用户事实。
    */
   memoryWriteMode?: "default" | "archive-only" | "off";
+  /**
+   * 用户自己说的那句话。`text` 可能已被产品层包上附件正文、网页摘录等模型指令；
+   * 那些只该进模型上下文，不该作为"用户原话"落进记忆或用来做召回。缺省时二者相同。
+   */
+  memoryText?: string;
   /** Files explicitly attached to this task. Their contents remain in the user message. */
   taskAttachments?: readonly Omit<TaskContextSource, "kind">[];
   /** Only callers with an explicit project association may populate this list. */
@@ -419,14 +424,15 @@ export class CompanionEngine {
     const scope = convScope(userId, personaId);
 
     const recentKey = this.recentKey(userId, personaId, opts.sessionId);
+    const spoken = opts.memoryText?.trim() || text;
     await this.ensureRecentHistory(userId, personaId, opts.sessionId);
-    await this.ingestUtterance(userId, scope, text, opts);
+    await this.ingestUtterance(userId, scope, spoken, opts);
 
     const count = this.bumpTurns(userId, personaId);
-    const context = await this.recall(userId, personaId, text, opts.memoryMode, opts.sessionId);
+    const context = await this.recall(userId, personaId, spoken, opts.memoryMode, opts.sessionId);
     const taskContext = this.taskContext(userId, personaId, text, context, persona.maxReplyTokens, opts);
     const system = [
-      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text, taskContext),
+      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(spoken), text, taskContext),
       opts.systemAddendum,
     ].filter(Boolean).join("\n\n");
     const reply = await this.chat(
@@ -455,13 +461,14 @@ export class CompanionEngine {
     const persona = this.requirePersona(personaId);
     const scope = convScope(userId, personaId);
     const recentKey = this.recentKey(userId, personaId, opts.sessionId);
+    const spoken = opts.memoryText?.trim() || text;
     await this.ensureRecentHistory(userId, personaId, opts.sessionId);
-    await this.ingestUtterance(userId, scope, text, opts);
+    await this.ingestUtterance(userId, scope, spoken, opts);
     const count = this.bumpTurns(userId, personaId);
-    const context = await this.recall(userId, personaId, text, opts.memoryMode, opts.sessionId);
+    const context = await this.recall(userId, personaId, spoken, opts.memoryMode, opts.sessionId);
     const taskContext = this.taskContext(userId, personaId, text, context, persona.maxReplyTokens, opts);
     const system = [
-      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(text), text, taskContext),
+      this.buildSystem(persona, context, this.relSetting.get(this.rkey(userId, personaId)), count, detectCrisis(spoken), text, taskContext),
       opts.systemAddendum,
     ].filter(Boolean).join("\n\n");
     const userMsg = this.buildUserTurns(this.recent.get(recentKey) ?? [], text, !!opts.voice);

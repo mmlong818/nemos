@@ -743,3 +743,23 @@ test("常规任务的界面状态由持久作业投影，且重启后仍可恢�
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("失败的例行运行也记入 lastRunAt / unreadRuns，否则卡片永远显示尚未运行且自动暂停永不触发", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-run-failure-"));
+  try {
+    const runtime = new CapabilityRuntime({
+      dataDir: dir,
+      personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+      notify: async () => { throw new Error("The run stopped before a verified completion (max_rounds)."); },
+    });
+    const task = runtime.createTask({ title: "每日资料简报", personaId: "clownfish", capabilityId: "thinking-workbench", instruction: "整理问题" });
+    await assert.rejects(runtime.runTask(task.id, "manual"), /max_rounds/);
+    const after = runtime.snapshot().tasks.find((item) => item.id === task.id)!;
+    assert.ok(after.lastRunAt, "a failed run is still a run");
+    assert.equal(after.unreadRuns, 1);
+    assert.equal(after.lastRunKey, undefined, "the schedule slot stays open so a manual retry is possible");
+    assert.equal(runtime.snapshot().artifacts.some((item) => item.taskId === task.id), false, "no artifact is fabricated for a failed run");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

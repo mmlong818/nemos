@@ -35,14 +35,26 @@ const escape = (value: string) => value.replace(/[&<>"']/g, (c) => ({ "&": "&amp
 export function renderAppPage(html: string, path: string): string {
   const route = appRoute(path);
   if (!route) throw new Error("Unknown application page");
+  return renderAppShell(html, route.path, route.title);
+}
+
+/**
+ * 未知路径的页面。走同一套导航壳，但不高亮任何分区（路径不属于清单），
+ * 也不再把 `{"error":…}` 裸 JSON 丢给在地址栏里输错一个字的用户。
+ */
+export function renderNotFoundPage(html: string, path: string): string {
+  return renderAppShell(html, canonicalAppPath(path), "页面不存在");
+}
+
+function renderAppShell(html: string, path: string, title: string): string {
   const marker = "<!-- APP_NAVIGATION -->";
   if (!html.includes(marker)) throw new Error("Application page is missing shared navigation");
   const manifest = JSON.stringify(APP_ROUTES).replace(/</g, "\\u003c");
   const wallpaper = html.includes("/assets/scramble-wallpaper.js") ? "" : '<link rel="stylesheet" href="/assets/scramble-wallpaper.css"><script src="/assets/scramble-wallpaper.js"></script>';
   html = html.replace(/<html\b/, '<html data-ui="workbench"')
-    .replace(/<body\b/, `<body data-ui="workbench" data-wb-route="${route.path}"`)
+    .replace(/<body\b/, `<body data-ui="workbench" data-wb-route="${escape(path)}"`)
     .replace(/<main\b/, renderWorkbenchBar() + '<main');
-  return html.replace(marker, renderWorkbenchNavigation(route.path))
-    .replace(/<title>[^<]*<\/title>/, `<title>${escape(route.title)} · 小丑鱼</title>`)
+  return html.replace(marker, renderWorkbenchNavigation(path))
+    .replace(/<title>[^<]*<\/title>/, `<title>${escape(title)} · 小丑鱼</title>`)
     .replace("</head>", `${wallpaper}<link rel="stylesheet" href="/assets/app-shell.css"><script id="app-route-manifest" type="application/json">${manifest}</script><script src="/assets/app-navigation.js"></script><link rel="stylesheet" href="/assets/workbench-ui.css"><script src="/assets/workbench-ui.js" defer></script></head>`);
 }

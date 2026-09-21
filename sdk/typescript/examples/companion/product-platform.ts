@@ -119,7 +119,7 @@ export function capabilityPackStatuses(
 
 export interface ReviewQueueSource {
   approvals: Array<{ id: string; runId?: string; status?: string; expiresAt?: string; createdAt?: string; description?: string; tool?: { name?: string; description?: string } }>;
-  jobs: Array<{ id: string; status: string; title?: string; updatedAt?: string; error?: string; delivery?: { status?: string } | null; payload?: Record<string, unknown>; deliveryRequired?: boolean; deliveredAt?: string }>;
+  jobs: Array<{ id: string; type?: string; status: string; title?: string; updatedAt?: string; error?: string; delivery?: { status?: string } | null; payload?: Record<string, unknown>; deliveryRequired?: boolean; deliveredAt?: string }>;
   runs?: Array<{ runId: string; status: string; updatedAt?: string; error?: string; resumable?: boolean; metadata?: Record<string, string> }>;
 }
 
@@ -131,8 +131,15 @@ export interface ReviewQueueItem {
   title: string;
   nextAction: string;
   sourceId: string;
+  /** 来源的原始状态（failed / interrupted / paused…），界面据此措辞，不再把所有运行都叫"中断"。 */
+  status?: string;
   at?: string;
 }
+
+/** 后台作业创建的运行以 `agent-job/<jobId>` 命名（见 server.ts 各 job handler）。 */
+const JOB_RUN_ID = /^agent-job\/(.+)$/;
+/** 定时提醒过点就没意义了；投递租约耗尽后再挂着"等待送达"只会永久堆在待处理里。 */
+const TIME_BOUND_JOB_TYPES = new Set(["hk-reminder"]);
 
 export function buildReviewQueue(source: ReviewQueueSource, now = Date.now()): ReviewQueueItem[] {
   const items: ReviewQueueItem[] = [];
@@ -143,22 +150,30 @@ export function buildReviewQueue(source: ReviewQueueSource, now = Date.now()): R
       kind: "approval", priority: 1, title: item.description || item.tool?.description || item.tool?.name || "待确认操作",
       nextAction: "查看操作内容后决定允许或拒绝。", sourceId: item.id, at: item.createdAt });
   }
+  const settledJobs = new Set(source.jobs.filter((item) => ["succeeded", "failed", "cancelled", "uncertain"].includes(item.status)).map((item) => item.id));
   for (const item of source.jobs) {
     const uncertain = item.status === "uncertain" || item.delivery?.status === "uncertain";
-    const delivery = item.status === "succeeded" && item.deliveryRequired === true && !item.deliveredAt;
+    const deliveryExpired = item.delivery?.status === "failed" && TIME_BOUND_JOB_TYPES.has(String(item.type || ""));
+    const delivery = item.status === "succeeded" && item.deliveryRequired === true && !item.deliveredAt && !deliveryExpired;
     if (!uncertain && item.status !== "failed" && !delivery) continue;
     items.push({ id: `job:${item.id}`, groupId: `job:${item.id}`, kind: delivery && !uncertain ? "delivery" : "job",
       priority: uncertain ? 0 : delivery ? 3 : 2,
       title: item.title || (typeof item.payload?.title === "string" ? item.payload.title : "") || "后台任务",
       nextAction: uncertain ? "先核对实际执行结果，不要直接重试。" : delivery ? "任务已完成，等待送达对话；可先查看运行结果。" : "查看失败原因，再决定是否重试。",
-      sourceId: item.id, at: item.updatedAt });
+      sourceId: item.id, status: item.status, at: item.updatedAt });
   }
   for (const item of source.runs ?? []) {
     if (!["failed", "interrupted", "paused"].includes(item.status)) continue;
+    // 作业已经收尾的运行不再单列：作业条目（失败 / 待核对 / 待送达）才是唯一入口，
+    // 否则一个被作业兜底成功的提醒会以"执行中断"永久挂在待处理里。
+    const owner = JOB_RUN_ID.exec(item.runId)?.[1];
+    if (owner && settledJobs.has(owner)) continue;
     items.push({ id: `run:${item.runId}`, groupId: `run:${item.runId}`, kind: "run", priority: 2,
       title: item.metadata?.objective || item.metadata?.title || "需要处理的执行",
-      nextAction: item.resumable ? "执行已中断，可查看记录后恢复。" : "查看执行记录，核对中断原因及已产生的结果。",
-      sourceId: item.runId, at: item.updatedAt });
+      nextAction: item.status === "failed"
+        ? (item.resumable ? "执行失败，可查看记录后从检查点恢复。" : "执行失败，查看记录核对原因及已产生的结果。")
+        : item.resumable ? "执行已中断，可查看记录后恢复。" : "查看执行记录，核对中断原因及已产生的结果。",
+      sourceId: item.runId, status: item.status, at: item.updatedAt });
   }
   // Stable source IDs prevent repeated snapshots from multiplying attention items.
   const unique = new Map<string, ReviewQueueItem>();

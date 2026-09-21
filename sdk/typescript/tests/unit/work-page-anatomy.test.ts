@@ -114,3 +114,22 @@ test('撤销走专用接口，并且只撤指定的那一条',()=>{
   assert.match(source,/api\("\/api\/agent\/approval\/session-grant\/revoke"/);
   assert.match(source,/sessionId: revoke\.dataset\.revokeGrant, tool: revoke\.dataset\.revokeTool/);
 });
+
+test('自动化卡片显示上次运行的真实结果，失败不再伪装成"尚未运行"',()=>{
+  const fn=source.slice(source.indexOf('function renderAutomations('),source.indexOf('function collaborationJob('));
+  const helpers=source.slice(source.indexOf('function jobStatusLabel('),source.indexOf('function renderAttentionInbox('));
+  const tone=source.slice(source.indexOf('function statusPill('),source.indexOf('function jobStatusLabel('));
+  const tasks=[
+    {id:'t1',title:'每日资料简报',enabled:true,schedule:{mode:'daily'},capabilityId:'research-brief',execution:{jobId:'j1',status:'failed',error:'达到本次运行的轮次上限，模型还没交出可核验的成果',updatedAt:'2026-09-21T20:00:00.000Z'}},
+    {id:'t2',title:'周报',enabled:true,schedule:{mode:'weekly'},capabilityId:'doc',lastRunAt:'2026-09-20T01:00:00.000Z'},
+    {id:'t3',title:'新任务',enabled:false,schedule:{mode:'daily'},capabilityId:'doc'},
+  ];
+  const content:any={innerHTML:''};
+  runInNewContext(tone+helpers+fn+'\nrenderAutomations();',{
+    location:{search:''},URLSearchParams,state:{snapshot:{tasks}},$:()=>content,escapeHtml:(v:unknown)=>String(v),encodeURIComponent,
+    scheduleLabel:()=>'每天',abilityName:(id:string)=>id,date:(v:string)=>v.slice(0,10),renderAttentionInbox:()=>'',
+  });
+  assert.match(content.innerHTML,/每日资料简报[\s\S]*上次 2026-09-21[\s\S]*未完成[\s\S]*达到本次运行的轮次上限/);
+  assert.match(content.innerHTML,/周报[\s\S]*上次 2026-09-20/);
+  assert.match(content.innerHTML,/新任务[\s\S]*尚未运行/);
+});

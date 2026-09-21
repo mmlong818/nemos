@@ -1389,10 +1389,23 @@ export class CapabilityRuntime {
       const openQuestions = await this.collectOpenQuestions(task, ability, reply, signal, limits, runId);
       return this.finishTaskRun(task, ability, persona, reply, openQuestions.length ? { openQuestions } : undefined);
     } catch (error) {
-      this.appendTaskStorylineEvent(task, { type: "error", text: "本次执行未完成，可从运行记录查看原因", personaId: task.personaId });
-      this.saveTasks();
+      this.recordTaskRunFailure(task);
       throw error;
     }
+  }
+
+  /**
+   * 失败也算"跑过一次"：不记 lastRunAt / unreadRuns 的话，自动化卡片永远显示"尚未运行"，
+   * 而且 unreadRunsBeforePause 的自动暂停永远触发不了——一个每次都失败的例行任务会按计划一直烧模型预算。
+   * lastRunKey 不动，保留同一时段内手动重试的可能。
+   */
+  private recordTaskRunFailure(task: CapabilityTask): void {
+    const now = new Date().toISOString();
+    task.lastRunAt = now;
+    task.unreadRuns = (task.unreadRuns ?? 0) + 1;
+    task.updatedAt = now;
+    this.appendTaskStorylineEvent(task, { type: "error", text: "本次执行未完成，可从运行记录查看原因", personaId: task.personaId });
+    this.saveTasks();
   }
 
   async runTaskStream(id: string, trigger: string, cb: CapabilityStreamCb, signal?: AbortSignal, limits?: CapabilityRunOptions, runId?: string): Promise<CapabilityNotification> {

@@ -677,8 +677,20 @@ function runDisplayTitle(run) {
 function renderAutomations() {
   const requestedTask=new URLSearchParams(location.search).get('task');
   const tasks = (state.snapshot?.tasks || []).filter((task) => !task.oneOff && task.schedule?.mode !== "manual" && (!requestedTask||task.id===requestedTask));
+  // 上次运行的结果要在卡片上直接可见：lastRunAt 过去只在成功时写入，失败过的任务会一直显示"尚未运行"。
+  const lastRun = (task) => {
+    const execution = task.execution && task.execution.jobId ? task.execution : null;
+    if (!execution) return task.lastRunAt ? ` · 上次 ${date(task.lastRunAt)}` : " · 尚未运行";
+    const status = jobStatusLabel(execution.status);
+    const when = execution.updatedAt || task.lastRunAt;
+    // 旧记录里还留着运行时的英文判定；新记录已在服务端换成中文。
+    const legacy = /stopped before a verified completion \((\w+)\)/i.exec(String(execution.error || ""));
+    const errorText = legacy ? `运行在完成前停止（${jobStatusLabel(legacy[1])}）` : String(execution.error || "");
+    const error = errorText && !["succeeded", "completed", "running", "queued"].includes(execution.status) ? `：${escapeHtml(errorText.slice(0, 120))}` : "";
+    return ` · 上次 ${when ? date(when) : ""} <span class="automation-last-run pill ${escapeHtml(statusPill(execution.status))}">${escapeHtml(status)}</span>${error}`;
+  };
   const rows = tasks.map((task) => `<article class="compact-row">
-    <div><h3 class="automation-state ${task.enabled ? "" : "is-paused"}">${escapeHtml(task.title)}</h3><p>${escapeHtml(scheduleLabel(task))} · ${escapeHtml(abilityName(task.capabilityId))}${task.lastRunAt ? ` · 上次 ${date(task.lastRunAt)}` : " · 尚未运行"}</p></div>
+    <div><h3 class="automation-state ${task.enabled ? "" : "is-paused"}">${escapeHtml(task.title)}</h3><p>${escapeHtml(scheduleLabel(task))} · ${escapeHtml(abilityName(task.capabilityId))}${lastRun(task)}</p></div>
     <div class="actions"><a href="/bots?task=${encodeURIComponent(task.id)}">执行记录</a><button data-run-automation="${task.id}">立即运行</button><button data-edit-automation="${task.id}">编辑</button><button data-toggle-automation="${task.id}">${task.enabled ? "暂停" : "启用"}</button></div>
   </article>`).join("");
   $("#content").innerHTML = (requestedTask?'<p><a href="/automations">← 全部自动化</a></p>':"") + `<section class="work-primary-list" aria-label="自动化计划"><p class="work-list-summary">${tasks.length} 项计划 · ${tasks.filter(task=>task.enabled).length} 项已启用 · ${tasks.filter(task=>!task.enabled).length} 项已暂停</p><div class="compact-list">${rows || '<div class="resource-empty">还没有自动化。点击“新建自动化”，设置要做的事和执行频率。</div>'}</div><p class="work-list-note">只有明确设置频率的任务会在这里显示；应用后台运行时才会按计划触发。</p></section>` + renderAttentionInbox(false);
@@ -841,6 +853,11 @@ function jobStatusLabel(status) {
     completed: "已完成",
     interrupted: "已中断",
     paused: "已暂停",
+    blocked: "受阻",
+    waiting_input: "待补充",
+    max_rounds: "达到轮次上限",
+    token_budget_exhausted: "预算用尽",
+    repeated_tool_call: "重复工具调用",
   }[status] || status;
 }
 
@@ -850,13 +867,17 @@ function renderAttentionInbox(detailed) {
     return state.reviewQueue.length || warning ? `<aside class="work-attention-summary" aria-label="跨任务待处理提醒"><p>全局有 ${state.reviewQueue.length} 项待处理，包含确认请求、异常或未送达结果。</p><a href="/runs">查看与处理 →</a>${warning}</aside>` : "";
   }
   const labels = { approval: "等待确认", job: "需要核对", run: "执行中断", delivery: "等待送达" };
+  // 运行条目按真实状态措辞：失败就是失败，只有进程中途停掉的才叫"中断"。
+  const itemLabel = (item) => item.kind === "run"
+    ? (item.status === "failed" ? "执行失败" : item.status === "paused" ? "已暂停" : "执行中断")
+    : item.kind === "job" && item.status === "failed" ? "执行失败" : labels[item.kind];
   const groups = detailed ? state.reviewGroups : state.reviewGroups.slice(0, 5);
   const rows = groups.map((group) => `<div data-review-group="${escapeHtml(group.id)}">${group.items.map((item) => {
     const approval = state.approvals.find((entry) => entry.id === item.sourceId && item.kind === "approval");
     const action = detailed && approval
       ? `<details><summary>查看具体操作并决定</summary><pre>${escapeHtml(JSON.stringify(approval.call, null, 2))}</pre><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="once">允许这次操作</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="session">本次会话内都允许「${escapeHtml(approval.tool?.name || approval.call?.name || "这个操作")}」</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="false" data-scope="once">拒绝</button></details>`
       : `<a class="button" href="${detailed ? `#record-${encodeURIComponent(item.kind === "delivery" ? "job" : item.kind)}-${encodeURIComponent(item.sourceId)}` : `/runs#review-${encodeURIComponent(item.id)}`}">查看${detailed ? "记录" : "详情"}</a>`;
-    return `<article class="compact-row" id="review-${escapeHtml(item.id)}"><div><span class="resource-kind">${labels[item.kind] || "待处理"}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.nextAction)}</p></div><div class="actions">${action}</div></article>`;
+    return `<article class="compact-row" id="review-${escapeHtml(item.id)}"><div><span class="resource-kind">${itemLabel(item) || "待处理"}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.nextAction)}</p></div><div class="actions">${action}</div></article>`;
   }).join("")}</div>`).join("");
   // 会话级放行是还在生效的授权，不是待办；但它必须和待办一起被看见，
   // 否则就成了看不见也收不回的放行。

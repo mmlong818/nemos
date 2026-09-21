@@ -53,6 +53,11 @@ body[data-ui] .cf-model-option:focus-visible,
 body[data-ui] .cf-model-trigger:disabled, body[data-ui] .cf-model-option:disabled { opacity: .55; cursor: not-allowed; }
 body[data-ui] .hero-composer-bar { flex-wrap: wrap; gap: 6px; }
 body[data-ui] .hero-composer-bar #heroSend { flex-shrink: 0; min-width: 52px; white-space: nowrap; margin-left: auto; }
+/* 首条消息也能带附件：次级按钮，不抢发送键的视觉重心 */
+body[data-ui] .hero-composer-bar #heroFileBtn { flex-shrink: 0; padding: 0 12px; background: transparent; color: var(--page-accent, #1f6f5f); border: 1px solid var(--line, #d9dfdb); white-space: nowrap; }
+body[data-ui] .hero-composer-bar #heroFileBtn:hover, body[data-ui] .hero-composer-bar #heroFileBtn.on { background: var(--surface-muted, #eef4f1); }
+body[data-ui] #heroAttachment:empty { display: none; }
+body[data-ui] #heroAttachment:not(:empty) { font-size: 12px; color: var(--text-muted, #566); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body[data-ui] #heroModelStatus:empty, body[data-ui] #taskModelStatus:empty { display: none; }
 body[data-ui] #heroModelStatus:not(:empty) { order: 3; flex-basis: 100%; font-size: 11px; }
 @media (max-width: 480px) {

@@ -627,6 +627,29 @@ function makeConnectionAgentResume(
 }
 
 /**
+ * 未完成回合给用户看的一句话。运行时内部的判定文案是英文（"The model ended the turn
+ * without a user-visible answer or artifact"），不能原样出现在聊天气泡里。
+ */
+export function turnDispositionUserMessage(disposition: AgentRunResult["disposition"]): string {
+  if (disposition.state === "waiting_input") return disposition.question.trim() || "模型需要你补充信息后才能继续。";
+  if (disposition.state === "blocked") {
+    const blocker = disposition.blocker.trim();
+    if (!blocker || /ended the turn without a user-visible answer/i.test(blocker)) return "模型这次没有给出可见的回答或成果；请重试，或换个说法、调低思考强度后再试。";
+    const stopped = /stopped before a verified completion \((\w+)\)/i.exec(blocker);
+    if (stopped) {
+      const reason = stopped[1];
+      if (reason === "max_rounds") return "达到本次运行的轮次上限，模型还没交出可核验的成果；可缩小任务范围、减少检索步骤后重试。";
+      if (reason === "token_budget_exhausted") return "本次运行的 Token 预算已用完，模型还没交出可核验的成果；可缩小任务范围后重试。";
+      if (reason === "repeated_tool_call") return "模型反复发起同一个工具调用，运行已停止；可换个说法或关闭工具后重试。";
+      return `运行在完成前停止（${reason}），没有可核验的成果；请检查运行日志后重试。`;
+    }
+    return blocker;
+  }
+  if (disposition.state === "cancelled") return "这次运行已取消。";
+  return "";
+}
+
+/**
  * 把 Agent 运行结果折成面向用户的正文。
  *
  * `waiting_input` 常见形态是"正文已交付 + 反问一句是否还要调整"。这时正文必须保留，

@@ -158,7 +158,19 @@
       const html=historyView.flowDetail(flowSnapshot.tasks?.find(task=>task.id===id.slice(5)),flowSnapshot,flowJobs);
       if(html!==detailKey){window.ClownfishTaskDetail.mount($('#jobDetail'),html,id);detailKey=html;}return;
     }
-    const {job}=await api('/job?id='+encodeURIComponent(id)); if(id!==selected) return;
+    // ?job= 过去只认协作任务；能力任务、临时任务等其他队列作业走通用的 /api/agent/job 读取，
+    // 否则从运行日志或通知点进来只会看到"协作任务不存在"。
+    let job;
+    const teamJob=flowJobs.find(item=>item.id===id)||data.jobs?.find(item=>item.id===id);
+    if(teamJob&&teamJob.type!=='assistant-team'){
+      const response=await fetch('/api/agent/job?id='+encodeURIComponent(id));
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.userMessage||result.error||'任务记录暂时无法读取');
+      job=result.job;
+    } else {
+      ({job}=await api('/job?id='+encodeURIComponent(id)));
+    }
+    if(id!==selected) return;
     currentJob=job;const key=JSON.stringify(job); if(key===detailKey) return; detailKey=key;
     window.ClownfishTaskDetail.mount($('#jobDetail'),window.ClownfishTaskDetail.botDetail(job),id);
     if(steeringFeedback.jobId===id){const status=$('#jobDetail').querySelector('[data-steering-status]');if(status)status.textContent=steeringFeedback.text;}
