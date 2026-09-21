@@ -3994,9 +3994,17 @@ function syncTaskModelSelector() {
   select.value = selected;
   window.ClownfishModelPicker?.sync(select, modelConnectionState, {
     effort: node?.config?.reasoningEffort || "auto",
+    toolMode: node?.config?.toolMode || "auto",
     onEffortChange: (effort) => {
       if (!node) return;
       node.config = { ...(node.config || {}), reasoningEffort: effort };
+      node.updatedAt = Date.now();
+      saveConversationTrees();
+      syncTaskModelSelector();
+    },
+    onToolModeChange: (toolMode) => {
+      if (!node) return;
+      node.config = { ...(node.config || {}), toolMode: toolMode === "off" ? "off" : "auto" };
       node.updatedAt = Date.now();
       saveConversationTrees();
       syncTaskModelSelector();

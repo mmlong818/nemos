@@ -405,6 +405,25 @@ export function isModelCheckEligible(
     && check[capability] === "passed");
 }
 
+/**
+ * 把新保存的检查结果与启用列表同步进运行中的连接对象。
+ *
+ * LLM 适配器持有的是 rebuild 时的连接快照，每次调用都从它读 modelChecks；不同步的话，
+ * 用户在设置里显式检查通过后聊天仍按旧结果被拦，只有重启才能恢复。凭据或端点一变
+ * revision 就会变，这时保持运行快照不动——那是显式激活流程的事，不在这里越权替换。
+ */
+export function syncRuntimeConnectionChecks(
+  runtime: CompanionModelConnection | undefined,
+  saved: Pick<CompanionModelConnection, "connectionRevision" | "modelChecks" | "enabledModels" | "registeredModels" | "capabilityChecks">,
+): boolean {
+  if (!runtime || !isConnectionRevision(saved.connectionRevision) || runtime.connectionRevision !== saved.connectionRevision) return false;
+  runtime.modelChecks = saved.modelChecks ? { ...saved.modelChecks } : undefined;
+  runtime.enabledModels = saved.enabledModels ? [...saved.enabledModels] : undefined;
+  runtime.registeredModels = saved.registeredModels ? [...saved.registeredModels] : undefined;
+  runtime.capabilityChecks = saved.capabilityChecks ? { ...saved.capabilityChecks } : undefined;
+  return true;
+}
+
 export function normalizeFavoriteModels(models: readonly unknown[]): string[] {
   const seen = new Set<string>();
   for (const candidate of models) {

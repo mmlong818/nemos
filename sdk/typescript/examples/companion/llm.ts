@@ -33,7 +33,7 @@ import type { ChatAgentContext, ChatFn, ChatStreamFn } from "./engine.js";
 import type { CapabilityStreamCb } from "./capabilities.js";
 import { makeOpenAIResponsesAgentModel } from "./openai-responses.js";
 import { makeAnthropicMessagesAgentModel } from "./anthropic-messages.js";
-import { resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
+import { effectiveReasoningEffort, resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
 import {
   CompanionModelHttpError,
   companionModelCapabilities,
@@ -100,6 +100,8 @@ export interface ResolvedLLM {
   ) => Promise<string>) | null;
   label: string;
   live: boolean;
+  /** 适配器每次调用实际读取检查结果的那个连接对象；服务端就地同步新检查时要改它，而不是改传入的副本。 */
+  connection?: CompanionModelConnection;
 }
 
 export function resolveLLM(config?: CompanionModelConnection): ResolvedLLM {
@@ -156,6 +158,7 @@ export function resolveLLM(config?: CompanionModelConnection): ResolvedLLM {
       ),
       label: `${provider.name} · ${chatModel}`,
       live: true,
+      connection,
     };
   }
   return {
@@ -554,7 +557,7 @@ function makeConnectionChatStream(
         }
       },
     });
-    return completedAgentOutput(result, limits.maxOutputChars);
+    return completedAgentOutput(result, limits.maxOutputChars, (text) => cb.onToken(text));
   };
 }
 
@@ -619,18 +622,31 @@ function makeConnectionAgentResume(
         if (bounded) cb.onToken(bounded);
       } : undefined,
     });
-    return completedAgentOutput(result, maxOutputChars);
+    return completedAgentOutput(result, maxOutputChars, (text) => cb?.onToken(text));
   };
 }
 
-function completedAgentOutput(result: AgentRunResult, maxOutputChars: number): string {
-  if (result.disposition.state === "waiting_input" || result.disposition.state === "blocked") {
+/**
+ * 把 Agent 运行结果折成面向用户的正文。
+ *
+ * `waiting_input` 常见形态是"正文已交付 + 反问一句是否还要调整"。这时正文必须保留，
+ * 反问追加在末尾（`onTrailingText` 让流式通道把这段补发出去，因为正文已经逐字推过了）。
+ * 只有模型什么都没写、只剩一个问题时，才作为未完成回合抛给调用方。
+ */
+export function completedAgentOutput(result: AgentRunResult, maxOutputChars: number, onTrailingText?: (text: string) => void): string {
+  const body = result.output.slice(0, maxOutputChars).trim();
+  if (result.disposition.state === "waiting_input") {
+    const question = result.disposition.question.trim();
+    if (!body || body === question) throw new AgentTurnDispositionError(result.disposition);
+    if (!question || body.endsWith(question)) return body;
+    const trailing = `\n\n${question}`;
+    onTrailingText?.(trailing);
+    return body + trailing;
+  }
+  if (result.disposition.state === "blocked" || result.disposition.state === "cancelled") {
     throw new AgentTurnDispositionError(result.disposition);
   }
-  if (result.disposition.state === "cancelled") {
-    throw new AgentTurnDispositionError(result.disposition);
-  }
-  return result.output.slice(0, maxOutputChars).trim();
+  return body;
 }
 
 export function storedAgentContext(run: Pick<AgentStoredRun, "metadata" | "runId" | "sessionId" | "prompt">): ChatAgentContext | undefined {
@@ -870,10 +886,16 @@ function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): A
     complete: async (request) => {
       const capabilities = companionModelCapabilities(options.connection, options.model);
       const minimalZhipuReadiness = options.readinessProbe && options.connection.provider === "zhipu";
+      // 「自动」对开启 thinking 的型号取最低档：不设上限时 GLM 会把 max_tokens 全部花在推理上，
+      // 正文一字未出就被截断，前端只看到"没有可见输出"。显式选择的强度原样透传；
+      // 就绪探针按"不带任何可选参数"的契约发送，同样只透传显式强度。
+      const reasoningEffort = options.readinessProbe
+        ? options.reasoningEffort
+        : effectiveReasoningEffort(options.connection, options.model, options.reasoningEffort);
       const body: Record<string, unknown> = {
         model: options.model,
         messages: request.messages.map(toZhipuMessage),
-        ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       };
       const outputTokens = Math.max(1, Math.min(options.maxTokens, request.maxOutputTokens ?? options.maxTokens));
       if (options.connection.provider === "openai" && !minimalZhipuReadiness) {
@@ -912,12 +934,23 @@ function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): A
         if (options.connection.provider !== "zhipu") await resp.body?.cancel();
         throw new CompanionModelHttpError(resp.status, "模型请求", requestId, providerCode);
       }
-      if (options.stream) return readZhipuStream(resp, request.onTextDelta);
-      const result = await readZhipuResponse(resp);
+      if (options.stream) return assertVisibleModelOutput(await readZhipuStream(resp, request.onTextDelta));
+      const result = assertVisibleModelOutput(await readZhipuResponse(resp));
       if (result.text) request.onTextDelta?.(result.text);
       return result;
     },
   };
+}
+
+/**
+ * finish_reason=length 且正文与工具调用都为空，说明输出上限被推理过程耗尽。
+ * 交给运行时只会得到"没有可见输出"的笼统判定，这里换成用户能处理的原因。
+ */
+function assertVisibleModelOutput<T extends { text: string; toolCalls: unknown[]; stopReason?: string }>(result: T): T {
+  if (result.stopReason === "length" && !result.text.trim() && result.toolCalls.length === 0) {
+    throw new Error("模型的输出上限被推理过程用完，没有返回正文；请把思考强度调低后重试。");
+  }
+  return result;
 }
 
 function toZhipuMessage(message: AgentMessage): Record<string, unknown> {
@@ -967,6 +1000,7 @@ async function readZhipuStream(
 ): Promise<{
   text: string;
   toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+  stopReason?: string;
   inputTokens?: number;
   outputTokens?: number;
 }> {
@@ -976,6 +1010,7 @@ async function readZhipuStream(
   let content = "";
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
+  let stopReason: string | undefined;
   const calls = new Map<number, { id: string; name: string; arguments: string }>();
 
   const consumeLine = (line: string): void => {
@@ -984,12 +1019,13 @@ async function readZhipuStream(
     const payload = trimmed.slice(5).trim();
     if (!payload || payload === "[DONE]") return;
     let data: {
-      choices?: Array<{ delta?: { content?: string; tool_calls?: ZhipuToolCall[] } }>;
+      choices?: Array<{ finish_reason?: string | null; delta?: { content?: string; tool_calls?: ZhipuToolCall[] } }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     try { data = JSON.parse(payload) as typeof data; } catch { return; }
     if (Number.isFinite(data.usage?.prompt_tokens)) inputTokens = Math.max(0, Math.floor(data.usage!.prompt_tokens!));
     if (Number.isFinite(data.usage?.completion_tokens)) outputTokens = Math.max(0, Math.floor(data.usage!.completion_tokens!));
+    if (typeof data.choices?.[0]?.finish_reason === "string") stopReason = data.choices[0].finish_reason;
     const delta = data.choices?.[0]?.delta;
     if (delta?.content) {
       content += delta.content;
@@ -1024,6 +1060,7 @@ async function readZhipuStream(
           arguments: parseToolArguments(call.arguments),
         }]
       : []),
+    stopReason,
     inputTokens,
     outputTokens,
   };

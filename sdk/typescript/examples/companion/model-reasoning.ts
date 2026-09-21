@@ -16,6 +16,23 @@ export function resolveReasoningEffort(connection: Pick<CompanionModelConnection
   return value as ReasoningEffort;
 }
 
+const EFFORT_ORDER: readonly ReasoningEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
+
+/**
+ * 实际发给厂商的强度。用户显式选择的原样返回；「自动」在 thinking 已开启的型号上取
+ * 最低可用档，让推理长度有界，正文不会被 max_tokens 截空。其他型号仍不发该字段。
+ */
+export function effectiveReasoningEffort(
+  connection: Pick<CompanionModelConnection, "provider" | "protocol"> | undefined,
+  model: string,
+  requested: ReasoningEffort | undefined,
+): ReasoningEffort | undefined {
+  if (requested) return requested;
+  if (companionModelCapabilities(connection, model).thinking !== "enabled") return undefined;
+  const supported = supportedReasoningEfforts(connection, model);
+  return EFFORT_ORDER.find((effort) => effort !== "none" && supported.includes(effort));
+}
+
 export function resolveReasoningPreference(
   connection: Pick<CompanionModelConnection, "provider" | "protocol"> | undefined,
   model: string,

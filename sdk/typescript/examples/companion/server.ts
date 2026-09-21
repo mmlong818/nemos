@@ -74,6 +74,7 @@ import {
   dailyChatModelForConnection,
   withConnectionRevision,
   isModelCheckEligible,
+  syncRuntimeConnectionChecks,
   modelTransport,
   type CompanionModelCheck,
   type CompanionModelConnection,
@@ -445,6 +446,9 @@ function runtimeModelConnection(connection: CompanionModelConnection | undefined
 }
 // llm / mem / engine 可在运行时随 LLM key 变更而重建（见 rebuildLLM）。key 用当前 Windows 用户 DPAPI 加密保存。
 let llm = resolveLLM(runtimeModelConnection(modelConnection));
+// llm.connection 是适配器每次调用实际读取检查结果的对象（resolveLLM 会规范化出一份副本）；
+// 显式检查通过后要就地同步到它（见 saveModelVaultRecord），否则聊天层拦到重启。
+let runtimeConnection = llm.connection;
 let mem = makeMem();
 let engine = makeEngine();
 
@@ -1537,6 +1541,7 @@ function commitModelConnection(
 async function rebuildModelRuntime(): Promise<void> {
   const superseded = mem;
   llm = resolveLLM(runtimeModelConnection(modelConnection));
+  runtimeConnection = llm.connection;
   capabilityTools.invalidateReadiness();
   wireAgentTools(llm);
   mem = makeMem();
@@ -1696,6 +1701,9 @@ function saveModelVaultRecord(
     modelCatalog = [...record.catalog];
     modelCatalogFetchedAt = record.catalogFetchedAt;
     modelCatalogConnectionRevision = record.catalogConnectionRevision;
+    // 路由层的闸门读 modelConnection，适配器层的闸门读 runtimeConnection；两层必须看到同一份检查结果，
+    // 否则设置里刚检查通过的模型在聊天里仍被拦到重启。凭据/端点变化（revision 不同）不在此同步。
+    if (syncRuntimeConnectionChecks(runtimeConnection, record.connection)) capabilityTools.invalidateReadiness();
   }
 }
 

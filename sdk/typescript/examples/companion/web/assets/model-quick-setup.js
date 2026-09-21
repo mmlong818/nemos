@@ -135,9 +135,33 @@
     }
   }
 
+  // 快速配置只做最小文字验证，而聊天默认带工具；检查结果 7 天过期后聊天会被拦下且界面上没有别的出口，
+  // 所以这里必须有一个显式的完整检查（文字 + 流式 + 工具）。
+  async function recheckCurrentModel() {
+    const button = $("#modelQuickRecheck");
+    const status = $("#modelQuickStatus");
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      const current = await request("/api/llm");
+      if (!current.model) throw new Error("还没有可检查的默认文字模型，请先保存 Key。");
+      if (status) status.textContent = `正在检查 ${current.model} 的文字、流式与工具调用…`;
+      const result = await request("/api/llm-model/check", { method: "POST", body: JSON.stringify({ model: current.model, force: true }) });
+      const check = result.checked || {};
+      if (status) status.textContent = `${current.model}：${check.detail || (result.ok ? "检查通过。" : "检查未通过。")}`;
+      render(await request("/api/model-quick-setup"));
+      if (status) status.textContent = `${current.model}：${check.detail || (result.ok ? "检查通过。" : "检查未通过。")}`;
+    } catch (error) {
+      if (status) status.textContent = `检查失败：${error.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   $("#modelQuickSubmit")?.addEventListener("click", () => run({ includeKeys: true }));
   $("#modelQuickRetry")?.addEventListener("click", () => run());
   $("#modelQuickReset")?.addEventListener("click", () => run({ resetRecommendations: true }));
+  $("#modelQuickRecheck")?.addEventListener("click", () => { void recheckCurrentModel(); });
   request("/api/model-quick-setup").then(render).catch((error) => {
     const status = $("#modelQuickStatus"); if (status) status.textContent = error.message;
   });

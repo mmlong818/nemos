@@ -86,6 +86,27 @@
     }
     effortGroup.append(choices, element("p", "cf-model-note", effort.supported.length ? "从下一条消息生效；强度越高，可能越慢、费用越高。" : state.reasoningEfforts ? "此连接尚未适配思考强度，使用模型默认设置。" : "重启服务后可设置思考强度。"));
     menu.append(effortGroup);
+    // 工具开关：型号只过了文字检查、没过工具检查时，关闭工具是唯一不换型号就能继续对话的办法。
+    const toolMode = instance.options?.toolMode === "off" ? "off" : "auto";
+    const toolGroup = element("div", "cf-effort-group");
+    toolGroup.setAttribute("role", "group");
+    toolGroup.setAttribute("aria-label", "工具");
+    toolGroup.append(element("div", "cf-effort-heading", "工具"));
+    const toolChoices = element("div", "cf-effort-choices");
+    for (const [value, label] of [["auto", "自动"], ["off", "关闭"]]) {
+      const choice = element("button", "cf-effort-option", label);
+      choice.type = "button";
+      choice.tabIndex = -1;
+      choice.dataset.toolMode = value;
+      choice.setAttribute("role", "menuitemradio");
+      choice.setAttribute("aria-checked", String(toolMode === value));
+      choice.setAttribute("aria-label", "工具：" + label);
+      choice.disabled = !instance.options?.onToolModeChange;
+      choice.onclick = () => { close(true); instance.options.onToolModeChange(value); };
+      toolChoices.append(choice);
+    }
+    toolGroup.append(toolChoices, element("p", "cf-model-note", "关闭后只做文字对话，不检索、不读写文件；工具检查未通过的型号也能继续用。"));
+    menu.append(toolGroup);
     const settings = element("a", "cf-model-settings", "管理模型与连接 ↗");
     settings.href = "/settings#models";
     settings.setAttribute("role", "menuitem");
@@ -143,8 +164,10 @@
     const name = id || "选择模型";
     const effort = effortState(instance);
     const effortLabel = efforts[effort.value];
+    const toolsOff = instance.options?.toolMode === "off";
     button.replaceChildren(element("span", "cf-model-name", name), element("span", "cf-model-trigger-tag", select.disabled ? "检查中…" : effort.supported.length ? effortLabel : "默认"), element("span", "cf-model-chevron", "⌄"));
-    button.setAttribute("aria-label", "切换模型与思考强度，当前 " + name + (select.disabled ? "，正在检查" : "，思考强度" + effortLabel));
+    if (toolsOff && !select.disabled) button.insertBefore(element("span", "cf-model-trigger-tag", "工具关"), button.lastChild);
+    button.setAttribute("aria-label", "切换模型与思考强度，当前 " + name + (select.disabled ? "，正在检查" : "，思考强度" + effortLabel + (toolsOff ? "，工具已关闭" : "")));
     button.setAttribute("aria-busy", String(select.disabled));
     button.title = name + " · " + window.ClownfishModelShortlist.checkLabel(state?.modelChecks?.[id], state);
   }
