@@ -8,6 +8,7 @@ import { capabilityToolFilterForSurface } from "./capability-system-registry.js"
 import { buildCapabilityRoadmap, type CapabilityRoadmap } from "./capability-roadmap.js";
 import { ROUTINE_LIMITS } from "./runtime-limits.js";
 import { BUILTIN_SKILL_CONTRACTS, renderSkillContract, type SkillContract } from "./skill-contract.js";
+import { tabularStatsForMaterials } from "./tabular-stats.js";
 import { openQuestionsPrompt, parseOpenQuestions, skipsOpenQuestions, type OpenQuestion } from "./deliverable-alignment.js";
 import { failureShapeByName } from "./failure-registry.js";
 import { buildDemandIntakeReport, type DemandIntakeReport } from "./demand-intake.js";
@@ -2215,6 +2216,8 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
     const privateSources = isVisualOnly ? "" : await buildPrivateSourcePromptBlock(this.opts.dataDir, task.instruction);
     const retrievalBlock = isVisualOnly ? "" : this.localRetrievalPromptBlock(task.instruction);
     const skillBlock = this.skillPromptBlock(ability);
+    // 材料里的表格由本机代码先算好每列统计；模型解读而不重算（视觉类能力没有表格材料）。
+    const statsBlock = isVisualOnly ? "" : tabularStatsForMaterials(task.instruction);
     const knowledgeBlock = this.opts.knowledgeContext?.(task.knowledgeIds || []) || "";
     // 关系档案放在能力规则之后、正文之前：它约束怎么说，不改变要做什么。
     const counterpartBlock = task.counterpartId
@@ -2273,6 +2276,7 @@ ${ability.prompt}`,
       sourceVerification,
       privateSources,
       retrievalBlock,
+      statsBlock,
       knowledgeBlock,
       counterpartBlock,
       `Current local time: ${currentTimeBlock()}`,
