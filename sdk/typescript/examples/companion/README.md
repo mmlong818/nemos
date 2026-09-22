@@ -76,6 +76,7 @@ npm run companion
 ### 读取和编辑
 
 - 读取 DOCX、PPTX、XLSX、PDF、ODT/ODS/ODP、RTF、EPUB、CSV、TXT 和 Markdown；
+- 对话附件另支持 mp4/mov/webm/mkv/avi 与 mp3/m4a/wav/aac/ogg/flac：本机 ffmpeg 先抽关键帧并转出音轨，再按已接入的视觉与语音识别模型逐帧描述、转写，模型只读到这份结构化文字；未接入的部分在报告里明确标出，不推测画面或台词。表格类附件的每列统计也由本机代码算出后随材料交给模型；
 - Word 保留可转换的标题、段落、空行、连续空格、缩进、编号、表格和对齐；
 - PDF 通过 `@firecrawl/anydoc` 转为 Markdown 工作副本；
 - PowerPoint 按页提取文字、表格和讲者备注；

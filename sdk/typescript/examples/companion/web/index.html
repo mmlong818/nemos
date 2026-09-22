@@ -3168,7 +3168,7 @@
             <button id="imgbtn" title="发图片（识图）" data-icon="image"></button>
             <input type="file" id="imgfile" accept="image/*" style="display:none" />
             <button id="filebtn" type="button" title="上传文件" aria-label="上传文件" data-icon="file"></button>
-            <input type="file" id="chatfile" accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown,.json" style="display:none" />
+            <input type="file" id="chatfile" accept=".doc,.docx,.docm,.odt,.rtf,.epub,.ppt,.pps,.pot,.pptx,.pptm,.ppsx,.ppsm,.odp,.xls,.xlsx,.xlsm,.xlsb,.ods,.csv,.pdf,.txt,.md,.markdown,.json,.mp4,.mov,.m4v,.webm,.mkv,.avi,.mp3,.m4a,.wav,.aac,.ogg,.flac" style="display:none" />
           </div>
         <button id="send" class="task-workbench-send">发送</button>
       </div>
@@ -4135,7 +4135,16 @@ async function prepareChatFile(file) {
   const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || "";
   const office = ["doc", "docx", "docm", "odt", "rtf", "epub", "ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "odp", "xls", "xlsx", "xlsm", "xlsb", "ods", "csv", "pdf"].includes(extension);
   const textFile = ["txt", "md", "markdown", "json"].includes(extension);
-  if (!office && !textFile) throw new Error("支持常见文档、演示文稿、表格、PDF、EPUB、TXT、Markdown 和 JSON 文件");
+  const media = ["mp4", "mov", "m4v", "webm", "mkv", "avi", "mp3", "m4a", "wav", "aac", "ogg", "flac"].includes(extension);
+  if (media) {
+    // 音视频先由本机拆成结构化文字报告（时长、关键帧、转写），再作为普通附件发送；模型不直接看视频。
+    if (!file.size || file.size > 200 * 1024 * 1024) throw new Error("音视频文件不能超过 200 MB");
+    const response = await fetch("/api/media/breakdown", { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Clownfish-File-Name": encodeURIComponent(file.name) }, body: file });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.userMessage || data.error || "音视频拆解失败");
+    return { name: file.name, kind: "media", text: data.report, truncated: false, size: file.size, fileRecordId: "media-" + crypto.randomUUID() };
+  }
+  if (!office && !textFile) throw new Error("支持常见文档、演示文稿、表格、PDF、EPUB、TXT、Markdown、JSON，以及 mp4/mov/webm/mp3/m4a/wav 等音视频文件");
   const limit = office ? 8 * 1024 * 1024 : 2 * 1024 * 1024;
   if (!file.size || file.size > limit) throw new Error(office ? "办公文件不能超过 8 MB" : "文本文件不能超过 2 MB");
   if (office) {

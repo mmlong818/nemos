@@ -25,6 +25,7 @@ import {
   type StepReceiptV1,
   type StepReceiptStore,
 } from "./structured-handoff.js";
+import { tabularStatsForMaterials } from "./tabular-stats.js";
 
 export class AssistantTeamError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -413,6 +414,8 @@ export async function runAssistantTeam(
   }
   const planHash = structuredPlanHash(executionPlan);
   const materialEvidence = observedMaterialEvidence(request.materials);
+  // 共享材料里的表格由本机代码先算好统计，各角色只解读不重算；没有表格时不加字段，旧输入哈希不受影响。
+  const materialStatistics = tabularStatsForMaterials(request.materials);
   const checkedCheckpointHistory = validateStepReceiptHistory(checkpointHistory);
   // Bind both sources to the frozen task/plan before checkpoint projections can
   // enter the authority. In planned mode, existing history required a saved plan,
@@ -452,6 +455,7 @@ export async function runAssistantTeam(
       // deterministic projection below supplies claims/excerpts to downstream steps.
       receipts: sharedReceipts.map((item, index) => ({ bot: item.bot, resultId: dependencyResults[index]?.id ?? "legacy-result" })),
       runtimeObservedEvidenceRefs: allowedEvidence,
+      ...(materialStatistics ? { materialStatistics } : {}),
       ...(structuredContext ? { structuredContext } : {}),
       steering: steering.map((item) => ({ mode: item.mode, text: item.text, revision: item.revision })),
       ...(redirectRevision ? { steeringRule: "redirect 替换旧目标；旧回执只是历史，不得当作新目标已完成" } : {}),

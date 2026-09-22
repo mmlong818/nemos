@@ -256,3 +256,28 @@ test("主助理团队工具只共享本条用户请求，不能由模型参数�
   assert.ok(!(await provider(context.instruction, { ...context, personaId: "other" })).some((t) => t.definition.name === "assistant_team_start"));
   await assert.rejects(tool.execute({ workerIds: [], reviewerId: "", requiredFields: ["PRIVATE_FROM_MEMORY"] }, { runId: "qa", sessionId: "qa", signal: new AbortController().signal }), /本条用户请求/);
 });
+
+test("共享材料里的表格统计由本机代码算好后进入每个角色的输入，模型只解读", async () => {
+  const store = new AssistantBotStore(":memory:"); store.seed("qa");
+  const csv = "creator,views\n甲,1200\n乙,300\n丙,900\n丁,2400";
+  const plan = store.plan("qa", { ...request, materials: `[S1] 活动10月6日\n[文件来源：campaign.csv]\n${csv}` });
+  const job = { id: "qa-stats", payload: { teamPlan: plan }, checkpoints: [], metadata: { userId: "qa" } } as unknown as AgentJobRecord;
+  const context: AgentJobHandlerContext = { signal: new AbortController().signal, checkpoint: (status, progress, data) => { job.checkpoints.push({ at: new Date().toISOString(), status, progress, data }); } };
+  const inputs: string[] = [];
+  try {
+    await runAssistantTeam(job, context, async (system, user) => { inputs.push(String(user)); return system.includes("最终交付协议") ? final : "带来源的结果 S1"; });
+    assert.ok(inputs.length >= 2);
+    for (const raw of inputs) {
+      const input = JSON.parse(raw) as { materialStatistics?: string; materials: string };
+      assert.match(input.materialStatistics || "", /数据统计（campaign\.csv）：共 4 行 · 2 列/);
+      assert.match(input.materialStatistics || "", /views：数值 4 个；最小 300，P25 750，中位数 1,050，P75 1,500，最大 2,400/);
+      assert.match(input.materialStatistics || "", /不要自行重算/);
+      assert.ok(input.materials.includes(csv), "raw materials still travel with the statistics");
+    }
+    const plain = store.plan("qa", request);
+    const plainJob = { id: "qa-plain", payload: { teamPlan: plain }, checkpoints: [], metadata: { userId: "qa" } } as unknown as AgentJobRecord;
+    const plainInputs: string[] = [];
+    await runAssistantTeam(plainJob, { ...context, checkpoint: (status, progress, data) => { plainJob.checkpoints.push({ at: new Date().toISOString(), status, progress, data }); } }, async (system, user) => { plainInputs.push(String(user)); return system.includes("最终交付协议") ? final : "S1"; });
+    assert.ok(plainInputs.every((raw) => !("materialStatistics" in JSON.parse(raw))), "no table, no statistics field");
+  } finally { store.close(); }
+});

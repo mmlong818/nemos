@@ -8,9 +8,9 @@
 // 无 key 也能开（离线兜底，仍演示拓扑）。记忆持久化到 COMPANION_DB，跨次保留。
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, renameSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync, renameSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { extname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import Database from "better-sqlite3";
@@ -205,6 +205,7 @@ import { isEmptyRecipe, normalizeBotRecipe, recipeConsentToken, BotRecipeError }
 import { appRoute, renderAppPage, renderNotFoundPage } from "./app-navigation.js";
 import { ATTACHMENT_RECEIPT_RULE, attachmentReceiptLine } from "./attachment-receipt.js";
 import { tabularStatsBlock } from "./tabular-stats.js";
+import { MAX_MEDIA_BYTES, assertMediaUpload, buildMediaBreakdown, mediaToolsAvailable, renderMediaBreakdown } from "./media-breakdown.js";
 import {
   ModelSwitchBusyError,
   ModelSwitchCoordinator,
@@ -6622,6 +6623,42 @@ const server = createServer(async (req, res) => {
         send(res, 200, { text, model: route.modelId });
       } catch (e) {
         send(res, 400, { error: e instanceof Error ? e.message : String(e) });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/media/breakdown") {
+      // 音视频先由本机 ffmpeg 变成结构化文字（时长、关键帧、转写），再作为普通附件进入对话。
+      // 视觉与语音识别按当前已验证模型路由；没有就在报告里写明未接入，不编造画面或台词。
+      const name = decodeURIComponent(String(req.headers["x-clownfish-file-name"] || "")).replace(/[\r\n\t\\/]/g, " ").trim().slice(0, 160);
+      const tools = mediaToolsAvailable();
+      if (!tools.ffmpeg || !tools.ffprobe) {
+        send(res, 409, { error: "ffmpeg_unavailable", userMessage: "本机没有安装 FFmpeg，暂时不能拆解音视频。安装后重启应用即可（Windows 可用 winget install Gyan.FFmpeg）。" });
+        return;
+      }
+      let media: Buffer;
+      try { media = await readRawBody(req, MAX_MEDIA_BYTES); }
+      catch { send(res, 413, { error: "请求内容过大", userMessage: "音视频文件不能超过 200 MB。" }); return; }
+      try { assertMediaUpload(name, media.byteLength); }
+      catch (error) { send(res, 400, { error: "invalid_media", userMessage: error instanceof Error ? error.message : String(error) }); return; }
+      const work = mkdtempSync(join(tmpdir(), "clownfish-media-upload-"));
+      const file = join(work, `source${extname(name).toLowerCase()}`);
+      try {
+        writeFileSync(file, media);
+        let vision: ReturnType<typeof resolveMediaRoute> | undefined;
+        try { vision = resolveMediaRoute("vision"); } catch { vision = undefined; }
+        let speech: ReturnType<typeof resolveMediaRoute> | undefined;
+        try { speech = resolveMediaRoute("speech_to_text"); } catch { speech = undefined; }
+        const breakdown = await buildMediaBreakdown(file, name, {
+          ...(vision ? { describeFrame: (dataUrl, atSec) => openAIVision(vision!.record.connection, vision!.modelId, `这是视频第 ${atSec} 秒的画面。用一句话描述画面主体、动作与场景，再原样抄录屏幕上可见的文字（没有就写“无屏幕文字”）。`, dataUrl) } : {}),
+          ...(speech ? { transcribe: (wav) => openAITranscribe(speech!.record.connection, speech!.modelId, wav, "audio/wav", "auto") } : {}),
+        });
+        const report = renderMediaBreakdown(breakdown);
+        send(res, 200, { ok: true, report, durationSec: breakdown.probe.durationSec, frames: breakdown.frames.length, transcribed: Boolean(breakdown.transcript), degraded: breakdown.degraded });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        send(res, 400, { error: "media_breakdown_failed", userMessage: `音视频拆解失败：${detail.slice(0, 200)}` });
+      } finally {
+        try { rmSync(work, { recursive: true, force: true }); } catch { /* 临时文件清理失败不影响响应 */ }
       }
       return;
     }
