@@ -4,6 +4,10 @@ import { join } from "node:path";
 import test from "node:test";
 import { startModelHarness } from "../fixtures/companion-model-harness.js";
 import { onboardModel } from "../helpers/onboard-model.js";
+import { listBotMarket } from "../../examples/companion/bot-market.js";
+
+// 启动时把无配方的规则模板补进技能库（assistantBots.seedMarketTemplates），所以新库不是只有两个默认 Bot。
+const AUTO_SEEDED = listBotMarket().filter((t) => !t.recipe || (((t.recipe.skills?.length ?? 0) + (t.recipe.routines?.length ?? 0)) === 0)).length;
 
 const modelConfig = (modelBase: string) => ({
   provider: "custom",
@@ -28,7 +32,7 @@ test("助理团队 HTTP：配置、实际队列执行、自动收尾、回执恢
   };
   try {
     assert.equal((await fetch(h.base + "/bots")).status, 200);
-    assert.equal((await team()).bots.length, 2);
+    assert.equal((await team()).bots.length, 2 + AUTO_SEEDED);
     await team("/start", payload, 409); // never claim offline echo is execution
     await onboardModel(h.base, modelConfig(h.modelBase));
     let badFinal = false;

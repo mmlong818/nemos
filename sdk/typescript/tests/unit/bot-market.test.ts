@@ -4,10 +4,10 @@ import { listBotMarket } from "../../examples/companion/bot-market.js";
 import { AssistantBotStore, runAssistantTeam } from "../../examples/companion/assistant-team.js";
 import type { AgentJobRecord, AgentJobHandlerContext } from "../../src/agent/job-queue.js";
 
-test("精选市场：五种有来源的原生适配，声明实际边界，目录返回副本", () => {
-  const templates = listBotMarket(); assert.equal(templates.length, 5);
-  assert.equal(new Set(templates.map((t) => t.id)).size, 5);
-  assert.deepEqual(templates.map((t) => t.id).sort(), ["bot-designer", "copy-humanizer", "idea-stress-test", "meeting-prep", "project-guide"]);
+test("精选市场：十二种有来源的原生适配，声明实际边界，目录返回副本", () => {
+  const templates = listBotMarket(); assert.equal(templates.length, 12);
+  assert.equal(new Set(templates.map((t) => t.id)).size, 12);
+  assert.deepEqual(templates.map((t) => t.id).sort(), ["blind-reviewer", "bot-designer", "contract-clause-check", "copy-humanizer", "copy-strategist", "idea-stress-test", "meeting-prep", "project-guide", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"]);
   for (const t of templates) {
     assert.equal(t.adaptation, "independent-native"); assert.equal(t.permissions.tools, "off");
     assert.equal(t.permissions.memory, "task-only"); assert.equal(t.permissions.automaticRoutines, false);
@@ -104,5 +104,32 @@ for (const t of listBotMarket()) test(`原生模板可执行：${t.name}，只�
     });
     assert.equal(calls, 2); assert.equal(result.data.delivery.fields.length, t.requiredFields.length);
     assert.equal(result.data.receipts[0].botId, bot.id);
+  } finally { store.close(); }
+});
+
+test("启动时把无配方的模板补进技能库：幂等、不动已停用或已改名的、跳过带配方的、库满即停", () => {
+  const store = new AssistantBotStore(":memory:");
+  try {
+    store.seed("one");
+    const imported = store.seedMarketTemplates("one");
+    const withRecipe = listBotMarket().filter((t) => t.recipe && ((t.recipe.skills?.length ?? 0) + (t.recipe.routines?.length ?? 0)) > 0).map((t) => t.id);
+    assert.ok(withRecipe.includes("project-guide"));
+    assert.deepEqual(imported.sort(), listBotMarket().map((t) => t.id).filter((id) => !withRecipe.includes(id)).sort());
+    const bots = store.list("one");
+    assert.equal(bots.filter((b) => b.template).length, imported.length);
+    assert.equal(bots.some((b) => b.template?.id === "project-guide"), false, "带配方的模板不自动导入");
+    const reviewer = bots.find((b) => b.template?.id === "blind-reviewer")!;
+    const edited = store.save("one", { ...reviewer, name: "我的盲审", enabled: false });
+    assert.deepEqual(store.seedMarketTemplates("one"), [], "第二次补齐什么都不导");
+    const after = store.get("one", edited.id);
+    assert.equal(after.name, "我的盲审"); assert.equal(after.enabled, false);
+    assert.equal(store.list("one").length, bots.length);
+    const crowded = new AssistantBotStore(":memory:");
+    try {
+      crowded.seed("two");
+      for (let i = 0; i < 38; i++) crowded.save("two", { name: String(i), role: "worker", instructions: "rules" });
+      assert.equal(crowded.list("two").length, 40);
+      assert.deepEqual(crowded.seedMarketTemplates("two"), [], "库满时不报错、不导入");
+    } finally { crowded.close(); }
   } finally { store.close(); }
 });

@@ -118,6 +118,25 @@ export class AssistantBotStore {
       for (const bot of DEFAULT_BOTS) insert.run(user, bot.id, JSON.stringify({ ...bot, revision: 1, updatedAt: new Date().toISOString() }));
     })();
   }
+  /**
+   * 把随应用发布的规则模板补进用户技能库。技能市场入口故意为空、没有导入按钮
+   * （见 docs/skill-market-boundary.md），所以新增模板只有这里能到达用户。
+   *
+   * 按模板幂等：已导入（含用户已改名、已停用的）一律不动；带配方的模板跳过——配方要过
+   * 同意门才能落地，自动导入不能替用户点头。库满 40 个时停止，不报错。
+   */
+  seedMarketTemplates(user: string): string[] {
+    const imported: string[] = [];
+    for (const template of listBotMarket()) {
+      if (!isEmptyRecipe(template.recipe)) continue;
+      const before = this.list(user);
+      if (before.some((bot) => bot.template?.id === template.id)) continue;
+      if (before.length >= 40) break;
+      this.importTemplate(user, { id: template.id, version: template.version });
+      imported.push(template.id);
+    }
+    return imported;
+  }
   list(user: string): AssistantBot[] {
     return (this.db.prepare("SELECT payload FROM assistant_bots WHERE user_id=? ORDER BY id").all(user) as Array<{ payload: string }>).map((r) => this.normalize(JSON.parse(r.payload)));
   }

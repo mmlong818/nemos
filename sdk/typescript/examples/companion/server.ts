@@ -252,6 +252,8 @@ const taskFiles = new TaskFileRegistry(join(DATA_DIR, "task-files.json"));
 const personalWork = new PersonalWorkStore(join(DATA_DIR, "personal-work.db"));
 const assistantBots = new AssistantBotStore(join(DATA_DIR, "assistant-bots.db"));
 assistantBots.seed(USER);
+// 随应用发布的规则模板补进技能库；已导入、已改、已停用的不动，带配方的留给显式同意路径。
+assistantBots.seedMarketTemplates(USER);
 
 
 function migrateStoredPersonaIdentities(root: string): void {

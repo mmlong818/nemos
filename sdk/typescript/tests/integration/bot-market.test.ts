@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { startModelHarness } from "../fixtures/companion-model-harness.js";
+import { listBotMarket } from "../../examples/companion/bot-market.js";
+
+// 启动时无配方的模板已自动补进技能库；带配方的（project-guide）只能显式导入。
+const AUTO_SEEDED = listBotMarket().filter((t) => !t.recipe || (((t.recipe.skills?.length ?? 0) + (t.recipe.routines?.length ?? 0)) === 0)).length;
+const ALL_TEMPLATES = listBotMarket().length;
 
 test("Bot 市场 HTTP：无需模型浏览/添加、并发幂等、拒绝错误版本、保护个人版本并重启持久化", { timeout: 60000 }, async () => {
   const h = await startModelHarness();
@@ -12,15 +17,16 @@ test("Bot 市场 HTTP：无需模型浏览/添加、并发幂等、拒绝错误�
     const page = await (await fetch(h.base + "/bots?view=market")).text(); assert.match(page, /id="marketPane"/);
     assert.equal((await req()).ready, false);
     const official = await req("/market"); assert.deepEqual(official.templates, []); assert.equal(official.status, "not-launched");
-    const { templates } = await req("/templates"); assert.equal(templates.length, 5);
-    assert.deepEqual(templates.map((template: any) => template.id).sort(), ["bot-designer", "copy-humanizer", "idea-stress-test", "meeting-prep", "project-guide"]);
+    const { templates } = await req("/templates"); assert.equal(templates.length, 12);
+    assert.deepEqual(templates.map((template: any) => template.id).sort(), ["blind-reviewer", "bot-designer", "contract-clause-check", "copy-humanizer", "copy-strategist", "idea-stress-test", "meeting-prep", "project-guide", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"]);
     const t = templates[0], body = { id: t.id, version: t.version };
     const before = h.requests.length;
     const results = await Promise.all(Array.from({ length: 5 }, () => req("/import", body)));
     const bot = results[0].record; assert.ok(results.every((r) => r.record.id === bot.id));
     assert.equal(bot.visibility, "private");
     assert.deepEqual(bot.ruleVersion, { kind: "user-derived", version: 1, baseTemplateVersion: t.version });
-    assert.equal((await req()).bots.length, 3); assert.equal((await req()).jobs.length, 0);
+    assert.equal(t.id, "project-guide", "templates[0] 带配方，不会被自动补齐，导入后才多出一个 Bot");
+    assert.equal((await req()).bots.length, 2 + AUTO_SEEDED + 1); assert.equal((await req()).jobs.length, 0);
     assert.equal(h.requests.length, before); // adding is not a model invocation
     await req("/import", { id: t.id, version: 99 }, 409);
     await req("/import", { id: "unknown", version: 1 }, 404);
@@ -40,10 +46,10 @@ test("Bot 市场 HTTP：无需模型浏览/添加、并发幂等、拒绝错误�
       assert.equal(created.template.id, template.id);
       assert.equal((await req("/import", { id: template.id, version: template.version })).record.id, created.id);
     }
-    assert.equal((await req()).bots.length, 7);
+    assert.equal((await req()).bots.length, 2 + ALL_TEMPLATES);
     assert.equal((await req()).jobs.length, 0); assert.equal(h.requests.length, importCalls);
     await h.restart();
-    assert.equal((await req()).bots.length, 7);
+    assert.equal((await req()).bots.length, 2 + ALL_TEMPLATES);
     assert.equal((await req("/import", body)).record.instructions, "用户明确修改的规则");
     const templateBot = (await req()).bots.find((b: any) => b.template?.id === "meeting-prep");
     const moved = (await req("/bot", { id: templateBot.id, revision: templateBot.revision, placement: "market" })).record;
@@ -57,7 +63,7 @@ test("Bot 市场 HTTP：无需模型浏览/添加、并发幂等、拒绝错误�
     assert.equal(restored.instructions, templateBot.instructions);
     assert.equal(restored.marketListed, true);
     assert.equal(restored.placement, "team");
-    assert.equal((await req()).bots.length, 7);
+    assert.equal((await req()).bots.length, 2 + ALL_TEMPLATES);
     assert.equal((await req()).jobs.length, 0);
     assert.equal(h.requests.length, importCalls);
   } finally { await h.stop(); }
