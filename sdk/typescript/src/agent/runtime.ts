@@ -224,7 +224,10 @@ export class AgentRuntime {
             messages.push({ role: "tool", name: FINISH_TURN_TOOL_NAME, toolCallId: finishCalls[0]!.id, content: reason });
             continue;
           }
-          const validation = validateTurnCompletion({ declaration, assistantText: response.text, trustedEvidence: completionEvidence });
+          // 用户看到的是这一回合里所有的助理正文，不只是带 finish_turn 的那条回复：模型常常
+          // 先写完正文、被「需要显式 finish_turn」提醒后，再单独发一条只含 finish_turn 的回复。
+          const visibleText = trailingVisibleAssistantText(messages);
+          const validation = validateTurnCompletion({ declaration, assistantText: visibleText, trustedEvidence: completionEvidence });
           if (!validation.accepted || !validation.disposition) {
             const reason = validation.reason ?? "finish_turn declaration was rejected";
             emit({ type: "completion_rejected", reason });
@@ -232,7 +235,7 @@ export class AgentRuntime {
             continue;
           }
           const disposition = validation.disposition;
-          const output = response.text.trim() || (disposition.state === "waiting_input" ? disposition.question : disposition.state === "blocked" ? disposition.blocker : "");
+          const output = visibleText || (disposition.state === "waiting_input" ? disposition.question : disposition.state === "blocked" ? disposition.blocker : "");
           const reason = disposition.state === "completed" ? "completed" : disposition.state;
           return complete(reason, round, handoffs, output, disposition);
         }
@@ -406,6 +409,27 @@ function initialMessages(input: AgentRunInput): AgentMessage[] {
 
 function cloneCheckpoint(checkpoint: AgentRunCheckpoint): AgentRunCheckpoint {
   return structuredClone(checkpoint);
+}
+
+/**
+ * 这一回合里用户已经看到的助理正文：从末尾往前收集连续的助理文字，跨过 finish_turn 的
+ * 工具回执和「[Turn protocol]」提醒；遇到业务工具的结果或真正的用户消息就停下——那之前的
+ * 文字属于上一段工作，不是本次交付。
+ */
+function trailingVisibleAssistantText(messages: readonly AgentMessage[]): string {
+  const parts: string[] = [];
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const item = messages[index]!;
+    if (item.role === "assistant") {
+      const text = (item.content ?? "").trim();
+      if (text) parts.unshift(text);
+      continue;
+    }
+    if (item.role === "tool" && item.name === FINISH_TURN_TOOL_NAME) continue;
+    if (item.role === "user" && (item.content ?? "").startsWith("[Turn protocol]")) continue;
+    break;
+  }
+  return parts.join("\n\n");
 }
 
 function pendingToolCalls(checkpoint: AgentRunCheckpoint): AgentToolCall[] {

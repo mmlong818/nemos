@@ -30,6 +30,27 @@ test("completion accepts user-visible text or an artifact actually observed by t
   }).accepted, false);
 });
 
+test("descriptive evidenceRefs next to visible text are ignored instead of failing the turn", () => {
+  // 真实运行：模型把 evidenceRefs 填成一句说明；正文在，就按正文完成，不把说明当伪造的产物引用。
+  const described = validateTurnCompletion({
+    declaration: { state: "completed", evidenceRefs: ["决策稿正文已直接输出，Markdown 格式"] },
+    assistantText: "# 决策稿\n\n方案表……",
+    trustedEvidence: [],
+  });
+  assert.equal(described.accepted, true);
+  assert.deepEqual(described.disposition, { state: "completed", evidence: [{ kind: "text", ref: "assistant:final" }] });
+  const mixed = validateTurnCompletion({
+    declaration: { state: "completed", evidenceRefs: ["artifact:report", "说明文字"] },
+    assistantText: "报告已生成。",
+    trustedEvidence: [{ kind: "artifact", ref: "artifact:report" }],
+  });
+  assert.deepEqual(mixed.disposition, { state: "completed", evidence: [{ kind: "text", ref: "assistant:final" }, { kind: "artifact", ref: "artifact:report" }] });
+  // 没有正文、只有凭空引用：仍然拒绝。
+  assert.equal(validateTurnCompletion({
+    declaration: { state: "completed", evidenceRefs: ["决策稿已交付"] }, assistantText: "", trustedEvidence: [],
+  }).accepted, false);
+});
+
 test("waiting and blocked dispositions require their structured reason", () => {
   assert.equal(validateTurnCompletion({
     declaration: { state: "waiting_input", question: "" }, assistantText: "", trustedEvidence: [],

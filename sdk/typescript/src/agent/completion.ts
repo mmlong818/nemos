@@ -99,7 +99,11 @@ export function validateTurnCompletion(input: {
     const evidence = byRef.get(ref);
     return evidence ? [evidence] : [];
   });
-  if (referenced.length !== input.declaration.evidenceRefs.length) {
+  // 真实运行里模型会把 evidenceRefs 当成"说明栏"填（「决策稿正文已直接输出，Markdown 格式」）。
+  // 这种字符串不是任何观察到的产物引用，但正文就在眼前时，它只是噪音：完成的依据是可见正文，
+  // 未观察到的引用一律不计入证据。只有在没有可见正文、模型完全靠一个凭空引用宣称完成时才拒绝，
+  // 否则模型会反复重写正文、最后放弃（"已在上一条回复中完整交付"）。
+  if (referenced.length !== input.declaration.evidenceRefs.length && !output) {
     return { accepted: false, reason: "completion referenced evidence that the runtime did not observe" };
   }
   const artifacts = referenced.filter((item) => item.kind === "artifact");

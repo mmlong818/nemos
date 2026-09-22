@@ -26,6 +26,37 @@ test("every user-facing execution ability carries a complete input / output / co
   }
 });
 
+test("contracts enriched from the author's repositories name file, commit and hash; provenance never reaches the prompt", () => {
+  const enriched = ["research-brief", "decision-brief", "presentation-builder", "thinking-workbench", "product-design", "market-opportunity", "ability-builder", "topic-evaluation"];
+  for (const id of enriched) {
+    const contract = BUILTIN_SKILL_CONTRACTS[id];
+    assert.ok(contract.provenance && contract.provenance.length > 0, `${id} should record where its method came from`);
+    for (const source of contract.provenance!) {
+      assert.match(source.url, /^https:\/\/github\.com\/mmlong818\/[\w.-]+$/);
+      assert.match(source.previewSha256, /^[0-9A-F]{64}$/);
+    }
+    // 三段契约要能读完：单段不超过 600 字，否则模型会把契约当正文抄一遍。
+    for (const key of ["input", "output", "constraints"] as const) assert.ok(contract[key].length <= 600, `${id}.${key} is ${contract[key].length} chars`);
+    assert.doesNotMatch(renderSkillContract(contract), /github\.com|mmlong818|@[0-9a-f]{7}/);
+  }
+  // 反 AI 味约束对所有能力生效。
+  for (const [id, contract] of Object.entries(BUILTIN_SKILL_CONTRACTS)) {
+    assert.match(contract.constraints, /「\[虚构示例\]」开头/, `${id} lacks the shared anti-slop constraints`);
+    assert.match(contract.constraints, /需引用：来源类型/, id);
+  }
+});
+
+test("contract table has no dead entries", () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-skill-contract-dead-"));
+  try {
+    const runtime = new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "", facts: [] }) });
+    const abilities = new Set(runtime.snapshot().abilities.map((ability) => ability.id));
+    for (const id of Object.keys(BUILTIN_SKILL_CONTRACTS)) assert.ok(abilities.has(id), `${id} has a contract but no ability`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("contracts render as three labelled lines and reach the run prompt after the capability rules", async () => {
   const rendered = renderSkillContract({ input: "每行一条记录", output: "表格加三句结论", constraints: "不编造数字" });
   assert.deepEqual(rendered.split("\n"), ["Skill contract:", "- 输入契约：每行一条记录", "- 输出契约：表格加三句结论", "- 约束：不编造数字"]);

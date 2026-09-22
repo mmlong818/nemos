@@ -94,7 +94,44 @@ test("explicit task protocol records waiting input without keyword inference", a
   });
   assert.equal(calls, 2);
   assert.equal(result.reason, "waiting_input");
-  assert.deepEqual(result.disposition, { state: "waiting_input", question: "Which format should I use?" });
+  // 提醒之前写下的那句话用户已经看到了，作为部分输出保留。
+  assert.deepEqual(result.disposition, { state: "waiting_input", question: "Which format should I use?", partialOutput: "I need one choice." });
+  assert.equal(result.output, "I need one choice.");
+});
+
+test("an answer written before the finish_turn nudge still counts as the delivery", async () => {
+  const body = "# 决策稿\n\n## 方案表\n\n| 方案 | 收益 |\n|---|---|\n| A | 稳 |";
+  let calls = 0;
+  const model: AgentModel = {
+    complete: async () => {
+      calls++;
+      if (calls === 1) return { text: body };
+      // 真实模型的第二条：没有正文，只有 finish_turn，且 evidenceRefs 里是一句说明而不是引用。
+      return { text: "", toolCalls: [{ id: "finish", name: "finish_turn", arguments: { state: "completed", evidenceRefs: ["决策稿正文已直接输出，Markdown 格式"] } }] };
+    },
+  };
+  const result = await new AgentRuntime(model, [], { terminationProtocol: "explicit", maxRounds: 3 }).run({
+    sessionId: "answer-before-finish", systemPrompt: "system", prompt: "决定明年形式",
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.reason, "completed");
+  assert.equal(result.output, body);
+  assert.deepEqual(result.disposition, { state: "completed", evidence: [{ kind: "text", ref: "assistant:final" }] });
+});
+
+test("text written before a business tool ran is not mistaken for the final delivery", async () => {
+  let calls = 0;
+  const model: AgentModel = {
+    complete: async () => {
+      calls++;
+      if (calls === 1) return { text: "先查一下。", toolCalls: [{ id: "w", name: "write_more", arguments: {} }] };
+      return { text: "", toolCalls: [{ id: "finish", name: "finish_turn", arguments: { state: "completed" } }] };
+    },
+  };
+  const result = await new AgentRuntime(model, [tool("write_more", "write", async () => ({ content: "written" }))], {
+    terminationProtocol: "explicit", maxRounds: 3, authorizeTool: async () => ({ allowed: true }),
+  }).run({ sessionId: "narration-not-delivery", systemPrompt: "system", prompt: "go" });
+  assert.notEqual(result.reason, "completed");
 });
 
 test("valid finish_turn is accepted at the token boundary without executing more business tools", async () => {
