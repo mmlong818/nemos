@@ -165,6 +165,19 @@ test("semantically malformed receipt histories fail closed across every trusted 
   }
 });
 
+test("a free-form step result reaches the next step whole, a structured one keeps the short excerpt", () => {
+  const p = plan();
+  // 真实运行：执行 Bot 用 Markdown 交了五个角色的意见（约 2500 字），最终整合只看到前 1200 字，把后三个角色写成"材料未提供"。
+  const roles = ["## 策略者", "## 研究者", "## 建造者", "## 评审者", "## 整合纪要"].map((title) => `${title}\n${"内容。".repeat(180)}`).join("\n\n");
+  const prose = success(p, "a", 1, roles);
+  const context = renderStructuredMergeContext(mergeStepReceipts(p, [prose], ["a"]));
+  for (const title of ["策略者", "研究者", "建造者", "评审者", "整合纪要"]) assert.match(context, new RegExp(title), title);
+  assert.doesNotMatch(context, /"sourceTextTruncated":\s*true/);
+  const structured = success(p, "a", 1, JSON.stringify({ summary: "S", claims: Array.from({ length: 6 }, (_, index) => ({ key: `k${index}`, value: "y".repeat(500), sourceRefs: ["S1"] })), unresolvedItems: [] }));
+  const structuredContext = renderStructuredMergeContext(mergeStepReceipts(p, [structured], ["a"]));
+  assert.match(structuredContext, /"sourceTextTruncated":\s*true/, "结构化结果靠 claims 传内容，摘录仍是短的");
+});
+
 test("merge context is bounded, delimited, and discloses truncation without deleting originals", () => {
   const p = plan();
   const a = success(p, "a", 1, JSON.stringify({

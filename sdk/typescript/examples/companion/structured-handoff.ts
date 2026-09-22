@@ -297,6 +297,12 @@ export function mergeStepReceipts(
   };
 }
 
+const STRUCTURED_EXCERPT_CHARS = 1_200;
+const FREEFORM_EXCERPT_CHARS = 6_000;
+function excerptLimit(result: { claims: readonly unknown[] }): number {
+  return result.claims.length ? STRUCTURED_EXCERPT_CHARS : FREEFORM_EXCERPT_CHARS;
+}
+
 export function renderStructuredMergeContext(merge: StructuredMergeV1, maxChars = 16_000): string {
   const minimum = 4_000;
   const limit = Math.max(minimum, Math.min(24_000, Math.floor(maxChars)));
@@ -312,8 +318,11 @@ export function renderStructuredMergeContext(merge: StructuredMergeV1, maxChars 
       status: result.status,
       resultId: result.id,
       summary: result.summary.slice(0, 800),
-      sourceTextExcerpt: result.rawOutput?.slice(0, 1_200),
-      sourceTextTruncated: (result.rawOutput?.length ?? 0) > 1_200,
+      // 结构化返回的步骤靠 claims 传内容，摘录只是佐证；自由文本返回（多角色纪要、长评审）没有 claims，
+      // 摘录就是它的全部内容，1200 字会把后半截角色直接砍掉，下游只能写"材料未提供"。
+      // 上限仍受 limit 的整体裁减保护。
+      sourceTextExcerpt: result.rawOutput?.slice(0, excerptLimit(result)),
+      sourceTextTruncated: (result.rawOutput?.length ?? 0) > excerptLimit(result),
       claims: result.claims.slice(0, 8).map((claim) => ({ ...claim, value: claim.value.slice(0, 600) })),
       unresolvedItems: result.unresolvedItems.slice(0, 8).map((item) => item.slice(0, 400)),
       inputHash: result.inputHash,

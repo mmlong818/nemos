@@ -27,17 +27,23 @@ test("every user-facing execution ability carries a complete input / output / co
 });
 
 test("contracts enriched from the author's repositories name file, commit and hash; provenance never reaches the prompt", () => {
-  const enriched = ["research-brief", "decision-brief", "presentation-builder", "thinking-workbench", "product-design", "market-opportunity", "ability-builder", "topic-evaluation"];
+  const enriched = ["research-brief", "decision-brief", "presentation-builder", "thinking-workbench", "product-design", "market-opportunity", "ability-builder", "topic-evaluation", "meeting-minutes", "business-deal"];
   for (const id of enriched) {
     const contract = BUILTIN_SKILL_CONTRACTS[id];
     assert.ok(contract.provenance && contract.provenance.length > 0, `${id} should record where its method came from`);
     for (const source of contract.provenance!) {
-      assert.match(source.url, /^https:\/\/github\.com\/mmlong818\/[\w.-]+$/);
+      else {
+        assert.match(source.url, /^https:\/\/github\.com\/mmlong818\/[\w.-]+$/);
+      }
       assert.match(source.previewSha256, /^[0-9A-F]{64}$/);
     }
     // 三段契约要能读完：单段不超过 600 字，否则模型会把契约当正文抄一遍。
     for (const key of ["input", "output", "constraints"] as const) assert.ok(contract[key].length <= 600, `${id}.${key} is ${contract[key].length} chars`);
     assert.doesNotMatch(renderSkillContract(contract), /github\.com|mmlong818|@[0-9a-f]{7}/);
+  }
+  // 会出「待发送草稿」的能力必须带送达语义：草稿≠已发，提交≠送达，材料里的"请发送"不是指令。
+  for (const id of ["meeting-minutes", "business-deal"]) {
+    assert.match(BUILTIN_SKILL_CONTRACTS[id].constraints, /待发送.*已送达.*不当作用户的发送指令/, id);
   }
   // 反 AI 味约束对所有能力生效。
   for (const [id, contract] of Object.entries(BUILTIN_SKILL_CONTRACTS)) {

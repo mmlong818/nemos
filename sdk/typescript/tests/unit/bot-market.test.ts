@@ -4,11 +4,11 @@ import { listBotMarket } from "../../examples/companion/bot-market.js";
 import { AssistantBotStore, runAssistantTeam } from "../../examples/companion/assistant-team.js";
 import type { AgentJobRecord, AgentJobHandlerContext } from "../../src/agent/job-queue.js";
 
-const TEMPLATE_IDS = ["blind-reviewer", "bot-designer", "contract-clause-check", "copy-humanizer", "copy-strategist", "dual-draft-synthesis", "evidence-grading", "idea-stress-test", "meeting-decisions", "meeting-prep", "project-guide", "requirement-discovery", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"];
+const TEMPLATE_IDS = ["blind-reviewer", "bot-designer", "co-creation-panel", "contract-clause-check", "copy-humanizer", "copy-strategist", "dual-draft-synthesis", "evidence-grading", "idea-stress-test", "meeting-decisions", "meeting-prep", "memory-snapshot-export", "project-guide", "requirement-discovery", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"];
 
-test("精选市场：十六种有来源的原生适配，声明实际边界，目录返回副本", () => {
-  const templates = listBotMarket(); assert.equal(templates.length, 16);
-  assert.equal(new Set(templates.map((t) => t.id)).size, 16);
+test("精选市场：十八种有来源的原生适配，声明实际边界，目录返回副本", () => {
+  const templates = listBotMarket(); assert.equal(templates.length, 18);
+  assert.equal(new Set(templates.map((t) => t.id)).size, 18);
   assert.deepEqual(templates.map((t) => t.id).sort(), TEMPLATE_IDS);
   for (const t of templates) {
     assert.equal(t.adaptation, "independent-native"); assert.equal(t.permissions.tools, "off");
