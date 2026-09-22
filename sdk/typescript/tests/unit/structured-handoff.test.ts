@@ -46,6 +46,12 @@ const success = (executionPlan: ReturnType<typeof plan>, stepId: string, attempt
     ...extra,
   });
 
+test("material labels with a description ([S1 会议背景]) observe the bare identifier only", () => {
+  const refs = observedMaterialEvidence("[S1 会议背景]\n目的：评审\n[S2 示例材料 A：群聊节选] 小周：档期没了\n[S3] 纯标识 [不是标识] [S4:附件] x").map((item) => item.ref);
+  assert.deepEqual(refs, ["material:S1", "material:S2", "material:S3", "material:S4"]);
+  assert.ok(refs.every((ref) => !/[\s示例]/.test(ref)), "说明文字不得进入 ref");
+});
+
 test("step results are versioned, hashed, source-linked without claiming fact verification", () => {
   const p = plan();
   const receipt = success(p, "a", 1, JSON.stringify({

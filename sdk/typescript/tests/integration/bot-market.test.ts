@@ -17,8 +17,8 @@ test("Bot 市场 HTTP：无需模型浏览/添加、并发幂等、拒绝错误�
     const page = await (await fetch(h.base + "/bots?view=market")).text(); assert.match(page, /id="marketPane"/);
     assert.equal((await req()).ready, false);
     const official = await req("/market"); assert.deepEqual(official.templates, []); assert.equal(official.status, "not-launched");
-    const { templates } = await req("/templates"); assert.equal(templates.length, 12);
-    assert.deepEqual(templates.map((template: any) => template.id).sort(), ["blind-reviewer", "bot-designer", "contract-clause-check", "copy-humanizer", "copy-strategist", "idea-stress-test", "meeting-prep", "project-guide", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"]);
+    const { templates } = await req("/templates"); assert.equal(templates.length, 16);
+    assert.deepEqual(templates.map((template: any) => template.id).sort(), ["blind-reviewer", "bot-designer", "contract-clause-check", "copy-humanizer", "copy-strategist", "dual-draft-synthesis", "evidence-grading", "idea-stress-test", "meeting-decisions", "meeting-prep", "project-guide", "requirement-discovery", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"]);
     const t = templates[0], body = { id: t.id, version: t.version };
     const before = h.requests.length;
     const results = await Promise.all(Array.from({ length: 5 }, () => req("/import", body)));

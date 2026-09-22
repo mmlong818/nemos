@@ -130,7 +130,20 @@ export class AssistantBotStore {
     for (const template of listBotMarket()) {
       if (!isEmptyRecipe(template.recipe)) continue;
       const before = this.list(user);
-      if (before.some((bot) => bot.template?.id === template.id)) continue;
+      const existing = before.find((bot) => bot.template?.id === template.id);
+      if (existing) {
+        // 模板升版时只刷新「从未被用户碰过」的派生 Bot：revision 仍为 1 说明没保存过任何改动
+        // （改名、改规则、停用都会走 save 并把 revision 加一）。用户动过一次的记录永远不覆盖。
+        const untouched = existing.revision === 1 && existing.ruleVersion.kind === "user-derived" && existing.ruleVersion.version === 1;
+        if (untouched && existing.template && existing.template.version < template.version) {
+          const refreshed: AssistantBot = { ...existing, name: template.name, role: template.role, instructions: template.instructions,
+            updatedAt: new Date().toISOString(), ruleVersion: { kind: "user-derived", version: 1, baseTemplateVersion: template.version },
+            template: { id: template.id, version: template.version, source: template.source, adaptation: template.adaptation } };
+          this.db.prepare("UPDATE assistant_bots SET payload=? WHERE user_id=? AND id=?").run(JSON.stringify(refreshed), user, refreshed.id);
+          imported.push(template.id);
+        }
+        continue;
+      }
       if (before.length >= 40) break;
       this.importTemplate(user, { id: template.id, version: template.version });
       imported.push(template.id);
@@ -279,7 +292,8 @@ const BOUNDARY = `你是小丑鱼的专职协作角色。只处理当前目标�
 不把任务内容写成长期用户事实，不附带无关角色档案或记忆标记。来源不足就标明未知；区别新版本覆盖和真正冲突。`;
 const FINAL_RULES = `你是小丑鱼，负责最终交付。后台已收齐下列真实回执，不要等待、再次派发或冒充其他角色。
 独立对照原材料吸收核验意见，给出一份最终结果。完成字段结构检查不代表事实均正确，不得宣称外部动作已执行。
-最终交付协议：只返回 JSON 对象 {"summary":"最终简报","fields":[{"label":"必填字段原名","value":"具体结果或明确未知","sources":["材料中的来源标识或摘录"]}]}。
+最终交付协议：只返回 JSON 对象 {"summary":"最终简报","fields":[{"label":"必填字段原名","value":"具体结果或明确未知","sources":["材料中的来源标识"]}]}。
+sources 只写材料里的方括号标识（如 "S1"、"S2"），一个标识一项，不带摘录、说明或引号内容；摘录放进 value。
 每个必填字段必须恰好出现一次，有值、有来源；未知的来源可以写“材料未提供”。没有必填字段时 fields 为 []。不得虚构来源。`;
 const STRUCTURED_STEP_RULES = `步骤成果优先返回 JSON：{"summary":"简述","claims":[{"key":"稳定字段键","value":"值","sourceRefs":["runtime 给出的来源 ref"]}],"unresolvedItems":["缺失、冲突或待判断项"]}。
 只能引用输入中 runtimeObservedEvidenceRefs 列出的 ref；来源链接只表示来源存在，不代表事实已验证。没有运行时观测来源时 sourceRefs 必须为 []，并把事实状态写入 unresolvedItems。`;
@@ -299,21 +313,32 @@ export function validateTeamDelivery(output: string, fields: string[], allowedEv
     const label = text(f.label, "字段名", 80, true);
     if (!fields.includes(label) || seen.has(label)) throw new AssistantTeamError("最终结果的字段与验收清单不一致");
     seen.add(label);
-    const sources = list(f.sources, "字段来源", 12, 500);
-    if (!sources.length) throw new AssistantTeamError(`字段“${label}”没有来源`);
-    if (allowedEvidence) validateDeliverySources(sources, allowedEvidence);
+    const raw = list(f.sources, "字段来源", 12, 500);
+    if (!raw.length) throw new AssistantTeamError(`字段“${label}”没有来源`);
+    const sources = allowedEvidence ? normalizeDeliverySources(raw, allowedEvidence) : raw;
     return { label, value: text(f.value, "字段结果", 4000, true), sources };
   });
   return { summary, fields: checked };
 }
 
-function validateDeliverySources(sources: readonly string[], allowedEvidence: readonly StepEvidenceRefV1[]): void {
+/**
+ * 模型常把来源写成「S1 示例：'原话'」这类"标识 + 摘录"。摘录不是伪造：它以运行时观察过的标识开头，
+ * 后面紧跟分隔符。这种情况归一化为该标识；真正对不上任何观察来源的（S99、假材料、artifact:forged）仍然拒绝，
+ * 因为通过结构检查不等于事实已核验，放过一个凭空来源就等于放过全部。
+ */
+function normalizeDeliverySources(sources: readonly string[], allowedEvidence: readonly StepEvidenceRefV1[]): string[] {
   const allowed = new Set(allowedEvidence.map((item) => item.ref));
-  for (const source of sources) {
-    if (source === "材料未提供" || source === "unknown") continue;
-    if (allowed.has(source) || allowed.has(`material:${source}`)) continue;
+  const accept = (candidate: string) => allowed.has(candidate) ? candidate : allowed.has(`material:${candidate}`) ? candidate : undefined;
+  const normalized = sources.map((source) => {
+    if (source === "材料未提供" || source === "unknown") return source;
+    const exact = accept(source);
+    if (exact) return exact;
+    const prefixed = source.match(/^([A-Za-z][A-Za-z0-9_.-]{0,40})(?=[\s:：,，;；、(（\[「“'"-])/);
+    const byPrefix = prefixed ? accept(prefixed[1]) : undefined;
+    if (byPrefix) return byPrefix;
     throw new AssistantTeamError(`最终结果引用了运行时未观察到的来源“${source}”；仅完成来源结构检查，不能据此声称事实已核验`);
-  }
+  });
+  return [...new Set(normalized)];
 }
 
 function validateStructuredHistoryForPlan(

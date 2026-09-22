@@ -4,14 +4,23 @@ import { listBotMarket } from "../../examples/companion/bot-market.js";
 import { AssistantBotStore, runAssistantTeam } from "../../examples/companion/assistant-team.js";
 import type { AgentJobRecord, AgentJobHandlerContext } from "../../src/agent/job-queue.js";
 
-test("精选市场：十二种有来源的原生适配，声明实际边界，目录返回副本", () => {
-  const templates = listBotMarket(); assert.equal(templates.length, 12);
-  assert.equal(new Set(templates.map((t) => t.id)).size, 12);
-  assert.deepEqual(templates.map((t) => t.id).sort(), ["blind-reviewer", "bot-designer", "contract-clause-check", "copy-humanizer", "copy-strategist", "idea-stress-test", "meeting-prep", "project-guide", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"]);
+const TEMPLATE_IDS = ["blind-reviewer", "bot-designer", "contract-clause-check", "copy-humanizer", "copy-strategist", "dual-draft-synthesis", "evidence-grading", "idea-stress-test", "meeting-decisions", "meeting-prep", "project-guide", "requirement-discovery", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"];
+
+test("精选市场：十六种有来源的原生适配，声明实际边界，目录返回副本", () => {
+  const templates = listBotMarket(); assert.equal(templates.length, 16);
+  assert.equal(new Set(templates.map((t) => t.id)).size, 16);
+  assert.deepEqual(templates.map((t) => t.id).sort(), TEMPLATE_IDS);
   for (const t of templates) {
     assert.equal(t.adaptation, "independent-native"); assert.equal(t.permissions.tools, "off");
     assert.equal(t.permissions.memory, "task-only"); assert.equal(t.permissions.automaticRoutines, false);
     assert.match(t.source.url, /^https:\/\/github\.com\/mmlong818\//); assert.match(t.source.previewSha256, /^[0-9A-F]{64}$/);
+    // GitHub 来源必须钉到具体文件与 commit，否则日后无法复核当时看到的是哪一版。
+    if (t.source.url.startsWith("https://github.com/mmlong818/") && t.source.url !== "https://github.com/mmlong818/nemos") assert.match(t.source.name, /^mmlong818\/[\w.-]+ \S+ @[0-9a-f]{7}/);
+    for (const extra of t.enrichedFrom ?? []) {
+      assert.match(extra.url, /^https:\/\/github\.com\/mmlong818\//); assert.match(extra.previewSha256, /^[0-9A-F]{64}$/);
+    }
+    // 升过版的模板必须说明补充来源；没升版的不该带。
+    assert.equal((t.enrichedFrom?.length ?? 0) > 0, t.version > 1, `${t.id} 的 enrichedFrom 与版本不一致`);
     assert.ok(t.instructions.length < 4000 && t.instructions.length > 100);
     assert.ok(t.notIncluded.length > 0); assert.match(t.example.materials, /示例/);
     assert.ok(t.inputTemplate.length > 20 && t.inputTemplate.length < 24000);
@@ -107,7 +116,7 @@ for (const t of listBotMarket()) test(`原生模板可执行：${t.name}，只�
   } finally { store.close(); }
 });
 
-test("启动时把无配方的模板补进技能库：幂等、不动已停用或已改名的、跳过带配方的、库满即停", () => {
+test("启动时把无配方的模板补进技能库：幂等、不动已停用或已改名的、跳过带配方的、升版只刷新未改动的、库满即停", () => {
   const store = new AssistantBotStore(":memory:");
   try {
     store.seed("one");
@@ -124,6 +133,19 @@ test("启动时把无配方的模板补进技能库：幂等、不动已停用�
     const after = store.get("one", edited.id);
     assert.equal(after.name, "我的盲审"); assert.equal(after.enabled, false);
     assert.equal(store.list("one").length, bots.length);
+    // 模板升版：没被用户碰过的派生 Bot 换成新规则并记下新基线版本；用户改过的（revision > 1）原样保留。
+    const bumped = listBotMarket().find((t) => t.version > 1 && t.id !== "blind-reviewer")!;
+    const stale = bots.find((b) => b.template?.id === bumped.id)!;
+    const db = (store as any).db;
+    const age = (bot: any) => db.prepare("UPDATE assistant_bots SET payload=? WHERE user_id=? AND id=?").run(JSON.stringify({ ...bot, instructions: "旧版规则", template: { ...bot.template, version: bumped.version - 1 }, ruleVersion: { ...bot.ruleVersion, baseTemplateVersion: bumped.version - 1 } }), "one", bot.id);
+    age(stale); age(edited);
+    assert.deepEqual(store.seedMarketTemplates("one"), [bumped.id]);
+    const fresh = store.get("one", stale.id);
+    assert.equal(fresh.instructions, bumped.instructions); assert.equal(fresh.revision, 1);
+    assert.deepEqual(fresh.ruleVersion, { kind: "user-derived", version: 1, baseTemplateVersion: bumped.version });
+    assert.equal(fresh.template?.version, bumped.version);
+    assert.equal(store.get("one", edited.id).instructions, "旧版规则", "用户动过的派生 Bot 不随模板升版被覆盖");
+    assert.deepEqual(store.seedMarketTemplates("one"), [], "刷新一次后再跑不再动");
     const crowded = new AssistantBotStore(":memory:");
     try {
       crowded.seed("two");

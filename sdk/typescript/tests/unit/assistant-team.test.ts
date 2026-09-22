@@ -124,7 +124,13 @@ test("新 final 只能引用运行时精确观察来源或明确 unknown", () =>
   assert.equal(validateTeamDelivery(delivery("S1"), ["日期"], observed).fields.length, 1);
   assert.equal(validateTeamDelivery(delivery(observed[1].ref), ["日期"], observed).fields.length, 1);
   assert.equal(validateTeamDelivery(delivery("unknown"), ["日期"], observed).fields.length, 1);
-  for (const forged of ["S99", "假材料", "material:fake", "artifact:forged"]) {
+  // 真实运行里模型把来源写成「标识 + 摘录」：以观察过的标识开头就归一化到该标识，重复的合并；标识必须紧跟分隔符，S10 不是 S1。
+  for (const quoted of ["S1 示例：'老陈是负责人能拍板'", "S1：介绍帖有1000次浏览", "S1（第二段）", "S1, S1"]) {
+    assert.deepEqual(validateTeamDelivery(delivery(quoted), ["日期"], observed).fields[0].sources, ["S1"], quoted);
+  }
+  const twice = JSON.stringify({ summary: "x", fields: [{ label: "日期", value: "x", sources: ["S1 示例", "S1"] }] });
+  assert.deepEqual(validateTeamDelivery(twice, ["日期"], observed).fields[0].sources, ["S1"]);
+  for (const forged of ["S99", "假材料", "material:fake", "artifact:forged", "S10 示例", "S1x：摘录", "示例 S1"]) {
     assert.throws(() => validateTeamDelivery(delivery(forged), ["日期"], observed), /运行时未观察到.*不.*事实已核验/);
   }
 });

@@ -147,7 +147,9 @@ export class FileStepReceiptStore implements StepReceiptStore {
 
 export function observedMaterialEvidence(materials: string): StepEvidenceRefV1[] {
   const refs = new Set<string>();
-  for (const match of materials.matchAll(/\[([A-Za-z][A-Za-z0-9_.:-]{0,40})\]/g)) refs.add(`material:${match[1]}`);
+  // 模板的输入样式是「[S1 会议背景]」「[S2 示例材料 A：群聊节选]」：方括号里标识后面跟着一段说明。
+  // 只有标识本身是来源 ref；说明文字不进 ref，否则模型引用 "S1" 时会因为没有任何观察来源而整单失败。
+  for (const match of materials.matchAll(/\[([A-Za-z][A-Za-z0-9_.:-]{0,40})(?:[\s:：][^\]\n]{0,120})?\]/g)) refs.add(`material:${match[1]}`);
   for (const match of materials.matchAll(/(?:^|\n)\s*([A-Za-z][A-Za-z0-9_.-]{0,40})\s*[:：]/g)) refs.add(`material:${match[1]}`);
   return [...refs].sort().map((ref) => evidence(ref, "material"));
 }
