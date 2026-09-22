@@ -146,6 +146,14 @@ test("启动时把无配方的模板补进技能库：幂等、不动已停用�
     assert.equal(fresh.template?.version, bumped.version);
     assert.equal(store.get("one", edited.id).instructions, "旧版规则", "用户动过的派生 Bot 不随模板升版被覆盖");
     assert.deepEqual(store.seedMarketTemplates("one"), [], "刷新一次后再跑不再动");
+    // 来源改了但模板没升版：未改动的派生 Bot 只换来源说明，规则与版本不动；改过的仍不碰。
+    const relabel = listBotMarket().find((t) => t.version === 1 && !t.recipe)!;
+    const labeled = bots.find((b) => b.template?.id === relabel.id)!;
+    db.prepare("UPDATE assistant_bots SET payload=? WHERE user_id=? AND id=?").run(JSON.stringify({ ...labeled, template: { ...labeled.template, source: { ...labeled.template!.source, name: "某竞品内置技能（旧来源说明）" } } }), "one", labeled.id);
+    assert.deepEqual(store.seedMarketTemplates("one"), [relabel.id]);
+    const relabeled = store.get("one", labeled.id);
+    assert.deepEqual(relabeled.template?.source, relabel.source); assert.equal(relabeled.instructions, relabel.instructions); assert.equal(relabeled.revision, 1);
+    assert.deepEqual(store.seedMarketTemplates("one"), []);
     const crowded = new AssistantBotStore(":memory:");
     try {
       crowded.seed("two");

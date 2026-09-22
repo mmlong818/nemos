@@ -141,6 +141,12 @@ export class AssistantBotStore {
             template: { id: template.id, version: template.version, source: template.source, adaptation: template.adaptation } };
           this.db.prepare("UPDATE assistant_bots SET payload=? WHERE user_id=? AND id=?").run(JSON.stringify(refreshed), user, refreshed.id);
           imported.push(template.id);
+        } else if (untouched && existing.template && JSON.stringify(existing.template.source) !== JSON.stringify(template.source)) {
+          // 来源说明只是审计元数据，不是规则：模板不升版也跟着刷（比如把点名对方的来源改成中性表述），
+          // 用户看到的「来源」才和当前目录一致。规则正文一个字不动。
+          const relabeled: AssistantBot = { ...existing, template: { ...existing.template, source: template.source } };
+          this.db.prepare("UPDATE assistant_bots SET payload=? WHERE user_id=? AND id=?").run(JSON.stringify(relabeled), user, relabeled.id);
+          imported.push(template.id);
         }
         continue;
       }
