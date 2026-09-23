@@ -204,6 +204,26 @@ test("only clownfish receives the approved write tool for saving recurring work"
     timezone: "Asia/Shanghai",
     days: [1, 2, 3, 4, 5, 6, 7],
   });
+  // 返回结果带上如实的运行条件，模型据此转告用户，而不是许诺"每天准时"。
+  const payload = JSON.parse(String(result.content));
+  assert.match(payload.notice, /每天 09:30/);
+  assert.match(payload.notice, /不是实时盯着/);
+  assert.match(writeTool!.definition.description, /not real-time monitoring/);
+  assert.match(writeTool!.definition.description, /never promise exact delivery/i);
+
+  // 一位数小时（8:00）以前会被静默改成 14:00，用户以为设的是 8 点。
+  const early = await writeTool!.execute({
+    title: "晨间提醒", instruction: "给出当天要点。", capabilityId: "", createRecurringTask: true,
+    format: "md", scheduleMode: "daily", time: "8:00",
+  }, { runId: "approved-write-2", sessionId: "approved-write", signal: new AbortController().signal });
+  assert.equal((created.at(-1)?.schedule as { time?: string }).time, "08:00");
+  assert.match(JSON.parse(String(early.content)).notice, /每天 08:00/);
+  // 真正无法识别的时间不再静默套默认值：说明里写出实际生效的时间与原因。
+  const bad = await writeTool!.execute({
+    title: "午后提醒", instruction: "给出当天要点。", capabilityId: "", createRecurringTask: true,
+    format: "md", scheduleMode: "daily", time: "下午两点",
+  }, { runId: "approved-write-3", sessionId: "approved-write", signal: new AbortController().signal });
+  assert.match(JSON.parse(String(bad.content)).notice, /没能识别「下午两点」，已按默认 14:00 设置/);
 });
 
 test("only Clownfish can install a Skill and the write happens after tool execution", async () => {

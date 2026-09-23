@@ -1,5 +1,6 @@
 import type { AgentTool, Nemos } from "../../src/index.js";
-import type { CapabilityRuntime, CapabilityTask } from "./capabilities.js";
+import type { CapabilityRuntime, CapabilitySchedule, CapabilityTask } from "./capabilities.js";
+import { scheduleNotice } from "./schedule-notice.js";
 import type { ChatAgentContext } from "./engine.js";
 import type { AgentToolProvider } from "./llm.js";
 import { expertAssignmentPrompt, expertContract, finalDeliveryPrompt } from "./expert-contracts.js";
@@ -225,7 +226,7 @@ function taskCreateTool(
     definition: {
       name: "capability_task_create",
       description:
-        "Create a reusable capability and optional recurring task for the user. Use only when the user explicitly asks to save, schedule, or repeat work. This changes local state and requires confirmation.",
+        "Create a reusable capability and optional recurring task for the user. Use only when the user explicitly asks to save, schedule, or repeat work. This changes local state and requires confirmation. A scheduled task runs periodically on this computer while the app is running; it is not real-time monitoring. Never promise exact delivery times; relay the returned notice to the user instead.",
       inputSchema: {
         type: "object",
         properties: {
@@ -279,10 +280,16 @@ function taskCreateTool(
         });
       }
       ensureActive(toolContext.signal);
+      const schedule = task?.schedule as CapabilitySchedule | undefined;
+      // 时间认不出来时不再静默套默认值：把实际生效的时间和原因写进说明，模型转告用户。
+      const fallback = schedule?.mode === "daily" && input.time !== undefined && normalizeDailyTime(input.time) === undefined
+        ? `没能识别「${String(input.time).slice(0, 40)}」，已按默认 ${DEFAULT_DAILY_TIME} 设置，请用户确认或改成想要的时间。`
+        : "";
       return {
         content: JSON.stringify({
           capability: { id: ability.id, name: ability.name },
           task: task ? { id: task.id, title: task.title, schedule: task.schedule } : null,
+          ...(schedule ? { notice: fallback + scheduleNotice(schedule) } : {}),
         }, null, 2),
         data: { capabilityId: ability.id, taskId: task?.id ?? null },
       };
@@ -523,6 +530,14 @@ function capabilityFormat(value: unknown): "md" | "html" | "txt" | "json" | "doc
   return value === "html" || value === "txt" || value === "json" || value === "doc" ? value : "md";
 }
 
+const DEFAULT_DAILY_TIME = "14:00";
+
+/** 接受 "8:00" 与 "08:00"；认不出来返回 undefined，由调用方决定默认值并说明原因。 */
+export function normalizeDailyTime(value: unknown): string | undefined {
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(value ?? "").trim());
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : undefined;
+}
+
 function capabilitySchedule(input: Record<string, unknown>): {
   mode: "manual" | "daily" | "turns";
   time?: string;
@@ -531,10 +546,9 @@ function capabilitySchedule(input: Record<string, unknown>): {
   everyTurns?: number;
 } {
   if (input.scheduleMode === "daily") {
-    const requested = String(input.time ?? "");
     return {
       mode: "daily",
-      time: /^([01]\d|2[0-3]):[0-5]\d$/.test(requested) ? requested : "14:00",
+      time: normalizeDailyTime(input.time) ?? DEFAULT_DAILY_TIME,
       timezone: "Asia/Shanghai",
       days: [1, 2, 3, 4, 5, 6, 7],
     };

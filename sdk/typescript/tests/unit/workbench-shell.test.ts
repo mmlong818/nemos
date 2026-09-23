@@ -87,4 +87,8 @@ test('记忆新界面使用真实接口，不提供假的停用和撤销',()=>{
   assert.ok(!script.includes('localStorage'));
   assert.ok(!script.includes('/api/memory/toggle'));
   assert.ok(script.includes('无法在界面中撤销'));
+  // 说明条：写清这些记忆从哪来、可能过时、能做什么，避免用户把它当成已核实的档案。
+  assert.ok(script.includes('一部分从对话里整理出来，一部分来自你确认的「提议记住」'));
+  assert.ok(script.includes('可能不完整或已经过时'));
+  assert.ok(script.includes('忘记一条不会删除聊天记录'));
 });
