@@ -9,12 +9,16 @@ import { randomUUID } from "node:crypto";
 export interface ProactiveSettings {
   quietHours: { enabled: boolean; start: string; end: string };
   feedSchedule: { enabled: boolean; time: string; lastRunDate: string };
+  /** 想听什么、别提什么：随手写的一段话。写动态、想点子之前都会读；"别提"要严格遵守。 */
+  topics: { tellMe: string; neverMention: string };
 }
 
 export const DEFAULT_PROACTIVE: ProactiveSettings = {
   quietHours: { enabled: false, start: "22:00", end: "08:00" },
   feedSchedule: { enabled: false, time: "08:00", lastRunDate: "" },
+  topics: { tellMe: "", neverMention: "" },
 };
+export const TOPIC_LIMIT = 500;
 
 export class ProactiveError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -57,8 +61,14 @@ export class ProactiveStore {
     } catch { /* 读坏了就用默认，不影响其他功能 */ }
   }
   private normalize(input: unknown, base: ProactiveSettings): ProactiveSettings {
-    const raw = (input && typeof input === "object" ? input : {}) as Partial<{ quietHours: Partial<ProactiveSettings["quietHours"]>; feedSchedule: Partial<ProactiveSettings["feedSchedule"]> }>;
-    const q = raw.quietHours ?? {}, f = raw.feedSchedule ?? {};
+    const raw = (input && typeof input === "object" ? input : {}) as Partial<{ quietHours: Partial<ProactiveSettings["quietHours"]>; feedSchedule: Partial<ProactiveSettings["feedSchedule"]>; topics: Partial<ProactiveSettings["topics"]> }>;
+    const q = raw.quietHours ?? {}, f = raw.feedSchedule ?? {}, t = raw.topics ?? {};
+    const topic = (value: unknown, fallback: string, field: string) => {
+      if (value === undefined) return fallback;
+      const text = String(value ?? "").trim();
+      if (text.length > TOPIC_LIMIT) throw new ProactiveError(`${field}不能超过 ${TOPIC_LIMIT} 个字`);
+      return text;
+    };
     return {
       quietHours: {
         enabled: q.enabled === undefined ? base.quietHours.enabled : q.enabled === true,
@@ -69,6 +79,10 @@ export class ProactiveStore {
         enabled: f.enabled === undefined ? base.feedSchedule.enabled : f.enabled === true,
         time: f.time === undefined ? base.feedSchedule.time : hhmm(f.time, "动态生成时间"),
         lastRunDate: typeof f.lastRunDate === "string" ? f.lastRunDate : base.feedSchedule.lastRunDate,
+      },
+      topics: {
+        tellMe: topic(t.tellMe, base.topics?.tellMe ?? "", "想听的"),
+        neverMention: topic(t.neverMention, base.topics?.neverMention ?? "", "别提的"),
       },
     };
   }

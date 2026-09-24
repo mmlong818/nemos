@@ -122,6 +122,7 @@ export interface IdeaContext {
   matters: string[];
   preferences: string[];
   feedTopic: string;
+  topics?: { tellMe: string; neverMention: string };
   taste: ReturnType<IdeaStore["taste"]>;
 }
 
@@ -134,10 +135,12 @@ export function ideaPrompt(ctx: IdeaContext): { system: string; user: string } {
       `只提你现在真能做到的：${Object.entries(IDEA_DELIVERABLES).map(([k, v]) => `${k}=${v}`).join("、")}。你还不能读邮件、看日历、下单付款、订票订房、发消息，这类不要提。`,
       "startPrompt 以用户的口吻写，说清要做什么，让你一看就能动手（例如\"帮我做一个能勾选的……清单\"）。",
       "要具体到这个人：和他的目标、在做的事直接相关；和\"最近提过\"\"已经开始过\"重复的不要；\"不想要\"写了理由，避开同类或同样的毛病；\"想多要\"的可以往那个方向多想。",
+      "\"别提\"里写的话题不要碰；\"想听\"里写的可以优先想。",
       "没有真正有用的就返回 {\"ideas\": []}，不要凑数。",
     ].join("\n"),
     user: JSON.stringify({
       今天: ctx.today, 目标: ctx.goals, 在做的事: ctx.matters, 偏好: ctx.preferences, 动态话题: ctx.feedTopic,
+      想听: ctx.topics?.tellMe || "", 别提: ctx.topics?.neverMention || "",
       想多要: ctx.taste.more, 不想要: ctx.taste.less, 已经开始过: ctx.taste.started, 最近提过: ctx.taste.recent,
     }),
   };

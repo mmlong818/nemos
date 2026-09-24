@@ -45,3 +45,13 @@ test("动态定时：到点且今天没跑过才跑；错过当天补一次，�
   s.update({ feedSchedule: { lastRunDate: "2000-01-01" } }, at(9, 0, 27));
   assert.notEqual(s.get().feedSchedule.lastRunDate, "2000-01-01", "页面不能改调度记录");
 });
+
+test("想听、别提：随手写的一段话，跨重启保留，超长拒绝，只改其中一栏不动另一栏", (t) => {
+  const file = store(t);
+  const s = new ProactiveStore(file);
+  assert.deepEqual(s.get().topics, { tellMe: "", neverMention: "" });
+  s.update({ topics: { tellMe: "冰岛自驾、读书方法", neverMention: "加密货币" } });
+  s.update({ topics: { neverMention: "加密货币、娱乐八卦" } });
+  assert.deepEqual(new ProactiveStore(file).get().topics, { tellMe: "冰岛自驾、读书方法", neverMention: "加密货币、娱乐八卦" });
+  assert.throws(() => s.update({ topics: { tellMe: "x".repeat(501) } }), /不能超过 500 个字/);
+});

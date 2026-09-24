@@ -112,3 +112,18 @@ test("口味：只认喜欢、讨论、不感兴趣；不感兴趣要选理由�
   assert.match(container.innerHTML, /为什么给你看：按你的话题/);
   assert.match(container.innerHTML, /data-reason="太重复"/);
 });
+
+test("想听、别提进写作和搜索词提示；点子提示也带上", async () => {
+  const ctx = { prompt: "x", goals: [], matters: [], preferences: [], recentTitles: [], today: "今天", topics: { tellMe: "读书方法", neverMention: "加密货币" } };
+  const write = feedWritePrompt(ctx, [], "没联网");
+  assert.match(write.system, /"别提"里写的话题一律不写，也不要换个说法绕回来/);
+  assert.match(write.user, /"想听":"读书方法","别提":"加密货币"/);
+  const { feedPlanPrompt } = await import("../../examples/companion/feed.js");
+  const plan = feedPlanPrompt(ctx);
+  assert.match(plan.system, /"别提"里的话题不要搜/);
+  assert.match(plan.user, /"别提":"加密货币"/);
+  const { ideaPrompt } = await import("../../examples/companion/ideas.js");
+  const idea = ideaPrompt({ today: "今天", goals: [], matters: [], preferences: [], feedTopic: "", topics: ctx.topics, taste: { more: [], less: [], started: [], recent: [] } });
+  assert.match(idea.system, /"别提"里写的话题不要碰/);
+  assert.match(idea.user, /"别提":"加密货币"/);
+});

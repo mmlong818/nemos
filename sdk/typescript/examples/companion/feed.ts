@@ -144,6 +144,8 @@ export function parseJsonObject(raw: string): Record<string, unknown> | null {
 export interface FeedTaste { liked: string[]; disliked: string[] }
 
 export interface FeedContext {
+  /** 设置里写的"想听""别提"。 */
+  topics?: { tellMe: string; neverMention: string };
   taste?: FeedTaste;
   prompt: string;
   goals: string[];
@@ -158,9 +160,9 @@ export function feedPlanPrompt(ctx: FeedContext): { system: string; user: string
     system: [
       "你负责为用户的个人动态挑选联网搜索词。",
       `只输出 JSON：{"queries": ["…"]}，最多 ${FEED_LIMITS.queries} 个，每个是具体、可搜索的中文或英文短语。`,
-      "搜索词要落在用户话题和目标的具体领域上，不要泛泛的\"最新新闻\"。话题与新消息无关时返回空列表。",
+      "搜索词要落在用户话题和目标的具体领域上，不要泛泛的\"最新新闻\"。\"别提\"里的话题不要搜。话题与新消息无关时返回空列表。",
     ].join("\n"),
-    user: JSON.stringify({ 今天: ctx.today, 话题: ctx.prompt, 目标: ctx.goals, 在做的事: ctx.matters, 偏好: ctx.preferences }),
+    user: JSON.stringify({ 今天: ctx.today, 话题: ctx.prompt, 目标: ctx.goals, 在做的事: ctx.matters, 偏好: ctx.preferences, 想听: ctx.topics?.tellMe || "", 别提: ctx.topics?.neverMention || "" }),
   };
 }
 
@@ -180,11 +182,13 @@ export function feedWritePrompt(ctx: FeedContext, sources: FeedCandidateSource[]
       "news：只写下面\"来源\"里真的有的事实，sources 填对应编号，至少一个；来源里没写日期就不要说\"今天\"\"刚刚\"。",
       "goal：只根据给出的目标和在做的事写提醒或下一步，不编造进展，sources 留空。",
       "tip：和话题相关、确实有用的建议，不要空话，sources 可以留空。",
+      "\"别提\"里写的话题一律不写，也不要换个说法绕回来；\"想听\"里写的优先考虑。",
       "和\"最近已发过\"重复的不要再写。没有值得写的就返回 {\"posts\": []}，不要为了凑数硬写。不写标题党。",
     ].join("\n"),
     user: JSON.stringify({
       今天: ctx.today, 话题: ctx.prompt, 目标: ctx.goals, 在做的事: ctx.matters, 偏好: ctx.preferences, 最近已发过: ctx.recentTitles,
       喜欢过: ctx.taste?.liked ?? [], 不想看: ctx.taste?.disliked ?? [],
+      想听: ctx.topics?.tellMe || "", 别提: ctx.topics?.neverMention || "",
       联网情况: searchNote,
       来源: sources.map((s, i) => ({ 编号: i + 1, 标题: s.title, 链接: s.url, 摘要: s.content.slice(0, 400) })),
     }),

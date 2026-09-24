@@ -421,6 +421,11 @@
                     <p class="hint">时段内到点的提醒不会丢，结束后再弹一次。聊天里的对进度消息照常出现。</p>
                     <p class="hint" id="proactiveQuietNow"></p>
                   </fieldset>
+                  <fieldset><legend>想听什么、别提什么</legend>
+                    <label>想听<textarea name="tellMe" rows="2" maxlength="500" placeholder="例如：冰岛自驾的实用信息、读书方法"></textarea></label>
+                    <label>别提<textarea name="neverMention" rows="2" maxlength="500" placeholder="例如：加密货币、娱乐八卦"></textarea></label>
+                    <p class="hint">小丑鱼写动态、想点子之前都会先读这两栏；「别提」里的话题不会写。随手写，一句话就够。</p>
+                  </fieldset>
                   <fieldset><legend>动态</legend>
                     <label class="proactive-toggle"><input type="checkbox" name="feedEnabled"> 每天自动生成一次</label>
                     <div class="proactive-row"><label>时间<input type="time" name="feedTime" value="08:00"></label></div>

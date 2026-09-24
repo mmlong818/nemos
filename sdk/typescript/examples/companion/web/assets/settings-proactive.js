@@ -10,6 +10,8 @@
     form.elements.quietEnd.value = data.quietHours.end;
     form.elements.feedEnabled.checked = !!data.feedSchedule.enabled;
     form.elements.feedTime.value = data.feedSchedule.time;
+    form.elements.tellMe.value = (data.topics && data.topics.tellMe) || "";
+    form.elements.neverMention.value = (data.topics && data.topics.neverMention) || "";
     $("#proactiveQuietNow").textContent = data.quietNow ? "现在正处于免打扰时段：托盘通知会攒到时段结束后再弹。" : "";
   }
   async function load() {
@@ -23,6 +25,7 @@
     const body = {
       quietHours: { enabled: form.elements.quietEnabled.checked, start: form.elements.quietStart.value, end: form.elements.quietEnd.value },
       feedSchedule: { enabled: form.elements.feedEnabled.checked, time: form.elements.feedTime.value },
+      topics: { tellMe: form.elements.tellMe.value, neverMention: form.elements.neverMention.value },
     };
     try {
       const r = await fetch("/api/proactive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

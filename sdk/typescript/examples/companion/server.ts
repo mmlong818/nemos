@@ -3640,7 +3640,7 @@ async function feedContext(): Promise<FeedContext> {
   } catch { /* 记忆读不到就不带偏好 */ }
   const snapshot = feedStore.snapshot();
   return {
-    prompt: snapshot.prompt, goals, matters, preferences, taste: feedStore.taste(),
+    prompt: snapshot.prompt, goals, matters, preferences, taste: feedStore.taste(), topics: proactiveStore.get().topics,
     recentTitles: snapshot.posts.slice(0, 30).map((p) => p.title),
     today: new Date().toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric", weekday: "long" }),
   };
@@ -3721,7 +3721,7 @@ async function generateIdeasNow(): Promise<{ ideas: IdeaCard[]; note: string }> 
   if (!llm.live) throw new IdeaError("还没有连接模型，没法想点子", 409);
   const ctx = await feedContext();
   const taste = ideaStore.taste();
-  const prompt = ideaPrompt({ today: ctx.today, goals: ctx.goals, matters: ctx.matters, preferences: ctx.preferences, feedTopic: ctx.prompt, taste });
+  const prompt = ideaPrompt({ today: ctx.today, goals: ctx.goals, matters: ctx.matters, preferences: ctx.preferences, feedTopic: ctx.prompt, topics: ctx.topics, taste });
   const model = modelConnection ? dailyChatModelForConnection(modelConnection) : undefined;
   const reply = await llm.chat(prompt.system, prompt.user, model, 2_400, feedModelContext("ideas", 8_000));
   const ideas = parseIdeas(reply, taste.recent);
