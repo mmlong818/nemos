@@ -44,6 +44,7 @@ a.ar-body:hover strong{text-decoration:underline}
 .ar-identity{display:grid;gap:8px}
 .ar-card{display:grid;gap:2px;padding:12px 14px;border:1px solid #dfe5e2;border-radius:8px;background:#fff;color:#253331;text-decoration:none}
 .ar-card:hover{border-color:#bbcfc6}
+button.ar-card{width:100%;font:inherit;text-align:left;cursor:pointer}
 .ar-card span{color:#66746f;font-size:12px}
 .ar-compact li{display:grid;gap:2px;padding:8px 4px;border-bottom:1px solid #eef3f1;font-size:12px}
 .ar-compact small{color:#66746f;font-size:11px}

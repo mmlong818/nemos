@@ -1771,6 +1771,14 @@
   .artifact-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .artifact-actions button { height:26px; padding:0 9px; border:1px solid #d8dde6; border-radius:4px; background:#fff; color:#2f343c; font-size:12px; cursor:pointer; }
   .artifact-actions button:hover { background:#f4f5f7; }
+  .quick-replies { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .quick-replies button { min-height:30px; padding:4px 12px; border:1px solid #cfd6e2; border-radius:15px; background:#fff; color:#2f343c; font-size:13px; line-height:1.4; cursor:pointer; }
+  .quick-replies button:hover { background:#f1f4f9; border-color:#aeb8c8; }
+  .quick-replies button:focus-visible { outline:2px solid #4f7cff; outline-offset:1px; }
+  #msgs .row:not(:last-child) .quick-replies, body.is-busy .quick-replies { display:none; }
+  .link-button { padding:0; border:0; background:none; color:#2f6fdb; font:inherit; cursor:pointer; }
+  .link-button:hover { text-decoration:underline; }
+  .persona-app-note { margin:0; padding:10px 12px; border-radius:6px; background:#f3f6fb; color:#4a5363; font-size:13px; line-height:1.6; }
   .row.other .bub {
     background:#fff;
     border:0;
@@ -2933,6 +2941,7 @@
             <small>头像会保存在本机数据目录。上传后可以拖动裁切并自动缩放成聊天头像。</small>
           </div>
         </div>
+        <p class="persona-app-note" id="personaAppNote" hidden>这是你的助手本人。聊天和办事用的是同一份设定：改名字只改 ta 怎么自称，「小丑鱼」仍是应用的名字。</p>
         <label class="persona-field" id="personaNameField" for="personaname">名字<input id="personaname" placeholder="角色名字" /></label>
         <label class="persona-field" id="personaVerbField" for="personaverb">回复长度
           <select id="personaverb">
@@ -2948,7 +2957,7 @@
           <p>只在需要精确调整角色表达时修改。名称和回复长度通常已经足够。</p>
           <textarea id="personatext" rows="10"></textarea>
         </details>
-        <div class="persona-actions"><button id="personaRestore" type="button">恢复未保存内容</button><button id="personasave" class="btn-primary" type="button">保存并生效</button></div>
+        <div class="persona-actions"><button id="personaDefaults" type="button">恢复默认设定</button><button id="personaRestore" type="button">恢复未保存内容</button><button id="personasave" class="btn-primary" type="button">保存并生效</button></div>
       </div>
     </div>
   </div>
@@ -3210,6 +3219,7 @@
 <script src="/assets/agent-events.js"></script>
 <link rel="stylesheet" href="/assets/activity-rail.css">
 <script src="/assets/activity-rail.js"></script>
+<script src="/assets/quick-replies.js"></script>
 <script>
 const BUILD = "v16 clownfish-identity-migration";
 const APP_PERSONA_ID = "clownfish";
@@ -4047,6 +4057,7 @@ function emptyStateHtml() {
   const picked = !!state.target;
   if (state.target?.kind === "persona" && state.target.id === APP_PERSONA_ID) {
     const mode = activeWorkMode();
+    const assistantName = ((state.personas || []).find((p) => p.id === APP_PERSONA_ID) || {}).name || "小丑鱼";
     const content = mode === "task"
       ? { title: "准备完成什么？", desc: "描述目标、已有材料和希望得到的结果。小丑鱼帮你拆解和推进；使用工具时遵循当前配置与授权。" }
       : mode === "study"
@@ -4060,7 +4071,8 @@ function emptyStateHtml() {
       + '    </nav>'
       + '    <header class="role-intro-head"><h2>' + esc(content.title) + '</h2></header>'
       + '    <p>' + esc(content.desc) + '</p>'
-      + '    <p class="wb-assistant-role-hint">直接说出目标，让小丑鱼帮你推进。需要复用一种工作方法？<a href="/skills">查看技能库 →</a></p>'
+      + '    <p class="wb-assistant-role-hint">直接说出目标，让' + esc(assistantName) + '帮你推进。需要复用一种工作方法？<a href="/skills">查看技能库 →</a></p>'
+      + (assistantName === "小丑鱼" ? '    <p class="wb-assistant-role-hint">想换个称呼？<button type="button" class="link-button" data-edit-persona>给 ta 起个名字、定个说话方式</button></p>' : '')
       + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><select id="heroModelSelect" aria-label="任务模型" hidden></select><button type="button" id="heroFileBtn" class="hero-file-btn' + (state.pendingFile ? ' on' : '') + '" aria-label="上传文件" title="上传文件（可与第一句话一起发送）">上传文件</button><small id="heroAttachment" class="hero-attachment" aria-live="polite">' + (state.pendingFile ? esc('已附加：' + state.pendingFile.name) : '') + '</small><small id="heroModelStatus" role="status" aria-live="polite"></small><button type="button" id="heroSend">发送</button></div></div>'
       + '  </article>'
       + '</section>';
@@ -4692,12 +4704,30 @@ function markdownToHtml(text) {
   flushPara(); flushList(); flushTable();
   return out.join("");
 }
+// 回复结尾单独一行「【选项】A｜B」是快捷回复：正文里去掉这一行，按钮挂在气泡下面，只有最后一条消息的按钮可见（见 CSS）。
+function appendQuickReplies(bub, options) {
+  if (!options.length) return;
+  const box = document.createElement("div");
+  box.className = "quick-replies";
+  for (const option of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.quickReply = option;
+    btn.textContent = option;
+    box.appendChild(btn);
+  }
+  bub.appendChild(box);
+}
 function renderBubbleContent(bub, text, opts = {}) {
-  const raw = String(text || "");
+  const quick = opts.render !== false && window.ClownfishQuickReplies
+    ? window.ClownfishQuickReplies.extractQuickReplies(String(text || ""))
+    : { text: String(text || ""), options: [] };
+  const raw = quick.text;
   const shouldRender = opts.render !== false && (isLikelyMarkdown(raw) || isLikelyHtml(raw) || opts.artifact);
   if (!shouldRender) {
     bub.classList.remove("rendered");
     bub.textContent = (opts.voice ? "[语音] " : "") + raw;
+    appendQuickReplies(bub, quick.options);
     return;
   }
   bub.classList.add("rendered");
@@ -4711,6 +4741,7 @@ function renderBubbleContent(bub, text, opts = {}) {
   const html = isLikelyHtml(raw) ? sanitizeHtml(raw) : markdownToHtml(raw);
   bub.innerHTML = prefix + html + (opts.artifact ? artifactActionsHtml(opts.artifact) : "");
   if (opts.artifact) bindArtifactActions(bub, opts.artifact);
+  appendQuickReplies(bub, quick.options);
 }
 function artifactActionsHtml(artifact) {
   if (!artifact || !artifact.id) return "";
@@ -4838,6 +4869,11 @@ function addTyping() {
 const STREAM_MESSAGE_REVEAL_DELAY_MS = 180;
 function splitStreamMessages(text) {
   const parts = String(text || "").split(/\n\s*\n+/).map((part) => part.trim()).filter(Boolean);
+  // 快捷回复那一行跟着最后一条消息走，不单独成一个空气泡。
+  if (parts.length > 1 && /^【选项】/.test(parts[parts.length - 1])) {
+    const line = parts.pop();
+    parts[parts.length - 1] += "\n" + line;
+  }
   return parts.length ? parts : [String(text || "").trim()].filter(Boolean);
 }
 function isSubstantialAssistantLongform(text) {
@@ -4864,7 +4900,7 @@ function syncStreamBubbles(inner, text, visibleCount, opts = {}) {
   nodes.forEach((node, index) => {
     node.className = "bub";
     if (opts.final) renderBubbleContent(node, parts[index], { artifact: index === parts.length - 1 ? opts.artifact : null });
-    else node.textContent = parts[index];
+    else node.textContent = parts[index].replace(/\n?【选项】[^\n]*$/, "");
   });
   return parts;
 }
@@ -5610,11 +5646,14 @@ $("#contactaddok").onclick = addSelectedContacts;
 $("#contactclose").onclick = () => $("#contactmodal").classList.remove("show");
 $("#contactmodal").onclick = (e) => { if (e.target.id === "contactmodal") $("#contactmodal").classList.remove("show"); };
 let personaFull = [];
+let personaDefaults = [];
 let pendingAvatarData = "";
 let pendingAvatarClear = false;
 async function openPersonaModal(personaId) {
   const d = await api("/api/personas/full");
-  personaFull = (d.personas || []).filter((p) => p.id !== APP_PERSONA_ID);
+  // 小丑鱼本人排在最前：聊天和办事共用这一份设定，可以改名、改说话方式。
+  personaFull = (d.personas || []).slice().sort((a, b) => (b.id === APP_PERSONA_ID) - (a.id === APP_PERSONA_ID));
+  personaDefaults = d.defaults || [];
   const sel = $("#personasel"); sel.innerHTML = "";
   const locked = personaId === "me" || personaFull.some((p) => p.id === personaId);
   const addMe = () => { const o = document.createElement("option"); o.value = "me"; o.textContent = "我（自己的头像）"; sel.appendChild(o); };
@@ -5759,6 +5798,9 @@ function fillPersona(value) {
   $("#personaAdvanced").style.display = isMe ? "none" : "block";
   $("#personaAdvanced").open = false;
   $("#personaRestore").hidden = isMe;
+  const isApp = !!(target && target.persona && target.persona.id === APP_PERSONA_ID);
+  $("#personaAppNote").hidden = !isApp;
+  $("#personaDefaults").hidden = isMe || !(target && target.persona && personaDefaults.some((item) => item.id === target.persona.id));
   $("#personasave").textContent = isMe ? "保存头像" : "保存并生效";
   if (isMe) {
     $("#personaTitle").textContent = "我的头像";
@@ -5766,7 +5808,7 @@ function fillPersona(value) {
     $("#personatext").value = "";
   } else if (target && target.persona) {
     const p = target.persona;
-    $("#personaTitle").textContent = p.name + " · 角色设置";
+    $("#personaTitle").textContent = p.name + (isApp ? " · 助手设定" : " · 角色设置");
     $("#personaname").value = p.name;
     $("#personatext").value = p.persona;
     $("#personaverb").value = p.verbosity || "normal";
@@ -5804,6 +5846,7 @@ async function savePersona() {
   alert(target.owner === "me" ? "头像已保存。" : "已保存并生效（下一句回复就用新人设）。");
   const previousTarget = state.target ? { ...state.target } : null;
   await loadState();
+  window.ClownfishActivityRail?.refresh?.();
   if (previousTarget) {
     const freshName = previousTarget.kind === "persona"
       ? ((state.personas.find((p) => p.id === previousTarget.id) || {}).name || previousTarget.name)
@@ -5812,6 +5855,15 @@ async function savePersona() {
   }
 }
 $("#personasave").onclick = savePersona;
+// 只把默认值填回表单，按"保存并生效"才落盘；与默认相同的值不会存成覆盖项。
+$("#personaDefaults").onclick = () => {
+  const target = selectedPersonaTarget();
+  const d = target && target.persona && personaDefaults.find((item) => item.id === target.persona.id);
+  if (!d) return;
+  $("#personaname").value = d.name;
+  $("#personatext").value = d.persona;
+  $("#personaverb").value = d.verbosity || "normal";
+};
 $("#personaRestore").onclick = () => {
   $("#personaname").value = $("#personaname").dataset.original || "";
   $("#personatext").value = $("#personatext").dataset.original || "";
@@ -6754,7 +6806,7 @@ async function refreshAgentOps() {
 }
 function startAgentEventStream() {
   if (!window.ClownfishAgentEvents || agentEventSource) return;
-  window.ClownfishActivityRail?.configure({ api, decide: decideAgentApproval, refresh: refreshAgentOps, toolLabel: agentToolLabel, time: agentTime });
+  window.ClownfishActivityRail?.configure({ api, decide: decideAgentApproval, refresh: refreshAgentOps, toolLabel: agentToolLabel, time: agentTime, editPersona: () => openPersonaModal(APP_PERSONA_ID), personaName: () => ((state.personas || []).find((p) => p.id === APP_PERSONA_ID) || {}).name });
   agentEventSource = window.ClownfishAgentEvents.connect({ onSync: refreshAgentOps, onStatus: (status) => window.ClownfishActivityRail?.setConnection(status), onEvent: (name, event) => {
     if (name !== "run") return;
     let payload = null;
@@ -7581,6 +7633,9 @@ $("#conversationSearchResults").addEventListener("click", (event) => {
 $("#msgs").addEventListener("click", (event) => {
   const option = event.target.closest("[data-work-mode]");
   if (option) setActiveWorkMode(option.dataset.workMode);
+  const quick = event.target.closest("[data-quick-reply]");
+  if (quick && !sending) void sendMsg(false, quick.dataset.quickReply);
+  if (event.target.closest("[data-edit-persona]")) void openPersonaModal(APP_PERSONA_ID);
 });
 $("#contacts").addEventListener("click", (event) => {
   const row = event.target.closest(".contact[data-conversation-id]");

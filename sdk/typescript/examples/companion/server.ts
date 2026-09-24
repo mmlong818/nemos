@@ -53,7 +53,7 @@ import { chatRuntimeLimits } from "./chat-budgets.js";
 import { type InFlightWork } from "./presence-contract.js";
 import { classifyFailure, failureShapeByName } from "./failure-registry.js";
 import { CompanionEngine, personaNamespace } from "./engine.js";
-import { PERSONAS, RELATIONSHIPS, DEFAULT_RELATIONSHIP } from "./personas.js";
+import { PERSONAS, RELATIONSHIPS, DEFAULT_RELATIONSHIP, DEFAULT_PERSONAS, personaOverrides } from "./personas.js";
 import { LONG_FORM_EXPERT_IDS } from "./experts.js";
 import {
   dependencyArtifactBlock,
@@ -3047,7 +3047,8 @@ function loadPersonaOverrides(): void {
   } catch { /* ignore */ }
 }
 function savePersonaOverrides(): void {
-  try { writeFileSync(PERSONA_FILE, JSON.stringify(engine.listPersonas(), null, 2)); } catch { /* ignore */ }
+  // 只写用户真正改过的字段：整份写入会把当时的默认人设固化进文件，之后默认人设更新就收不到。
+  try { writeFileSync(PERSONA_FILE, JSON.stringify(personaOverrides(engine.listPersonas()), null, 2)); } catch { /* ignore */ }
 }
 
 // 熟悉度（累计互动量）持久化 —— 陪伴系统重启不该"重新变陌生"。
@@ -6528,7 +6529,8 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && url === "/api/personas/full") {
-      send(res, 200, { personas: engine.listPersonas() });
+      // defaults 供"恢复默认设定"填回表单；保存与默认相同的值时覆盖项自动消失，之后能收到默认人设的更新。
+      send(res, 200, { personas: engine.listPersonas(), defaults: DEFAULT_PERSONAS });
       return;
     }
     if (req.method === "POST" && url === "/api/persona") {
@@ -6889,6 +6891,11 @@ function bullets(md: string): string[] {
 /** 微信式：按空行把一段回复拆成多条气泡。无空行则整段为一条。 */
 function splitBubbles(text: string): string[] {
   const parts = text.split(/\n\s*\n+/).map((s) => s.trim()).filter(Boolean);
+  // 快捷回复那一行跟着最后一条气泡走，不单独成一个空气泡（前端 splitStreamMessages 同规则）。
+  if (parts.length > 1 && parts[parts.length - 1].startsWith("【选项】")) {
+    const line = parts.pop()!;
+    parts[parts.length - 1] += "\n" + line;
+  }
   return parts.length > 0 ? parts : [text.trim() || "…"];
 }
 

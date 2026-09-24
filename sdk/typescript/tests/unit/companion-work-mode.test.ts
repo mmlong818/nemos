@@ -51,7 +51,7 @@ test("English capability prompts use task mode and its long-output budget", asyn
       "Return the completed structured result.",
     ].join("\n"), { memoryMode: "off", model: "task-selected", toolMode: "off" });
 
-    assert.match(observed.system ?? "", /Task delivery mode/);
+    assert.match(observed.system ?? "", /【办事模式】/);
     assert.doesNotMatch(observed.system ?? "", /角色近况不能进入能力任务/);
     assert.equal(observed.maxTokens, 6000);
     assert.equal(observed.context?.mode, "task");

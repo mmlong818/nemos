@@ -138,7 +138,7 @@ test("任务偏好预览与实际交付共用选择逻辑，普通与流式交�
   await engine.notify("me", persona.id, workQuery, { memoryMode: "preferences", surface: "capability" });
   await engine.notifyStream("me", persona.id, workQuery, { onToken() {}, onStatus() {} }, { memoryMode: "preferences", surface: "capability" });
   for (const system of systems) {
-    assert.match(system, /Task delivery mode/);
+    assert.match(system, /【办事模式】/);
     assert.deepEqual(promptRecords(system).map((item) => item.content), preview);
     assert.equal(promptRecords(system)[0].confidence, "medium");
     assert.doesNotMatch(system, /THIRD_PARTY_FORMAT/);

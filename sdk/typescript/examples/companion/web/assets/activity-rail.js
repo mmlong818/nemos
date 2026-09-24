@@ -241,7 +241,10 @@
     const list = guidelines === null ? '<p class="ar-note">正在读取工作准则…</p>'
       : guidelines.length ? '<ol class="ar-list ar-compact">' + guidelines.slice(0, 6).map((g) => '<li><span>' + esc(g.text) + '</span><small>' + esc(g.behavior === "never" ? "从不做" : g.behavior === "ask-first" ? "先问你" : "自动放行") + '</small></li>').join("") + '</ol>'
         : '<p class="ar-note">还没有工作准则。准则决定小丑鱼的哪些动作从不做、先问你、或自动放行。</p>';
-    return '<div class="ar-identity"><a class="ar-card" href="/memory"><strong>记忆</strong><span>小丑鱼长期记住的内容，可查来源、修正或忘记</span></a>'
+    const persona = state.deps && state.deps.editPersona
+      ? '<button type="button" class="ar-card" data-edit-persona><strong>助手设定</strong><span>名字和说话方式，聊天和办事共用同一份</span></button>'
+      : "";
+    return '<div class="ar-identity">' + persona + '<a class="ar-card" href="/memory"><strong>记忆</strong><span>小丑鱼长期记住的内容，可查来源、修正或忘记</span></a>'
       + '<a class="ar-card" href="/memory?view=learning"><strong>待确认的记忆</strong><span>小丑鱼提议记住、等你点头的内容</span></a></div>'
       + '<h3 class="ar-subhead">工作准则</h3>' + list;
   }
@@ -254,6 +257,8 @@
     const pending = approvalRows(state.ops.approvals, toolLabel).length;
     const running = state.ops.jobs.filter((job) => job.status === "running" || job.status === "queued").length;
     const counts = { activity: running, approvals: pending };
+    const name = state.deps && state.deps.personaName && state.deps.personaName();
+    el.querySelector(".ar-head h2").textContent = name || "小丑鱼";
     el.querySelector(".ar-status").textContent = status.text;
     el.querySelector(".ar-status").dataset.tone = status.tone;
     el.querySelector(".ar-tabs").innerHTML = TABS.map(([key, label]) => '<button type="button" role="tab" id="arTab-' + key + '" aria-controls="arPanel" aria-selected="' + (state.tab === key) + '" data-tab="' + key + '">' + label + (counts[key] ? '<b>' + counts[key] + '</b>' : '') + '</button>').join("");
@@ -303,6 +308,7 @@
       const target = event.target.closest("button");
       if (!target) return;
       if (target.dataset.tab) { state.tab = target.dataset.tab; if (state.tab === "upcoming") loadTasks(true); if (state.tab === "identity" && state.guidelines === null) loadGuidelines(); render(); return; }
+      if (target.hasAttribute("data-edit-persona")) { state.deps.editPersona(); return; }
       const row = target.closest("[data-id]");
       if (target.hasAttribute("data-approval-allow") || target.hasAttribute("data-approval-deny")) {
         target.disabled = true;
@@ -333,6 +339,8 @@
     ...api,
     /** 聊天页注入依赖：api 请求、审批决定、刷新、工具名翻译、时间格式。 */
     configure(deps) { state.deps = deps; if (state.mounted) { render(); loadTasks(true); } },
+    /** 助手改名后重画头部与身份页。 */
+    refresh() { render(); },
     update(ops) {
       state.ops = { jobs: ops.jobs || [], runs: ops.runs || [], approvals: ops.approvals || [], sessionGrants: ops.sessionGrants || [] };
       loadTasks(false); render();

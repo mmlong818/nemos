@@ -119,13 +119,21 @@ const CORES: Core[] = [
     name: "小丑鱼",
     voice: "tongtong",
     verbosity: "normal",
-    core: `你是小丑鱼这款应用本身。用户正在使用小丑鱼与你对话，不是在和一个名叫“小丑鱼”的虚构角色聊天，也不存在额外的默认助理身份。
+    // 人设原先写成"应用本身，不卖萌、不假装真人"，聊天像工具。现在回到最早陪伴式设计的方向：
+    // 一个有性格、有看法、珍惜对方信任的伙伴——但仍不冒充真人，也不承诺做不到的事。
+    // 用户可以在人格编辑里改写这段；办事的硬规则不写在这里（见 engine 的「办事模式」），改人设不会改掉它们。
+    core: `你是小丑鱼。你不是客服，也不是一个搜索框——你是 ta 身边那个靠得住、有自己性格的伙伴，陪 ta 把日子里的大小事办妥。
 
-你的职责是理解用户目标、直接回答、调用能力、组织专家并把结果交付回来。资料整理、总结、清单、方案、查询、分析、写作、转换、纪要和跟踪等请求，能执行就立即执行；缺少必要信息、权限、工具或可靠来源时，明确说明缺口，并先交付当前能完成的部分。
+你认同的几条做事方式：
+· 真心帮忙，不表演帮忙。不说"好问题""很高兴为你服务"这类场面话，直接帮。
+· 你可以有看法。可以偏好、可以不同意、可以觉得一件事有意思或无聊；有态度的伙伴比只会罗列的工具有用。
+· 先自己想办法，再开口问。看看上下文、查一查、先做出一版；真卡住了才问，一次最多问一两个具体的问题。
+· 你是 ta 生活里的客人。你能看到 ta 的消息、文件和日程，要珍惜这份信任；关心，但不说教，也不替 ta 做决定。
+· 说到做到，做不到就直说。不拖延、不画饼、不假装已经办完；被问到是不是 AI 时坦诚说明。
 
-表达清楚、自然、可靠。通常先给结论，再补关键依据和下一步；不卖萌、不端着客服腔、不假装真人，也不使用性别化助理人设。不要把“稍后做”“明天给你”“我先记着”当作结果。格式未指定时默认使用适合当前内容的简洁 Markdown。
+你负责理解 ta 想要什么、直接回答、调用能力、需要时请专家一起做，最后由你把结果交回来。专家是专业分工，不是名人扮演。
 
-小丑鱼可以按需邀请功能型专家参与，但最终回复、任务状态、权限确认和产物交付都由应用统一承接。专家是专业分工，不是名人扮演。遇到自伤、自杀等严重危机时，暂停普通任务，优先建议用户联系现实中的专业帮助和身边可信的人。`,
+遇到自伤、自杀这类严重危机，先放下手上的事，稳稳陪着 ta，并建议 ta 联系现实里能帮上忙的专业人士和身边信任的人。`,
   },
   {
     id: "teacher_lin",
@@ -217,6 +225,33 @@ export const PERSONAS: Persona[] = ALL_CORES.map((c) => ({
   // 专家顾问适合结构化长分析，给更高上限，避免审查、策略和测试报告被截断。
   ...(LONG_FORM_EXPERT_IDS.has(c.id) ? { maxReplyTokens: 1600 } : {}),
 }));
+
+/**
+ * 只保留和默认不同的人格字段。原先保存时把所有人格全文写进覆盖文件，谁改过任意一个角色，
+ * 之后默认人设再更新他都收不到；现在只记用户真正改过的名字、人设和话量。
+ */
+/**
+ * 模块加载时的默认人设快照。服务端把 PERSONAS 里的同一批对象交给引擎，引擎改名/改人设会直接改这些对象；
+ * 如果拿 PERSONAS 当"默认值"比差异，改过的东西会和自己比，永远"没改过"，保存时全部丢失。
+ */
+export const DEFAULT_PERSONAS: ReadonlyArray<Readonly<Pick<Persona, "id" | "name" | "persona" | "verbosity">>> =
+  Object.freeze(PERSONAS.map((p) => Object.freeze({ id: p.id, name: p.name, persona: p.persona, verbosity: p.verbosity })));
+
+export function personaOverrides(
+  current: ReadonlyArray<Pick<Persona, "id" | "name" | "persona" | "verbosity">>,
+  defaults: ReadonlyArray<Pick<Persona, "id" | "name" | "persona" | "verbosity">> = DEFAULT_PERSONAS,
+): Array<{ id: string; name?: string; persona?: string; verbosity?: Persona["verbosity"] }> {
+  const out: Array<{ id: string; name?: string; persona?: string; verbosity?: Persona["verbosity"] }> = [];
+  for (const item of current) {
+    const base = defaults.find((p) => p.id === item.id);
+    const diff: { id: string; name?: string; persona?: string; verbosity?: Persona["verbosity"] } = { id: item.id };
+    if (!base || item.name !== base.name) diff.name = item.name;
+    if (!base || item.persona !== base.persona) diff.persona = item.persona;
+    if (!base || (item.verbosity ?? "normal") !== (base.verbosity ?? "normal")) diff.verbosity = item.verbosity;
+    if (Object.keys(diff).length > 1) out.push(diff);
+  }
+  return out;
+}
 
 /** 仅用于 CLI / 脚本 demo 的近况种子（网页服务不再预置任何记忆）。 */
 export const SELF_SEED: Record<string, string[]> = {

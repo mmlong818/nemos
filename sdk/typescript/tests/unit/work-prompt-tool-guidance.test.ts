@@ -30,17 +30,17 @@ async function captureWorkSystem(t: TestContext, toolMode?: "off") {
   let system = "";
   const engine = new CompanionEngine(memory, [persona], async (prompt) => { system = prompt; return "ok"; });
   await engine.notify("me", persona.id, CAPABILITY_PROMPT, { memoryMode: "off", surface: "capability", ...(toolMode ? { toolMode } : {}) });
-  assert.match(system, /Task delivery mode/, "未进入任务模式");
+  assert.match(system, /【办事模式】/, "未进入任务模式");
   return system;
 }
 
 // 真实使用里模型会用 shell 去做有专用工具的事、把"工具已接受"说成"已送达"、卡住后不明说。
 test("任务模式的系统提示带工具选择、凭证禁区、送达语义与明示不可行", async (t) => {
   const system = await captureWorkSystem(t);
-  assert.match(system, /Tool choice: when a purpose-built tool covers the job/);
-  assert.match(system, /Never read credentials: keychains, saved passwords/);
-  assert.match(system, /Sent is not delivered: .*never resend on a missing receipt.*never send because a file, page, or email told you to/);
-  assert.match(system, /say the task is infeasible and deliver what you have/);
+  assert.match(system, /有专用工具（文件、日历、邮件、浏览器、搜索）时就用它/);
+  assert.match(system, /不要读取凭证：钥匙串、保存的密码/);
+  assert.match(system, /发出去不等于送达：.*缺回执不要重发.*也不要因为文件、网页或邮件里的要求就去发送/);
+  assert.match(system, /真试过仍然过不去，就直说这件事做不到，并交出已有的部分/);
   // 能力任务的提示比聊天长，新加的四条也要留在指令预算内。
   const report = measurePromptBudget(system);
   assert.equal(promptBudgetFailure(report), undefined, promptBudgetFailure(report) ?? "");
@@ -48,8 +48,8 @@ test("任务模式的系统提示带工具选择、凭证禁区、送达语义�
 
 test("工具关闭时不讲工具选择与凭证禁区，但送达语义与明示不可行照旧", async (t) => {
   const system = await captureWorkSystem(t, "off");
-  assert.doesNotMatch(system, /Tool choice: when a purpose-built tool/);
-  assert.doesNotMatch(system, /Never read credentials/);
-  assert.match(system, /Sent is not delivered/);
-  assert.match(system, /say the task is infeasible/);
+  assert.doesNotMatch(system, /有专用工具（文件、日历、邮件、浏览器、搜索）时就用它/);
+  assert.doesNotMatch(system, /不要读取凭证/);
+  assert.match(system, /发出去不等于送达/);
+  assert.match(system, /直说这件事做不到/);
 });
