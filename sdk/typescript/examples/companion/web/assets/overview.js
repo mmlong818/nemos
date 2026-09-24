@@ -28,5 +28,20 @@
     }catch{}
   }
   document.addEventListener('click',async e=>{const b=e.target.closest('[data-unpin]');if(!b)return;b.disabled=true;await fetch('/api/capabilities/widget/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.unpin,pinned:false})}).catch(()=>{});widgetKey='';loadWidgets();});
+  // 动态：看页面只读取已有内容；点「生成」才联网和调用模型。
+  let feedData=null,feedState={editing:false,generating:false};
+  function renderFeed(){if(feedData&&window.ClownfishFeed)window.ClownfishFeed.render(document.getElementById('overviewFeedBody'),feedData,feedState);}
+  async function loadFeed(){try{const r=await fetch('/api/feed');if(!r.ok)throw 0;feedData=await r.json();renderFeed();}catch{document.getElementById('overviewFeedBody').innerHTML='<p class="wb-muted">动态暂时读不到。</p>';}}
+  async function feedPost(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const p=await r.json().catch(()=>({}));if(!r.ok)throw new Error(p.error||'操作没完成');return p;}
+  document.getElementById('overviewFeedBody').addEventListener('click',async e=>{
+    const b=e.target.closest('button');if(!b)return;
+    if(b.hasAttribute('data-feed-edit')){feedState.editing=true;renderFeed();document.getElementById('feedPromptInput').focus();return;}
+    if(b.hasAttribute('data-feed-more')){feedState.showAll=true;renderFeed();return;}
+    if(b.hasAttribute('data-feed-cancel')){feedState.editing=false;renderFeed();return;}
+    if(b.hasAttribute('data-feed-save')){b.disabled=true;try{feedData.prompt=(await feedPost('/api/feed/prompt',{prompt:document.getElementById('feedPromptInput').value})).prompt;feedState.editing=false;}catch(err){alert(err.message);}renderFeed();return;}
+    if(b.hasAttribute('data-feed-generate')){feedState.generating=true;renderFeed();try{await feedPost('/api/feed/generate');}catch(err){alert(err.message);}feedState.generating=false;await loadFeed();return;}
+    if(b.dataset.feedLike){const liked=b.getAttribute('aria-pressed')!=='true';b.disabled=true;try{await feedPost('/api/feed/like',{id:b.dataset.feedLike,liked});const p=feedData.posts.find(x=>x.id===b.dataset.feedLike);if(p)p.liked=liked;}catch{}renderFeed();}
+  });
+  loadFeed();
   load();
 })();

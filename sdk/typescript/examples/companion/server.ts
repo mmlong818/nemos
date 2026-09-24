@@ -201,6 +201,7 @@ import { attachScheduledTaskHandoffProjection, FileScheduledTaskHandoffStore } f
 import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
 import { GOAL_CATEGORIES, goalCoachingAddendum, type GoalInput } from "./goals.js";
 import { hasWidgetIntent } from "./widgets.js";
+import { FeedError, FeedStore, feedPlanPrompt, feedWritePrompt, parseFeedPlan, parseFeedPosts, type FeedBatch, type FeedCandidateSource, type FeedContext, type FeedPost } from "./feed.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
 import { FileStepReceiptStore } from "./structured-handoff.js";
 import { listBotMarket } from "./bot-market.js";
@@ -3608,6 +3609,99 @@ function sanitizeConversationTitle(value: string, fallback: string): string {
   return cleaned.length > 24 ? cleaned.slice(0, 24) : cleaned;
 }
 
+// ———————————————— 动态 ————————————————
+// 只在用户点"生成"时运行：先定搜索词、联网搜，再只根据搜到的来源和本机记录写。同一时间只跑一次。
+const feedStore = new FeedStore(join(DATA_DIR, "feed.json"));
+let feedGenerating: Promise<{ batch: FeedBatch; posts: FeedPost[] }> | null = null;
+
+function liveSearchKey(): string {
+  return process.env.ZHIPU_API_KEY || (modelConnection?.provider === "zhipu" ? modelConnection.apiKey : "") || "";
+}
+
+async function feedContext(): Promise<FeedContext> {
+  const goals = personalWork.listGoals(USER).filter((g) => g.status === "active").slice(0, 8)
+    .map((g) => `${g.title}（怎么算做到：${g.measure}${g.plan ? `；计划：${g.plan}` : ""}）`);
+  const matters = personalWork.listMatters(USER).filter((m) => m.status !== "completed").slice(0, 8)
+    .map((m) => `${m.title}：${m.status === "waiting" ? `等待${m.waitingFor}` : m.nextAction || m.goal}`);
+  let preferences: string[] = [];
+  try {
+    preferences = (await mem.forUser(USER).listByLayer("personal_semantic" as never, { limit: 40 }))
+      .map((m) => memoryDisplayContent(m.content)).filter(Boolean).slice(0, 15);
+  } catch { /* 记忆读不到就不带偏好 */ }
+  const snapshot = feedStore.snapshot();
+  return {
+    prompt: snapshot.prompt, goals, matters, preferences,
+    recentTitles: snapshot.posts.slice(0, 30).map((p) => p.title),
+    today: new Date().toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric", weekday: "long" }),
+  };
+}
+
+function feedModelContext(scope: string, maxOutputChars: number) {
+  return {
+    sessionId: `feed-${randomBytes(6).toString("hex")}`, userId: USER, personaId: APP_PERSONA_ID,
+    instruction: "生成个人动态", scope, memoryScopes: [], mode: "task" as const, toolMode: "off" as const,
+    // 低推理强度：思考模型会把 max_tokens 吃在推理上，正文反而是空的（实测过）。
+    reasoningEffort: "low" as const,
+    runtimeLimits: { maxRounds: 1, maxToolRounds: 0, maxTotalTokens: 16_000, maxOutputChars },
+  };
+}
+
+async function generateFeedNow(): Promise<{ batch: FeedBatch; posts: FeedPost[] }> {
+  const batchId = randomUUID();
+  let queries: string[] = [];
+  try {
+    if (!llm.live) throw new FeedError("还没有连接模型，没法生成动态", 409);
+    const ctx = await feedContext();
+    const model = modelConnection ? dailyChatModelForConnection(modelConnection) : undefined;
+    const key = liveSearchKey();
+    let sources: FeedCandidateSource[] = [];
+    let searchNote: string;
+    if (key) {
+      const plan = feedPlanPrompt(ctx);
+      queries = parseFeedPlan(await llm.chat(plan.system, plan.user, model, 600, feedModelContext("feed-plan", 2_000)));
+      const results = await Promise.allSettled(queries.map((query) => searchWeb(key, query)));
+      const seen = new Set<string>();
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        for (const item of result.value) {
+          if (!item.url || seen.has(item.url)) continue;
+          seen.add(item.url);
+          sources.push({ title: item.title, url: item.url, content: item.content });
+        }
+      }
+      sources = sources.slice(0, 12);
+      const failed = results.filter((result) => result.status === "rejected").length;
+      searchNote = queries.length === 0
+        ? "这次的话题不需要搜新消息"
+        : sources.length
+          ? `联网搜了 ${queries.length} 个词，找到 ${sources.length} 条来源${failed ? `（${failed} 个词搜索失败）` : ""}`
+          : "联网搜索没有找到可用的来源";
+    } else {
+      searchNote = "联网搜索没有配置，这次只根据你的目标和事项写，没有新消息";
+    }
+    const write = feedWritePrompt(ctx, sources, searchNote);
+    const reply = await llm.chat(write.system, write.user, model, 2_400, feedModelContext("feed-write", 8_000));
+    const posts = parseFeedPosts(reply, sources, ctx.recentTitles, batchId);
+    const batch: FeedBatch = {
+      id: batchId, at: new Date().toISOString(), queries,
+      status: posts.length ? "posted" : "empty",
+      note: posts.length ? searchNote : `这次没有值得收录的新内容（${searchNote}）`,
+    };
+    feedStore.addBatch(batch, posts);
+    return { batch, posts };
+  } catch (error) {
+    // 失败也记一批：用户能看到"那次没成"和原因，而不是按钮转一圈什么都没有。
+    const batch: FeedBatch = { id: batchId, at: new Date().toISOString(), queries, status: "failed", note: `这次没生成出来：${userFacingMessage(error)}` };
+    feedStore.addBatch(batch, []);
+    return { batch, posts: [] };
+  }
+}
+
+function generateFeed(): Promise<{ batch: FeedBatch; posts: FeedPost[] }> {
+  feedGenerating ??= generateFeedNow().finally(() => { feedGenerating = null; });
+  return feedGenerating;
+}
+
 async function generateConversationTitle(text: string): Promise<string> {
   const source = String(text || "").trim().slice(0, 2_000);
   const fallback = fallbackConversationTitle(source);
@@ -6340,6 +6434,32 @@ const server = createServer(async (req, res) => {
         const known = error instanceof AssistantTeamError || error instanceof BotRecipeError || error instanceof RunningTaskSteeringError;
         send(res, known ? error.status : 500, { error: "assistant_team_failed",
           userMessage: known ? error.message : "助理团队暂时无法处理请求，原有记录保留。" });
+      }
+      return;
+    }
+    if (pathname === "/api/feed" || pathname.startsWith("/api/feed/")) {
+      try {
+        if (req.method === "GET" && pathname === "/api/feed") {
+          send(res, 200, { ...feedStore.snapshot(), generating: !!feedGenerating, searchAvailable: !!liveSearchKey(), modelReady: llm.live });
+          return;
+        }
+        if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }
+        const body = await readBody(req) as { prompt?: unknown; id?: unknown; liked?: unknown };
+        if (pathname === "/api/feed/prompt") { send(res, 200, { ok: true, prompt: feedStore.setPrompt(body.prompt) }); return; }
+        if (pathname === "/api/feed/like") { send(res, 200, { ok: true, post: feedStore.like(String(body.id || ""), body.liked === true) }); return; }
+        if (pathname === "/api/feed/generate") {
+          const action = await agentUserActions.execute({
+            name: "feed_generate", description: "用户点了生成动态：联网搜索并调用模型写几条动态",
+            arguments: { searchAvailable: !!liveSearchKey() },
+            execute: () => generateFeed(),
+            summarizeResult: (value) => ({ status: value.batch.status, posts: value.posts.length }),
+          });
+          send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
+          return;
+        }
+        send(res, 404, { error: "接口不存在" });
+      } catch (error) {
+        send(res, error instanceof FeedError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) });
       }
       return;
     }

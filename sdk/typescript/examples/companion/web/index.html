@@ -3891,8 +3891,23 @@ function createConversation(mode = "chat") {
 // 目标页开对话：/?goal=<类别> 新定一个目标；/?goal=<类别>&goalId=<编号>&title=<名字> 聊已有目标的进展。
 // 对话节点记下 goal，之后这段对话的每次请求都带上，服务端据此给目标工具和引导。
 const GOAL_CATEGORY_LABELS = { health: "健康", relationships: "人际关系", finance: "财务", career: "职业", interests: "兴趣", productivity: "效率提升", other: "其他" };
+// 动态里的「讨论」：/?discuss=<帖子编号>，开一段新对话，把这条动态原样带进来（标题、正文、来源）。
+async function maybeStartFeedDiscussion(params) {
+  const id = params.get("discuss") || "";
+  if (!id || !isOnboardingComplete()) return false;
+  history.replaceState(null, "", location.pathname);
+  let post = null;
+  try { post = ((await api("/api/feed")).posts || []).find((item) => item.id === id) || null; } catch { post = null; }
+  if (!post) return true;
+  createConversation("chat");
+  const sources = (post.sources || []).map((s) => s.url).filter(Boolean);
+  const text = "聊聊这条动态：「" + post.title + "」\n" + post.body + (sources.length ? "\n来源：" + sources.join(" ") : "");
+  void sendMsg(false, text);
+  return true;
+}
 function maybeStartGoalConversation() {
   const params = new URLSearchParams(location.search);
+  if (params.has("discuss")) { void maybeStartFeedDiscussion(params); return; }
   const category = params.get("goal") || "";
   if (!GOAL_CATEGORY_LABELS[category] || !isOnboardingComplete()) return;
   const goalId = (params.get("goalId") || "").slice(0, 100);
