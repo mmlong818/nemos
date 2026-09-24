@@ -23,3 +23,4 @@
 button.danger{color:var(--cf-danger)}
 @media(max-width:700px){.goal-detail{padding:20px}.goal-categories{grid-template-columns:1fr 1fr}}
 .goal-checkin label{font-size:13px}.goal-checkin>div{display:flex;gap:8px;margin-top:6px}.goal-checkin select{width:auto}.goal-checkin input{width:auto}.goal-checkin .hint{margin-top:6px}
+.wb-overview-widgets{margin:8px 0 28px}.wb-overview-widgets>h2{font-size:17px;margin:0 0 10px}#overviewWidgetList{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}.wb-widget-card{border:1px solid var(--cf-line);border-radius:12px;background:var(--cf-surface);padding:12px}.wb-widget-card header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.wb-widget-card h3{font-size:15px;margin:0}.wb-widget-card header button{font-size:12px;padding:5px 10px}.widget-frame{display:block;width:100%;border:0;border-radius:8px;background:#fff}

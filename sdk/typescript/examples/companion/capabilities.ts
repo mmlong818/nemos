@@ -2,6 +2,8 @@ import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, rmd
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ServerResponse } from "node:http";
+import { WIDGET_CONTRACT, WidgetStateStore, injectWidgetBridge } from "./widgets.js";
+import { selfCheckWidget } from "./widget-selfcheck.js";
 import type { AgentExtensionManifest } from "../../src/index.js";
 import type { CapabilityToolRegistry, CapabilityToolSummary, PersonaToolBinding } from "./capability-tools.js";
 import { capabilityToolFilterForSurface } from "./capability-system-registry.js";
@@ -426,6 +428,7 @@ export class CapabilityRuntime {
   private tasks: CapabilityTask[] = [];
   private artifacts: CapabilityArtifact[] = [];
   private retainedArtifacts: RetainedCapabilityArtifact[] = [];
+  private readonly widgetState: WidgetStateStore;
   private intakes: DemandIntakeReport[] = [];
 
   constructor(private readonly opts: CapabilityRuntimeOptions) {
@@ -440,6 +443,7 @@ export class CapabilityRuntime {
     this.skillsDir = join(root, "skills");
     this.skillUsageFile = join(this.skillsDir, ".usage.json");
     this.artifactFeedbackFile = join(root, "artifact-feedback.json");
+    this.widgetState = new WidgetStateStore(join(root, "widget-state.json"));
     this.artifactWorkspaceStore = new ArtifactWorkspaceStore(join(root, "artifact-workspaces.json"));
     mkdirSync(this.artifactDir, { recursive: true });
     mkdirSync(this.skillsDir, { recursive: true });
@@ -1910,6 +1914,7 @@ export class CapabilityRuntime {
       "Content-Type": contentType(artifact.format),
       "Content-Disposition": `${disposition}; filename="${asciiFileName(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
       "Cache-Control": "no-store",
+      ...ARTIFACT_SANDBOX_HEADERS,
     });
     createReadStream(file).pipe(res);
     return true;
@@ -1938,8 +1943,10 @@ export class CapabilityRuntime {
         "Content-Type": "text/html; charset=utf-8",
         "Content-Disposition": "inline",
         "Cache-Control": "no-store",
+        ...ARTIFACT_SANDBOX_HEADERS,
       });
-      createReadStream(file).pipe(res);
+      if (artifact.format === "html" && !artifact.previewFile) res.end(injectWidgetBridge(readFileSync(file, "utf8"), artifact.id, this.widgetState.get(artifact.id)));
+      else createReadStream(file).pipe(res);
       return true;
     }
     if (["doc", "pptx", "xlsx"].includes(artifact.format)) {
@@ -1995,6 +2002,7 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
       "Content-Type": "text/html; charset=utf-8",
       "Content-Disposition": "inline",
       "Cache-Control": "no-store",
+      ...ARTIFACT_SANDBOX_HEADERS,
     });
     res.end(html);
     return true;
@@ -2097,6 +2105,29 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
 
   private saveRetainedArtifacts(): void {
     writeJson(this.retainedArtifactsFile, this.retainedArtifacts.slice(-200));
+  }
+
+  /** 构件状态只给 HTML 产物；外层页面代存，内容当数据，不执行。 */
+  widgetStateOf(id: string): { found: boolean; state: unknown } {
+    const artifact = this.findVisibleArtifact(id);
+    if (!artifact || artifact.format !== "html") return { found: false, state: null };
+    return { found: true, state: this.widgetState.get(id) };
+  }
+  saveWidgetState(id: string, state: unknown): boolean {
+    const artifact = this.findVisibleArtifact(id);
+    if (!artifact || artifact.format !== "html") return false;
+    this.widgetState.set(id, state);
+    return true;
+  }
+  pinnedWidgets(): Array<{ id: string; title: string; createdAt: string }> {
+    return this.widgetState.pinned().map((id) => this.findVisibleArtifact(id)).filter((item): item is CapabilityArtifact => !!item && item.format === "html")
+      .map((item) => ({ id: item.id, title: item.title, createdAt: item.createdAt }));
+  }
+  pinWidget(id: string, pinned: boolean): boolean {
+    const artifact = this.findVisibleArtifact(id);
+    if (!artifact || artifact.format !== "html") return false;
+    this.widgetState.setPinned(id, pinned);
+    return true;
   }
 
   private findVisibleArtifact(id: string | null): CapabilityArtifact | undefined {
@@ -2617,17 +2648,28 @@ ${task.instruction}`,
     const file = `${fileBase}.${ext}`;
     const content = normalizeArtifactContent(raw, task.format, task.title, verification);
     writeFileSync(file, content, "utf8");
+    const split = task.format === "html" ? splitHtmlDeliverable(raw) : null;
+    const browserCheck = task.format === "html" ? await selfCheckWidget(file) : undefined;
+    // 页面没写完时，即使浏览器里没报错也不能算通过：后半截的勾选框和脚本根本不存在。
+    // 标题优先用页面自己的 <title>：任务标题是截断的用户原话，放在总览和文件列表里不好读。
+    const pageTitle = split ? (/<title[^>]*>([^<]{1,60})<\/title>/i.exec(split.html)?.[1] || "").replace(/\s+/g, " ").trim() : "";
+    const selfCheck = browserCheck && split && !split.complete
+      ? { ...browserCheck, status: "failed" as const, detail: "页面没写完（输出在中途被截断），部分内容和交互可能缺失" }
+      : browserCheck;
     return {
       id,
       taskId: task.id,
       capabilityId: ability.id,
       personaId: task.personaId,
-      title: task.title,
+      title: pageTitle || task.title,
       format: task.format,
       file,
       createdAt,
       summary: summarize(raw),
-      metadata: { contextFile },
+      metadata: {
+        contextFile,
+        ...(selfCheck ? { validationChecks: [{ id: "browser-self-check", label: "交付前在浏览器里打开并点一遍", status: selfCheck.status, phase: "verification" as const, detail: selfCheck.detail }] } : {}),
+      },
       verification: verification?.relevant ? verification : undefined,
     };
   }
@@ -2686,9 +2728,13 @@ ${task.instruction}`,
 
   private notificationText(personaName: string, task: CapabilityTask, artifact: CapabilityArtifact, raw: string): string {
     const format = formatLabel(artifact.format);
-    const visible = artifact.metadata?.native ? artifact.summary : deliveryExcerpt(raw);
+    // HTML 页面已经嵌在回复里，这里只放说明文字，不把整页代码塞进气泡。
+    const html = artifact.format === "html" ? splitHtmlDeliverable(raw) : null;
+    const visible = artifact.metadata?.native ? artifact.summary : html ? (html.prose || artifact.summary) : deliveryExcerpt(raw);
     const installed = artifact.metadata?.generatedAbilityId ? "\n新能力已通过检查并加入本机能力库。" : "";
-    return `${personaName}已经完成「${task.title}」。\n\n${visible}${installed}\n\n---\n产物格式：${format}\n保存位置：${artifact.file}`;
+    const selfCheck = artifact.metadata?.validationChecks?.find((item) => item.id === "browser-self-check");
+    const checked = selfCheck ? `\n自测：${selfCheck.detail}` : "";
+    return `${personaName}已经完成「${task.title}」。\n\n${visible}${installed}${checked}\n\n---\n产物格式：${format}\n保存位置：${artifact.file}`;
   }
 }
 
@@ -2768,7 +2814,7 @@ const BUILTIN_ABILITIES: Capability[] = [
     description: "把资料整理为可在浏览器打开的单页 HTML。",
     kind: "builtin",
     defaultFormat: "html",
-    prompt: "输出完整、可打印的 HTML 文档。body 用 data-layout 标明 editorial、dashboard 或 brief；包含清晰标题、章节、表格或列表。图表使用 table data-chart=bar|line|donut 的结构化数据，小丑鱼会统一渲染。不要依赖外部 CDN。",
+    prompt: "输出完整、可打印的 HTML 文档。body 用 data-layout 标明 editorial、dashboard 或 brief；包含清晰标题、章节、表格或列表。图表使用 table data-chart=bar|line|donut 的结构化数据，小丑鱼会统一渲染。不要依赖外部 CDN。" + WIDGET_CONTRACT,
     createdAt: BUILTIN_CREATED_AT,
   },
   {
@@ -3553,6 +3599,29 @@ function extension(format: ArtifactFormat): string {
   return "md";
 }
 
+/**
+ * 产物是模型写的内容，可能带脚本（构件本来就要跑脚本），也可能被联网读到的网页诱导写进恶意代码。
+ * 它和应用接口同源，不加限制时脚本能以用户身份调用 /api/*（批准操作、改记忆）。
+ * CSP sandbox 不带 allow-same-origin：页面变成无来源，发往 /api 的请求带 Origin: null，被本机同源检查拒掉；
+ * 同时禁止它向外发请求。只允许脚本本身运行，以及内嵌图片、字体。
+ */
+export const ARTIFACT_SANDBOX_HEADERS = {
+  "Content-Security-Policy": [
+    "sandbox allow-scripts allow-modals allow-downloads allow-popups",
+    "default-src 'none'",
+    "script-src 'unsafe-inline'",
+    "style-src 'unsafe-inline'",
+    "img-src data: blob: https:",
+    "font-src data:",
+    "media-src data: blob:",
+    "connect-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'self'",
+  ].join("; "),
+  "X-Content-Type-Options": "nosniff",
+} as const;
+
 function contentType(format: ArtifactFormat): string {
   if (format === "pptx") return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   if (format === "doc") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -3606,6 +3675,28 @@ function summarize(raw: string): string {
   return lines.join("\n").slice(0, 520) || "产物已生成。";
 }
 
+/**
+ * 模型交 HTML 时常是"一段话 + ```html 代码块```"。页面文件只要代码，说明文字留给回复。
+ * complete 看有没有写到 </html>：没写完的页面（输出被截断）不能当成能用的构件交付。
+ */
+export function splitHtmlDeliverable(raw: string): { html: string; prose: string; complete: boolean } | null {
+  const fence = /```html[^\n]*\n([\s\S]*?)(?:```|$)/i.exec(raw);
+  let html: string;
+  let prose: string;
+  if (fence) {
+    html = fence[1];
+    prose = raw.slice(0, fence.index) + raw.slice(fence.index + fence[0].length);
+  } else {
+    const start = raw.search(/<!doctype html|<html[\s>]/i);
+    if (start < 0) return null;
+    const end = raw.search(/<\/html>/i);
+    html = end >= 0 ? raw.slice(start, end + 7) : raw.slice(start);
+    prose = raw.slice(0, start) + (end >= 0 ? raw.slice(end + 7) : "");
+  }
+  html = html.trim();
+  return { html, prose: prose.replace(/交付完成。?/g, "").trim(), complete: /<\/html>\s*$/i.test(html) };
+}
+
 function deliveryExcerpt(raw: string): string {
   const body = raw.trim() || "产物已生成。";
   const limit = 2800;
@@ -3617,6 +3708,15 @@ function normalizeArtifactContent(raw: string, format: ArtifactFormat, title: st
   const body = raw.trim() || "（空产物）";
   const verificationBlock = verification?.relevant ? sourceVerificationMarkdown(verification) : "";
   if (format === "html") {
+    const split = splitHtmlDeliverable(body);
+    if (split) {
+      const page = split.html;
+      const block = verificationBlock
+        ? '<section class="clownfish-source-check"><pre>' + escapeHtml(verificationBlock) + '</pre></section>'
+        : "";
+      const withVerification = /<\/body>/i.test(page) ? page.replace(/<\/body>/i, block + "</body>") : page + block;
+      return enhanceHtmlArtifact(withVerification);
+    }
     if (/<!doctype html|<html[\s>]/i.test(body)) {
       const block = verificationBlock
         ? '<section class="clownfish-source-check"><pre>' + escapeHtml(verificationBlock) + '</pre></section>'

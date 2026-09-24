@@ -381,6 +381,36 @@ export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
       if (!capabilities.previewArtifact(res, id)) send(res, 404, { error: "artifact not found" });
       return;
     }),
+    route("GET", "/api/capabilities/widget/state", ({ res, url }) => {
+      const id = new URLSearchParams(url.split("?")[1] || "").get("id") || "";
+      const result = capabilities.widgetStateOf(id);
+      if (!result.found) send(res, 404, { error: "构件不存在" });
+      else send(res, 200, { ok: true, state: result.state });
+      return;
+    }),
+    route("POST", "/api/capabilities/widget/state",
+      Type.Object({ id: Type.String(), state: Type.Unknown() }, { additionalProperties: false }),
+      ({ res }, body) => {
+      try {
+        if (!capabilities.saveWidgetState(body.id, body.state)) { send(res, 404, { error: "构件不存在" }); return; }
+        send(res, 200, { ok: true });
+      } catch (error) {
+        const status = error instanceof Error && "status" in error ? Number((error as { status: number }).status) : 500;
+        send(res, status, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }),
+    route("GET", "/api/capabilities/widget/pinned", ({ res }) => {
+      send(res, 200, { ok: true, widgets: capabilities.pinnedWidgets() });
+      return;
+    }),
+    route("POST", "/api/capabilities/widget/pin",
+      Type.Object({ id: Type.String(), pinned: Type.Boolean() }, { additionalProperties: false }),
+      ({ res }, body) => {
+      if (!capabilities.pinWidget(body.id, body.pinned)) { send(res, 404, { error: "构件不存在" }); return; }
+      send(res, 200, { ok: true, widgets: capabilities.pinnedWidgets() });
+      return;
+    }),
     route("GET", "/api/capabilities/artifact/context", ({ res, url }) => {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id");
       const handoff = capabilities.artifactHandoff(id);

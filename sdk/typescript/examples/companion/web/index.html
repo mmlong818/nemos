@@ -1771,6 +1771,9 @@
   .artifact-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .artifact-actions button { height:26px; padding:0 9px; border:1px solid #d8dde6; border-radius:4px; background:#fff; color:#2f343c; font-size:12px; cursor:pointer; }
   .artifact-actions button:hover { background:#f4f5f7; }
+  .widget-holder { margin-top:10px; }
+  .bub:has(.widget-holder) { width:min(760px, 100%); max-width:100%; }
+  .widget-frame { display:block; width:100%; min-width:280px; border:1px solid #e3e7ee; border-radius:8px; background:#fff; }
   .artifact-actions a { display:inline-flex; align-items:center; height:28px; padding:0 12px; border:1px solid #cfd6e2; border-radius:14px; background:#fff; color:#2f343c; font-size:13px; text-decoration:none; }
   .artifact-actions a:hover { background:#f1f4f9; }
   .quick-replies { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
@@ -3222,6 +3225,7 @@
 <link rel="stylesheet" href="/assets/activity-rail.css">
 <script src="/assets/activity-rail.js"></script>
 <script src="/assets/quick-replies.js"></script>
+<script src="/assets/widget-host.js"></script>
 <script>
 const BUILD = "v16 clownfish-identity-migration";
 const APP_PERSONA_ID = "clownfish";
@@ -4756,14 +4760,16 @@ function renderBubbleContent(bub, text, opts = {}) {
   }
   bub.classList.add("rendered");
   const prefix = opts.voice ? '<p>[语音]</p>' : "";
-  if (opts.artifact && opts.artifact.format === "html" && isLikelyHtml(raw)) {
-    const iframe = '<iframe class="html-preview" sandbox="" referrerpolicy="no-referrer" srcdoc="' + escapeHtmlText(sanitizeHtml(raw)) + '"></iframe>';
-    bub.innerHTML = prefix + iframe + artifactActionsHtml(opts.artifact);
-    bindArtifactActions(bub, opts.artifact);
-    return;
-  }
-  const html = isLikelyHtml(raw) ? sanitizeHtml(raw) : markdownToHtml(raw);
+  // HTML 产物直接当构件嵌在回复里：服务端把页面关在无来源沙箱里，状态经宿主代存到本机。
+  const widget = opts.artifact && opts.artifact.format === "html" && opts.artifact.id && window.ClownfishWidgetHost;
+  const html = widget && isLikelyHtml(raw) ? "" : isLikelyHtml(raw) ? sanitizeHtml(raw) : markdownToHtml(raw);
   bub.innerHTML = prefix + html + (opts.artifact ? artifactActionsHtml(opts.artifact) : "");
+  if (widget) {
+    const holder = document.createElement("div");
+    holder.className = "widget-holder";
+    bub.insertBefore(holder, bub.querySelector(".artifact-actions"));
+    window.ClownfishWidgetHost.mount(holder, opts.artifact.id, { title: opts.artifact.title || "构件", maxHeight: 560 });
+  }
   if (opts.artifact) bindArtifactActions(bub, opts.artifact);
   appendQuickReplies(bub, quick.options);
 }
@@ -4773,12 +4779,22 @@ function artifactActionsHtml(artifact) {
     + '<button type="button" data-artifact-action="preview">预览</button>'
     + '<button type="button" data-artifact-action="edit">在文件中继续</button>'
     + '<button type="button" data-artifact-action="download">下载</button>'
+    + (artifact.format === "html" ? '<button type="button" data-artifact-action="pin">钉到总览</button>' : '')
     + '</div>';
 }
 function bindArtifactActions(root, artifact) {
   root.querySelectorAll("[data-artifact-action]").forEach((btn) => {
     btn.onclick = () => {
       const action = btn.dataset.artifactAction;
+      if (action === "pin") {
+        const pinned = btn.dataset.pinned !== "1";
+        btn.disabled = true;
+        api("/api/capabilities/widget/pin", { id: artifact.id, pinned }).then(() => {
+          btn.dataset.pinned = pinned ? "1" : "";
+          btn.textContent = pinned ? "已钉到总览（点此取消）" : "钉到总览";
+        }).catch((error) => alert("没钉上：" + (error.message || error))).finally(() => { btn.disabled = false; });
+        return;
+      }
       if (action === "edit") {
         window.location.href = "/office?artifact=" + encodeURIComponent(artifact.id);
         return;
@@ -4990,11 +5006,13 @@ async function streamPersona(key, text, voice, image, attachment, messageId, req
         else if (ev.type === "token") {
           if (!started) started = true;
           acc += ev.text;
-          syncStreamBubbles(inner, acc, visibleCount);
+          // 正在写整页代码时不把代码刷进气泡，只报进度；写完后服务端会给整理好的说明文字。
+          const pageAt = acc.search(/```html|<!doctype html/i);
+          syncStreamBubbles(inner, pageAt >= 0 ? acc.slice(0, pageAt).trim() + "\n\n（正在写页面…已写 " + (acc.length - pageAt) + " 字）" : acc, visibleCount);
           scheduleNewMessages();
           scheduleScrollToBottom($("#msgs"));
         }
-        else if (ev.type === "done") { facts = ev.facts; artifact = ev.artifact || artifact; }
+        else if (ev.type === "done") { facts = ev.facts; artifact = ev.artifact || artifact; if (typeof ev.replaceText === "string" && ev.replaceText) acc = ev.replaceText; }
         else if (ev.type === "tasks") { await pushCapabilityNotifications(ev.notifications || []); }
         else if (ev.type === "error") { started = true; acc = "出错了：" + ev.text; visibleCount = 1; scheduledCount = 1; syncStreamBubbles(inner, acc, 1); }
       }

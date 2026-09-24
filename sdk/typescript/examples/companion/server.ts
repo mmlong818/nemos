@@ -200,6 +200,7 @@ import { BackgroundScheduler, enqueueScheduledCapabilities } from "./background-
 import { attachScheduledTaskHandoffProjection, FileScheduledTaskHandoffStore } from "./scheduled-task-handoff.js";
 import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
 import { GOAL_CATEGORIES, goalCoachingAddendum, type GoalInput } from "./goals.js";
+import { hasWidgetIntent } from "./widgets.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
 import { FileStepReceiptStore } from "./structured-handoff.js";
 import { listBotMarket } from "./bot-market.js";
@@ -4279,7 +4280,15 @@ async function fetchSkillMarkdownFromUrl(url: string, signal?: AbortSignal): Pro
 
 function capabilityConversationOptions(body: ChatBody) {
   const opts = conversationSendOptions(body);
-  return { ...opts.runtimeLimits, model: opts.model, toolMode: opts.toolMode, reasoningEffort: opts.reasoningEffort, taskAttachments: opts.taskAttachments };
+  // 从聊天发起的是交付物（网页、构件、报告），不能套用聊天快速档的 4000 字输出上限：
+  // 一个完整的交互页面装不下，会在半截被截断。输出与总预算至少按"深入"档给；这是上限不是花费。
+  const deep = chatRuntimeLimits("deep");
+  const limits = {
+    ...opts.runtimeLimits,
+    maxOutputChars: Math.max(opts.runtimeLimits.maxOutputChars, deep.maxOutputChars),
+    maxTotalTokens: Math.max(opts.runtimeLimits.maxTotalTokens, deep.maxTotalTokens),
+  };
+  return { ...limits, model: opts.model, toolMode: opts.toolMode, reasoningEffort: opts.reasoningEffort, taskAttachments: opts.taskAttachments };
 }
 
 async function maybeRunCapabilityTaskFromChat(b: ChatBody, text: string): Promise<ReturnType<typeof capabilityReply> | null> {
@@ -4373,6 +4382,7 @@ function hasAdHocWorkIntent(b: ChatBody, text: string): boolean {
 }
 
 function hasExplicitArtifactIntent(text: string): boolean {
+  if (hasWidgetIntent(text)) return true;
   if (/(不要|别|无需|不需要).{0,12}(生成|制作|创建|导出|做成|输出).{0,8}(PPT|pptx|幻灯片|演示文稿|Word|word|docx|PDF|pdf|HTML|html|网页|报告|正式文档|文件|会议纪要)|只在(?:当前)?对话(?:里|中).{0,12}(回答|回复|整理)/i.test(text)) return false;
   const action = "(?:生成|制作|创建|导出|写一份|起草一份|整理成|转换成|转成|做成|输出成|补全|完善|更新)";
   const artifact = "(?:PPT|pptx|幻灯片|演示文稿|Word|word|docx|PDF|pdf|HTML|html|网页|报告|正式文档|文件|会议纪要)";
@@ -4455,6 +4465,8 @@ function slugForLearnedAbility(text: string): string {
 
 function inferCapabilityId(text: string): string {
   if (hasImagePromptIntent(text)) return IMAGE_PROMPT_CAPABILITY_ID;
+  // 构件（能勾选的清单、计算器、番茄钟……）比其他关键词优先：它们常带"目标""计划"这类词。
+  if (hasWidgetIntent(text)) return "html-report";
   if (hasOcrIntent(text)) return "ocr-extraction";
   if (/(生成|创建|新增|沉淀|锻造).{0,8}(能力|技能)|把.{0,20}做成.{0,6}(能力|技能)|ability builder|skill builder/i.test(text)) return "ability-builder";
   if (/(生成|制作|创建|导出|整理成|转换成|转成|做成|补全|完善|更新).{0,16}(PPT|pptx|幻灯片|演示文稿|路演稿|汇报演示|课件)|(PPT|pptx|幻灯片|演示文稿|路演稿|汇报演示|课件).{0,16}(生成|制作|创建|导出|整理|转换|补全|完善|更新)/i.test(text)) return "presentation-builder";
@@ -4478,6 +4490,7 @@ function inferCapabilityId(text: string): string {
 }
 function inferArtifactFormat(text: string): ArtifactFormat {
   if (hasImagePromptIntent(text)) return "md";
+  if (hasWidgetIntent(text)) return "html";
   if (/(PPT|pptx|幻灯片|演示文稿|路演稿|课件)/i.test(text)) return "pptx";
   if (/(HTML|html|网页|页面)/.test(text)) return "html";
   if (/(JSON|json)/.test(text)) return "json";
@@ -6789,8 +6802,12 @@ const server = createServer(async (req, res) => {
             onToken: (t) => ev({ type: "token", text: t }),
           }, intentText);
           if (!adHocWork) throw new Error("任务识别成功但执行结果为空");
-          ev({ type: "token", text: artifactDoneText(adHocWork) });
-          ev({ type: "done", facts: [], artifact: adHocWork.artifact });
+          // HTML 页面嵌在回复里：用整理好的说明文字（含自测结论）替换已经推送的整页代码。
+          if (adHocWork.artifact.format === "html") ev({ type: "done", facts: [], artifact: adHocWork.artifact, replaceText: adHocWork.text });
+          else {
+            ev({ type: "token", text: artifactDoneText(adHocWork) });
+            ev({ type: "done", facts: [], artifact: adHocWork.artifact });
+          }
           saveFam();
           res.end();
           return;
