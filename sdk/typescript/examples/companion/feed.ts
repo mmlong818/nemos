@@ -13,8 +13,16 @@ export interface FeedPost {
   id: string; batchId: string; createdAt: string;
   kind: "news" | "goal" | "tip";
   title: string; body: string; sources: FeedSource[];
+  /** 一句话：为什么给这个人看（按话题、哪个目标、哪条偏好）。 */
+  why?: string;
   liked?: boolean;
+  /** 点了"不感兴趣"：理由与备注。和 liked 互斥。 */
+  disliked?: { reason: FeedDislikeReason; note?: string; at: string };
+  /** 点过"讨论"：算作感兴趣的信号。 */
+  discussedAt?: string;
 }
+export const FEED_DISLIKE_REASONS = ["不相关", "太重复", "太具体", "不喜欢"] as const;
+export type FeedDislikeReason = (typeof FEED_DISLIKE_REASONS)[number];
 export interface FeedBatch {
   id: string; at: string;
   status: "posted" | "empty" | "failed";
@@ -71,12 +79,50 @@ export class FeedStore {
     this.data.posts = this.data.posts.filter((p) => kept.has(p.batchId));
     this.persist();
   }
-  like(id: string, liked: boolean): FeedPost {
+  private require(id: string): FeedPost {
     const post = this.data.posts.find((p) => p.id === id);
     if (!post) throw new FeedError("这条动态不存在", 404);
+    return post;
+  }
+  like(id: string, liked: boolean): FeedPost {
+    const post = this.require(id);
     post.liked = liked;
+    if (liked) delete post.disliked;
     this.persist();
     return { ...post };
+  }
+  dislike(id: string, reason: unknown, note: unknown): FeedPost {
+    const post = this.require(id);
+    if (reason === null) { delete post.disliked; this.persist(); return { ...post }; }
+    const picked = FEED_DISLIKE_REASONS.find((item) => item === reason);
+    if (!picked) throw new FeedError("请选一个理由");
+    const text = String(note ?? "").trim().slice(0, 200);
+    post.disliked = { reason: picked, ...(text ? { note: text } : {}), at: new Date().toISOString() };
+    post.liked = false;
+    this.persist();
+    return { ...post };
+  }
+  markDiscussed(id: string): FeedPost {
+    const post = this.require(id);
+    post.discussedAt = new Date().toISOString();
+    this.persist();
+    return { ...post };
+  }
+  remove(id: string): void {
+    this.require(id);
+    this.data.posts = this.data.posts.filter((p) => p.id !== id);
+    this.persist();
+  }
+  /**
+   * 口味信号：只认明确的动作（喜欢、讨论、不感兴趣），看过不算。
+   * 直接交给写作提示，不另调模型去"总结口味"：便宜，也看得见依据。
+   */
+  taste(): FeedTaste {
+    const recent = this.data.posts.slice(0, 120);
+    return {
+      liked: recent.filter((p) => p.liked || p.discussedAt).slice(0, 15).map((p) => p.title),
+      disliked: recent.filter((p) => p.disliked).slice(0, 15).map((p) => `${p.title}（${p.disliked!.reason}${p.disliked!.note ? `：${p.disliked!.note}` : ""}）`),
+    };
   }
   get(id: string): FeedPost | undefined { return this.data.posts.find((p) => p.id === id); }
 }
@@ -95,7 +141,10 @@ export function parseJsonObject(raw: string): Record<string, unknown> | null {
   return null;
 }
 
+export interface FeedTaste { liked: string[]; disliked: string[] }
+
 export interface FeedContext {
+  taste?: FeedTaste;
   prompt: string;
   goals: string[];
   matters: string[];
@@ -124,8 +173,10 @@ export function parseFeedPlan(raw: string): string[] {
 export function feedWritePrompt(ctx: FeedContext, sources: FeedCandidateSource[], searchNote: string): { system: string; user: string } {
   return {
     system: [
-      "你在为用户写个人动态。只输出 JSON：{\"posts\": [{\"kind\": \"news|goal|tip\", \"title\": \"…\", \"body\": \"…\", \"sources\": [编号]}]}。",
+      "你在为用户写个人动态。只输出 JSON：{\"posts\": [{\"kind\": \"news|goal|tip\", \"title\": \"…\", \"body\": \"…\", \"sources\": [编号], \"why\": \"…\"}]}。",
       `最多 ${FEED_LIMITS.perBatch} 条；标题不超过 30 个字，正文不超过 120 个字，写给用户本人看，直接说重点。`,
+      "每条都带 why：用\"你\"来写（例如\"你在准备冰岛自驾\"），一句话说明为什么给你看，依据只能是话题、给出的目标、在做的事或偏好，不许说读过对方没给的数据。",
+      "口味：\"喜欢过\"说明对方想多看这类；\"不想看\"写了理由，别再写同类或犯同样的毛病（太重复就换角度，太具体就写得更有概括性）。",
       "news：只写下面\"来源\"里真的有的事实，sources 填对应编号，至少一个；来源里没写日期就不要说\"今天\"\"刚刚\"。",
       "goal：只根据给出的目标和在做的事写提醒或下一步，不编造进展，sources 留空。",
       "tip：和话题相关、确实有用的建议，不要空话，sources 可以留空。",
@@ -133,6 +184,7 @@ export function feedWritePrompt(ctx: FeedContext, sources: FeedCandidateSource[]
     ].join("\n"),
     user: JSON.stringify({
       今天: ctx.today, 话题: ctx.prompt, 目标: ctx.goals, 在做的事: ctx.matters, 偏好: ctx.preferences, 最近已发过: ctx.recentTitles,
+      喜欢过: ctx.taste?.liked ?? [], 不想看: ctx.taste?.disliked ?? [],
       联网情况: searchNote,
       来源: sources.map((s, i) => ({ 编号: i + 1, 标题: s.title, 链接: s.url, 摘要: s.content.slice(0, 400) })),
     }),
@@ -161,7 +213,8 @@ export function parseFeedPosts(raw: string, sources: FeedCandidateSource[], rece
     const key = normalizeTitle(title);
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ id: randomUUID(), batchId, createdAt: now, kind, title, body, sources: cited });
+    const why = clip(record.why, 80);
+    out.push({ id: randomUUID(), batchId, createdAt: now, kind, title, body, sources: cited, ...(why ? { why } : {}) });
     if (out.length >= FEED_LIMITS.perBatch) break;
   }
   return out;

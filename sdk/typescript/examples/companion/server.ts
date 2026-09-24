@@ -3639,7 +3639,7 @@ async function feedContext(): Promise<FeedContext> {
   } catch { /* 记忆读不到就不带偏好 */ }
   const snapshot = feedStore.snapshot();
   return {
-    prompt: snapshot.prompt, goals, matters, preferences,
+    prompt: snapshot.prompt, goals, matters, preferences, taste: feedStore.taste(),
     recentTitles: snapshot.posts.slice(0, 30).map((p) => p.title),
     today: new Date().toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric", weekday: "long" }),
   };
@@ -6465,9 +6465,20 @@ const server = createServer(async (req, res) => {
           return;
         }
         if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }
-        const body = await readBody(req) as { prompt?: unknown; id?: unknown; liked?: unknown };
-        if (pathname === "/api/feed/prompt") { send(res, 200, { ok: true, prompt: feedStore.setPrompt(body.prompt) }); return; }
+        const body = await readBody(req) as { prompt?: unknown; id?: unknown; liked?: unknown; reason?: unknown; note?: unknown };
+        if (pathname === "/api/feed/prompt") {
+          // 话题真的改了就马上出一批；原样保存不触发（不然"保存"就成了"再生成一次"）。
+          const before = feedStore.snapshot().prompt;
+          const prompt = feedStore.setPrompt(body.prompt);
+          const changed = prompt !== before && llm.live;
+          if (changed) void generateFeed();
+          send(res, 200, { ok: true, prompt, generating: changed || !!feedGenerating });
+          return;
+        }
         if (pathname === "/api/feed/like") { send(res, 200, { ok: true, post: feedStore.like(String(body.id || ""), body.liked === true) }); return; }
+        if (pathname === "/api/feed/dislike") { send(res, 200, { ok: true, post: feedStore.dislike(String(body.id || ""), body.reason, body.note) }); return; }
+        if (pathname === "/api/feed/discussed") { send(res, 200, { ok: true, post: feedStore.markDiscussed(String(body.id || "")) }); return; }
+        if (pathname === "/api/feed/delete") { feedStore.remove(String(body.id || "")); send(res, 200, { ok: true }); return; }
         if (pathname === "/api/feed/generate") {
           const action = await agentUserActions.execute({
             name: "feed_generate", description: "用户点了生成动态：联网搜索并调用模型写几条动态",

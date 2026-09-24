@@ -38,10 +38,18 @@
     if(b.hasAttribute('data-feed-edit')){feedState.editing=true;renderFeed();document.getElementById('feedPromptInput').focus();return;}
     if(b.hasAttribute('data-feed-more')){feedState.showAll=true;renderFeed();return;}
     if(b.hasAttribute('data-feed-cancel')){feedState.editing=false;renderFeed();return;}
-    if(b.hasAttribute('data-feed-save')){b.disabled=true;try{feedData.prompt=(await feedPost('/api/feed/prompt',{prompt:document.getElementById('feedPromptInput').value})).prompt;feedState.editing=false;}catch(err){alert(err.message);}renderFeed();return;}
+    if(b.hasAttribute('data-feed-save')){b.disabled=true;try{const saved=await feedPost('/api/feed/prompt',{prompt:document.getElementById('feedPromptInput').value});feedData.prompt=saved.prompt;feedState.editing=false;if(saved.generating)waitForFeed();}catch(err){alert(err.message);}renderFeed();return;}
+    if(b.dataset.feedDislikeOpen){feedState.dislikeOpen=feedState.dislikeOpen===b.dataset.feedDislikeOpen?'':b.dataset.feedDislikeOpen;renderFeed();return;}
+    if(b.dataset.feedDislike){b.disabled=true;const note=(document.getElementById('feedDislikeNote')||{}).value||'';try{const r=await feedPost('/api/feed/dislike',{id:b.dataset.feedDislike,reason:b.dataset.reason,note});const i=feedData.posts.findIndex(x=>x.id===r.post.id);if(i>=0)feedData.posts[i]=r.post;feedState.dislikeOpen='';}catch(err){alert(err.message);}renderFeed();return;}
+    if(b.dataset.feedUndislike){try{const r=await feedPost('/api/feed/dislike',{id:b.dataset.feedUndislike,reason:null});const i=feedData.posts.findIndex(x=>x.id===r.post.id);if(i>=0)feedData.posts[i]=r.post;}catch{}renderFeed();return;}
+    if(b.dataset.feedDelete){if(!confirm('删除这条动态？'))return;try{await feedPost('/api/feed/delete',{id:b.dataset.feedDelete});feedData.posts=feedData.posts.filter(x=>x.id!==b.dataset.feedDelete);}catch(err){alert(err.message);}renderFeed();return;}
     if(b.hasAttribute('data-feed-generate')){feedState.generating=true;renderFeed();try{await feedPost('/api/feed/generate');}catch(err){alert(err.message);}feedState.generating=false;await loadFeed();return;}
     if(b.dataset.feedLike){const liked=b.getAttribute('aria-pressed')!=='true';b.disabled=true;try{await feedPost('/api/feed/like',{id:b.dataset.feedLike,liked});const p=feedData.posts.find(x=>x.id===b.dataset.feedLike);if(p)p.liked=liked;}catch{}renderFeed();}
   });
+  // 改了话题会在后台出一批：显示"正在找内容…"，每 3 秒看一眼，做完刷新。
+  async function waitForFeed(){feedState.generating=true;renderFeed();for(let i=0;i<80;i++){await new Promise(r=>setTimeout(r,3000));try{const d=await (await fetch('/api/feed')).json();if(!d.generating){feedData=d;break;}}catch{}}feedState.generating=false;renderFeed();}
+  // 点"讨论"记一笔（算感兴趣），再跳去聊天。
+  document.getElementById('overviewFeedBody').addEventListener('click',e=>{const a=e.target.closest('[data-feed-discuss]');if(!a)return;e.preventDefault();const href=a.getAttribute('href');feedPost('/api/feed/discussed',{id:a.dataset.feedDiscuss}).catch(()=>{}).finally(()=>{location.href=href;});},true);
   loadFeed();
   load();
 })();

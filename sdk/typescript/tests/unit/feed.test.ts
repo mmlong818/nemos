@@ -78,3 +78,37 @@ test("页面：批次标题按今天/昨天/日期；只渲染 http(s) 来源链
   assert.equal(page.safeUrl("https://a.b/c"), "https://a.b/c");
   assert.equal(page.discussHref({ id: "p 1" }), "/?discuss=p%201");
 });
+
+test("口味：只认喜欢、讨论、不感兴趣；不感兴趣要选理由且和喜欢互斥；可撤销、可删除；写作提示带上口味和'为什么给你看'", (t) => {
+  const store = new FeedStore(tempFile(t));
+  const mk = (id: string, title: string) => ({ id, batchId: "b1", createdAt: "2026-09-25T01:00:00Z", kind: "tip" as const, title, body: "b", sources: [] });
+  store.addBatch({ id: "b1", at: "2026-09-25T01:00:00Z", status: "posted", note: "", queries: [] }, [mk("a", "冰岛自驾路况"), mk("b", "加密货币行情"), mk("c", "读书方法"), mk("d", "只是看过")]);
+  store.like("a", true);
+  assert.throws(() => store.dislike("b", "随便", ""), /请选一个理由/);
+  store.dislike("b", "不相关", "我不炒币");
+  store.markDiscussed("c");
+  assert.deepEqual(store.taste(), { liked: ["冰岛自驾路况", "读书方法"], disliked: ["加密货币行情（不相关：我不炒币）"] });
+  store.like("b", true);
+  assert.equal(store.snapshot().posts.find((p) => p.id === "b")!.disliked, undefined, "喜欢会清掉不感兴趣");
+  store.dislike("a", "太重复", "");
+  assert.equal(store.snapshot().posts.find((p) => p.id === "a")!.liked, false);
+  store.dislike("a", null, "");
+  assert.equal(store.snapshot().posts.find((p) => p.id === "a")!.disliked, undefined, "撤销");
+  store.remove("d");
+  assert.equal(store.snapshot().posts.some((p) => p.id === "d"), false);
+  assert.throws(() => store.remove("d"), /不存在/);
+
+  const { system, user } = feedWritePrompt({ prompt: "x", goals: [], matters: [], preferences: [], recentTitles: [], today: "今天", taste: { liked: ["冰岛自驾路况"], disliked: ["加密货币行情（不相关）"] } }, [], "没联网");
+  assert.match(system, /每条都带 why：用"你"来写/);
+  assert.match(system, /不许说读过对方没给的数据/);
+  assert.match(user, /"喜欢过":\["冰岛自驾路况"\]/);
+  assert.match(user, /"不想看":\["加密货币行情（不相关）"\]/);
+  const posts = parseFeedPosts(JSON.stringify({ posts: [{ kind: "tip", title: "t", body: "b", why: "你在准备冰岛自驾" }] }), [], [], "b9");
+  assert.equal(posts[0].why, "你在准备冰岛自驾");
+
+  const container = { innerHTML: "" };
+  page.render(container, { prompt: "p", modelReady: true, searchAvailable: true, batches: [{ id: "b1", at: "2026-09-25T01:00:00Z", status: "posted", note: "" }], posts: [{ ...mk("x", "被嫌弃的"), disliked: { reason: "太具体", at: "" } }, { ...mk("y", "正常的"), why: "按你的话题" }] }, { dislikeOpen: "y" });
+  assert.match(container.innerHTML, /已标记不感兴趣（太具体）：被嫌弃的/);
+  assert.match(container.innerHTML, /为什么给你看：按你的话题/);
+  assert.match(container.innerHTML, /data-reason="太重复"/);
+});
