@@ -6,6 +6,8 @@ export interface BotMarketTemplate {
   role: "worker"; instructions: string; input: string; output: string;
   requiredFields: string[]; inputTemplate: string; example: { objective: string; materials: string };
   notIncluded: string[];
+  /** 点子卡片的标题句，见 PITCHES。 */
+  pitch?: string;
   source: { name: string; url: string; version: number; reviewedAt: string; previewSha256: string };
   /** 升版时补充吸收的方法来源；与 source 一样只作审计说明，文字仍为独立撰写。 */
   enrichedFrom?: Array<{ name: string; url: string; previewSha256: string }>;
@@ -386,5 +388,30 @@ origin: bot-recipe
     source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-23" } },
 ];
 
+/**
+ * 点子卡片上的一句话：第一人称说清"你给我什么，我交回什么"。
+ * 模板都只处理本次给的文字、不调用工具，所以这里不许出现"我帮你发""我替你订"这类执行承诺。
+ */
+const PITCHES: Record<string, string> = {
+  "project-guide": "把进度记录给我，我会理出任务表、卡点和真正要你拍板的几件事。",
+  "meeting-prep": "告诉我要开什么会，我会备好议程、要问的问题和你该带的材料。",
+  "copy-humanizer": "把稿子给我，我会去掉套话和机器腔，保住你原来的意思。",
+  "idea-stress-test": "说说你的方案，我会从反方逼问一遍，找出最可能出错的地方。",
+  "bot-designer": "说说你想要什么样的助手，我会写成一份可以直接用的工作规则。",
+  "work-report-writer": "把这一年做过的事给我，我会整理成有数字、有取舍的总结。",
+  "contract-clause-check": "把合同条款贴给我，我会标出对你不利、含糊和缺失的地方。",
+  "copy-strategist": "告诉我卖什么、卖给谁，我会写出几版有依据的文案供你挑。",
+  "tech-article-editor": "把技术草稿给我，我会理顺结构，让读者一路读得下去。",
+  "blind-reviewer": "把作品给我，我会不看作者、只按标准打分，并写清扣分理由。",
+  "source-ledger": "把几份材料一起给我，我会逐条对账，标出一致、冲突和缺口。",
+  "spreadsheet-audit": "把表格给我，我会查出算错、口径不一和可疑的数。",
+  "meeting-decisions": "把会议记录给我，我会拎出定了什么、谁负责、什么时候交。",
+  "requirement-discovery": "说说你想做的东西，我会先问清楚它值不值得做、做到哪一步。",
+  "evidence-grading": "把结论和证据给我，我会分级，告诉你哪些话现在能说、哪些还不能。",
+  "dual-draft-synthesis": "给我两版稿子，我会让它们互相挑错，再合成一版更好的。",
+  "co-creation-panel": "说说你的想法，我会请五个不同分工的角色各过一遍，合成下一步。",
+  "memory-snapshot-export": "把旧助手的对话或你的笔记给我，我会整理成一份能导入的记忆快照。",
+};
+
 // Callers receive a copy: neither UI decoration nor an import can mutate the bundled catalog.
-export function listBotMarket(): BotMarketTemplate[] { return structuredClone(templates); }
+export function listBotMarket(): BotMarketTemplate[] { return structuredClone(templates).map((t) => ({ ...t, pitch: PITCHES[t.id] })); }

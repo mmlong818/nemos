@@ -89,6 +89,14 @@ const COMPANION_RUNTIME_TOOLS = [
   { name: "agent_delegation_create", id: "agent.delegation-create", label: "委派子任务", description: "把研究、整理或复核工作交给受控执行器。", toolset: "delegation", effect: "write", risk: "normal", permissions: ["task-write"] },
   { name: "assistant_team_start", id: "agent.assistant-team-start", label: "专职 Bot 协作", description: "只共享当前请求，经专职整理、独立核验后由主助理自动汇总。", toolset: "delegation", effect: "write", risk: "normal", permissions: ["task-write"] },
   { name: "capability_artifact_list", id: "agent.artifact-list", label: "产物检索", description: "找回任务和能力此前生成的文件与结果。", toolset: "artifact", effect: "read", risk: "normal", permissions: ["artifact-read"] },
+  // 下面几项的工具实现早就在 companion-agent-tools.ts 里，但没在这里登记，过滤时被整批丢掉，
+  // 聊天里从来没能记事项。没登记的名字一律过不了 filterCompanionRuntimeToolsForSurface。
+  { name: "personal_work_list", id: "agent.matter-list", label: "查看事项", description: "读取进行中的事项、下一步与到期跟进。", toolset: "task", effect: "read", risk: "normal", permissions: ["task-read"] },
+  { name: "personal_work_save", id: "agent.matter-save", label: "记录事项", description: "经确认后记录或更新一件事项；只提醒，不执行外部动作。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
+  { name: "personal_learning_propose", id: "agent.learning-propose", label: "提议记住", description: "把稳定偏好或已确认的决定提交待确认，由用户确认后才成为长期记忆。", toolset: "memory", effect: "write", risk: "normal", permissions: ["memory-propose"] },
+  { name: "goal_list", id: "agent.goal-list", label: "查看目标", description: "读取用户的目标、口径、子目标与最近进展。", toolset: "task", effect: "read", risk: "normal", permissions: ["task-read"] },
+  { name: "goal_save", id: "agent.goal-save", label: "记录目标", description: "在对话里谈妥后建立或调整目标；只记录，不执行其他动作。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
+  { name: "goal_log_progress", id: "agent.goal-progress", label: "记录进展", description: "把用户在对话里报告的进展记到目标时间线上。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
 ] as const;
 
 export function companionRuntimeToolSummaries(): CapabilityToolSummary[] {

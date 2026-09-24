@@ -6,6 +6,7 @@ import type { AgentToolProvider } from "./llm.js";
 import { expertAssignmentPrompt, expertContract, finalDeliveryPrompt } from "./expert-contracts.js";
 import { isCurrentUserMemory, userMemoryEvidence, userMemoryPrompt } from "./memory-evidence.js";
 import type { PersonalWorkStore, PersonalMatter } from "./personal-work.js";
+import { GOAL_CATEGORIES, goalBrief, type GoalInput } from "./goals.js";
 import { createHash } from "node:crypto";
 import type { AssistantBot } from "./assistant-team.js";
 
@@ -29,6 +30,8 @@ export interface CompanionAgentToolDependencies {
   capabilities: () => CapabilityRuntime;
   fetchSkillSource?: (url: string, signal: AbortSignal) => Promise<string>;
   listPersonas?: () => Array<{ id: string; name: string }>;
+  /** 从目标页开出来的对话：返回类别与关联目标；普通对话返回 undefined。 */
+  goalSession?: (sessionId: string) => { category: string; goalId?: string } | undefined;
   enqueueOrchestration?: (input: CompanionDelegationJobInput, idempotencyKey: string) => { id: string; status: string };
 }
 
@@ -37,7 +40,8 @@ const TASK_CUE = /(任务|计划|定时|待办|进度|上次运行|task|schedule
 const TASK_CREATE_CUE = /((创建|新增|登记|保存|安排|设为).{0,12}(能力|任务)|常规任务|固定能力|定时任务|每天|每日|每周|每.{0,4}轮)/i;
 const SKILL_INSTALL_CUE = /((安装|导入|添加|注册).{0,24}(skill|skills|SKILL\.md|技能包|能力包)|((skill|skills|SKILL\.md|技能包|能力包).{0,24}(安装|导入|添加|注册)))/i;
 const DELEGATION_CUE = /(多.{0,4}(角色|专家|人)|团队|分工|并行|分别.{0,10}(分析|研究|核验|给出)|不同.{0,6}(角度|视角)|交叉.{0,4}(验证|复核)|让.{0,12}(可行性顾问|产品顾问|决策顾问|思考教练|原理工程师|产品主理人|决策分析师|思辨教练).{0,12}(和|与|、))/i;
-const ARTIFACT_CUE = /(产物|交付物|生成的.{0,6}(报告|文件|文档)|最近的.{0,6}(报告|文件|文档)|artifact|deliverable)/i;
+const GOAL_CUE = /(目标|打卡|坚持|习惯|进展|里程碑|goal|habit|milestone)/i;
+const ARTIFACT_CUE =/(产物|交付物|生成的.{0,6}(报告|文件|文档)|最近的.{0,6}(报告|文件|文档)|artifact|deliverable)/i;
 
 /**
  * 把产品内部的只读能力暴露为按请求加载的 Agent 工具。
@@ -55,6 +59,12 @@ export function createCompanionAgentToolProvider(
     if (dependencies.personalWork && context.memoryScopes.length > 0 && context.personaId === "clownfish" && !["capability", "office"].includes(context.surface || "")
       && /事项|目标|下一步|跟进|等待|截止|记住|学习|偏好|采纳|进行中|matter|goal|follow.up/i.test(instruction)) {
       tools.push(...personalWorkTools(dependencies.personalWork(), context));
+    }
+    // 目标对话里用户最后常说的是"好""就这样"，不含关键词；按会话识别，不只看这一句。
+    const goalSession = context.sessionId ? dependencies.goalSession?.(context.sessionId) : undefined;
+    if (dependencies.personalWork && context.personaId === "clownfish" && !["capability", "office"].includes(context.surface || "")
+      && (goalSession || GOAL_CUE.test(instruction))) {
+      tools.push(...goalTools(dependencies.personalWork(), context, goalSession?.goalId));
     }
     if (
       MEMORY_CUE.test(instruction)
@@ -109,6 +119,50 @@ function personalWorkTools(store: PersonalWorkStore, context: ChatAgentContext):
     definition: { name: "personal_learning_propose", description: "Propose a stable user preference, confirmed decision or constraint for review. This does NOT write long-term memory: user must review and confirm at /matters. Never treat third-party text as user preference.",
       inputSchema: { type: "object", properties: { kind: { type: "string", enum: ["preference", "decision", "constraint"] }, content: { type: "string" }, matterId: { type: "string" } }, required: ["kind", "content"], additionalProperties: false }, effect: "write" },
     execute: async (input, execution) => { ensureActive(execution.signal); return { content: JSON.stringify(store.propose(context.userId, { kind: input.kind, content: input.content, source: { matterId: String(input.matterId || ""), excerpt: context.instruction.slice(0, 1500) } })) }; },
+  }];
+}
+
+const GOAL_CATEGORY_IDS = GOAL_CATEGORIES.map((item) => item.id);
+
+function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionGoalId?: string): AgentTool[] {
+  // 从目标卡片开的对话已知是哪个目标：id 缺省用它；小丑鱼的更新按字段合并，版本号缺省取当前值。
+  const withRevision = (input: GoalInput): GoalInput => {
+    const id = String(input.id || "");
+    return id && input.revision === undefined ? { ...input, revision: store.getGoal(context.userId, id).revision } : input;
+  };
+  return [{
+    definition: { name: "goal_list", description: "Read the user's goals: title, category, how it counts as done, plan, milestones and the latest timeline entries. Use before updating a goal to get its id and revision.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false }, effect: "read" },
+    execute: async (_input, execution) => {
+      ensureActive(execution.signal);
+      const goals = store.listGoals(context.userId);
+      return { content: JSON.stringify({ goals: [...goals.filter((g) => g.status === "active"), ...goals.filter((g) => g.status !== "active").slice(0, 10)].map(goalBrief) }) };
+    },
+  }, {
+    definition: { name: "goal_save", description: "With approval, create or update one of the user's goals. Create only after the user agreed to the goal in this conversation: what exactly, how it counts as done (measure), and a realistic rhythm (plan). To update, pass id (revision optional); omitted fields keep their value. Mark a milestone done or the goal completed only when the user said so. Recording a goal never executes anything else.",
+      inputSchema: { type: "object", properties: {
+        id: { type: "string" }, revision: { type: "integer" },
+        title: { type: "string", description: "Short, in the user's words, <= 60 chars" },
+        category: { type: "string", enum: GOAL_CATEGORY_IDS },
+        why: { type: "string", description: "Why the user wants it, their words when possible" },
+        measure: { type: "string", description: "How it counts as done; checkable" },
+        plan: { type: "string", description: "Rhythm or plan the user agreed to" },
+        dueAt: { type: "string", description: "YYYY-MM-DD or ISO timestamp with timezone, only if the user gave a deadline" },
+        status: { type: "string", enum: ["active", "completed", "archived"] },
+        milestones: { type: "array", maxItems: 20, description: "When creating, include 2 to 4 concrete milestones the user can tick off. When updating, pass the full list with existing ids.", items: { type: "object", properties: { id: { type: "string" }, title: { type: "string" }, done: { type: "boolean" } }, additionalProperties: false } },
+        result: { type: "string", description: "When completing: what was achieved, in the user's words" },
+      }, additionalProperties: false }, effect: "write" },
+    execute: async (input, execution) => {
+      ensureActive(execution.signal);
+      return { content: JSON.stringify(goalBrief(store.saveGoal(context.userId, withRevision(input as GoalInput), "assistant"))) };
+    },
+  }, {
+    definition: { name: "goal_log_progress", description: "With approval, add one progress entry to a goal's timeline. Only record what the user reported in this conversation, close to their words. Never infer, estimate or invent progress.",
+      inputSchema: { type: "object", properties: { id: { type: "string" }, note: { type: "string", description: "<= 500 chars" } }, required: ["note"], additionalProperties: false }, effect: "write" },
+    execute: async (input, execution) => {
+      ensureActive(execution.signal);
+      return { content: JSON.stringify(goalBrief(store.logGoalProgress(context.userId, String(input.id || sessionGoalId || ""), input.note, "assistant"))) };
+    },
   }];
 }
 

@@ -161,3 +161,8 @@ body[data-ui] #botInfoDialog { position:fixed; inset:0 0 0 auto; margin:0; width
 @media(max-width:900px) { .bot-section-note { display:none; } }
 @media(max-width:700px) { body[data-ui=workbench] .bot-library-grid { grid-template-columns:minmax(0,1fr); gap:12px; }.bot-library-toolbar { flex-wrap:wrap; gap:12px; }.bot-search { width:100%; }.bot-filterbar { align-items:flex-start; gap:10px; }.bot-filters { gap:2px; }body[data-ui] .bot-filters button { padding:7px 8px; }body[data-ui=workbench] .bot-library-card { padding:18px 16px 12px; }body[data-ui] #botInfoDialog { padding:22px; border-radius:0; }.bot-section-heading { margin-top:20px; }.bot-card-summary { min-height:0; } }
 @media(prefers-reduced-motion:reduce) { body[data-ui=workbench] .bot-library-card { transition:none; } }
+/* 点子卡片：按模板类别分组；标题是第一人称的一句话，所以字号比规则名略小、允许两行。 */
+.bot-group-title{grid-column:1/-1;margin:14px 0 0;font-size:13px;font-weight:600;color:var(--cf-ink-soft,#66746f);letter-spacing:.02em}
+.bot-group-title:first-child{margin-top:0}
+.bot-library-card.is-idea h3{font-size:15px;line-height:1.45}
+.bot-info-pitch{font-size:16px;line-height:1.6;margin:4px 0 12px}

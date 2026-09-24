@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="zh-CN"><head><script src="/assets/product-structure.js" defer></script><script src="/assets/unsandboxed-notice.js" defer></script><meta charset="utf-8"><link rel="icon" href="/assets/brand/clownfish-mark.png"><meta name="viewport" content="width=device-width,initial-scale=1"><title>事项 · 小丑鱼</title>
 <link rel="stylesheet" href="/assets/clownfish-theme.css"><link rel="stylesheet" href="/assets/app-navigation-labels.css"><link rel="stylesheet" href="/assets/personal-work.css">
-<script src="/assets/app-icons.js" defer></script><script src="/assets/agent-events.js" defer></script><script src="/assets/personal-work.js" defer></script></head>
+<script src="/assets/app-icons.js" defer></script><script src="/assets/agent-events.js" defer></script><script src="/assets/goals.js" defer></script><script src="/assets/personal-work.js" defer></script></head>
 <body><div class="personal-shell">
 <!-- APP_NAVIGATION -->
-<main class="personal-main"><header class="personal-head"><div><p class="personal-eyebrow">你的个人助理</p><h1>事项</h1><p>你在意、需要持续推进的事。每次只明确下一步，小丑鱼按你设定的时间提醒跟进。</p></div></header>
-<div class="personal-toolbar"><nav aria-label="事项状态" id="filters"><button data-filter="ongoing" aria-pressed="true">进行中</button><button data-filter="completed" aria-pressed="false">已完成</button></nav><label class="personal-search"><span class="sr-only">搜索事项</span><input id="search" type="search" placeholder="搜索目标或下一步…"></label><button class="primary" id="newMatter">＋ 新建事项</button></div>
-<p id="connection" role="status"></p><section id="reminders" aria-label="到期跟进"></section><section id="records" aria-label="事项列表" aria-live="polite"><p>正在读取本机记录…</p></section>
+<main class="personal-main"><header class="personal-head"><div><p class="personal-eyebrow">你的个人助理</p><h1>事项</h1><p>你在意、需要持续推进的事。目标盯"怎么算做到"和一路的进展；事项只明确下一步，小丑鱼按你设定的时间提醒跟进。</p></div></header>
+<div class="personal-toolbar"><nav aria-label="事项状态" id="filters"><button data-filter="goals" aria-pressed="false">目标</button><button data-filter="ongoing" aria-pressed="true">进行中</button><button data-filter="completed" aria-pressed="false">已完成</button></nav><label class="personal-search"><span class="sr-only">搜索事项</span><input id="search" type="search" placeholder="搜索目标或下一步…"></label><button class="primary" id="newMatter">＋ 新建事项</button></div>
+<p id="connection" role="status"></p><section id="reminders" aria-label="到期跟进"></section><section id="records" aria-label="事项列表" aria-live="polite"><p>正在读取本机记录…</p></section><section id="goals" aria-label="目标" aria-live="polite" hidden></section>
 <footer class="personal-foot">跟进仅在应用后台运行时触发；关机期间不会执行。事项记录不代表你授权了发送、购买或其它外部操作。</footer></main></div>
 <dialog id="matterDialog" aria-labelledby="matterTitle"><form id="matterForm"><header><h2 id="matterTitle">新建事项</h2><button type="button" data-close="matterDialog" aria-label="关闭事项编辑">×</button></header>
 <input name="id" type="hidden"><input name="revision" type="hidden">
@@ -25,5 +25,6 @@
 <label>来源说明<textarea name="excerpt" maxlength="1500" rows="3" placeholder="记录它来自哪次决定或完成结果"></textarea></label>
 <p class="hint">提交后进入「记忆 · 待确认」，由你确认后才成为长期记忆。不要把第三方材料或临时测试当作你的偏好。</p>
 <p class="form-error" role="alert"></p><button class="primary" type="submit">加入待确认</button></form></dialog>
+<dialog id="goalDialog" aria-label="目标详情"></dialog>
 <p id="toast" class="personal-toast" role="status" hidden></p>
 </body></html>

@@ -68,7 +68,7 @@ test("library skips identical poll renders so focus and search survive backgroun
   const fn = source.slice(source.indexOf("function renderLibrary()"), source.indexOf("function inspectBot("));
   let writes = 0;
   const nodes: any = new Proxy({} as Record<PropertyKey, any>, { get: (target, key) => target[key] ||= { value: "", textContent: "", setAttribute() {}, set innerHTML(_value: string) { writes++; } } });
-  const context = { $: (id: string) => nodes[id], library, libraryKey: "", data: { bots }, workflows, botFilter: "all", textBotCard: () => "text", workflowCard: () => "workflow", document: { querySelectorAll: () => [] }, window: { ClownfishIcons: { hydrate() {} } } };
+  const context = { $: (id: string) => nodes[id], library, libraryKey: "", data: { bots }, templates: [], workflows, botFilter: "all", textBotCard: () => "text", workflowCard: () => "workflow", document: { querySelectorAll: () => [] }, window: { ClownfishIcons: { hydrate() {} } } };
   runInNewContext(fn + "\nrenderLibrary();renderLibrary();", context);
   assert.equal(writes, 3);
 });

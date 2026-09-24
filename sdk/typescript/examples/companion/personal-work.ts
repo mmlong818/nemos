@@ -3,9 +3,17 @@ import { randomUUID } from "node:crypto";
 import type { Memory, Nemos } from "../../src/index.js";
 import { APP_PERSONA_ID } from "./identity.js";
 import { convScope } from "./engine.js";
+import { GOAL_LIMITS, GoalError, applyGoalProgress, applyGoalSave, type GoalEntry, type GoalInput, type PersonalGoal } from "./goals.js";
 
 export class PersonalWorkError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
+}
+/** 目标的校验错误并入事项的错误类型，路由那边只认一种。 */
+function asPersonalWorkError<T>(run: () => T): T {
+  try { return run(); } catch (error) {
+    if (error instanceof GoalError) throw new PersonalWorkError(error.message, error.status);
+    throw error;
+  }
 }
 export interface PersonalMatter {
   id: string; revision: number; title: string; goal: string; nextAction: string;
@@ -113,6 +121,29 @@ export class PersonalWorkStore {
   acknowledge(user: string, id: string) {
     const changed = this.db.prepare("UPDATE personal_reminders SET acknowledged_at=COALESCE(acknowledged_at,?) WHERE user_id=? AND id=?").run(new Date().toISOString(), user, id);
     if (!changed.changes) throw new PersonalWorkError("提醒不存在", 404);
+  }
+  listGoals(user: string) { return this.records<PersonalGoal>(user, "goal").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); }
+  getGoal(user: string, id: string) { return this.get<PersonalGoal>(user, "goal", id); }
+  saveGoal(user: string, input: GoalInput, by: GoalEntry["by"]): PersonalGoal {
+    return this.db.transaction(() => {
+      const id = input.id === undefined || input.id === "" ? "" : String(input.id);
+      const old = id ? this.getGoal(user, id) : undefined;
+      if (!old && this.listGoals(user).length >= GOAL_LIMITS.goals) throw new PersonalWorkError("本地目标数量已达上限", 409);
+      const goal = asPersonalWorkError(() => applyGoalSave(old, input, by));
+      this.put(user, "goal", goal);
+      return goal;
+    })();
+  }
+  logGoalProgress(user: string, id: string, note: unknown, by: GoalEntry["by"]): PersonalGoal {
+    return this.db.transaction(() => {
+      const goal = asPersonalWorkError(() => applyGoalProgress(this.getGoal(user, id), note, by));
+      this.put(user, "goal", goal);
+      return goal;
+    })();
+  }
+  deleteGoal(user: string, id: string) {
+    this.getGoal(user, id);
+    this.db.prepare("DELETE FROM personal_records WHERE user_id=? AND kind='goal' AND id=?").run(user, id);
   }
   proposals(user: string) { return this.records<LearningProposal>(user, "learning").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); }
   propose(user: string, input: { kind?: unknown; content?: unknown; source?: Partial<LearningProposal["source"]> }): LearningProposal {

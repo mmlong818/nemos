@@ -199,6 +199,7 @@ import { RunningTaskSteeringError, RunningTaskSteeringStore } from "./running-ta
 import { BackgroundScheduler, enqueueScheduledCapabilities } from "./background-scheduler.js";
 import { attachScheduledTaskHandoffProjection, FileScheduledTaskHandoffStore } from "./scheduled-task-handoff.js";
 import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
+import { GOAL_CATEGORIES, goalCoachingAddendum, type GoalInput } from "./goals.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
 import { FileStepReceiptStore } from "./structured-handoff.js";
 import { listBotMarket } from "./bot-market.js";
@@ -923,6 +924,28 @@ function projectDeliveredJob(jobId: string, delivery: DeliveryRecord): void {
 removeCrossSurfaceChatDeliveries();
 removeDetachedChatDeliveries();
 for (const legacyJob of agentJobQueue.listPendingDeliveries({ limit: 500 })) ensureJobDelivery(legacyJob);
+/**
+ * 目标对话登记：会话编号 -> 类别与目标。前端在这段对话的每次请求里都带上 goal，
+ * 所以只放内存、重启后第一句话就会重新登记。上限防止无限增长。
+ */
+const goalSessions = new Map<string, { category: string; goalId?: string }>();
+function registerGoalSession(body: ChatBody): { category: string; goalId?: string } | undefined {
+  const sessionId = body.sessionId ? String(body.sessionId).slice(0, 120) : "";
+  const category = String(body.goal?.category || "");
+  if (!sessionId || !GOAL_CATEGORIES.some((item) => item.id === category)) return undefined;
+  const goalId = body.goal?.goalId ? String(body.goal.goalId).slice(0, 100) : undefined;
+  const session = { category, ...(goalId ? { goalId } : {}) };
+  goalSessions.delete(sessionId);
+  goalSessions.set(sessionId, session);
+  while (goalSessions.size > 500) goalSessions.delete(goalSessions.keys().next().value!);
+  return session;
+}
+function goalSessionAddendum(session: { category: string; goalId?: string } | undefined): string | undefined {
+  if (!session) return undefined;
+  let goal: ReturnType<typeof personalWork.getGoal> | undefined;
+  try { goal = session.goalId ? personalWork.getGoal(USER, session.goalId) : undefined; } catch { goal = undefined; }
+  return goalCoachingAddendum(session.category, goal);
+}
 const companionAgentTools = createCompanionAgentToolProvider({
   memory: () => mem,
   assistantTeam: { list: () => assistantBots.list(USER).filter((bot) => bot.placement !== "market"), enqueue: enqueueAssistantTeam },
@@ -930,6 +953,7 @@ const companionAgentTools = createCompanionAgentToolProvider({
   capabilities: () => capabilities,
   fetchSkillSource: fetchSkillMarkdownFromUrl,
   listPersonas: () => engine.listPersonas().map((persona) => ({ id: persona.id, name: persona.name })),
+  goalSession: (sessionId) => goalSessions.get(sessionId),
   enqueueOrchestration: (input, idempotencyKey) => agentJobQueue.enqueue({
     type: "orchestration",
     payload: {
@@ -3552,6 +3576,8 @@ interface ChatBody {
   reasoningEffort?: ReasoningEffort | "auto";
   toolMode?: "auto" | "read-only" | "off";
   workMode?: "chat" | "task" | "study";
+  /** 从目标页开出来的对话：类别，以及已有目标的编号（聊进展时）。 */
+  goal?: { category?: string; goalId?: string };
 }
 
 function fallbackConversationTitle(text: string): string {
@@ -3637,6 +3663,7 @@ function conversationSendOptions(body: ChatBody): {
       throw new Error(`模型 ${selectedModelId} 尚未通过当前连接的工具检查，请关闭工具或显式检查；不会自动改用其他型号。`);
     }
   }
+  const goalAddendum = body.workMode === "study" ? undefined : goalSessionAddendum(registerGoalSession(body));
   const teacherCore = PERSONAS.find((persona) => persona.id === "teacher_lin")?.persona || "";
   const teachingMethod = teacherCore.split("\n\n").slice(1).join("\n\n").trim();
   return {
@@ -3654,7 +3681,7 @@ function conversationSendOptions(body: ChatBody): {
           "你正在通过小丑鱼的学习辅导模式回应。不要主动介绍或虚构教师姓名、性别和现实身份；保持同一对话角色与记忆连续性。",
           teachingMethod,
         ].filter(Boolean).join("\n\n")
-      : undefined,
+      : goalAddendum,
     surface: body.workMode === "study" ? "education" : "task",
     runtimeLimits,
   };
@@ -6309,13 +6336,13 @@ const server = createServer(async (req, res) => {
         }
         if (req.method === "GET" && pathname === "/api/personal-work") {
           const snapshot = capabilities.snapshot();
-          send(res, 200, { matters: personalWork.listMatters(USER), proposals: personalWork.proposals(USER), reminders: personalWork.reminders(USER),
+          send(res, 200, { matters: personalWork.listMatters(USER), goals: personalWork.listGoals(USER), goalCategories: GOAL_CATEGORIES, proposals: personalWork.proposals(USER), reminders: personalWork.reminders(USER),
             tasks: snapshot.tasks.map((task) => ({ id: task.id, title: task.title })),
             artifacts: snapshot.artifacts.map((artifact) => ({ id: artifact.id, title: artifact.title, taskId: artifact.taskId })) });
           return;
         }
         if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }
-        const body = await readBody(req) as Partial<PersonalMatter> & { kind?: unknown; content?: unknown; source?: Partial<LearningProposal["source"]>; action?: string; confirmed?: boolean };
+        const body = await readBody(req) as Partial<PersonalMatter> & { kind?: unknown; content?: unknown; source?: Partial<LearningProposal["source"]>; action?: string; confirmed?: boolean; goal?: GoalInput; note?: unknown };
         const validateLinks = (taskId?: string, artifactId?: string) => {
           const snapshot = capabilities.snapshot();
           if (taskId && !snapshot.tasks.some((task) => task.id === taskId)) throw new PersonalWorkError("关联任务不存在");
@@ -6333,6 +6360,12 @@ const server = createServer(async (req, res) => {
             if (pathname === "/api/personal-work/decision") {
               if (body.confirmed !== true || !["confirm", "reject", "revoke"].includes(String(body.action))) throw new PersonalWorkError("需要你明确确认本次操作");
               return personalWork.decide(USER, String(body.id || ""), body.action as "confirm" | "reject" | "revoke", Number(body.revision), mem);
+            }
+            if (pathname === "/api/personal-work/goals") return personalWork.saveGoal(USER, body.goal ?? {}, "user");
+            if (pathname === "/api/personal-work/goals/progress") return personalWork.logGoalProgress(USER, String(body.id || ""), body.note, "user");
+            if (pathname === "/api/personal-work/goals/delete") {
+              if (body.confirmed !== true) throw new PersonalWorkError("需要你明确确认删除");
+              personalWork.deleteGoal(USER, String(body.id || "")); return { ok: true };
             }
             if (pathname === "/api/personal-work/acknowledge") { personalWork.acknowledge(USER, String(body.id || "")); return { ok: true }; }
             throw new PersonalWorkError("接口不存在", 404);

@@ -3882,6 +3882,28 @@ function createConversation(mode = "chat") {
   switchConversation(node.id);
   $("#txt").focus();
 }
+// 目标页开对话：/?goal=<类别> 新定一个目标；/?goal=<类别>&goalId=<编号>&title=<名字> 聊已有目标的进展。
+// 对话节点记下 goal，之后这段对话的每次请求都带上，服务端据此给目标工具和引导。
+const GOAL_CATEGORY_LABELS = { health: "健康", relationships: "人际关系", finance: "财务", career: "职业", interests: "兴趣", productivity: "效率提升", other: "其他" };
+function maybeStartGoalConversation() {
+  const params = new URLSearchParams(location.search);
+  const category = params.get("goal") || "";
+  if (!GOAL_CATEGORY_LABELS[category] || !isOnboardingComplete()) return;
+  const goalId = (params.get("goalId") || "").slice(0, 100);
+  const title = (params.get("title") || "").slice(0, 60);
+  history.replaceState(null, "", location.pathname);
+  createConversation("chat");
+  const node = activeConversation("persona:" + APP_PERSONA_ID);
+  if (!node) return;
+  node.config = { ...node.config, goal: { category, ...(goalId ? { goalId } : {}) } };
+  node.title = goalId && title ? "目标：" + title : "定目标 · " + GOAL_CATEGORY_LABELS[category];
+  node.titleGenerated = true;
+  saveConversationTrees();
+  renderContacts();
+  renderConversationHeader();
+  const opening = goalId && title ? "聊聊我的目标「" + title + "」最近的进展" : "我想定一个" + GOAL_CATEGORY_LABELS[category] + "方面的目标";
+  void sendMsg(false, opening);
+}
 function deleteConversation(id) {
   const key = "persona:" + APP_PERSONA_ID;
   const tree = ensureConversationTree(key);
@@ -3912,7 +3934,7 @@ function conversationRequestOptions(key) {
   const config = node?.config || conversationDefaults();
   const modelId = config.model && config.model !== "default" ? config.model : modelConnectionState?.model;
   const supported = modelConnectionState?.reasoningEfforts?.[modelId] || [];
-  return { sessionId: node?.id, model: config.model, reasoning: config.reasoning, reasoningEffort: supported.includes(config.reasoningEffort) ? config.reasoningEffort : "auto", toolMode: config.toolMode, workMode: normalizeWorkMode(config.workMode) };
+  return { sessionId: node?.id, model: config.model, reasoning: config.reasoning, reasoningEffort: supported.includes(config.reasoningEffort) ? config.reasoningEffort : "auto", toolMode: config.toolMode, workMode: normalizeWorkMode(config.workMode), ...(config.goal ? { goal: config.goal } : {}) };
 }
 function saveLogs() {
   try { localStorage.setItem(CHAT_LOGS_KEY, JSON.stringify(chatLogs)); } catch {}
@@ -6297,7 +6319,14 @@ function showAgentApproval(approval) {
   currentApprovalId = approval.id;
   const toolName = approval.call && approval.call.name ? approval.call.name : "";
   $("#approvalToolName").textContent = agentToolLabel(toolName);
-  $("#approvalToolDescription").textContent = (approval.tool && approval.tool.description ? approval.tool.description : "")
+  // 工具自带的说明是写给模型的英文；有中文说明的工具给用户看中文。
+  const userFacing = {
+    goal_save: "在对话里谈妥后建立或调整目标，只记在本机",
+    goal_log_progress: "把你在对话里说的进展记到目标的时间线上",
+    personal_work_save: "记录或更新一件事项，只提醒，不执行外部动作",
+    personal_learning_propose: "提交一条待你确认的偏好或决定，确认后才成为长期记忆",
+  };
+  $("#approvalToolDescription").textContent = (userFacing[toolName] || (approval.tool && approval.tool.description ? approval.tool.description : ""))
     + " · " + ((approval.metadata && approval.metadata.personaId) ? personaName(approval.metadata.personaId) : "Agent");
   $("#approvalArguments").textContent = agentApprovalArguments(toolName, (approval.call && approval.call.arguments) || {});
   $("#approvalmodal").classList.add("show");
@@ -6319,6 +6348,9 @@ function agentToolLabel(name) {
     personal_work_list: "查看事项",
     personal_work_save: "记录事项",
     personal_learning_propose: "提议记住",
+    goal_list: "查看目标",
+    goal_save: "记录目标",
+    goal_log_progress: "记录进展",
     assistant_team_start: "专职 Bot 协作",
     capability_task_create: "创建能力或任务",
     capability_task_update: "更新常规任务",
@@ -6366,6 +6398,24 @@ function agentToolLabel(name) {
 }
 function agentApprovalArguments(name, args) {
   const visible = { ...(args || {}) };
+  // 目标写入给人看的是"要记下什么"，不是参数表；编号和版本号对用户没有意义。
+  if (name === "goal_save") {
+    const categories = { health: "健康", relationships: "人际关系", finance: "财务", career: "职业", interests: "兴趣", productivity: "效率提升", other: "其他" };
+    const lines = [];
+    if (visible.title) lines.push((visible.id ? "更新目标：" : "新建目标：") + visible.title + (visible.category ? "（" + (categories[visible.category] || visible.category) + "）" : ""));
+    else if (visible.id) lines.push("更新一个已有目标");
+    if (visible.measure) lines.push("怎么算做到：" + visible.measure);
+    if (visible.plan) lines.push("计划：" + visible.plan);
+    if (visible.dueAt) lines.push("期限：" + String(visible.dueAt).slice(0, 10));
+    if (visible.status === "completed") lines.push("标记为完成" + (visible.result ? "：" + visible.result : ""));
+    if (Array.isArray(visible.milestones) && visible.milestones.length) {
+      lines.push("子目标：");
+      for (const m of visible.milestones) lines.push("  " + (m && m.done ? "☑ " : "☐ ") + ((m && m.title) || "（沿用原来的）"));
+    }
+    lines.push("", "只记在本机的目标页，不会执行其他动作。");
+    return lines.join("\n");
+  }
+  if (name === "goal_log_progress") return "记一条进展：" + (visible.note || "") + "\n\n只记在本机的目标页。";
   if (name === "skill_install" && typeof visible.sourceText === "string") {
     visible.sourceText = "已粘贴能力说明（" + visible.sourceText.length + " 个字符，不在确认框完整显示）";
   }
@@ -7677,7 +7727,7 @@ $("#onboardName").addEventListener("keydown", (e) => {
 
 applyDeveloperMode();
 refreshToolSettings().catch(() => {});
-loadState();
+loadState().then(maybeStartGoalConversation).catch(() => {});
 refreshAgentOps().catch(() => {});
 if (location.hash === "#settings") {
   setTimeout(() => {

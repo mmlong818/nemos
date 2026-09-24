@@ -111,7 +111,13 @@ test("统一快照合并延迟加载的扩展工具并保留来源", () => {
 
 test("产品运行时工具不再暴露开发入口", () => {
   const summaries = companionRuntimeToolSummaries();
-  assert.equal(summaries.length, 7);
+  assert.equal(summaries.length, 13);
+  // 事项与目标工具必须登记，否则在送给模型前就被过滤掉（曾经发生过）。
+  assert.deepEqual(
+    filterCompanionRuntimeToolsForSurface("task", ["personal_work_list", "personal_work_save", "personal_learning_propose", "goal_list", "goal_save", "goal_log_progress"].map((name) => ({ definition: { name } })))
+      .map((item) => item.definition.name),
+    ["personal_work_list", "personal_work_save", "personal_learning_propose", "goal_list", "goal_save", "goal_log_progress"],
+  );
   assert.equal(summaries.find((item) => item.id === "agent.assistant-team-start")?.effect, "write");
   assert.ok(summaries.every((item) => !item.id.includes("development")));
   assert.equal(summaries.find((item) => item.id === "agent.task-create")?.effect, "write");

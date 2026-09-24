@@ -163,3 +163,13 @@ test("启动时把无配方的模板补进技能库：幂等、不动已停用�
     } finally { crowded.close(); }
   } finally { store.close(); }
 });
+
+test("点子卡片的标题句：每个模板都有，第一人称说清交回什么，不许承诺执行动作", () => {
+  for (const t of listBotMarket()) {
+    assert.ok(t.pitch, `${t.id} 缺少卡片标题句`);
+    assert.match(t.pitch!, /我会/, `${t.id} 的标题句要用第一人称承诺`);
+    assert.ok(t.pitch!.length <= 40, `${t.id} 的标题句太长`);
+    // 模板不调用工具，只交回文字；不能出现替用户执行的承诺。
+    assert.doesNotMatch(t.pitch!, /帮你(发|订|买|提交|预约|取消)|替你|自动/, `${t.id} 的标题句越过了模板边界`);
+  }
+});

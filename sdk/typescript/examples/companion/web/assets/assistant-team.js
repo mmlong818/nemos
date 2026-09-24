@@ -23,12 +23,14 @@
     return `<article class="bot-library-card" data-workflow-bot="${esc(t.id)}"><header><span class="bot-mark" data-app-icon="${esc(({presentation:"panel",document:"document",research:"search",marketBrief:"work",thinking:"role-think",product:"role-interface",meeting:"users",web:"code",decision:"role-decision",business:"role-sales",market:"role-strategy",topic:"spark",videoScript:"message"})[t.id] || "boxes")}" aria-hidden="true"></span><div><span class="bot-card-kind">${esc(t.category)}</span><h3><button data-inspect-workflow="${esc(t.id)}">${esc(t.name)}</button></h3></div></header><p class="bot-card-summary">${esc(t.summary)}</p><footer><span class="bot-card-output">${esc(t.deliverable)}</span><a href="${esc(t.href)}" aria-label="准备任务：${esc(t.name)}">准备任务 →</a></footer></article>`;
   }
   if(window.ClownfishWorkflowCatalog){workflows=window.ClownfishWorkflowCatalog.workflows;$('#builtinBotList').innerHTML=workflows.map(workflowCard).join('');}
-  function textBotCard(b) {
-    return `<article class="bot-library-card${b.enabled?'':' is-disabled'}" data-personal-bot="${esc(b.id)}"><header><span class="bot-mark" data-app-icon="${library.icon(b)}" aria-hidden="true"></span><div><span class="bot-card-kind">${b.role==='reviewer'?'独立核验':'执行与整理'}</span><h3><button data-inspect-bot="${esc(b.id)}">${esc(b.name)}</button></h3></div>${b.enabled?'':'<span class="bot-disabled-label">已停用</span>'}</header><p class="bot-card-summary">${esc(library.summary(b))}</p><footer><button class="bot-secondary-action" data-edit-bot="${esc(b.id)}" aria-label="编辑规则：${esc(b.name)}">编辑规则</button><button class="bot-use-action" data-use-bot="${esc(b.id)}" aria-label="使用 ${esc(b.name)}" ${b.enabled?'':'disabled'}>使用规则 →</button></footer></article>`;
+  // 来自模板的规则是一张点子卡片：标题是第一人称的一句"你给我什么，我交回什么"，规则名退到小字。
+  function textBotCard(b, pitch) {
+    const title=pitch||b.name, kind=pitch?b.name:(b.role==='reviewer'?'独立核验':'执行与整理');
+    return `<article class="bot-library-card${pitch?' is-idea':''}${b.enabled?'':' is-disabled'}" data-personal-bot="${esc(b.id)}"><header><span class="bot-mark" data-app-icon="${library.icon(b)}" aria-hidden="true"></span><div><span class="bot-card-kind">${esc(kind)}</span><h3><button data-inspect-bot="${esc(b.id)}">${esc(title)}</button></h3></div>${b.enabled?'':'<span class="bot-disabled-label">已停用</span>'}</header><p class="bot-card-summary">${esc(library.summary(b))}</p><footer><button class="bot-secondary-action" data-edit-bot="${esc(b.id)}" aria-label="编辑规则：${esc(b.name)}">编辑规则</button><button class="bot-use-action" data-use-bot="${esc(b.id)}" aria-label="${pitch?'马上开始':'使用'} ${esc(b.name)}" ${b.enabled?'':'disabled'}>${pitch?'马上开始':'使用规则'} →</button></footer></article>`;
   }
   function renderLibrary() {
     const query=$('#botSearch').value;
-    const key=JSON.stringify([data.bots,botFilter,query]);
+    const key=JSON.stringify([data.bots,botFilter,query,templates.length]);
     if(key===libraryKey)return;
     libraryKey=key;
     const visible=library.filter(data.bots,workflows,botFilter,query);
@@ -37,7 +39,13 @@
     $('#botCountText').textContent=teamBots.length;
     $('#botCountWorkflow').textContent=workflows.length;
     $('#botCountDisabled').textContent=teamBots.filter(b=>!b.enabled).length;
-    $('#botList').innerHTML=visible.bots.map(textBotCard).join('');
+    // 按模板类别分组，顺序跟模板目录一致；自己写的规则单独一组放最后。
+    const templateOf=(b)=>templates.find(t=>t.id===b.template?.id);
+    const order=[...new Set(templates.map(t=>t.category))];
+    const groups=new Map();
+    for(const b of visible.bots){const category=templateOf(b)?.category||'我的规则';if(!groups.has(category))groups.set(category,[]);groups.get(category).push(b);}
+    const names=[...groups.keys()].sort((a,b)=>(order.includes(a)?order.indexOf(a):order.length)-(order.includes(b)?order.indexOf(b):order.length));
+    $('#botList').innerHTML=names.map(name=>(names.length>1?`<h3 class="bot-group-title">${esc(name)}</h3>`:'')+groups.get(name).map(b=>textBotCard(b,templateOf(b)?.pitch)).join('')).join('');
     $('#botList').setAttribute('aria-busy','false');
     $('#builtinBotList').innerHTML=visible.workflows.map(workflowCard).join('');
     $('#textBotSection').hidden=!visible.bots.length;
@@ -66,7 +74,7 @@
     const facts=[['适用场景',contract.use],['输入材料',contract.input],['处理方法',contract.steps],['交付要求',contract.output],['工具与资料权限',contract.permissions],['限制',contract.limits],['如何核对',contract.check]];
     $('#botInfoContent').innerHTML=`<p class="bot-card-kind">${esc(contract.label)}${!workflow?' · '+(b.enabled?'已启用':'已停用'):''}</p><h2 id="botInfoTitle">${esc(b.name)}</h2><p>${esc(workflow?b.description:library.summary(b))}</p><dl class="bot-info-facts">${facts.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`+(workflow
       ? `<a class="wb-primary-link bot-info-start" href="${esc(b.href)}">准备任务 →</a>`
-      : `<details class="skill-original-rules"><summary>查看完整规则 · 本地规则 v${esc(b.ruleVersion?.version||1)}</summary><p class="bot-full-rules">${esc(b.instructions)}</p>${b.template?`<p class="hint">来源：模板 v${esc(b.template.version)} · ${esc(b.template.source?.name||'本机模板')} · 本机派生规则 v${esc(b.ruleVersion?.version||1)} · 仅本机私有。模板更新不会自动覆盖你的规则。</p>`:`<p class="hint">本机私有规则 · 本地规则 v${esc(b.ruleVersion?.version||1)}。</p>`}</details>${recipeReceiptHtml(b)}<div class="team-detail-actions"><button data-use-bot="${esc(b.id)}" class="primary" ${b.enabled?'':'disabled'}>使用规则</button><button data-edit-bot="${esc(b.id)}">编辑规则</button></div>`);
+      : (templates.find(t=>t.id===b.template?.id)?.pitch?`<p class="bot-info-pitch">${esc(templates.find(t=>t.id===b.template?.id).pitch)}</p>`:'')+`<details class="skill-original-rules"><summary>查看完整规则 · 本地规则 v${esc(b.ruleVersion?.version||1)}</summary><p class="bot-full-rules">${esc(b.instructions)}</p>${b.template?`<p class="hint">来源：模板 v${esc(b.template.version)} · ${esc(b.template.source?.name||'本机模板')} · 本机派生规则 v${esc(b.ruleVersion?.version||1)} · 仅本机私有。模板更新不会自动覆盖你的规则。</p>`:`<p class="hint">本机私有规则 · 本地规则 v${esc(b.ruleVersion?.version||1)}。</p>`}</details>${recipeReceiptHtml(b)}<div class="team-detail-actions"><button data-use-bot="${esc(b.id)}" class="primary" ${b.enabled?'':'disabled'}>${b.template?'马上开始':'使用规则'}</button><button data-edit-bot="${esc(b.id)}">编辑规则</button></div>`);
     if(!workflow&&b.placement==='market') {
       $('#botInfoContent .team-detail-actions').innerHTML=`<button class="primary" data-add-team="${esc(b.id)}">添加到技能库</button>`;
     }
@@ -139,7 +147,7 @@
     if (loading) return; loading=true;
     try {
       deps();
-      const results=await Promise.allSettled([api(),loadFlows()]);
+      const results=await Promise.allSettled([api(),loadFlows(),loadTemplates()]);
       if(results[0].status==='fulfilled'){data=results[0].value;$('#teamError').textContent='';}
       else {$('#teamError').textContent='文字任务记录读取失败，其他来源仍可查看；保留已有内容。';}
       $('#modelStatus').textContent=data.ready ? '当前模型：'+data.model : '尚未连接模型，请先到设置中保存';
