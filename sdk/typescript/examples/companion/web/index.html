@@ -3208,6 +3208,8 @@
 <script src="/assets/model-picker.js"></script>
 <script src="/assets/app-search-overlay.js"></script>
 <script src="/assets/agent-events.js"></script>
+<link rel="stylesheet" href="/assets/activity-rail.css">
+<script src="/assets/activity-rail.js"></script>
 <script>
 const BUILD = "v16 clownfish-identity-migration";
 const APP_PERSONA_ID = "clownfish";
@@ -6709,6 +6711,7 @@ async function refreshAgentOps() {
       jobs: jobs.jobs || [],
       runs: runs.runs || [],
       approvals: approvals.approvals || [],
+      sessionGrants: approvals.sessionGrants || [],
       extensions: extensions.extensions || [],
       runtimeSecurity: extensions.runtimeSecurity || null
     };
@@ -6720,6 +6723,7 @@ async function refreshAgentOps() {
       renderCapabilityLists();
     }
     renderAgentOps();
+    window.ClownfishActivityRail?.update(agentOpsState);
     showNextAgentApproval();
   } catch (error) {
     const summary = $("#agentOpsSummary");
@@ -6734,10 +6738,12 @@ async function refreshAgentOps() {
 }
 function startAgentEventStream() {
   if (!window.ClownfishAgentEvents || agentEventSource) return;
-  agentEventSource = window.ClownfishAgentEvents.connect({ onSync: refreshAgentOps, onEvent: (name, event) => {
+  window.ClownfishActivityRail?.configure({ api, decide: decideAgentApproval, refresh: refreshAgentOps, toolLabel: agentToolLabel, time: agentTime });
+  agentEventSource = window.ClownfishAgentEvents.connect({ onSync: refreshAgentOps, onStatus: (status) => window.ClownfishActivityRail?.setConnection(status), onEvent: (name, event) => {
     if (name !== "run") return;
     let payload = null;
     try { payload = JSON.parse(event.data || "{}"); } catch {}
+    window.ClownfishActivityRail?.onRunEvent(payload);
     if (payload && payload.action === "delivery" && payload.surface !== "capability" && payload.surface !== "office") {
       deliverAgentRun({
         runId: payload.runId,

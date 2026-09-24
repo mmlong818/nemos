@@ -1,0 +1,58 @@
+/* 助理页右侧活动栏。配色与字号沿用 workbench-ui.css：正文 #253331、次要 #66746f、
+   细边 #dfe5e2、强调 #276b5b（只用于选中页签、主按钮和"进行中"的状态点）。 */
+.activity-rail{display:none;flex-direction:column;min-height:0;background:#fbfcfb;border-left:1px solid #dfe5e2;color:#253331;font:13px/1.55 var(--cf-font-family)}
+.ar-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:22px 20px 16px}
+.ar-avatar{width:48px;height:48px;border-radius:50%;background:#fff;border:1px solid #dfe5e2;object-fit:cover}
+.ar-head h2{margin:0;font-size:15px;font-weight:600}
+.ar-status{display:flex;align-items:center;gap:6px;margin:2px 0 0;color:#66746f;font-size:12px;min-height:18px;overflow-wrap:anywhere}
+.ar-status::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:#a4b0ab}
+.ar-status[data-tone=busy]::before{background:#276b5b;animation:ar-pulse 1.4s ease-in-out infinite}
+.ar-status[data-tone=warn]::before{background:#b7791f}
+@keyframes ar-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.ar-status[data-tone=busy]::before{animation:none}}
+.ar-close{align-self:start;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#66746f;font-size:18px;line-height:1;cursor:pointer}
+.ar-close:hover{background:#eef3f1;color:#253331}
+.ar-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;margin:0 16px;padding:3px;background:#eef3f1;border-radius:8px}
+.ar-tabs button{display:flex;align-items:center;justify-content:center;gap:4px;min-height:30px;padding:4px 2px;border:0;border-radius:6px;background:transparent;color:#66746f;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.ar-tabs button[aria-selected=true]{background:#fff;color:#253331;font-weight:600;box-shadow:0 1px 2px #25333114}
+.ar-tabs button:focus-visible,.ar-close:focus-visible,.ar-toggle:focus-visible,.ar-item a:focus-visible,.ar-actions button:focus-visible{outline:2px solid #276b5b;outline-offset:2px}
+.ar-tabs b,.ar-toggle b{min-width:16px;padding:0 5px;border-radius:8px;background:#276b5b;color:#fff;font-size:10px;font-weight:600;line-height:16px;text-align:center}
+.ar-toggle b:empty{display:none}
+.ar-panel{flex:1;min-height:0;overflow:auto;padding:14px 16px 24px}
+.ar-list{list-style:none;margin:0;padding:0}
+.ar-item{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;padding:10px 4px;border-bottom:1px solid #eef3f1}
+.ar-item:last-child{border-bottom:0}
+.ar-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#fff;border:1px solid #dfe5e2;color:#66746f;font-size:12px;font-weight:600}
+.ar-item[data-status=succeeded] .ar-icon{color:#276b5b}
+.ar-item[data-status=failed] .ar-icon{color:#b42318;border-color:#f1c8c3}
+.ar-item[data-status=running] .ar-icon,.ar-item[data-status=queued] .ar-icon{color:#276b5b;border-color:#bbcfc6}
+.ar-body{display:grid;gap:1px;min-width:0;color:inherit;text-decoration:none}
+a.ar-body:hover strong{text-decoration:underline}
+.ar-body strong{font-size:13px;font-weight:500;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ar-panel>.ar-subhead:first-child{margin-top:4px}
+.ar-body span{color:#66746f;font-size:12px;overflow-wrap:anywhere}
+.ar-body small{color:#a4b0ab;font-size:11px}
+.ar-item[data-status=failed] .ar-body span{color:#8a2a1f}
+.ar-actions{display:flex;gap:8px;margin-top:8px}
+.ar-actions button{min-height:28px;padding:4px 12px;border:1px solid #dfe5e2;border-radius:6px;background:#fff;color:#253331;font:inherit;font-size:12px;cursor:pointer}
+.ar-actions button.primary{border-color:#276b5b;background:#276b5b;color:#fff}
+.ar-actions button:disabled{opacity:.55;cursor:default}
+.ar-empty,.ar-note{margin:8px 4px;color:#66746f;font-size:12px}
+.ar-subhead{margin:18px 4px 6px;color:#66746f;font-size:11px;font-weight:600;letter-spacing:.02em}
+.ar-identity{display:grid;gap:8px}
+.ar-card{display:grid;gap:2px;padding:12px 14px;border:1px solid #dfe5e2;border-radius:8px;background:#fff;color:#253331;text-decoration:none}
+.ar-card:hover{border-color:#bbcfc6}
+.ar-card span{color:#66746f;font-size:12px}
+.ar-compact li{display:grid;gap:2px;padding:8px 4px;border-bottom:1px solid #eef3f1;font-size:12px}
+.ar-compact small{color:#66746f;font-size:11px}
+.ar-toggle{display:inline-flex;align-items:center;gap:4px}
+
+/* 宽屏：常驻为第三列，可收起。 */
+@media (min-width:1280px){
+  body[data-ui=workbench].activity-rail-on .app-shell{grid-template-columns:208px minmax(0,1fr) 320px!important}
+  body[data-ui=workbench].activity-rail-on .activity-rail{display:flex;grid-column:3;grid-row:1 / span 2;position:sticky;top:0;height:100dvh}
+}
+/* 窄屏：从右侧滑出的抽屉。 */
+@media (max-width:1279px){
+  body.activity-rail-open .activity-rail{display:flex;position:fixed;z-index:40;top:0;right:0;bottom:0;width:min(360px,92vw);box-shadow:-18px 0 45px #25333125}
+}
