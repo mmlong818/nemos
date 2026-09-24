@@ -151,12 +151,17 @@ export class PersonalWorkStore {
       for (const goal of this.listGoals(user)) {
         const c = goal.checkIn;
         if (goal.status !== "active" || !c || new Date(c.nextAt) > now) continue;
-        const fired: PersonalGoal = { ...goal, checkIn: { ...c, pendingSince: c.nextAt, nextAt: advanceCheckIn(c, now) } };
+        const fired: PersonalGoal = { ...goal, checkIn: { ...c, pendingSince: c.nextAt, lastFiredAt: c.nextAt, nextAt: advanceCheckIn(c, now) } };
         this.put(user, "goal", fired);
         count++;
       }
       return count;
     })();
+  }
+  /** 最近 12 小时内到过点的对进度（不管聊天里回执没有），桌面端通知用。 */
+  recentCheckIns(user: string, now = new Date()) {
+    const since = now.getTime() - 12 * 3600_000;
+    return this.listGoals(user).filter((g) => g.status === "active" && g.checkIn?.lastFiredAt && Date.parse(g.checkIn.lastFiredAt) >= since);
   }
   pendingCheckIns(user: string) { return this.listGoals(user).filter((g) => g.status === "active" && g.checkIn?.pendingSince); }
   acknowledgeCheckIn(user: string, id: string) {

@@ -31,12 +31,15 @@ namespace ClownfishClient
         private static Mutex instanceMutex;
 
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
+            // 开机自启时带 --background：直接进托盘，不弹窗口。
+            MainForm.StartInBackground = Array.IndexOf(args ?? new string[0], "--background") >= 0;
             bool createdNew;
             instanceMutex = new Mutex(true, @"Local\Clownfish.Client", out createdNew);
             if (!createdNew)
             {
+                if (MainForm.StartInBackground) { instanceMutex.Dispose(); return; }
                 MessageBox.Show("小丑鱼已经在运行。", "小丑鱼", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 instanceMutex.Dispose();
                 return;
@@ -57,6 +60,10 @@ namespace ClownfishClient
 
     internal sealed class MainForm : Form
     {
+        internal static bool StartInBackground;
+        private const string AutostartKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string AutostartValue = "Clownfish";
+        private ToolStripMenuItem autostartItem;
         private int port;
         private string baseUrl;
         private readonly string dataDir;
@@ -137,7 +144,12 @@ namespace ClownfishClient
             menu.SizeChanged += (sender, args) => LayoutWebViewBelowMenu();
             Resize += (sender, args) => LayoutWebViewBelowMenu();
 
-            Shown += async (sender, args) => await BootAsync();
+            if (StartInBackground) { Opacity = 0; ShowInTaskbar = false; }
+            Shown += async (sender, args) =>
+            {
+                if (StartInBackground) { MinimizeToTray(false); Opacity = 1; }
+                await BootAsync();
+            };
             KeyDown += (sender, args) =>
             {
                 if (args.Control && args.Alt && args.KeyCode == Keys.N)
@@ -230,6 +242,9 @@ namespace ClownfishClient
             trayMenu.Items.Add("打开小丑鱼", null, (sender, args) => RestoreFromTray());
             trayMenu.Items.Add("桌面小工具", null, (sender, args) => OpenDesktopTool());
             trayMenu.Items.Add("通知权限", null, (sender, args) => AskNotificationPermission(true));
+            autostartItem = new ToolStripMenuItem("开机自动启动") { CheckOnClick = false, Checked = IsAutostartEnabled() };
+            autostartItem.Click += (sender, args) => ToggleAutostart();
+            trayMenu.Items.Add(autostartItem);
             trayMenu.Items.Add(new ToolStripSeparator());
             trayMenu.Items.Add("退出", null, (sender, args) => ExitApplication());
 
@@ -242,6 +257,48 @@ namespace ClownfishClient
             };
             trayIcon.DoubleClick += (sender, args) => RestoreFromTray();
             trayIcon.BalloonTipClicked += (sender, args) => { RestoreFromTray(); if (webView.CoreWebView2 != null) webView.CoreWebView2.Navigate(baseUrl + "/matters"); };
+        }
+
+        private static string AutostartCommand()
+        {
+            return "\"" + Application.ExecutablePath + "\" --background";
+        }
+
+        /** 只认指向当前这份程序的登记：程序挪了位置，旧登记不算开着。 */
+        private static bool IsAutostartEnabled()
+        {
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AutostartKey, false))
+                {
+                    var value = key == null ? null : key.GetValue(AutostartValue) as string;
+                    return value != null && string.Equals(value, AutostartCommand(), StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch { return false; }
+        }
+
+        private void ToggleAutostart()
+        {
+            var enable = !IsAutostartEnabled();
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(AutostartKey))
+                {
+                    if (enable) key.SetValue(AutostartValue, AutostartCommand());
+                    else key.DeleteValue(AutostartValue, false);
+                }
+                if (trayIcon != null)
+                {
+                    trayIcon.ShowBalloonTip(3000, enable ? "已开启开机自动启动" : "已关闭开机自动启动",
+                        enable ? "下次开机后小丑鱼会安静地待在托盘里，提醒和定时任务照常工作。" : "下次开机不会自动启动。", ToolTipIcon.Info);
+                }
+            }
+            catch (Exception error)
+            {
+                MessageBox.Show("没能修改开机启动设置：" + error.Message, "小丑鱼", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            if (autostartItem != null) autostartItem.Checked = IsAutostartEnabled();
         }
 
         private void RestoreFromTray()
@@ -425,11 +482,21 @@ namespace ClownfishClient
                 if (!countMatch.Success || !tokenMatch.Success || !int.TryParse(countMatch.Groups[1].Value, out count)) return;
                 reminderTimer.Interval = 15000;
                 var token = tokenMatch.Groups[1].Value;
+                // 免打扰时段：不弹，也不把这批记成已提醒；时段结束后的下一次轮询再弹。
+                if (Regex.IsMatch(json, "\"quiet\"\\s*:\\s*true")) return;
                 if (count > 0 && token != lastReminderToken && trayIcon != null)
                 {
                     trayIcon.Visible = true;
+                    int matters = 0, goals = 0;
+                    var mattersMatch = Regex.Match(json, "\"matters\"\\s*:\\s*(\\d+)");
+                    var goalsMatch = Regex.Match(json, "\"goals\"\\s*:\\s*(\\d+)");
+                    if (mattersMatch.Success) int.TryParse(mattersMatch.Groups[1].Value, out matters);
+                    if (goalsMatch.Success) int.TryParse(goalsMatch.Groups[1].Value, out goals);
+                    var parts = new List<string>();
+                    if (matters > 0) parts.Add(matters + " 件事项到了跟进时间");
+                    if (goals > 0) parts.Add(goals + " 个目标到了对进度的时间");
                     // Keep private matter titles off the lock screen.
-                    trayIcon.ShowBalloonTip(5000, "小丑鱼：需要你跟进", "有 " + count + " 件事项到了跟进时间。点击查看。", ToolTipIcon.Info);
+                    trayIcon.ShowBalloonTip(5000, "小丑鱼：需要你跟进", (parts.Count > 0 ? "有 " + string.Join("、", parts) : "有 " + count + " 条提醒") + "。点击查看。", ToolTipIcon.Info);
                 }
                 if (token != lastReminderToken) { lastReminderToken = token; SaveClientPreferences(); }
             }

@@ -39,6 +39,7 @@
               ><button data-section="connections">数据连接</button
               ><button data-section="storage">数据保存</button
               ><button data-section="privacy">数据与隐私</button
+              ><button data-section="reminders">提醒与后台</button
               ><button data-section="appearance">外观</button
               ><button data-section="advanced">高级</button>
             </nav>
@@ -408,6 +409,29 @@
                   ><span class="cf-skeleton is-short"></span>
                 </div>
               </section>
+              <section class="settings-section" data-panel="reminders">
+                <header class="section-head">
+                  <h2>提醒与后台</h2>
+                  <p>小丑鱼只在运行时提醒和生成内容。开机自动在托盘里启动后，关掉窗口也照常工作。</p>
+                </header>
+                <form id="proactiveForm" class="proactive-form">
+                  <fieldset><legend>免打扰</legend>
+                    <label class="proactive-toggle"><input type="checkbox" name="quietEnabled"> 这段时间不弹通知</label>
+                    <div class="proactive-row"><label>从<input type="time" name="quietStart" value="22:00"></label><label>到<input type="time" name="quietEnd" value="08:00"></label></div>
+                    <p class="hint">时段内到点的提醒不会丢，结束后再弹一次。聊天里的对进度消息照常出现。</p>
+                    <p class="hint" id="proactiveQuietNow"></p>
+                  </fieldset>
+                  <fieldset><legend>动态</legend>
+                    <label class="proactive-toggle"><input type="checkbox" name="feedEnabled"> 每天自动生成一次</label>
+                    <div class="proactive-row"><label>时间<input type="time" name="feedTime" value="08:00"></label></div>
+                    <p class="hint">到点会联网搜索并调用模型（会消耗额度）。那时应用没开，当天打开时补一次；不补前一天的。</p>
+                  </fieldset>
+                  <fieldset><legend>开机自动启动</legend>
+                    <p class="hint">在桌面版右下角托盘图标的右键菜单里勾选「开机自动启动」。开机后小丑鱼安静地待在托盘里，不弹窗口。</p>
+                  </fieldset>
+                  <div class="proactive-actions"><button type="submit" class="btn-primary">保存</button><span id="proactiveStatus" role="status"></span></div>
+                </form>
+              </section>
               <section class="settings-section" data-panel="advanced">
                 <header class="section-head">
                   <h2>高级与排错</h2>
@@ -464,7 +488,7 @@
     <script src="/assets/tts-preview-player.js?v=0.7.6-media1"></script>
     <script src="/assets/model-quick-setup.js?v=0.7.6-quick2"></script>
     <script src="/assets/settings-center.js?v=0.7.6-modelux4"></script>
-    <script src="/assets/settings-wallpaper.js"></script>
+    <script src="/assets/settings-proactive.js" defer></script><script src="/assets/settings-wallpaper.js"></script>
     <script src="/assets/scramble-confetti.js" defer></script>
   </body>
 </html>

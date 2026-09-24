@@ -60,6 +60,7 @@
     "connections",
     "storage",
     "privacy",
+    "reminders",
     "appearance",
     "advanced",
   ];

@@ -201,6 +201,7 @@ import { attachScheduledTaskHandoffProjection, FileScheduledTaskHandoffStore } f
 import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
 import { GOAL_CATEGORIES, goalCoachingAddendum, type GoalInput } from "./goals.js";
 import { hasWidgetIntent } from "./widgets.js";
+import { ProactiveError, ProactiveStore, feedDue, inQuietHours } from "./proactive.js";
 import { FeedError, FeedStore, feedPlanPrompt, feedWritePrompt, parseFeedPlan, parseFeedPosts, type FeedBatch, type FeedCandidateSource, type FeedContext, type FeedPost } from "./feed.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
 import { FileStepReceiptStore } from "./structured-handoff.js";
@@ -1246,6 +1247,12 @@ function enqueueDueCapabilityTasks(trigger: "time" | "turn") {
 
 const backgroundScheduler = new BackgroundScheduler([
   { name: "personal-matters", run: () => { personalWork.tick(USER); personalWork.tickGoals(USER); } },
+  // 动态定时生成：先记下今天跑过，再生成——失败也只试一次，失败原因会作为一批"没生成出来"留在动态里。
+  { name: "feed-schedule", run: () => {
+    if (!llm.live || !feedDue(proactiveStore.get())) return;
+    proactiveStore.markFeedRun();
+    void generateFeed();
+  } },
   // 先暂停再入队：否则本轮还会为已经该停的任务排一次没人看的执行。
   { name: "unread-routines", run: () => { capabilities.pauseUnreadScheduledTasks(); } },
   { name: "capabilities", run: () => { enqueueDueCapabilityTasks("time"); } },
@@ -3608,6 +3615,8 @@ function sanitizeConversationTitle(value: string, fallback: string): string {
   if (cleaned.length < 2) return fallback;
   return cleaned.length > 24 ? cleaned.slice(0, 24) : cleaned;
 }
+
+const proactiveStore = new ProactiveStore(join(DATA_DIR, "proactive.json"));
 
 // ———————————————— 动态 ————————————————
 // 只在用户点"生成"时运行：先定搜索词、联网搜，再只根据搜到的来源和本机记录写。同一时间只跑一次。
@@ -6437,6 +6446,18 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
+    if (pathname === "/api/proactive") {
+      try {
+        if (req.method === "GET") { send(res, 200, { ...proactiveStore.get(), quietNow: inQuietHours(proactiveStore.get()) }); return; }
+        if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }
+        const body = await readBody(req);
+        const saved = proactiveStore.update(body);
+        send(res, 200, { ok: true, ...saved, quietNow: inQuietHours(saved) });
+      } catch (error) {
+        send(res, error instanceof ProactiveError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
     if (pathname === "/api/feed" || pathname.startsWith("/api/feed/")) {
       try {
         if (req.method === "GET" && pathname === "/api/feed") {
@@ -6467,7 +6488,10 @@ const server = createServer(async (req, res) => {
       try {
         if (req.method === "GET" && pathname === "/api/personal-work/reminder-summary") {
           const reminders = personalWork.reminders(USER);
-          send(res, 200, { count: reminders.length, token: createHash("sha256").update(reminders.map((r) => r.id).sort().join("|")).digest("hex") });
+          const checkIns = personalWork.recentCheckIns(USER);
+          const keys = [...reminders.map((r) => r.id), ...checkIns.map((g) => `goal:${g.id}:${g.checkIn!.lastFiredAt}`)].sort();
+          // 免打扰时桌面端不弹通知、也不把这批标成已提醒，时段一过再弹。
+          send(res, 200, { count: keys.length, matters: reminders.length, goals: checkIns.length, quiet: inQuietHours(proactiveStore.get()), token: createHash("sha256").update(keys.join("|")).digest("hex") });
           return;
         }
         if (req.method === "GET" && pathname === "/api/personal-work") {

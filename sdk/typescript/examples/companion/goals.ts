@@ -116,6 +116,8 @@ export interface GoalCheckIn {
   monthDay?: number;
   nextAt: string;
   pendingSince?: string;
+  /** 最近一次到点的时间；回执后也保留，给桌面端通知去重用。 */
+  lastFiredAt?: string;
 }
 const CADENCES = ["daily", "weekly", "biweekly", "monthly"] as const;
 const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
