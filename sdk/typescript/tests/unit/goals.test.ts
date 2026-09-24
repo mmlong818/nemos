@@ -154,3 +154,82 @@ test("聊已有目标：一轮就能记进展并勾子目标——编号缺省�
   assert.ok(addendum.includes(`读完第一本（已完成，id ${goal.milestones[1].id}）`));
   assert.match(addendum, /最近记过的进展：\d{4}-\d\d-\d\d 这周读完了第一本/);
 });
+
+test("定期对进度：按本机时间排第一次；到点只标一次待对、排好下一次，错过的不补发；两周一次按上次推", (t) => {
+  const f = fixture(t);
+  // 2026-09-24 是周四。
+  const created = new Date(2026, 8, 24, 21, 0);
+  const goal = f.store.saveGoal("me", { ...reading, checkIn: { cadence: "biweekly", weekday: 3, time: "20:00" } }, "assistant");
+  // saveGoal 用真实时间；这里用纯函数验证排期，再用存储验证触发。
+  const { applyGoalSave: save } = require("../../examples/companion/goals.js");
+  const planned = save(undefined, { ...reading, checkIn: { cadence: "biweekly", weekday: 3, time: "20:00" } }, "user", created.toISOString());
+  assert.equal(new Date(planned.checkIn.nextAt).getTime(), new Date(2026, 8, 30, 20, 0).getTime(), "下一个周三 20:00");
+  assert.deepEqual(planned.timeline.map((e: { kind: string; text: string }) => [e.kind, e.text]), [["created", "今年读完 12 本书"], ["revised", "定期对进度（每两周周三 20:00）"]]);
+  const monthly = save(undefined, { ...reading, checkIn: { cadence: "monthly", monthDay: 31, time: "9:05" } }, "user", created.toISOString());
+  assert.equal(new Date(monthly.checkIn.nextAt).getTime(), new Date(2026, 8, 30, 9, 5).getTime(), "9 月没有 31 号，按月底");
+  assert.throws(() => save(undefined, { ...reading, checkIn: { cadence: "hourly" } }, "user"), /每天、每周、每两周或每月/);
+  assert.throws(() => save(undefined, { ...reading, checkIn: { cadence: "daily", time: "25:00" } }, "user"), /HH:MM/);
+
+  // 触发：把 nextAt 拨到过去，模拟关机错过了三次。
+  const stored = f.store.getGoal("me", goal.id);
+  const past = new Date(2026, 8, 2, 20, 0);
+  (f.store as unknown as { put: (u: string, k: string, r: unknown) => void }).put("me", "goal", { ...stored, checkIn: { ...stored.checkIn!, nextAt: past.toISOString() } });
+  const now = new Date(2026, 9, 1, 8, 0);
+  assert.equal(f.store.tickGoals("me", now), 1);
+  assert.equal(f.store.tickGoals("me", now), 0, "同一时刻不会重复触发");
+  const fired = f.store.getGoal("me", goal.id);
+  assert.equal(fired.checkIn!.pendingSince, past.toISOString());
+  assert.equal(new Date(fired.checkIn!.nextAt).getTime(), new Date(2026, 9, 14, 20, 0).getTime(), "从 9/2 每两周推：9/16、9/30 已过，下一次 10/14");
+  assert.equal(fired.revision, stored.revision, "排期推进不改版本号");
+  assert.deepEqual(f.store.pendingCheckIns("me").map((g) => g.id), [goal.id]);
+  f.store.acknowledgeCheckIn("me", goal.id);
+  assert.deepEqual(f.store.pendingCheckIns("me"), []);
+  // 取消与完成：取消写进时间线；完成的目标不再触发。
+  const cancelled = f.store.saveGoal("me", { id: goal.id, checkIn: null, revision: fired.revision }, "user");
+  assert.equal(cancelled.checkIn, undefined);
+  assert.equal(cancelled.timeline.at(-1)!.text, "取消定期对进度");
+});
+
+test("定期对进度：前后端描述同一口径；右栏和定时任务混排；小丑鱼经工具设好后引导里带上", async (t) => {
+  const { describeCheckIn } = require("../../examples/companion/goals.js");
+  for (const c of [{ cadence: "daily", time: "08:00" }, { cadence: "weekly", weekday: 0, time: "21:30" }, { cadence: "biweekly", weekday: 3, time: "20:00" }, { cadence: "monthly", monthDay: 15, time: "09:05" }]) {
+    assert.equal(page.describeCheckIn(c), describeCheckIn(c));
+  }
+  const rail = require("../../examples/companion/web/assets/activity-rail.js");
+  const now = new Date(2026, 8, 24, 21, 0); // 周四
+  const items = rail.upcomingGoalCheckIns([
+    { id: "a", title: "读完 4 本书", status: "active", checkIn: { nextAt: new Date(2026, 8, 30, 20, 0).toISOString() } },
+    { id: "b", title: "已完成的", status: "completed", checkIn: { nextAt: new Date(2026, 8, 25, 8, 0).toISOString() } },
+    { id: "c", title: "明早", status: "active", checkIn: { nextAt: new Date(2026, 8, 25, 8, 0).toISOString() } },
+  ], now);
+  assert.deepEqual(items.map((i: { title: string; when: string }) => [i.title, i.when]), [["对进度：读完 4 本书", "周三 20:00"], ["对进度：明早", "明天 08:00"]]);
+  assert.ok(items[1].sort < items[0].sort, "明天早上排在下周三之前");
+  assert.match(items[0].note, /应用开着时在聊天里提醒；错过的不补发/);
+
+  const f = fixture(t);
+  const goal = f.store.saveGoal("me", reading, "user");
+  const provider = createCompanionAgentToolProvider({ memory: () => ({} as Nemos), capabilities: () => ({} as CapabilityRuntime), personalWork: () => f.store, goalSession: () => ({ category: "interests", goalId: goal.id }) });
+  const save = (await provider("好，两周对一次", chat)).find((tool) => tool.definition.name === "goal_save")!;
+  await save.execute({ id: goal.id, checkIn: { cadence: "biweekly", weekday: 3, time: "20:00" } }, { signal: new AbortController().signal, runId: "r", sessionId: "conversation-goal" });
+  const after = f.store.getGoal("me", goal.id);
+  assert.equal(describeCheckIn(after.checkIn), "每两周周三 20:00");
+  assert.equal(after.timeline.at(-1)!.text, "定期对进度（每两周周三 20:00）");
+  assert.match(goalCoachingAddendum("interests", after), /定期对进度：每两周周三 20:00，只在应用开着时提醒/);
+  assert.match(goalCoachingAddendum("interests"), /设好之前别说"到时候我提醒你"/);
+});
+
+test("在定目标的对话里新建目标后，会话绑定到它；已有目标的引导带上建立日期；规则要求 ta 明说才设提醒", async (t) => {
+  const f = fixture(t);
+  const sessions = new Map<string, { category: string; goalId?: string }>([["conversation-goal", { category: "interests" }]]);
+  const provider = createCompanionAgentToolProvider({ memory: () => ({} as Nemos), capabilities: () => ({} as CapabilityRuntime), personalWork: () => f.store,
+    goalSession: (id) => sessions.get(id), bindGoalSession: (id, goalId) => sessions.set(id, { ...sessions.get(id)!, goalId }) });
+  const save = (await provider("就这样定吧", chat)).find((tool) => tool.definition.name === "goal_save")!;
+  const created = JSON.parse((await save.execute({ ...reading }, { signal: new AbortController().signal, runId: "r", sessionId: "conversation-goal" })).content);
+  assert.equal(sessions.get("conversation-goal")!.goalId, created.id);
+  // 更新不会改绑。
+  await save.execute({ id: created.id, plan: "每晚 30 分钟" }, { signal: new AbortController().signal, runId: "r2", sessionId: "conversation-goal" });
+  assert.equal(sessions.get("conversation-goal")!.goalId, created.id);
+  const addendum = goalCoachingAddendum("interests", f.store.getGoal("me", created.id));
+  assert.match(addendum, /目标 id [\w-]+，\d{4}\/\d{1,2}\/\d{1,2} 建立/);
+  assert.match(goalCoachingAddendum("interests"), /只有 ta 明确要定期对进度、并说了多久一次时.*建目标时不要顺手设/);
+});

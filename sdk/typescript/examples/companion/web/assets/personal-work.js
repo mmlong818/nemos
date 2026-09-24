@@ -103,6 +103,11 @@
       if (result === null) return;
       return goalAction(b, () => api("/goals", { goal: { id: goal.id, revision: goal.revision, status: b.dataset.goalStatus, ...(result ? { result } : {}) } }), completing ? "目标已完成" : "已重新开始追踪");
     }
+    if (b.hasAttribute("data-goal-checkin")) {
+      const cadence = $("#goalCheckIn").value, time = $("#goalCheckInTime").value || "20:00";
+      const checkIn = cadence === "off" ? null : { cadence, time };
+      return goalAction(b, () => api("/goals", { goal: { id: goal.id, revision: goal.revision, checkIn } }), cadence === "off" ? "已取消定期对进度" : "已设好定期对进度");
+    }
     if (b.hasAttribute("data-goal-rename")) {
       const title = prompt("新的目标名称", goal.title); if (!title || title.trim() === goal.title) return;
       return goalAction(b, () => api("/goals", { goal: { id: goal.id, revision: goal.revision, title: title.trim() } }), "已改名");

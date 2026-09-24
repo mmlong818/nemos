@@ -32,6 +32,8 @@ export interface CompanionAgentToolDependencies {
   listPersonas?: () => Array<{ id: string; name: string }>;
   /** 从目标页开出来的对话：返回类别与关联目标；普通对话返回 undefined。 */
   goalSession?: (sessionId: string) => { category: string; goalId?: string } | undefined;
+  /** 新建目标后把这段对话绑定到它：下一轮引导里就有编号，改节奏不必先花一次工具调用去查。 */
+  bindGoalSession?: (sessionId: string, goalId: string) => void;
   enqueueOrchestration?: (input: CompanionDelegationJobInput, idempotencyKey: string) => { id: string; status: string };
 }
 
@@ -64,7 +66,7 @@ export function createCompanionAgentToolProvider(
     const goalSession = context.sessionId ? dependencies.goalSession?.(context.sessionId) : undefined;
     if (dependencies.personalWork && context.personaId === "clownfish" && !["capability", "office"].includes(context.surface || "")
       && (goalSession || GOAL_CUE.test(instruction))) {
-      tools.push(...goalTools(dependencies.personalWork(), context, goalSession?.goalId));
+      tools.push(...goalTools(dependencies.personalWork(), context, goalSession?.goalId, goalSession ? dependencies.bindGoalSession : undefined));
     }
     if (
       MEMORY_CUE.test(instruction)
@@ -124,7 +126,7 @@ function personalWorkTools(store: PersonalWorkStore, context: ChatAgentContext):
 
 const GOAL_CATEGORY_IDS = GOAL_CATEGORIES.map((item) => item.id);
 
-function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionGoalId?: string): AgentTool[] {
+function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionGoalId?: string, bind?: (sessionId: string, goalId: string) => void): AgentTool[] {
   // 从目标卡片开的对话已知是哪个目标：id 缺省用它；小丑鱼的更新按字段合并，版本号缺省取当前值。
   const withRevision = (input: GoalInput): GoalInput => {
     const id = String(input.id || "");
@@ -151,10 +153,16 @@ function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionG
         status: { type: "string", enum: ["active", "completed", "archived"] },
         milestones: { type: "array", maxItems: 20, description: "When creating, include 2 to 4 concrete milestones the user can tick off. When updating, pass the full list with existing ids.", items: { type: "object", properties: { id: { type: "string" }, title: { type: "string" }, done: { type: "boolean" } }, additionalProperties: false } },
         result: { type: "string", description: "When completing: what was achieved, in the user's words" },
+        checkIn: { description: "Periodic progress check-in the user agreed to; null to cancel. Local time; only fires while the app is running.", anyOf: [{ type: "null" }, { type: "object", properties: {
+          cadence: { type: "string", enum: ["daily", "weekly", "biweekly", "monthly", "off"] }, time: { type: "string", description: "HH:MM" },
+          weekday: { type: "integer", minimum: 0, maximum: 6, description: "0 = Sunday; weekly/biweekly" }, monthDay: { type: "integer", minimum: 1, maximum: 31 },
+        }, required: ["cadence"], additionalProperties: false }] },
       }, additionalProperties: false }, effect: "write" },
     execute: async (input, execution) => {
       ensureActive(execution.signal);
-      return { content: JSON.stringify(goalBrief(store.saveGoal(context.userId, withRevision(input as GoalInput), "assistant"))) };
+      const saved = store.saveGoal(context.userId, withRevision(input as GoalInput), "assistant");
+      if (!input.id && context.sessionId) bind?.(context.sessionId, saved.id);
+      return { content: JSON.stringify(goalBrief(saved)) };
     },
   }, {
     definition: { name: "goal_log_progress", description: "With approval, add one progress entry to a goal's timeline. Only record what the user reported in this conversation, close to their words. Never infer, estimate or invent progress.",

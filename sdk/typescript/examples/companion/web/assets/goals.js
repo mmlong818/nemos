@@ -39,6 +39,13 @@
     if (goal) { params.set("goalId", goal.id); params.set("title", goal.title); }
     return "/?" + params.toString();
   }
+  const WEEK = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  /** 与服务端 describeCheckIn 同一口径（测试钉住）。 */
+  function describeCheckIn(c) {
+    if (c.cadence === "daily") return "每天 " + c.time;
+    if (c.cadence === "monthly") return "每月 " + c.monthDay + " 号 " + c.time;
+    return (c.cadence === "biweekly" ? "每两周" : "每周") + WEEK[c.weekday || 0] + " " + c.time;
+  }
   const time = (value) => new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
   const dateOnly = (value) => value ? new Date(value).toLocaleDateString("zh-CN", { year: "numeric", month: "numeric", day: "numeric" }) : "";
 
@@ -62,12 +69,22 @@
     root.ClownfishIcons?.hydrate?.();
   }
 
+  function checkInBlock(goal) {
+    if (goal.status !== "active") return "";
+    const c = goal.checkIn;
+    const options = [["off", "不定期"], ["daily", "每天"], ["weekly", "每周"], ["biweekly", "每两周"], ["monthly", "每月"]];
+    const next = c ? new Date(c.nextAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    return `<div class="goal-checkin"><label for="goalCheckIn">定期对进度</label><div><select id="goalCheckIn">${options.map(([v, l]) => `<option value="${v}" ${(c ? c.cadence : "off") === v ? "selected" : ""}>${l}</option>`).join("")}</select><input id="goalCheckInTime" type="time" value="${esc(c ? c.time : "20:00")}" aria-label="提醒时间"><button type="button" data-goal-checkin>保存</button></div>`
+      + `<p class="hint">${c ? esc(describeCheckIn(c)) + "，下次 " + esc(next) + "。" : ""}到点小丑鱼会在聊天里问你一句；只在应用开着时提醒，错过的不补发。</p></div>`;
+  }
+
   function detail(dialog, goal) {
     const groups = groupTimeline(goal.timeline);
     const by = (entry) => entry.by === "assistant" ? "小丑鱼记下" : "你";
     dialog.innerHTML = `<form method="dialog" class="goal-detail"><header><div><span class="goal-cat">${esc(label(goal.category))}${goal.status === "completed" ? " · 已完成" : goal.status === "archived" ? " · 已归档" : ""}</span><h2>${esc(goal.title)}</h2></div><button type="button" data-goal-close aria-label="关闭目标详情">×</button></header>`
       + `<dl class="goal-facts"><dt>怎么算做到</dt><dd>${esc(goal.measure)}</dd>${goal.plan ? `<dt>计划</dt><dd>${esc(goal.plan)}</dd>` : ""}${goal.why ? `<dt>为什么</dt><dd>${esc(goal.why)}</dd>` : ""}${goal.dueAt ? `<dt>期限</dt><dd>${esc(dateOnly(goal.dueAt))}</dd>` : ""}</dl>`
       + (goal.milestones.length ? `<fieldset class="goal-milestones"><legend>子目标</legend>${goal.milestones.map((m) => `<label><input type="checkbox" data-milestone="${esc(m.id)}" ${m.done ? "checked" : ""}> ${esc(m.title)}</label>`).join("")}</fieldset>` : "")
+      + checkInBlock(goal)
       + `<div class="goal-log"><label for="goalNote">记一条进展</label><div><input id="goalNote" maxlength="500" placeholder="例如：这周读完了第三章"><button type="button" data-goal-log>记下</button></div></div>`
       + `<section class="goal-timeline" aria-label="时间线"><h3>时间线</h3>${groups.map((g) => `<h4>${esc(g.title)}</h4><ol>${g.items.map((e) => `<li data-kind="${esc(e.kind)}"><time>${esc(time(e.at))}</time><span class="goal-who">${esc(by(e))}</span><p><strong>${esc(KIND[e.kind] || "记录")}</strong>${e.text ? " " + esc(e.text) : ""}</p></li>`).join("")}</ol>`).join("")}</section>`
       + `<p class="hint">时间线只记实际发生的事：你在页面上的操作，和小丑鱼在聊天里按你说的记下的进展，不会替你推断进度。</p>`
@@ -75,7 +92,7 @@
       + `<p class="form-error" role="alert"></p></form>`;
   }
 
-  const api = { CATEGORIES, label, line, groupTimeline, progress, chatHref, render, detail };
+  const api = { CATEGORIES, label, line, describeCheckIn, groupTimeline, progress, chatHref, render, detail };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.ClownfishGoals = api;
 })(typeof window !== "undefined" ? window : globalThis);

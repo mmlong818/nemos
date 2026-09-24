@@ -22,3 +22,4 @@
 .goal-who{font-size:11px;color:var(--cf-ink-soft)}.goal-timeline li p{grid-column:1/-1;margin:0}.goal-timeline li[data-kind=milestone] strong,.goal-timeline li[data-kind=completed] strong{color:var(--cf-coral)}
 button.danger{color:var(--cf-danger)}
 @media(max-width:700px){.goal-detail{padding:20px}.goal-categories{grid-template-columns:1fr 1fr}}
+.goal-checkin label{font-size:13px}.goal-checkin>div{display:flex;gap:8px;margin-top:6px}.goal-checkin select{width:auto}.goal-checkin input{width:auto}.goal-checkin .hint{margin-top:6px}

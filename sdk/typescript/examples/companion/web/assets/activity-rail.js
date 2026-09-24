@@ -133,6 +133,23 @@
     return out.sort((a, b) => a.sort - b.sort);
   }
 
+  /** 目标的定期对进度：和定时任务混排，排序口径相同（从今天零点起算的分钟数）。 */
+  function upcomingGoalCheckIns(goals, now) {
+    const at = now instanceof Date ? now : new Date();
+    const midnight = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+    const out = [];
+    for (const goal of goals || []) {
+      const next = goal && goal.status === "active" && goal.checkIn ? new Date(goal.checkIn.nextAt) : null;
+      if (!next || !Number.isFinite(next.getTime())) continue;
+      const days = Math.floor((new Date(next.getFullYear(), next.getMonth(), next.getDate()) - midnight) / 86400000);
+      const hhmm = String(next.getHours()).padStart(2, "0") + ":" + String(next.getMinutes()).padStart(2, "0");
+      const day = days <= 0 ? "今天" : days === 1 ? "明天" : days < 7 ? WEEKDAY[next.getDay() === 0 ? 7 : next.getDay()] : (next.getMonth() + 1) + "月" + next.getDate() + "日";
+      out.push({ id: "goal:" + goal.id, title: "对进度：" + (goal.title || "目标"), when: day + " " + hhmm, sort: Math.round((next - midnight) / 60000),
+        note: "应用开着时在聊天里提醒；错过的不补发" });
+    }
+    return out;
+  }
+
   /** 按本地日期分组的标题：今天 / 昨天 / 9月22日。 */
   function dayLabel(value, now) {
     const at = new Date(value), ref = now instanceof Date ? now : new Date();
@@ -162,13 +179,13 @@
     });
   }
 
-  const api = { liveStatusLabel, jobTitle, jobOutcome, upcomingTasks, pausedTaskCount, approvalRows, dayLabel };
+  const api = { liveStatusLabel, jobTitle, jobOutcome, upcomingTasks, upcomingGoalCheckIns, pausedTaskCount, approvalRows, dayLabel };
   if (typeof module === "object" && module.exports) { module.exports = api; return; }
 
   // ———————————————— 以下只在浏览器里运行 ————————————————
   const COLLAPSE_KEY = "clownfish.activityRail.collapsed";
   const esc = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const state = { deps: null, ops: { jobs: [], runs: [], approvals: [], sessionGrants: [] }, tasks: [], guidelines: null,
+  const state = { deps: null, ops: { jobs: [], runs: [], approvals: [], sessionGrants: [] }, tasks: [], goals: [], guidelines: null,
     tab: "activity", live: "", liveAt: 0, connection: "connected", tasksAt: 0, mounted: false };
   let el = null, toggle = null;
 
@@ -227,11 +244,11 @@
   }
 
   function renderUpcoming() {
-    const items = upcomingTasks(state.tasks, new Date());
+    const items = [...upcomingTasks(state.tasks, new Date()), ...upcomingGoalCheckIns(state.goals, new Date())].sort((a, b) => a.sort - b.sort);
     const paused = pausedTaskCount(state.tasks);
     let html = items.length
       ? '<ol class="ar-list">' + items.map((item) => '<li class="ar-item"><span class="ar-icon" aria-hidden="true">◷</span><div class="ar-body"><strong>' + esc(item.title) + '</strong><span>' + esc(item.when) + '</span><small>' + esc(item.note) + '</small></div></li>').join("") + '</ol>'
-      : '<p class="ar-empty">没有排好的定时任务。跟小丑鱼说"每天早上 8 点帮我……"就能建一个。</p>';
+      : '<p class="ar-empty">没有排好的定时任务或目标对进度。跟小丑鱼说"每天早上 8 点帮我……"就能建一个。</p>';
     if (paused) html += '<p class="ar-note">另有 ' + paused + ' 个定时任务已暂停，<a href="/automations">去自动化查看</a>。</p>';
     return html;
   }
@@ -273,6 +290,7 @@
     if (!force && Date.now() - state.tasksAt < 30_000) return;
     state.tasksAt = Date.now();
     try { state.tasks = (await state.deps.api("/api/capabilities")).tasks || []; render(); } catch { /* 下次刷新再读 */ }
+    try { state.goals = (await state.deps.api("/api/personal-work")).goals || []; render(); } catch { /* 目标读不到不影响定时任务 */ }
   }
   async function loadGuidelines() {
     if (!state.deps || !state.deps.api) return;

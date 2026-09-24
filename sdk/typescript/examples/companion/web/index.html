@@ -1771,6 +1771,8 @@
   .artifact-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .artifact-actions button { height:26px; padding:0 9px; border:1px solid #d8dde6; border-radius:4px; background:#fff; color:#2f343c; font-size:12px; cursor:pointer; }
   .artifact-actions button:hover { background:#f4f5f7; }
+  .artifact-actions a { display:inline-flex; align-items:center; height:28px; padding:0 12px; border:1px solid #cfd6e2; border-radius:14px; background:#fff; color:#2f343c; font-size:13px; text-decoration:none; }
+  .artifact-actions a:hover { background:#f1f4f9; }
   .quick-replies { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
   .quick-replies button { min-height:30px; padding:4px 12px; border:1px solid #cfd6e2; border-radius:15px; background:#fff; color:#2f343c; font-size:13px; line-height:1.4; cursor:pointer; }
   .quick-replies button:hover { background:#f1f4f9; border-color:#aeb8c8; }
@@ -4393,12 +4395,12 @@ function renderLog() {
       for (const section of e.longform.sections) {
         addRow("other", section.name || null, section.text || "", { pid: section.personaId || e.pid });
       }
-    } else if (e.side === "other" && !e.who && !e.artifact) {
+    } else if (e.side === "other" && !e.who && !e.artifact && !e.goalCheckIn) {
       const run = [e];
       let nextIndex = messageIndex + 1;
       while (nextIndex < log.length) {
         const next = log[nextIndex];
-        if (!next || next.side !== "other" || next.who || next.artifact || next.longform || next.pid !== e.pid) break;
+        if (!next || next.side !== "other" || next.who || next.artifact || next.longform || next.goalCheckIn || next.pid !== e.pid) break;
         run.push(next);
         nextIndex += 1;
       }
@@ -4411,7 +4413,7 @@ function renderLog() {
         addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, messageId });
       }
     } else {
-      addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, messageId });
+      addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, goalCheckIn: e.goalCheckIn, messageId });
     }
   }
   const composerAfter = $("#composer"); if (composerAfter) composerAfter.classList.remove("hero-mode");
@@ -4806,6 +4808,15 @@ function addRow(side, who, text, opts = {}) {
   const bub = document.createElement("div");
   bub.className = "bub" + (opts.voice ? " voice" : "");
   renderBubbleContent(bub, text, { ...opts, render: opts.render !== false && side !== "me" });
+  if (opts.goalCheckIn) {
+    const actions = document.createElement("div");
+    actions.className = "artifact-actions";
+    const link = document.createElement("a");
+    link.href = "/?" + new URLSearchParams({ goal: opts.goalCheckIn.category, goalId: opts.goalCheckIn.id, title: opts.goalCheckIn.title }).toString();
+    link.textContent = "聊聊进展";
+    actions.appendChild(link);
+    bub.appendChild(actions);
+  }
   inner.appendChild(bub);
   row.insertAdjacentHTML("beforeend", messageAvatarHtml(side, who, opts));
   row.appendChild(inner);
@@ -6408,6 +6419,12 @@ function agentApprovalArguments(name, args) {
     if (visible.plan) lines.push("计划：" + visible.plan);
     if (visible.dueAt) lines.push("期限：" + String(visible.dueAt).slice(0, 10));
     if (visible.status === "completed") lines.push("标记为完成" + (visible.result ? "：" + visible.result : ""));
+    if (visible.checkIn === null || (visible.checkIn && visible.checkIn.cadence === "off")) lines.push("取消定期对进度");
+    else if (visible.checkIn) {
+      const c = visible.checkIn, week = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+      const when = c.cadence === "daily" ? "每天" : c.cadence === "monthly" ? "每月" + (c.monthDay ? " " + c.monthDay + " 号" : "") : (c.cadence === "biweekly" ? "每两周" : "每周") + (c.weekday !== undefined ? week[c.weekday] : "");
+      lines.push("定期对进度：" + when + " " + (c.time || "20:00") + "（应用开着时在聊天里提醒）");
+    }
     if (Array.isArray(visible.milestones) && visible.milestones.length) {
       lines.push("子目标：");
       for (const m of visible.milestones) lines.push("  " + (m && m.done ? "☑ " : "☐ ") + ((m && m.title) || "（沿用原来的）"));
@@ -7737,6 +7754,28 @@ if (location.hash === "#settings") {
 }
 pollCapabilityTasks();
 setInterval(pollCapabilityTasks, 60000);
+// 目标定期对进度：到点由服务端标成待对，这里取来发一条固定文案（不调模型），发出后回执，避免重复。
+// 只在应用开着时出现；错过的几次服务端不补。
+let goalCheckInBusy = false;
+async function pollGoalCheckIns() {
+  if (goalCheckInBusy || !isOnboardingComplete()) return;
+  goalCheckInBusy = true;
+  try {
+    const data = await api("/api/personal-work/goals/checkins");
+    const key = "persona:" + APP_PERSONA_ID;
+    for (const c of data.checkIns || []) {
+      const text = "到了和你对进度的时间：「" + c.title + "」最近怎么样？想聊就点下面，不想聊忽略就好。";
+      const goalCheckIn = { id: c.id, title: c.title, category: c.category };
+      if (logKey() === key) addRow("other", null, text, { pid: APP_PERSONA_ID, goalCheckIn });
+      record(key, { side: "other", who: null, text, pid: APP_PERSONA_ID, goalCheckIn });
+      saveLogs();
+      await api("/api/personal-work/goals/checkin-ack", { id: c.id });
+    }
+  } catch { /* 读不到就等下一分钟 */ }
+  finally { goalCheckInBusy = false; }
+}
+setTimeout(pollGoalCheckIns, 3000);
+setInterval(pollGoalCheckIns, 60000);
 </script>
     <script src="/assets/scramble-confetti.js" defer></script>
 

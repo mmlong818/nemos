@@ -933,7 +933,9 @@ function registerGoalSession(body: ChatBody): { category: string; goalId?: strin
   const sessionId = body.sessionId ? String(body.sessionId).slice(0, 120) : "";
   const category = String(body.goal?.category || "");
   if (!sessionId || !GOAL_CATEGORIES.some((item) => item.id === category)) return undefined;
-  const goalId = body.goal?.goalId ? String(body.goal.goalId).slice(0, 100) : undefined;
+  // 前端只知道类别；这段对话里新建的目标由工具绑定进来，后续请求不带编号时沿用。
+  const bound = goalSessions.get(sessionId);
+  const goalId = body.goal?.goalId ? String(body.goal.goalId).slice(0, 100) : bound?.category === category ? bound.goalId : undefined;
   const session = { category, ...(goalId ? { goalId } : {}) };
   goalSessions.delete(sessionId);
   goalSessions.set(sessionId, session);
@@ -954,6 +956,7 @@ const companionAgentTools = createCompanionAgentToolProvider({
   fetchSkillSource: fetchSkillMarkdownFromUrl,
   listPersonas: () => engine.listPersonas().map((persona) => ({ id: persona.id, name: persona.name })),
   goalSession: (sessionId) => goalSessions.get(sessionId),
+  bindGoalSession: (sessionId, goalId) => { const session = goalSessions.get(sessionId); if (session) goalSessions.set(sessionId, { ...session, goalId }); },
   enqueueOrchestration: (input, idempotencyKey) => agentJobQueue.enqueue({
     type: "orchestration",
     payload: {
@@ -1240,7 +1243,7 @@ function enqueueDueCapabilityTasks(trigger: "time" | "turn") {
 }
 
 const backgroundScheduler = new BackgroundScheduler([
-  { name: "personal-matters", run: () => { personalWork.tick(USER); } },
+  { name: "personal-matters", run: () => { personalWork.tick(USER); personalWork.tickGoals(USER); } },
   // 先暂停再入队：否则本轮还会为已经该停的任务排一次没人看的执行。
   { name: "unread-routines", run: () => { capabilities.pauseUnreadScheduledTasks(); } },
   { name: "capabilities", run: () => { enqueueDueCapabilityTasks("time"); } },
@@ -6341,6 +6344,12 @@ const server = createServer(async (req, res) => {
             artifacts: snapshot.artifacts.map((artifact) => ({ id: artifact.id, title: artifact.title, taskId: artifact.taskId })) });
           return;
         }
+        // 聊天页每分钟来取一次：先推进排期，再返回待对的目标。只读取，不需要审计。
+        if (req.method === "GET" && pathname === "/api/personal-work/goals/checkins") {
+          personalWork.tickGoals(USER);
+          send(res, 200, { checkIns: personalWork.pendingCheckIns(USER).map((g) => ({ id: g.id, title: g.title, category: g.category, pendingSince: g.checkIn!.pendingSince })) });
+          return;
+        }
         if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }
         const body = await readBody(req) as Partial<PersonalMatter> & { kind?: unknown; content?: unknown; source?: Partial<LearningProposal["source"]>; action?: string; confirmed?: boolean; goal?: GoalInput; note?: unknown };
         const validateLinks = (taskId?: string, artifactId?: string) => {
@@ -6363,6 +6372,7 @@ const server = createServer(async (req, res) => {
             }
             if (pathname === "/api/personal-work/goals") return personalWork.saveGoal(USER, body.goal ?? {}, "user");
             if (pathname === "/api/personal-work/goals/progress") return personalWork.logGoalProgress(USER, String(body.id || ""), body.note, "user");
+            if (pathname === "/api/personal-work/goals/checkin-ack") return personalWork.acknowledgeCheckIn(USER, String(body.id || ""));
             if (pathname === "/api/personal-work/goals/delete") {
               if (body.confirmed !== true) throw new PersonalWorkError("需要你明确确认删除");
               personalWork.deleteGoal(USER, String(body.id || "")); return { ok: true };

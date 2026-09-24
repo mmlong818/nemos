@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Memory, Nemos } from "../../src/index.js";
 import { APP_PERSONA_ID } from "./identity.js";
 import { convScope } from "./engine.js";
-import { GOAL_LIMITS, GoalError, applyGoalProgress, applyGoalSave, type GoalEntry, type GoalInput, type PersonalGoal } from "./goals.js";
+import { GOAL_LIMITS, GoalError, advanceCheckIn, applyGoalProgress, applyGoalSave, type GoalEntry, type GoalInput, type PersonalGoal } from "./goals.js";
 
 export class PersonalWorkError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -140,6 +140,32 @@ export class PersonalWorkStore {
       this.put(user, "goal", goal);
       return goal;
     })();
+  }
+  /**
+   * 到点的目标标成待对，并排好下一次。不改版本号：这是排期状态，不是用户或助手的编辑，
+   * 不该让页面上正在进行的编辑因此 409。
+   */
+  tickGoals(user: string, now = new Date()): number {
+    return this.db.transaction(() => {
+      let count = 0;
+      for (const goal of this.listGoals(user)) {
+        const c = goal.checkIn;
+        if (goal.status !== "active" || !c || new Date(c.nextAt) > now) continue;
+        const fired: PersonalGoal = { ...goal, checkIn: { ...c, pendingSince: c.nextAt, nextAt: advanceCheckIn(c, now) } };
+        this.put(user, "goal", fired);
+        count++;
+      }
+      return count;
+    })();
+  }
+  pendingCheckIns(user: string) { return this.listGoals(user).filter((g) => g.status === "active" && g.checkIn?.pendingSince); }
+  acknowledgeCheckIn(user: string, id: string) {
+    const goal = this.getGoal(user, id);
+    if (!goal.checkIn?.pendingSince) return goal;
+    const { pendingSince: _done, ...rest } = goal.checkIn;
+    const updated = { ...goal, checkIn: rest };
+    this.put(user, "goal", updated);
+    return updated;
   }
   deleteGoal(user: string, id: string) {
     this.getGoal(user, id);
