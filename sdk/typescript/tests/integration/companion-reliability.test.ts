@@ -111,6 +111,10 @@ test("完整服务：无页面自动交付、状态接口只读、保存模型�
     const ability = runtime.createGeneratedAbility({ personaId: "clownfish", name: "自动交付回归", goal: "输出一段简短文字", defaultFormat: "md" });
     task = runtime.createTask({ title: "无页面自动任务", personaId: "clownfish", capabilityId: ability.id, instruction: "输出一段简短文字", format: "md", enabled: true,
       schedule: { mode: "daily", time: "00:00", timezone: "Asia/Shanghai", days: [1, 2, 3, 4, 5, 6, 7] } });
+    // 新建任务会跳过今天已经过去的那次；这里要验证的是"已存在、今天该补跑"的任务在无页面时被补跑，
+    // 所以清掉跳过标记并落盘，模拟它在今天之前就已创建。
+    delete (task as { lastScheduledOccurrenceKey?: string }).lastScheduledOccurrenceKey;
+    (runtime as unknown as { saveTasks(): void }).saveTasks();
     logs = "";
     start();
     await until(async () => { try { return (await fetch(base + "/api/runtime")).ok; } catch { return false; } }, "verified service restart");

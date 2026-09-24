@@ -1043,6 +1043,7 @@ export class CapabilityRuntime {
       updatedAt: now,
       storyline: createTaskStoryline(now),
     };
+    skipPassedOccurrenceToday(task, new Date(now));
     this.tasks.push(task);
     this.saveTasks();
     return task;
@@ -1071,7 +1072,10 @@ export class CapabilityRuntime {
     if (typeof input.capabilityId === "string") task.capabilityId = this.requireAbility(input.capabilityId).id;
     if (typeof input.instruction === "string") task.instruction = text(input.instruction, task.instruction, 2000);
     if (input.format) task.format = normalizeFormat(input.format);
-    if (input.schedule) task.schedule = normalizeSchedule(input.schedule);
+    if (input.schedule) {
+      task.schedule = normalizeSchedule(input.schedule);
+      skipPassedOccurrenceToday(task, new Date());
+    }
     if (typeof input.enabled === "boolean") task.enabled = input.enabled;
     if (input.spaceId === null || input.spaceId === "") delete task.spaceId;
     else if (typeof input.spaceId === "string") task.spaceId = this.requireSpace(input.spaceId, true).id;
@@ -3680,6 +3684,18 @@ function nowInTimezone(timezone: string, at = new Date()): { dateKey: string; we
 function timeToMinute(time: string): number {
   const [h, m] = time.split(":").map((part) => Number(part));
   return h * 60 + m;
+}
+
+/**
+ * 新建或改了排期的每日任务：今天的运行点如果已经过去，记为"今天这次已跳过"，首次运行排到下一个运行日。
+ * 启动补跑（background-scheduler）针对的是"本该在今天跑、但应用没开"的已存在任务；
+ * 刚建的任务没有"今天那次"，补跑它等于在用户没要求的时间擅自运行一次。
+ */
+function skipPassedOccurrenceToday(task: CapabilityTask, now: Date): void {
+  if (task.schedule.mode !== "daily") return;
+  const local = nowInTimezone(task.schedule.timezone || "Asia/Shanghai", now);
+  if (!(task.schedule.days || DEFAULT_DAYS).includes(local.weekday)) return;
+  if (local.minuteOfDay >= timeToMinute(task.schedule.time || "09:00")) task.lastScheduledOccurrenceKey = runKey(task, now);
 }
 
 function runKey(task: CapabilityTask, now: Date): string {

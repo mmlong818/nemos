@@ -13,6 +13,8 @@ test("实时状态：由运行事件的展示分类映射成一句中文，工�
   assert.equal(rail.liveStatusLabel({ kind: "delegation", status: "running" }, toolLabel), "交给子任务处理");
   assert.equal(rail.liveStatusLabel({ kind: "completion", status: "succeeded" }, toolLabel), "整理交付");
   assert.equal(rail.liveStatusLabel({ kind: "failure", status: "failed" }, toolLabel), "遇到问题");
+  // 真实运行里出现过"正在capability_web_search"：没有中文名的内部标识不露给用户。
+  assert.equal(rail.liveStatusLabel({ kind: "tool", status: "running", tool: { name: "capability_web_search" } }, (n: string) => n), "正在调用工具");
   // 运行结束不再显示"正在做什么"，交回空闲。
   assert.equal(rail.liveStatusLabel({ kind: "phase", status: "succeeded" }, toolLabel), "");
 });
@@ -32,6 +34,8 @@ test("动态：标题取可读字段，结论只看记录的状态与送达，�
   assert.equal(rail.jobOutcome({ status: "failed", error: "The run stopped before a verified completion (max_rounds)." }), "没完成：达到轮次上限");
   assert.equal(rail.jobOutcome({ status: "failed", error: "网络连接失败，请稍后重试" }), "没完成：网络连接失败，请稍后重试");
   assert.equal(rail.jobOutcome({ status: "cancelled" }), "已取消");
+  // uncertain 是"可能做了也可能没做"，要人核对：既不是失败也不是完成。
+  assert.equal(rail.jobOutcome({ status: "uncertain", error: "fetch failed" }), "结果待核对：网络请求失败");
   assert.equal(rail.jobOutcome({ status: "failed", error: "fetch failed" }), "没完成：网络请求失败");
   // 模型写的 result.summary 即使说"已完成"，也不影响结论。
   assert.equal(rail.jobOutcome({ status: "failed", error: "x", result: { summary: "已经全部完成" } }), "没完成：x");
@@ -88,6 +92,8 @@ test("聊天页接上右栏：刷新链、事件流、连接状态都转给右�
   assert.match(html, /onStatus: \(status\) => window\.ClownfishActivityRail\?\.setConnection\(status\)/);
   assert.match(html, /sessionGrants: approvals\.sessionGrants \|\| \[\]/);
   const script = readFileSync("examples/companion/web/assets/activity-rail.js", "utf8");
+  // 真实运行里一次对话以 token_budget_exhausted 结束，右栏却显示回"空闲"：结束原因不是 completed 就是没做成。
+  assert.match(script, /payload\.action === "completed" && payload\.reason && payload\.reason !== "completed"/);
   assert.match(script, /DOMContentLoaded/);
   // 只在助理页出现，其他页面不挂载。
   assert.match(script, /wbRoute !== "\/"/);

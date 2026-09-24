@@ -33,6 +33,8 @@ a.ar-body:hover strong{text-decoration:underline}
 .ar-body span{color:#66746f;font-size:12px;overflow-wrap:anywhere}
 .ar-body small{color:#a4b0ab;font-size:11px}
 .ar-item[data-status=failed] .ar-body span{color:#8a2a1f}
+.ar-item[data-status=uncertain] .ar-icon{color:#b7791f;border-color:#ecd7ad}
+.ar-item[data-status=uncertain] .ar-body span{color:#7a5410}
 .ar-actions{display:flex;gap:8px;margin-top:8px}
 .ar-actions button{min-height:28px;padding:4px 12px;border:1px solid #dfe5e2;border-radius:6px;background:#fff;color:#253331;font:inherit;font-size:12px;cursor:pointer}
 .ar-actions button.primary{border-color:#276b5b;background:#276b5b;color:#fff}

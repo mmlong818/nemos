@@ -11,9 +11,13 @@ function runtimeAt(dir: string) {
   return new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "结果", facts: [] }) });
 }
 
+// 这里的任务代表"早就存在、今天本该到点运行"的任务：新建任务会跳过今天已经过去的那次
+// （见 capabilities-due.test.ts），所以清掉跳过标记，模拟它在今天之前就已创建。
 function daily(runtime: CapabilityRuntime, time = "09:00") {
-  return runtime.createTask({ title: "可靠提醒", personaId: "clownfish", capabilityId: "decision-brief", instruction: "准备每日简报", format: "md", enabled: true,
+  const task = runtime.createTask({ title: "可靠提醒", personaId: "clownfish", capabilityId: "decision-brief", instruction: "准备每日简报", format: "md", enabled: true,
     schedule: { mode: "daily", time, timezone: "Asia/Shanghai", days: [1, 2, 3, 4, 5, 6, 7] } });
+  delete (task as { lastScheduledOccurrenceKey?: string }).lastScheduledOccurrenceKey;
+  return task;
 }
 
 test("没有页面请求，后端计时器仍在到期后入队；重复启动和轮询不重复", (t) => {

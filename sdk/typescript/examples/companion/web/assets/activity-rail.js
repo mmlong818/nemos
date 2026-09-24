@@ -21,7 +21,10 @@
   /** 运行事件的展示分类 → 一句中文。返回空串表示回到空闲。 */
   function liveStatusLabel(activity, toolLabel) {
     if (!activity || typeof activity !== "object") return "";
-    const tool = activity.tool && activity.tool.name ? (toolLabel ? toolLabel(activity.tool.name) : activity.tool.name) : "";
+    const raw = activity.tool && activity.tool.name ? String(activity.tool.name) : "";
+    const translated = raw && toolLabel ? String(toolLabel(raw) || "") : raw;
+    // 没有中文名的内部标识（capability_web_search 这类）不露给用户。
+    const tool = /^[a-z0-9_.:-]+$/i.test(translated) ? "" : translated;
     switch (activity.kind) {
       case "phase": return activity.status === "running" ? "思考中" : "";
       case "model": return "思考中";
@@ -74,6 +77,8 @@
       return "已完成";
     }
     if (status === "failed") return "没完成：" + failureText(job.error);
+    // uncertain：可能做了、可能没做，要人核对，不能说成失败也不能说成完成。
+    if (status === "uncertain") return "结果待核对：" + failureText(job.error);
     if (status === "cancelled") return "已取消";
     return "状态未知";
   }
@@ -184,6 +189,7 @@
 
   function jobIcon(job) {
     if (job.status === "succeeded") return "✓";
+    if (job.status === "uncertain") return "?";
     if (job.status === "failed") return "!";
     if (job.status === "cancelled") return "–";
     return "…";
@@ -334,7 +340,9 @@
     onRunEvent(payload) {
       if (!payload) return;
       // 失败不能悄悄回到"空闲"：留一段时间，让人知道刚才那次没做成。
-      if (payload.action === "failed") { state.live = "刚才那次没完成"; state.liveTone = "warn"; state.liveAt = Date.now(); render(); return; }
+      // 运行"结束"不等于"完成"：token_budget_exhausted、max_rounds 这类结束原因也是没做成。
+      const unfinished = payload.action === "failed" || (payload.action === "completed" && payload.reason && payload.reason !== "completed");
+      if (unfinished) { state.live = "刚才那次没完成"; state.liveTone = "warn"; state.liveAt = Date.now(); render(); return; }
       if (payload.action === "completed") { state.live = ""; state.liveTone = ""; render(); return; }
       if (payload.action !== "event" || !payload.activity) return;
       const label = liveStatusLabel(payload.activity, toolLabel);

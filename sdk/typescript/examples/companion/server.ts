@@ -49,6 +49,7 @@ import {
   userGuideline,
   type GuidelineBehavior,
 } from "./work-guidelines.js";
+import { chatRuntimeLimits } from "./chat-budgets.js";
 import { type InFlightWork } from "./presence-contract.js";
 import { classifyFailure, failureShapeByName } from "./failure-registry.js";
 import { CompanionEngine, personaNamespace } from "./engine.js";
@@ -3617,12 +3618,7 @@ function conversationSendOptions(body: ChatBody): {
   surface: "task" | "education";
   runtimeLimits: { maxRounds: number; maxToolRounds: number; maxTotalTokens: number; maxOutputChars: number };
 } {
-  const reasoning = body.reasoning === "fast" ? "fast" : body.reasoning === "deep" ? "deep" : "balanced";
-  const runtimeLimits = reasoning === "fast"
-    ? { maxRounds: 2, maxToolRounds: 1, maxTotalTokens: 8_000, maxOutputChars: 4_000 }
-    : reasoning === "deep"
-      ? { maxRounds: 8, maxToolRounds: 5, maxTotalTokens: 80_000, maxOutputChars: 20_000 }
-      : { maxRounds: 4, maxToolRounds: 2, maxTotalTokens: 32_000, maxOutputChars: 10_000 };
+  const runtimeLimits = chatRuntimeLimits(body.reasoning);
   const model = String(body.model || "").trim();
   const requestedModel = model && model !== "default" ? model : undefined;
   const toolMode = body.toolMode === "off" ? "off" : body.toolMode === "read-only" ? "read-only" : "auto";
