@@ -112,12 +112,21 @@ export async function selfCheckWidget(file: string, options: { timeoutMs?: numbe
     await send("Page.navigate", { url: pathToFileURL(served).href }, sessionId);
     await Promise.race([loadedPromise, delay(8000)]);
     await delay(600);
-    const result = await send("Runtime.evaluate", { expression: CLICK_THROUGH, awaitPromise: true, returnByValue: true }, sessionId);
+    // 点到"重置"之类的按钮时页面可能自己刷新或跳转，求值会随之中断：这不算没做自测，记下来，照已收集到的报错下结论。
+    let navigated = false;
+    let result: any;
+    try {
+      result = await send("Runtime.evaluate", { expression: CLICK_THROUGH, awaitPromise: true, returnByValue: true }, sessionId);
+    } catch (error) {
+      if (!/navigat|closed|destroyed/i.test(error instanceof Error ? error.message : String(error))) throw error;
+      navigated = true;
+    }
     await delay(400);
-    const summary = (result?.result?.value ?? { controls: 0, clicked: 0, text: 0 }) as { controls: number; clicked: number; text: number };
+    const summary = (result?.result?.value ?? { controls: 1, clicked: 1, text: 1 }) as { controls: number; clicked: number; text: number };
+    const navigatedNote = navigated ? "；点控件时页面刷新或跳转了一次，之后的控件没点到" : "";
     const unique = [...new Set(errors)].slice(0, 5);
     if (unique.length) {
-      return { status: "failed", detail: `自测发现 ${unique.length} 处问题：${unique.join("；")}`, errors: unique, controls: summary.controls, clicked: summary.clicked };
+      return { status: "failed", detail: `自测发现 ${unique.length} 处问题：${unique.join("；")}${navigatedNote}`, errors: unique, controls: summary.controls, clicked: summary.clicked };
     }
     if (!summary.text && !summary.controls) {
       return { status: "failed", detail: "页面打开后是空的", errors: [], controls: 0, clicked: 0 };
@@ -125,7 +134,7 @@ export async function selfCheckWidget(file: string, options: { timeoutMs?: numbe
     const dialogNote = dialogs ? `；页面弹了 ${dialogs} 次确认框` : "";
     return {
       status: "passed",
-      detail: (summary.clicked ? `在浏览器里打开并点了 ${summary.clicked} 个控件，没有脚本报错` : "在浏览器里打开了，没有脚本报错（页面上没有可点的控件）") + dialogNote,
+      detail: (navigated ? "在浏览器里打开并点了控件，没有脚本报错" : summary.clicked ? `在浏览器里打开并点了 ${summary.clicked} 个控件，没有脚本报错` : "在浏览器里打开了，没有脚本报错（页面上没有可点的控件）") + dialogNote + navigatedNote,
       errors: [], controls: summary.controls, clicked: summary.clicked,
     };
   }

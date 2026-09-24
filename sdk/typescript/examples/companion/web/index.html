@@ -3905,9 +3905,21 @@ async function maybeStartFeedDiscussion(params) {
   void sendMsg(false, text);
   return true;
 }
+// 点子的「马上开始」：/?idea=<编号>，开一段新对话，以你的口吻发出点子准备好的第一句话，由小丑鱼动手。
+async function maybeStartIdea(params) {
+  const id = params.get("idea") || "";
+  if (!id || !isOnboardingComplete()) return;
+  history.replaceState(null, "", location.pathname);
+  let idea = null;
+  try { idea = ((await api("/api/ideas")).ideas || []).find((item) => item.id === id) || null; } catch { idea = null; }
+  if (!idea) return;
+  createConversation("chat");
+  void sendMsg(false, idea.startPrompt);
+}
 function maybeStartGoalConversation() {
   const params = new URLSearchParams(location.search);
   if (params.has("discuss")) { void maybeStartFeedDiscussion(params); return; }
+  if (params.has("idea")) { void maybeStartIdea(params); return; }
   const category = params.get("goal") || "";
   if (!GOAL_CATEGORY_LABELS[category] || !isOnboardingComplete()) return;
   const goalId = (params.get("goalId") || "").slice(0, 100);

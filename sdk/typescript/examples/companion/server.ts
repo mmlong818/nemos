@@ -202,6 +202,7 @@ import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type Learnin
 import { GOAL_CATEGORIES, goalCoachingAddendum, type GoalInput } from "./goals.js";
 import { hasWidgetIntent } from "./widgets.js";
 import { ProactiveError, ProactiveStore, feedDue, inQuietHours } from "./proactive.js";
+import { IdeaError, IdeaStore, ideaPrompt, parseIdeas, type IdeaCard } from "./ideas.js";
 import { FeedError, FeedStore, feedPlanPrompt, feedWritePrompt, parseFeedPlan, parseFeedPosts, type FeedBatch, type FeedCandidateSource, type FeedContext, type FeedPost } from "./feed.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
 import { FileStepReceiptStore } from "./structured-handoff.js";
@@ -3711,6 +3712,29 @@ function generateFeed(): Promise<{ batch: FeedBatch; posts: FeedPost[] }> {
   return feedGenerating;
 }
 
+// ———————————————— 点子 ————————————————
+// 只在用户点"想几个"时调用模型；看页面只读已有的。同一时间只跑一次。
+const ideaStore = new IdeaStore(join(DATA_DIR, "ideas.json"));
+let ideasGenerating: Promise<{ ideas: IdeaCard[]; note: string }> | null = null;
+
+async function generateIdeasNow(): Promise<{ ideas: IdeaCard[]; note: string }> {
+  if (!llm.live) throw new IdeaError("还没有连接模型，没法想点子", 409);
+  const ctx = await feedContext();
+  const taste = ideaStore.taste();
+  const prompt = ideaPrompt({ today: ctx.today, goals: ctx.goals, matters: ctx.matters, preferences: ctx.preferences, feedTopic: ctx.prompt, taste });
+  const model = modelConnection ? dailyChatModelForConnection(modelConnection) : undefined;
+  const reply = await llm.chat(prompt.system, prompt.user, model, 2_400, feedModelContext("ideas", 8_000));
+  const ideas = parseIdeas(reply, taste.recent);
+  ideaStore.add(ideas);
+  const basis = [ctx.goals.length ? `${ctx.goals.length} 个目标` : "", ctx.matters.length ? `${ctx.matters.length} 件事项` : "", ctx.preferences.length ? "记住的偏好" : ""].filter(Boolean).join("、");
+  return { ideas, note: ideas.length ? `根据${basis || "动态话题"}想了 ${ideas.length} 个` : "这次没想到真正有用的，不凑数" };
+}
+
+function generateIdeas(): Promise<{ ideas: IdeaCard[]; note: string }> {
+  ideasGenerating ??= generateIdeasNow().finally(() => { ideasGenerating = null; });
+  return ideasGenerating;
+}
+
 async function generateConversationTitle(text: string): Promise<string> {
   const source = String(text || "").trim().slice(0, 2_000);
   const fallback = fallbackConversationTitle(source);
@@ -6455,6 +6479,32 @@ const server = createServer(async (req, res) => {
         send(res, 200, { ok: true, ...saved, quietNow: inQuietHours(saved) });
       } catch (error) {
         send(res, error instanceof ProactiveError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    if (pathname === "/api/ideas" || pathname.startsWith("/api/ideas/")) {
+      try {
+        if (req.method === "GET" && pathname === "/api/ideas") {
+          send(res, 200, { ideas: ideaStore.visible(), generatedAt: ideaStore.generatedAt(), generating: !!ideasGenerating, modelReady: llm.live });
+          return;
+        }
+        if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }
+        const body = await readBody(req) as { id?: unknown; kind?: unknown; reason?: unknown; note?: unknown };
+        if (pathname === "/api/ideas/generate") {
+          const action = await agentUserActions.execute({
+            name: "ideas_generate", description: "用户点了想几个点子：根据目标、事项和偏好调用模型",
+            arguments: {},
+            execute: () => generateIdeas(),
+            summarizeResult: (value) => ({ ideas: value.ideas.length }),
+          });
+          send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
+          return;
+        }
+        if (pathname === "/api/ideas/feedback") { send(res, 200, { ok: true, idea: ideaStore.feedback(String(body.id || ""), body.kind, body.reason, body.note) }); return; }
+        if (pathname === "/api/ideas/started") { send(res, 200, { ok: true, idea: ideaStore.started(String(body.id || "")) }); return; }
+        send(res, 404, { error: "接口不存在" });
+      } catch (error) {
+        send(res, error instanceof IdeaError ? error.status : 500, { error: error instanceof Error ? error.message : userFacingMessage(error) });
       }
       return;
     }

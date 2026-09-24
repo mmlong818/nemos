@@ -77,6 +77,12 @@ test("交付前自测：本机没有浏览器时如实记为没做；有浏览�
   const withDialog = await selfCheckWidget(modal);
   assert.equal(withDialog.status, "passed", withDialog.detail);
   assert.match(withDialog.detail, /弹了 1 次确认框/);
+  // 点"重置"时页面自己刷新：不能算没做自测，要写明刷新了。
+  const reload = join(dir, "reload.html");
+  writeFileSync(reload, `<!doctype html><html><body><button onclick="location.reload()">重置</button><p>清单</p></body></html>`);
+  const reloaded = await selfCheckWidget(reload);
+  assert.equal(reloaded.status, "passed", reloaded.detail);
+  assert.match(reloaded.detail, /页面刷新或跳转了一次/);
 });
 
 test("HTML 交付拆分：页面只要代码块，说明文字留给回复；没写到 </html> 记为没写完", async () => {
