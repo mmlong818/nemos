@@ -13,7 +13,7 @@
 > [!IMPORTANT]
 > This is **source-available software, not OSI-approved open source**. The current version is licensed only for personal, educational, and nonprofit research use. Direct and indirect commercial use is prohibited, including paid services, internal business operations, commercial product integration, resale, SaaS or hosted offerings, commercial training, and any other for-profit activity. Commercial rights require separate written permission from the copyright holder. [LICENSE](LICENSE) is authoritative; third-party components retain their own licenses.
 
-![Clownfish product overview with matters, artifacts, skills, and memory entry points](docs/assets/readme/overview.png)
+![Clownfish overview with a topic-based feed and a pinned training-checklist widget](docs/assets/readme/overview.png)
 
 _Captured from the current application with isolated synthetic demo data; no user data or real service credentials are shown._
 
@@ -57,11 +57,19 @@ Under Matters → Goals, pick a category (health, relationships, finance, career
 - one dedicated conversation: "Talk about progress" and check-in links return to the same thread;
 - related ideas listed on the goal.
 
+![Clownfish goals showing momentum, measures, and milestone progress for two synthetic goals](docs/assets/readme/goals.png)
+
+_Each momentum label is followed by its basis; both goals are synthetic examples created for the documentation._
+
 ### Feed, ideas, and watching
 
 The **feed** sits at the top of the overview. Write a topic and press Generate (or schedule a daily run); Clownfish picks a few search terms, searches the web, and writes up to five posts based only on the sources found and your local goals, matters, and preferences. Each post says why you are seeing it; news must cite a source retrieved in that run or it is dropped. You can like a post, mark it not interested with a reason, delete it, or discuss it — which opens a new conversation carrying the post. Taste is learned only from these explicit actions. Changing the topic starts a new batch right away.
 
 **Ideas** sit at the top of the skill library. Clownfish proposes things it can actually do now (a small tool, a scheduled task, a goal, a report, or a rule), explaining how and why it thought of you; "Start" sends a prepared first request in chat. Ideas can be marked "more like this" or "not interested" and expire after two weeks.
+
+![Clownfish ideas at the top of the skill library, each stating the deliverable and why it was suggested](docs/assets/readme/ideas.png)
+
+_Each idea names its deliverable type and basis; the basis can only come from goals, matters, and preferences._
 
 **Keep an eye on it** lives in Settings → Reminders and background. Write up to five things, one per line, and choose an interval of one to twenty-four hours. Each check searches the web once and compares with what was seen last time; nothing is said if nothing changed, and a change is reported in chat with sources. At most 48 checks run per day, and nothing runs without a configured web search — model memory is never passed off as a fresh check.
 

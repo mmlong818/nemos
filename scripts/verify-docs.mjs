@@ -64,6 +64,8 @@ const rootReadme = readFileSync(join(root, "README.md"), "utf8");
 const englishReadme = readFileSync(join(root, "README.en.md"), "utf8");
 const currentScreenshots = [
   "docs/assets/readme/overview.png",
+  "docs/assets/readme/goals.png",
+  "docs/assets/readme/ideas.png",
   "docs/assets/readme/task-workspace.png",
   "docs/assets/readme/pantheon.png",
   "docs/assets/readme/memory.png",
