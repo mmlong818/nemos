@@ -1,6 +1,6 @@
 # Clownfish
 
-> A local-first personal AI work application that keeps conversations, matters, tasks, files, deliverables, automations, and long-term memory in one traceable workspace.
+> A local-first personal AI assistant: one assistant with a consistent personality talks with you, gets things done for you, and keeps an eye on what you care about. Goals, matters, tasks, files, deliverables, and long-term memory live in one traceable, auditable local workspace.
 
 [中文](README.md) · **English**
 
@@ -19,23 +19,63 @@ _Captured from the current application with isolated synthetic demo data; no use
 
 ## Product overview
 
-Clownfish is more than a one-turn chat window. It connects the work of understanding a request, scheduling execution, handling source material, checking results, delivering artifacts, and retaining only useful long-term information:
+Clownfish is more than a one-turn chat window. It is a personal assistant that keeps track, follows up, and speaks up on its own, while every step stays on your machine where you can check it:
 
-**state a goal → create a matter or task → choose skills and tools → execute with status and receipts → deliver a file or conclusion → let the user decide what becomes memory**
+**talk it through → turn it into a goal, matter, or task → the assistant acts (writes a page, builds a small tool, sets a check-in, runs a task) → status, receipts, and self-check results are kept → it reminds you on schedule or tells you when something changes → you decide what becomes long-term memory**
 
 The current application brings these areas together:
 
-- **Assistants**: Clownfish coordinates goals, capabilities, and final delivery. Feifei, Teacher Lin, Azhe, and Lingling provide life conversation, tutoring, decision support, and lightweight companionship. Domain perspectives can be invited dynamically for the current question.
-- **Matters and tasks**: a matter retains an ongoing goal and next action; a task is one concrete execution with attachments, queueing, checkpoints, failure reasons, and delivery receipts.
+- **Assistants**: Clownfish is one assistant with a single, editable personality used for both conversation and task work; its name, verbosity, and persona can be changed. When a choice is needed, replies end with quick-reply buttons. Feifei, Teacher Lin, Azhe, and Lingling provide life conversation, tutoring, decision support, and lightweight companionship, and domain perspectives can be invited for the current question. A right-side activity rail shows what the assistant is doing, what awaits your approval, and what is scheduled next.
+- **Goals**: pick a category, clarify in chat how success is measured and what the rhythm is, then approve before anything is saved. Goals carry milestones, a dated timeline, a momentum judgement (on track / at risk / behind, with its basis), optional periodic check-ins, and one dedicated conversation thread.
+- **Matters and tasks**: a matter retains an ongoing item and its next action; a task is one concrete execution with attachments, queueing, checkpoints, failure reasons, and delivery receipts.
+- **Feed**: from a topic you write plus your goals, matters, and preferences, Clownfish searches the web and writes a short briefing. News must cite sources actually retrieved; if nothing is worth writing, nothing is padded. It learns from your likes and "not interested" feedback.
+- **Ideas**: Clownfish proposes a few things it can do for you, each stating the deliverable and why it thought of you; "Start" hands the opening request to the assistant in chat.
+- **Widgets**: ask in chat for "a checklist I can tick" or "a pomodoro timer" and the assistant builds an interactive, stateful tool embedded in the reply, self-checked in a browser before delivery and pinnable to the overview.
+- **Keep an eye on it**: list a few things you care about; Clownfish checks the web periodically and only speaks up, with sources, when something has changed.
 - **Skill library**: reusable local working methods can be inspected, edited, and enabled. Bundled templates and user revisions remain separate. The official online skill market is currently empty.
 - **Pantheon**: a structured multi-perspective workspace that selects one to three complementary methods, then runs positions, directed questions, responses, and summaries. Seats represent methods, not impersonations of real people.
 - **Memory**: remembered information is separate from pending learning proposals. Users can inspect provenance, confirm, correct, or forget information, and the current request always outranks old preferences.
 - **Files and artifacts**: originals are preserved, editable working copies are created, and exports are registered as new deliverables that can be linked back to tasks and sources.
-- **Automations and tools**: recurring tasks can be paused, edited, or run immediately. The capability center shows workflows, plugins, connections, dependencies, and actual readiness as separate states.
+- **Automations, reminders, and background**: recurring tasks can be paused, edited, or run immediately; quiet hours and "tell me about / never mention" topic preferences are configurable; the Windows desktop client can start in the tray at sign-in so reminders and schedules keep working after the window closes. The capability center shows workflows, plugins, connections, dependencies, and actual readiness as separate states.
 
 ## Current workflows
 
-### Assistants, tasks, and skills
+### One assistant for talking and doing
+
+Clownfish's persona is an editable setting: renaming it changes how it refers to itself, while "Clownfish" remains the app name. Conversation and task work share one speaking style; during tasks it delivers results directly instead of promising to "send it later", and it names what is missing when information is insufficient. When you need to choose, a reply can end with two to four quick-reply buttons.
+
+The activity rail on the assistant page has four tabs: **Activity** (background results, taken from recorded status rather than model-written summaries), **Approvals** (pending actions you can allow once or for the session), **Upcoming** (next scheduled tasks and goal check-ins), and **Identity** (assistant settings, memory, and work guidelines).
+
+### Goals: clarify first, then track
+
+Under Matters → Goals, pick a category (health, relationships, finance, career, interests, productivity, other). Clownfish asks what you want to achieve, how it counts as done, and how you plan to get there — at most two questions at a time — and shows an approval card before saving. A goal includes:
+
+- its measure, plan, deadline, and two to four milestones;
+- a dated timeline in which every entry records whether you or the assistant wrote it, containing only things that actually happened;
+- momentum: when logging progress, the assistant judges on track, at risk, or behind against the deadline and plan and states why, or leaves it unset when it cannot judge;
+- periodic check-ins (daily, weekly, every two weeks, or monthly) delivered as a chat message;
+- one dedicated conversation: "Talk about progress" and check-in links return to the same thread;
+- related ideas listed on the goal.
+
+### Feed, ideas, and watching
+
+The **feed** sits at the top of the overview. Write a topic and press Generate (or schedule a daily run); Clownfish picks a few search terms, searches the web, and writes up to five posts based only on the sources found and your local goals, matters, and preferences. Each post says why you are seeing it; news must cite a source retrieved in that run or it is dropped. You can like a post, mark it not interested with a reason, delete it, or discuss it — which opens a new conversation carrying the post. Taste is learned only from these explicit actions. Changing the topic starts a new batch right away.
+
+**Ideas** sit at the top of the skill library. Clownfish proposes things it can actually do now (a small tool, a scheduled task, a goal, a report, or a rule), explaining how and why it thought of you; "Start" sends a prepared first request in chat. Ideas can be marked "more like this" or "not interested" and expire after two weeks.
+
+**Keep an eye on it** lives in Settings → Reminders and background. Write up to five things, one per line, and choose an interval of one to twenty-four hours. Each check searches the web once and compares with what was seen last time; nothing is said if nothing changed, and a change is reported in chat with sources. At most 48 checks run per day, and nothing runs without a configured web search — model memory is never passed off as a fresh check.
+
+"Tell me about / never mention" preferences on the same page are read before writing the feed or proposing ideas; never-mention topics do not appear.
+
+### Widgets: built and usable in the reply
+
+Ask for "a tickable packing list for Iceland", "a pomodoro timer", or "a mortgage calculator", and Clownfish writes a single-file, offline interactive page embedded directly in the reply:
+
+- ticks and inputs are saved locally and stay the same after a refresh or on the overview;
+- before delivery, the page is opened in the local Edge or Chrome the way it will actually run, offline, and its controls are clicked; script errors and attempts to load external resources are reported in the reply. Without a local browser the reply says no self-check ran, and an unfinished page does not pass;
+- widgets can be pinned to the overview and used there.
+
+### Tasks and skills
 
 The assistant supports conversation, task completion, and tutoring modes. A task can include source files, use a selected model, or let Clownfish choose from enabled skills. Selecting a file only registers the original; content is read when an execution actually needs it.
 
@@ -108,7 +148,10 @@ Current model execution boundaries:
 
 | Integrated | Not integrated or not promised |
 | --- | --- |
-| Local assistants, matters, tasks, skills, Pantheon, memory, files, artifacts, and automations | Official online skill listings and third-party Bot-account synchronization |
+| Local assistants, goals, matters, tasks, skills, Pantheon, memory, files, artifacts, and automations | Official online skill listings and third-party Bot-account synchronization |
+| Feed, ideas, and watching (web parts require an available search service, currently Zhipu web search) | Fresh news and watching without a configured search service; the feed then writes only goal and matter reminders and suggestions |
+| Interactive widgets: sandboxed, locally stored state, browser self-check before delivery, pin to overview | Widgets that reach the network or call the application API; widgets are single-file and offline by contract |
+| Quiet hours, tell-me / never-mention topics, starting in the Windows tray at sign-in | Reminders while the application is not running; reminders missed while powered off are not replayed |
 | OpenAI + Zhipu two-key setup and capability verification | End-user built-in account connectors for online mail, calendars, GitHub, or enterprise documents |
 | Local CSV / JSON analysis and EML / ICS file parsing | Mailbox or calendar synchronization; parsing a file is not an account connection |
 | Browser control through Playwright MCP and a locally installed Chrome, Edge, or Chromium | A bundled browser, or readiness when the local dependency is absent |
@@ -120,7 +163,9 @@ Current model execution boundaries:
 
 - The web service listens on `127.0.0.1` by default; user data defaults to `~/.clownfish`.
 - On Windows, model and tool credentials are encrypted for the current user with DPAPI, and common credential fields are redacted from logs.
-- Opening a page does not send tasks, attachments, or memory to a model. Necessary material may leave the machine only when a relevant task runs against a user-configured service.
+- Opening a page does not send tasks, attachments, or memory to a model. Necessary material leaves the machine only when a relevant task runs, when you press Generate, "Think of some", or "Check now", or when a scheduled generation or watch you enabled comes due.
+- Before the assistant writes goals, matters, or similar local records, an approval card shows exactly what will be saved.
+- Model-generated HTML deliverables and widgets open in an origin-less sandbox: their own scripts run, but they cannot act as the application, call its API, or make outbound requests.
 - Tools are subject to permission, network, and runtime auditing. The UI exposes boundaries when local processes or external services are required.
 - The optional sync service stores client-side AES-256-GCM encrypted snapshots; the local copy remains the working copy, and remote deployments require HTTPS.
 - Do not put API keys, passwords, or private tokens in task text, attachments, or project files.
@@ -156,6 +201,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File examples\companion\client\Bu
 
 Extract the generated portable ZIP completely and launch `portable\小丑鱼\小丑鱼.exe`. The package includes the desktop shell and required runtime, while model configuration and user data remain in the local user profile. Check that no user data is included before redistribution.
 
+Closing the window can minimize Clownfish to the tray. Tick "开机自动启动" (start at sign-in) in the tray icon's menu to have it start in the tray without opening a window. Tray notifications state whether a matter follow-up, a goal check-in, or a watched item is due, and stay silent during quiet hours.
+
 ### Optional self-hosted sync
 
 ```powershell
@@ -173,6 +220,9 @@ A loopback URL is suitable locally. Any remote sync deployment must be placed be
 - Complex Office layouts, third-party website changes, and live data need separate acceptance in the target environment.
 - Tasks waiting for input or blocked normally require a new task to continue; arbitrary lossless resume at every stage is not promised.
 - Pantheon sessions do not currently survive a service-process restart, while approved private thought units are stored locally.
+- Reminders, scheduled generation, and watching run only while the application is running (including in the tray), use local time, and are not promised to fire on the exact minute.
+- Feed, ideas, and watching depend on web search results and model judgement; news and alerts carry their sources, which are authoritative.
+- Online mail and calendar account connections are not yet integrated.
 
 ## Repository layout
 
