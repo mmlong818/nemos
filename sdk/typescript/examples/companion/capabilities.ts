@@ -2665,7 +2665,7 @@ ${task.instruction}`,
       format: task.format,
       file,
       createdAt,
-      summary: summarize(raw),
+      summary: deliverableSummary(raw, task.format),
       metadata: {
         contextFile,
         ...(selfCheck ? { validationChecks: [{ id: "browser-self-check", label: "交付前在浏览器里打开并点一遍", status: selfCheck.status, phase: "verification" as const, detail: selfCheck.detail }] } : {}),
@@ -2727,15 +2727,30 @@ ${task.instruction}`,
   }
 
   private notificationText(personaName: string, task: CapabilityTask, artifact: CapabilityArtifact, raw: string): string {
-    const format = formatLabel(artifact.format);
-    // HTML 页面已经嵌在回复里，这里只放说明文字，不把整页代码塞进气泡。
-    const html = artifact.format === "html" ? splitHtmlDeliverable(raw) : null;
-    const visible = artifact.metadata?.native ? artifact.summary : html ? (html.prose || artifact.summary) : deliveryExcerpt(raw);
-    const installed = artifact.metadata?.generatedAbilityId ? "\n新能力已通过检查并加入本机能力库。" : "";
-    const selfCheck = artifact.metadata?.validationChecks?.find((item) => item.id === "browser-self-check");
-    const checked = selfCheck ? `\n自测：${selfCheck.detail}` : "";
-    return `${personaName}已经完成「${task.title}」。\n\n${visible}${installed}${checked}\n\n---\n产物格式：${format}\n保存位置：${artifact.file}`;
+    return deliveryText(personaName, task.title, artifact, raw);
   }
+}
+
+/**
+ * 交付时发到聊天里的那段话。
+ * HTML 页面嵌在回复里、下面有预览和下载按钮：只放模型写的说明和自测结论，不加"已经完成「用户原话」"开头，
+ * 也不贴本机路径。其他格式不嵌入，保留说明、格式和保存位置。
+ */
+export function deliveryText(personaName: string, taskTitle: string, artifact: Pick<CapabilityArtifact, "format" | "file" | "summary" | "metadata">, raw: string): string {
+  const html = artifact.format === "html" ? splitHtmlDeliverable(raw) : null;
+  const visible = artifact.metadata?.native ? artifact.summary : html ? (html.prose || artifact.summary) : deliveryExcerpt(raw);
+  const installed = artifact.metadata?.generatedAbilityId ? "\n\n新能力已通过检查并加入本机能力库。" : "";
+  const selfCheck = artifact.metadata?.validationChecks?.find((item) => item.id === "browser-self-check");
+  // 自测单独成段：紧跟在列表后面时 Markdown 会把它并进最后一项。
+  const checked = selfCheck ? `\n\n自测：${selfCheck.detail}` : "";
+  if (html) return `${visible}${installed}${checked}`.trim();
+  return `${personaName}已经完成「${taskTitle}」。\n\n${visible}${installed}${checked}\n\n---\n产物格式：${formatLabel(artifact.format)}\n保存位置：${artifact.file}`;
+}
+
+/** 成果摘要（总览"最近的成果"、任务记录用）：HTML 只取说明文字，不能把页面代码的开头当摘要。 */
+export function deliverableSummary(raw: string, format: ArtifactFormat): string {
+  const html = format === "html" ? splitHtmlDeliverable(raw) : null;
+  return summarize(html ? html.prose : raw);
 }
 
 function withArtifactProof(artifact: CapabilityArtifact): CapabilityArtifact {
@@ -3604,10 +3619,12 @@ function extension(format: ArtifactFormat): string {
  * 它和应用接口同源，不加限制时脚本能以用户身份调用 /api/*（批准操作、改记忆）。
  * CSP sandbox 不带 allow-same-origin：页面变成无来源，发往 /api 的请求带 Origin: null，被本机同源检查拒掉；
  * 同时禁止它向外发请求。只允许脚本本身运行，以及内嵌图片、字体。
+ * allow-forms 必须有：缺了它浏览器连 submit 事件都不发，构件里最常见的"加一条"表单点了没反应；
+ * 表单数据仍由 form-action 'none' 挡住，提交只剩页面自己的脚本处理。widget-host.js 的 iframe 属性要与这里一致。
  */
 export const ARTIFACT_SANDBOX_HEADERS = {
   "Content-Security-Policy": [
-    "sandbox allow-scripts allow-modals allow-downloads allow-popups",
+    "sandbox allow-scripts allow-forms allow-modals allow-downloads allow-popups",
     "default-src 'none'",
     "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",

@@ -213,6 +213,9 @@ test("定期对进度：前后端描述同一口径；右栏和定时任务混�
   await save.execute({ id: goal.id, checkIn: { cadence: "biweekly", weekday: 3, time: "20:00" } }, { signal: new AbortController().signal, runId: "r", sessionId: "conversation-goal" });
   const after = f.store.getGoal("me", goal.id);
   assert.equal(describeCheckIn(after.checkIn), "每两周周三 20:00");
+  // 真实使用里时间线写成了"每周周六"：每周不重复"周"字。
+  assert.equal(describeCheckIn({ cadence: "weekly", weekday: 6, time: "20:00" }), "每周六 20:00");
+  assert.equal(describeCheckIn({ cadence: "weekly", weekday: 0, time: "08:30" }), "每周日 08:30");
   assert.equal(after.timeline.at(-1)!.text, "定期对进度（每两周周三 20:00）");
   assert.match(goalCoachingAddendum("interests", after), /定期对进度：每两周周三 20:00，只在应用开着时提醒/);
   assert.match(goalCoachingAddendum("interests"), /设好之前别说"到时候我提醒你"/);

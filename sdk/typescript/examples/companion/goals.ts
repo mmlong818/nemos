@@ -133,7 +133,8 @@ const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "�
 export function describeCheckIn(c: Pick<GoalCheckIn, "cadence" | "time" | "weekday" | "monthDay">): string {
   if (c.cadence === "daily") return `每天 ${c.time}`;
   if (c.cadence === "monthly") return `每月 ${c.monthDay} 号 ${c.time}`;
-  return `${c.cadence === "biweekly" ? "每两周" : "每周"}${WEEKDAYS[c.weekday ?? 0]} ${c.time}`;
+  const day = WEEKDAYS[c.weekday ?? 0];
+  return `${c.cadence === "biweekly" ? `每两周${day}` : `每${day}`} ${c.time}`;
 }
 
 function atTime(day: Date, time: string): Date {

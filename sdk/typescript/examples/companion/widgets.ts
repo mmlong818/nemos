@@ -22,7 +22,7 @@ export function hasWidgetIntent(text: string): boolean {
 }
 
 /** 写进 HTML 能力提示的构件约定。 */
-export const WIDGET_CONTRACT = "如果要的是可交互的小工具（勾选清单、计算器、打卡表、小游戏等）：写成一个单文件页面，CSS 和 JS 全部内联，不联网、不引用任何外部资源；需要记住的状态直接用 localStorage，或用 await window.clownfishState.load() / window.clownfishState.save(对象)，小丑鱼都会替它存在本机；不要用 alert、prompt、confirm；手机宽度下也要能用。";
+export const WIDGET_CONTRACT = "如果要的是可交互的小工具（勾选清单、计算器、打卡表、小游戏等）：写成一个单文件页面，CSS 和 JS 全部内联，不联网、不引用任何外部资源；需要记住的状态直接用 localStorage，或用 await window.clownfishState.load() / window.clownfishState.save(对象)，小丑鱼都会替它存在本机；不要用 alert、prompt、confirm，提醒写在页面上；手机宽度下也要能用。页面会直接嵌在这条回复里使用，说明里不要让用户下载、另存或双击打开。";
 
 /**
  * 注入到构件页面最前面的桥接脚本。页面在沙箱里（没有同源身份），浏览器自带的 localStorage 会直接报错，

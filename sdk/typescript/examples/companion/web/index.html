@@ -4451,6 +4451,17 @@ function renderLog() {
         const last = run[run.length - 1];
         addRow("other", null, combined, { mem: last.mem, pid: e.pid, messageId });
         messageIndex = nextIndex - 1;
+      } else if (run.length > 1) {
+        // 和实时回复时一样：同一轮的几条短消息叠在一个头像下，不各自再带一个头像。
+        addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, messageId });
+        const inner = m.lastElementChild && m.lastElementChild.querySelector(".msg-body");
+        for (const entry of run.slice(1)) {
+          const bub = document.createElement("div");
+          bub.className = "bub";
+          renderBubbleContent(bub, entry.text, { mem: entry.mem, pid: entry.pid, render: true });
+          if (inner) inner.appendChild(bub);
+        }
+        messageIndex = nextIndex - 1;
       } else {
         addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, messageId });
       }
@@ -6395,8 +6406,22 @@ function showAgentApproval(approval) {
   };
   $("#approvalToolDescription").textContent = (userFacing[toolName] || (approval.tool && approval.tool.description ? approval.tool.description : ""))
     + " · " + ((approval.metadata && approval.metadata.personaId) ? personaName(approval.metadata.personaId) : "Agent");
-  $("#approvalArguments").textContent = agentApprovalArguments(toolName, (approval.call && approval.call.arguments) || {});
+  const approvalArgs = (approval.call && approval.call.arguments) || {};
+  $("#approvalArguments").textContent = agentApprovalArguments(toolName, approvalArgs);
   $("#approvalmodal").classList.add("show");
+  fillApprovalGoalTitle(toolName, approvalArgs);
+}
+// 更新目标、记进展时模型常只给编号（或连编号都省，用这条对话绑定的目标）：卡片上要写明是哪个目标。
+async function fillApprovalGoalTitle(toolName, args) {
+  if (!(toolName === "goal_save" && args.id && !args.title) && toolName !== "goal_log_progress") return;
+  try {
+    const data = await (await fetch("/api/personal-work")).json();
+    const goals = Array.isArray(data.goals) ? data.goals : [];
+    const conversationId = activeConversationId();
+    const goal = args.id ? goals.find((g) => g.id === args.id) : goals.find((g) => g.sessionId && g.sessionId === conversationId);
+    if (!goal || !$("#approvalmodal").classList.contains("show")) return;
+    $("#approvalArguments").textContent = agentApprovalArguments(toolName, { ...args, goalTitle: goal.title });
+  } catch { /* 取不到标题就保持原样，不影响批准 */ }
 }
 function agentToolLabel(name) {
   const labels = {
@@ -6476,7 +6501,7 @@ function agentApprovalArguments(name, args) {
     const categories = { health: "健康", relationships: "人际关系", finance: "财务", career: "职业", interests: "兴趣", productivity: "效率提升", other: "其他" };
     const lines = [];
     if (visible.title) lines.push((visible.id ? "更新目标：" : "新建目标：") + visible.title + (visible.category ? "（" + (categories[visible.category] || visible.category) + "）" : ""));
-    else if (visible.id) lines.push("更新一个已有目标");
+    else if (visible.id) lines.push(visible.goalTitle ? "更新目标：" + visible.goalTitle : "更新一个已有目标");
     if (visible.measure) lines.push("怎么算做到：" + visible.measure);
     if (visible.plan) lines.push("计划：" + visible.plan);
     if (visible.dueAt) lines.push("期限：" + String(visible.dueAt).slice(0, 10));
@@ -6484,8 +6509,10 @@ function agentApprovalArguments(name, args) {
     if (visible.status === "completed") lines.push("标记为完成" + (visible.result ? "：" + visible.result : ""));
     if (visible.checkIn === null || (visible.checkIn && visible.checkIn.cadence === "off")) lines.push("取消定期对进度");
     else if (visible.checkIn) {
-      const c = visible.checkIn, week = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-      const when = c.cadence === "daily" ? "每天" : c.cadence === "monthly" ? "每月" + (c.monthDay ? " " + c.monthDay + " 号" : "") : (c.cadence === "biweekly" ? "每两周" : "每周") + (c.weekday !== undefined ? week[c.weekday] : "");
+      const c = visible.checkIn, week = ["日", "一", "二", "三", "四", "五", "六"];
+      const day = c.weekday !== undefined ? week[c.weekday] : "";
+      const when = c.cadence === "daily" ? "每天" : c.cadence === "monthly" ? "每月" + (c.monthDay ? " " + c.monthDay + " 号" : "")
+        : c.cadence === "biweekly" ? "每两周" + (day ? "的周" + day : "") : "每周" + day;
       lines.push("定期对进度：" + when + " " + (c.time || "20:00") + "（应用开着时在聊天里提醒）");
     }
     if (Array.isArray(visible.milestones) && visible.milestones.length) {
@@ -6495,7 +6522,7 @@ function agentApprovalArguments(name, args) {
     lines.push("", "只记在本机的目标页，不会执行其他动作。");
     return lines.join("\n");
   }
-  if (name === "goal_log_progress") return "记一条进展：" + (visible.note || "") + (goalMomentumLine(visible) ? "\n" + goalMomentumLine(visible) : "") + "\n\n只记在本机的目标页。";
+  if (name === "goal_log_progress") return (visible.goalTitle ? "目标：" + visible.goalTitle + "\n" : "") + "记一条进展：" + (visible.note || "") + (goalMomentumLine(visible) ? "\n" + goalMomentumLine(visible) : "") + "\n\n只记在本机的目标页。";
   if (name === "skill_install" && typeof visible.sourceText === "string") {
     visible.sourceText = "已粘贴能力说明（" + visible.sourceText.length + " 个字符，不在确认框完整显示）";
   }

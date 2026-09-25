@@ -29,6 +29,9 @@ test("构件约定写清：单文件、不联网、状态走 clownfishState、�
   assert.match(WIDGET_CONTRACT, /window\.clownfishState\.load\(\)/);
   assert.match(WIDGET_CONTRACT, /直接用 localStorage.*替它存在本机/);
   assert.match(WIDGET_CONTRACT, /不要用 alert、prompt、confirm/);
+  // 真实使用里模型两次都写"保存为 .html 双击打开"：页面其实就嵌在回复里用，这样说会把人引去下载。
+  assert.match(WIDGET_CONTRACT, /直接嵌在这条回复里/);
+  assert.match(WIDGET_CONTRACT, /不要让用户下载、另存或双击打开/);
 });
 
 test("状态桥接插在 <head> 最前面；编号经过转义，不能借编号注入脚本", () => {
@@ -83,6 +86,18 @@ test("交付前自测：本机没有浏览器时如实记为没做；有浏览�
   const reloaded = await selfCheckWidget(reload);
   assert.equal(reloaded.status, "passed", reloaded.detail);
   assert.match(reloaded.detail, /页面刷新或跳转了一次/);
+  // 自测要和线上同一个沙箱：直接开本地文件时是有来源的页面，沙箱里才会坏的写法自测看不出来。
+  const origin = join(dir, "origin.html");
+  // file:// 的 origin 本来就是 "null"，分不出来；只有缺 allow-same-origin 的沙箱里读 cookie 才会抛错。
+  writeFileSync(origin, `<!doctype html><html><body><p>清单</p><script>let sandboxed = false; try { document.cookie } catch { sandboxed = true } if (!sandboxed) throw new Error("不在沙箱里")</script></body></html>`);
+  const sandboxed = await selfCheckWidget(origin);
+  assert.equal(sandboxed.status, "passed", sandboxed.detail);
+  // 真实使用里"加一条"是最常见的写法：表单提交在沙箱里要能触发 submit，自测要先填好输入框再点。
+  const form = join(dir, "form.html");
+  writeFileSync(form, `<!doctype html><html><body><form id=f><input required id=t placeholder="加一条"><button type=submit>添加</button></form><ul id=l></ul><script>document.getElementById('f').onsubmit=(e)=>{e.preventDefault();addedItem(document.getElementById('t').value)}</script></body></html>`);
+  const submitted = await selfCheckWidget(form);
+  assert.equal(submitted.status, "failed", "submit 没触发时 addedItem 不会被调用，自测就会误报通过");
+  assert.match(submitted.detail, /addedItem is not defined/);
 });
 
 test("HTML 交付拆分：页面只要代码块，说明文字留给回复；没写到 </html> 记为没写完", async () => {
@@ -97,4 +112,25 @@ test("HTML 交付拆分：页面只要代码块，说明文字留给回复；没
   const bare = splitHtmlDeliverable("<!doctype html><html><body>x</body></html>")!;
   assert.deepEqual([bare.prose, bare.complete], ["", true]);
   assert.equal(splitHtmlDeliverable("没有页面的回答"), null);
+});
+
+// 真实使用发现：构件回复开头是"X已经完成「用户原话」"、结尾贴本机路径，自测结论挤进上面的列表里，
+// 摘要（总览"最近的成果"用）还夹着 <!DOCTYPE html>。
+test("HTML 交付的回复与摘要：不带模板开头和本机路径，自测单独成段，摘要只取说明文字", async () => {
+  const { deliveryText, deliverableSummary } = await import("../../examples/companion/capabilities.js");
+  const raw = "清单做好了，直接勾。\n\n```html\n<!DOCTYPE html>\n<html><head><title>周末清单</title></head><body><input type=checkbox></body></html>\n```\n\n说明：\n- 数据只存本机";
+  const html = { format: "html" as const, file: "C:/data/artifacts/做一个清单-art-1.html", summary: "", metadata: { validationChecks: [{ id: "browser-self-check", label: "自测", status: "passed" as const, detail: "点了 3 个控件，没有脚本报错" }] } };
+  const text = deliveryText("小丑鱼", "做一个能勾选的清单", html, raw);
+  assert.doesNotMatch(text, /已经完成「|保存位置|产物格式|<html|```/);
+  assert.match(text, /^清单做好了，直接勾。/);
+  assert.match(text, /- 数据只存本机\n\n自测：点了 3 个控件，没有脚本报错$/);
+  const summary = deliverableSummary(raw, "html");
+  assert.doesNotMatch(summary, /<|```/);
+  assert.match(summary, /^清单做好了，直接勾。/);
+  // 其他格式的交付不在聊天里嵌入，保留原来的说明和保存位置。
+  const doc = { format: "md" as const, file: "C:/data/artifacts/报告.md", summary: "", metadata: {} };
+  const report = deliveryText("小丑鱼", "写一份周报", doc, "# 周报\n本周完成三件事");
+  assert.match(report, /^小丑鱼已经完成「写一份周报」。/);
+  assert.match(report, /保存位置：C:\/data\/artifacts\/报告\.md$/);
+  assert.equal(deliverableSummary("# 周报\n本周完成三件事", "md"), "周报\n本周完成三件事");
 });

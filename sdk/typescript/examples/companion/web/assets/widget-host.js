@@ -49,7 +49,8 @@
   function mount(container, id, options = {}) {
     const frame = document.createElement("iframe");
     frame.className = "widget-frame";
-    frame.setAttribute("sandbox", "allow-scripts allow-modals allow-downloads allow-popups");
+    // 与服务端 ARTIFACT_SANDBOX_HEADERS 的 sandbox 一致；allow-forms 让表单的 submit 事件能到页面脚本。
+    frame.setAttribute("sandbox", "allow-scripts allow-forms allow-modals allow-downloads allow-popups");
     frame.setAttribute("referrerpolicy", "no-referrer");
     frame.title = options.title || "构件";
     frame.src = "/api/capabilities/artifact/preview?id=" + encodeURIComponent(id);

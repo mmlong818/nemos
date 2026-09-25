@@ -44,7 +44,8 @@
   function describeCheckIn(c) {
     if (c.cadence === "daily") return "每天 " + c.time;
     if (c.cadence === "monthly") return "每月 " + c.monthDay + " 号 " + c.time;
-    return (c.cadence === "biweekly" ? "每两周" : "每周") + WEEK[c.weekday || 0] + " " + c.time;
+    const day = WEEK[c.weekday || 0];
+    return (c.cadence === "biweekly" ? "每两周" + day : "每" + day) + " " + c.time;
   }
   const MOMENTUM = { on_track: "按计划", at_risk: "有风险", behind: "落后" };
   function momentumHtml(goal) {

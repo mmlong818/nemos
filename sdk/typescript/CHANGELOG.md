@@ -9,7 +9,7 @@
 - Gives Clownfish one editable persona shared by conversation and task work, quick-reply buttons, and an activity rail showing live status, approvals, upcoming schedules, and identity settings.
 - Adds goals clarified in conversation and saved only after approval, with milestones, a dated timeline, momentum judgements with their basis, periodic check-ins, and one conversation thread per goal.
 - Adds a sourced feed written from an editable topic, learning only from explicit likes, discussions, and "not interested" feedback, plus personalised ideas that the assistant can start in chat.
-- Adds interactive widgets built in chat: sandboxed, locally stateful, self-checked in a local browser before delivery, and pinnable to the overview.
+- Adds interactive widgets built in chat: sandboxed, locally stateful, self-checked in a local browser under the same sandbox before delivery, and pinnable to the overview. Forms inside widgets submit to the page's own script while form data still cannot leave the sandbox.
 - Adds "keep an eye on it" web checks that speak up only when something changes and cite their sources, with fixed daily limits.
 - Adds quiet hours, tell-me and never-mention topic preferences, scheduled feed generation, and optional start-in-tray at Windows sign-in.
 - Opens model-generated HTML deliverables in an origin-less sandbox so their scripts cannot call the application API.

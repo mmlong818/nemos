@@ -1,10 +1,13 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { ARTIFACT_SANDBOX_HEADERS } from "./capabilities.js";
 import { findChromiumExecutable } from "./presentation-visual-review.js";
 import { injectWidgetBridge } from "./widgets.js";
+
+/** 自测页面的地址：不会真的发出去，请求在 Fetch 拦截里由本进程送回页面。 */
+const SELF_CHECK_URL = "http://clownfish-self-check.invalid/widget.html";
 
 /**
  * 交付前自测：在无头浏览器里打开页面，断网，点一遍按钮和勾选框，记下脚本报错。
@@ -18,9 +21,15 @@ export interface WidgetSelfCheck {
   clicked: number;
 }
 
+// 先把空着的输入框填上，"加一条"这类按钮才真的会走到提交逻辑；否则 required 拦住，按钮等于没点。
 const CLICK_THROUGH = `(async () => {
   const visible = (e) => !e.disabled && e.getClientRects().length > 0;
-  const all = [...document.querySelectorAll('button, input[type=checkbox], input[type=radio], select, [role=button], [onclick]')];
+  for (const field of document.querySelectorAll('input:not([type]), input[type=text], input[type=search], input[type=number], textarea')) {
+    if (!visible(field) || field.readOnly || field.value) continue;
+    field.value = field.type === 'number' ? '1' : '自测';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  const all = [...document.querySelectorAll('button, input[type=checkbox], input[type=radio], input[type=submit], select, [role=button], [onclick]')];
   const targets = all.filter(visible).slice(0, 8);
   for (const e of targets) { e.click(); await new Promise((r) => setTimeout(r, 120)); }
   return { controls: all.length, clicked: targets.length, text: document.body ? document.body.innerText.trim().length : 0 };
@@ -65,6 +74,7 @@ export async function selfCheckWidget(file: string, options: { timeoutMs?: numbe
     const errors: string[] = [];
     const requests = new Map<string, string>();
     let dialogs = 0;
+    let page = "";
     let loaded: () => void = () => {};
     const loadedPromise = new Promise<void>((resolve) => { loaded = resolve; });
     socket.onmessage = (event) => {
@@ -87,6 +97,18 @@ export async function selfCheckWidget(file: string, options: { timeoutMs?: numbe
       } else if (message.method === "Network.loadingFailed" && message.params.blockedReason) {
         const url = requests.get(message.params.requestId) || "";
         if (!url.startsWith("file:")) errors.push(`页面想加载外部资源：${url.slice(0, 120)}`);
+      } else if (message.method === "Fetch.requestPaused") {
+        // 页面本身由这里送出，带和线上相同的沙箱响应头；其余请求一律是想联网，拦下并记一笔。
+        const { requestId, request } = message.params;
+        if (request.url === SELF_CHECK_URL) {
+          send("Fetch.fulfillRequest", { requestId, responseCode: 200, body: Buffer.from(page, "utf8").toString("base64"), responseHeaders: [
+            { name: "Content-Type", value: "text/html; charset=utf-8" },
+            ...Object.entries(ARTIFACT_SANDBOX_HEADERS).map(([name, value]) => ({ name, value })),
+          ] }, message.sessionId).catch(() => {});
+        } else {
+          errors.push(`页面想加载外部资源：${String(request.url).slice(0, 120)}`);
+          send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" }, message.sessionId).catch(() => {});
+        }
       } else if (message.method === "Page.javascriptDialogOpening") {
         // 弹框会把无头浏览器卡住：自动点确定，记一笔（手机上弹框体验差，约定里不许用）。
         dialogs++;
@@ -103,13 +125,12 @@ export async function selfCheckWidget(file: string, options: { timeoutMs?: numbe
     const { targetId } = await send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
     for (const method of ["Runtime.enable", "Page.enable", "Log.enable", "Network.enable"]) await send(method, {}, sessionId);
-    // 自测时一律断网：构件约定不联网，想联网的在这里会报"想加载外部资源"。
-    await send("Network.setBlockedURLs", { urls: ["http://*", "https://*", "ws://*", "wss://*"] }, sessionId);
-    // 按线上的样子打开：注入同一份桥接脚本（它会换掉 localStorage），而不是直接开原文件。
-    // 直接开原文件时浏览器自带的 localStorage 能用，沙箱里却会报错，自测就会说假话。
-    const served = join(profile, "widget.html");
-    writeFileSync(served, injectWidgetBridge(readFileSync(file, "utf8"), "self-check"), "utf8");
-    await send("Page.navigate", { url: pathToFileURL(served).href }, sessionId);
+    // 按线上的样子打开：注入同一份桥接脚本（它会换掉 localStorage），并带同一份沙箱响应头。
+    // 直接开本地文件时没有沙箱：表单提交、localStorage 在那里能用、线上却不行，自测就会说假话。
+    // 自测时一律断网：构件约定不联网，除页面本身外的请求都在 Fetch.requestPaused 里拦下。
+    page = injectWidgetBridge(readFileSync(file, "utf8"), "self-check");
+    await send("Fetch.enable", { patterns: [{ urlPattern: "*" }] }, sessionId);
+    await send("Page.navigate", { url: SELF_CHECK_URL }, sessionId);
     await Promise.race([loadedPromise, delay(8000)]);
     await delay(600);
     // 点到"重置"之类的按钮时页面可能自己刷新或跳转，求值会随之中断：这不算没做自测，记下来，照已收集到的报错下结论。
