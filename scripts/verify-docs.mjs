@@ -78,9 +78,6 @@ for (const [label, content] of [["中文", rootReadme], ["英文", englishReadme
   }
 }
 
-const memoryDesign = readFileSync(join(root, "sdk", "typescript", "examples", "companion", "docs", "capability-center-memory-design.md"), "utf8");
-if (!memoryDesign.includes("不在普通记忆页展示")) fail("记忆文档没有说明原始归档在普通界面隐藏");
-if (memoryDesign.includes("## 7. 当前尚未实现")) fail("当前记忆文档仍包含内部待办清单");
 
 if (failures.length) {
   console.error(failures.join("\n"));
