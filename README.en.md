@@ -32,7 +32,7 @@ The current application brings these areas together:
 - **Ideas**: Clownfish proposes a few things it can do for you, each stating the deliverable and why it thought of you; "Start" hands the opening request to the assistant in chat.
 - **Widgets**: ask in chat for "a checklist I can tick" or "a pomodoro timer" and the assistant builds an interactive, stateful tool embedded in the reply, self-checked in a browser before delivery and pinnable to the overview.
 - **Keep an eye on it**: list a few things you care about; Clownfish checks the web periodically and only speaks up, with sources, when something has changed.
-- **Skill library**: reusable local working methods can be inspected, edited, and enabled. Bundled templates and user revisions remain separate. The official online skill market is currently empty.
+- **Skill library**: reusable local working methods can be inspected, edited, and enabled. Bundled templates and user revisions remain separate.
 - **Pantheon**: a structured multi-perspective workspace that selects one to three complementary methods, then runs positions, directed questions, responses, and summaries. Seats represent methods, not impersonations of real people.
 - **Memory**: remembered information is separate from pending learning proposals. Users can inspect provenance, confirm, correct, or forget information, and the current request always outranks old preferences.
 - **Files and artifacts**: originals are preserved, editable working copies are created, and exports are registered as new deliverables that can be linked back to tasks and sources.
@@ -93,7 +93,7 @@ Task states distinguish completion, waiting for input, blocked, cancelled, and u
 
 _The workspace keeps the synthetic task, final delivery, sources, and step receipts together._
 
-A skill is a local work rule, not another model. Clownfish does not automatically download third-party scripts or synchronize private memory from third-party Bots. There are currently no installable listings in the online skill market.
+A skill is a local work rule, not another model. Clownfish does not automatically download third-party scripts or synchronize private memory from third-party Bots.
 
 ### Pantheon
 
@@ -143,29 +143,12 @@ _Both key fields are empty in this screenshot; the application does not reveal c
 
 Verification makes real provider requests and can incur small charges. APIs never return complete saved keys. Advanced settings still support additional providers, compatible protocols, custom endpoints, full catalogs, and manual overrides, but those are outside the standard two-key path.
 
-Current model execution boundaries:
+What each provider handles:
 
-| Provider / capability | Current state |
+| Provider | Capabilities |
 | --- | --- |
-| OpenAI text, vision, speech-to-text, text-to-speech, and image generation | Wired into execution; actual readiness still depends on the account, model, permission, and verification result |
-| Zhipu text tasks | Wired into execution |
-| Zhipu vision, speech, image, and other media capabilities | Not wired into the current execution path |
-| Video generation | Explicitly reported as not integrated by the two-key setup |
-
-## Integrated and not integrated
-
-| Integrated | Not integrated or not promised |
-| --- | --- |
-| Local assistants, goals, matters, tasks, skills, Pantheon, memory, files, artifacts, and automations | Official online skill listings and third-party Bot-account synchronization |
-| Feed, ideas, and watching (web parts require an available search service, currently Zhipu web search) | Fresh news and watching without a configured search service; the feed then writes only goal and matter reminders and suggestions |
-| Interactive widgets: sandboxed, locally stored state, browser self-check before delivery, pin to overview | Widgets that reach the network or call the application API; widgets are single-file and offline by contract |
-| Quiet hours, tell-me / never-mention topics, starting in the Windows tray at sign-in | Reminders while the application is not running; reminders missed while powered off are not replayed |
-| OpenAI + Zhipu two-key setup and capability verification | End-user built-in account connectors for online mail, calendars, GitHub, or enterprise documents |
-| Local CSV / JSON analysis and EML / ICS file parsing | Mailbox or calendar synchronization; parsing a file is not an account connection |
-| Browser control through Playwright MCP and a locally installed Chrome, Edge, or Chromium | A bundled browser, or readiness when the local dependency is absent |
-| Configurable media tools with readiness reporting | Media services not verified against a real account, and video execution in the two-key path |
-| Optional self-hosted encrypted snapshot sync | A hosted Clownfish cloud account system or real-time multi-user collaboration |
-| Sourced research, announcement, and market-data reading workflows | Live booking or transaction adapters for rail, flights, hotels, or restaurants |
+| OpenAI | Text, vision, speech-to-text, text-to-speech, and image generation; actual readiness depends on the account, model, permission, and verification result |
+| Zhipu BigModel | Text tasks and web search |
 
 ## Data, privacy, and security
 
@@ -230,7 +213,6 @@ A loopback URL is suitable locally. Any remote sync deployment must be placed be
 - Pantheon sessions do not currently survive a service-process restart, while approved private thought units are stored locally.
 - Reminders, scheduled generation, and watching run only while the application is running (including in the tray), use local time, and are not promised to fire on the exact minute.
 - Feed, ideas, and watching depend on web search results and model judgement; news and alerts carry their sources, which are authoritative.
-- Online mail and calendar account connections are not yet integrated.
 
 ## Repository layout
 
