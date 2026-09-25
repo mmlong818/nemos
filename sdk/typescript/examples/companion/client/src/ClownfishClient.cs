@@ -495,6 +495,10 @@ namespace ClownfishClient
                     var parts = new List<string>();
                     if (matters > 0) parts.Add(matters + " 件事项到了跟进时间");
                     if (goals > 0) parts.Add(goals + " 个目标到了对进度的时间");
+                    var watchesMatch = Regex.Match(json, "\"watches\"\\s*:\\s*(\\d+)");
+                    int watches = 0;
+                    if (watchesMatch.Success) int.TryParse(watchesMatch.Groups[1].Value, out watches);
+                    if (watches > 0) parts.Add(watches + " 件盯着的事有新情况");
                     // Keep private matter titles off the lock screen.
                     trayIcon.ShowBalloonTip(5000, "小丑鱼：需要你跟进", (parts.Count > 0 ? "有 " + string.Join("、", parts) : "有 " + count + " 条提醒") + "。点击查看。", ToolTipIcon.Info);
                 }

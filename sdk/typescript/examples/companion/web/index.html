@@ -7837,6 +7837,27 @@ async function pollGoalCheckIns() {
   } catch { /* 读不到就等下一分钟 */ }
   finally { goalCheckInBusy = false; }
 }
+// 帮我盯着：有新情况时由服务端记下，这里取来在聊天里说一句（附来源），回执后不再重复。
+let watchAlertBusy = false;
+async function pollWatchAlerts() {
+  if (watchAlertBusy || !isOnboardingComplete()) return;
+  watchAlertBusy = true;
+  try {
+    const data = await api("/api/watch/alerts");
+    const key = "persona:" + APP_PERSONA_ID;
+    for (const a of data.alerts || []) {
+      const sources = (a.sources || []).map((s) => s.url).filter(Boolean);
+      const text = "你让我盯着的「" + a.itemText + "」有新情况：" + a.message + (sources.length ? "\n来源：" + sources.join(" ") : "");
+      if (logKey() === key) addRow("other", null, text, { pid: APP_PERSONA_ID });
+      record(key, { side: "other", who: null, text, pid: APP_PERSONA_ID });
+      saveLogs();
+      await api("/api/watch/ack", { id: a.id });
+    }
+  } catch { /* 读不到就等下一分钟 */ }
+  finally { watchAlertBusy = false; }
+}
+setTimeout(pollWatchAlerts, 4000);
+setInterval(pollWatchAlerts, 60000);
 setTimeout(pollGoalCheckIns, 3000);
 setInterval(pollGoalCheckIns, 60000);
 </script>

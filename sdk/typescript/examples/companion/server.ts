@@ -203,6 +203,7 @@ import { GOAL_CATEGORIES, goalCoachingAddendum, type GoalInput } from "./goals.j
 import { hasWidgetIntent } from "./widgets.js";
 import { ProactiveError, ProactiveStore, feedDue, inQuietHours } from "./proactive.js";
 import { IdeaError, IdeaStore, ideaPrompt, parseIdeas, type IdeaCard } from "./ideas.js";
+import { WatchError, WatchStore, parseWatchCheck, watchCheckPrompt } from "./watch.js";
 import { FeedError, FeedStore, feedPlanPrompt, feedWritePrompt, parseFeedPlan, parseFeedPosts, type FeedBatch, type FeedCandidateSource, type FeedContext, type FeedPost } from "./feed.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
 import { FileStepReceiptStore } from "./structured-handoff.js";
@@ -1251,6 +1252,11 @@ function enqueueDueCapabilityTasks(trigger: "time" | "turn") {
 const backgroundScheduler = new BackgroundScheduler([
   { name: "personal-matters", run: () => { personalWork.tick(USER); personalWork.tickGoals(USER); } },
   // 动态定时生成：先记下今天跑过，再生成——失败也只试一次，失败原因会作为一批"没生成出来"留在动态里。
+  // 帮我盯着：没有联网搜索就不跑（不用模型记忆冒充查过了）；额度与间隔由 WatchStore 管。
+  { name: "watch", run: () => {
+    if (!llm.live || !liveSearchKey() || !watchStore.due()) return;
+    void runWatch();
+  } },
   { name: "feed-schedule", run: () => {
     if (!llm.live || !feedDue(proactiveStore.get())) return;
     proactiveStore.markFeedRun();
@@ -3712,6 +3718,40 @@ async function generateFeedNow(): Promise<{ batch: FeedBatch; posts: FeedPost[] 
 function generateFeed(): Promise<{ batch: FeedBatch; posts: FeedPost[] }> {
   feedGenerating ??= generateFeedNow().finally(() => { feedGenerating = null; });
   return feedGenerating;
+}
+
+// ———————————————— 帮我盯着 ————————————————
+const watchStore = new WatchStore(join(DATA_DIR, "watch.json"));
+let watchRunning: Promise<{ checked: number; alerts: number }> | null = null;
+
+async function runWatchNow(): Promise<{ checked: number; alerts: number }> {
+  const key = liveSearchKey();
+  if (!llm.live) throw new WatchError("还没有连接模型，没法盯", 409);
+  if (!key) throw new WatchError("联网搜索没有配置，盯不了：不用模型的记忆冒充查过了", 409);
+  const items = watchStore.beginRun();
+  const model = modelConnection ? dailyChatModelForConnection(modelConnection) : undefined;
+  const today = new Date().toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric", weekday: "long" });
+  let alerts = 0;
+  for (const item of items) {
+    try {
+      const results = await searchWeb(key, item.text);
+      const sources = results.filter((x) => x.url).slice(0, 6).map((x) => ({ title: x.title, url: x.url, content: x.content }));
+      const prompt = watchCheckPrompt(item, sources, today);
+      const judged = parseWatchCheck(await llm.chat(prompt.system, prompt.user, model, 800, feedModelContext("watch", 2_000)), sources);
+      const alert = watchStore.record(item.id, judged.notify
+        ? { status: "alerted", summary: judged.summary, alert: { message: judged.message, sources: judged.sources } }
+        : { status: "quiet", summary: judged.summary });
+      if (alert) alerts++;
+    } catch (error) {
+      watchStore.record(item.id, { status: "failed", summary: `这次没看成：${userFacingMessage(error)}` });
+    }
+  }
+  return { checked: items.length, alerts };
+}
+
+function runWatch(): Promise<{ checked: number; alerts: number }> {
+  watchRunning ??= runWatchNow().finally(() => { watchRunning = null; });
+  return watchRunning;
 }
 
 // ———————————————— 点子 ————————————————
@@ -6485,6 +6525,34 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
+    if (pathname === "/api/watch" || pathname.startsWith("/api/watch/")) {
+      try {
+        if (req.method === "GET" && pathname === "/api/watch") {
+          send(res, 200, { ...watchStore.snapshot(), remainingChecks: watchStore.remainingChecks(), running: !!watchRunning, searchAvailable: !!liveSearchKey(), modelReady: llm.live });
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/watch/alerts") { send(res, 200, { alerts: watchStore.pendingAlerts() }); return; }
+        if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }
+        const body = await readBody(req) as { enabled?: unknown; intervalMinutes?: unknown; items?: unknown; id?: unknown };
+        if (pathname === "/api/watch") { send(res, 200, { ok: true, ...watchStore.update(body) }); return; }
+        if (pathname === "/api/watch/ack") { watchStore.acknowledge(String(body.id || "")); send(res, 200, { ok: true }); return; }
+        if (pathname === "/api/watch/run") {
+          if (watchStore.remainingChecks() <= 0) throw new WatchError("今天的检查额度用完了，明天再看", 409);
+          const action = await agentUserActions.execute({
+            name: "watch_run", description: "用户点了现在看一次：联网搜索并调用模型判断盯着的事有没有新变化",
+            arguments: { items: watchStore.snapshot().items.length },
+            execute: () => runWatch(),
+            summarizeResult: (value) => value,
+          });
+          send(res, 200, { ok: true, ...watchStore.snapshot(), checked: action.value.checked, alertCount: action.value.alerts, remainingChecks: watchStore.remainingChecks() });
+          return;
+        }
+        send(res, 404, { error: "接口不存在" });
+      } catch (error) {
+        send(res, error instanceof WatchError ? error.status : 500, { error: error instanceof Error ? error.message : userFacingMessage(error) });
+      }
+      return;
+    }
     if (pathname === "/api/ideas" || pathname.startsWith("/api/ideas/")) {
       try {
         if (req.method === "GET" && pathname === "/api/ideas") {
@@ -6553,9 +6621,10 @@ const server = createServer(async (req, res) => {
         if (req.method === "GET" && pathname === "/api/personal-work/reminder-summary") {
           const reminders = personalWork.reminders(USER);
           const checkIns = personalWork.recentCheckIns(USER);
-          const keys = [...reminders.map((r) => r.id), ...checkIns.map((g) => `goal:${g.id}:${g.checkIn!.lastFiredAt}`)].sort();
+          const watches = watchStore.recentAlerts();
+          const keys = [...reminders.map((r) => r.id), ...checkIns.map((g) => `goal:${g.id}:${g.checkIn!.lastFiredAt}`), ...watches.map((a) => `watch:${a.id}`)].sort();
           // 免打扰时桌面端不弹通知、也不把这批标成已提醒，时段一过再弹。
-          send(res, 200, { count: keys.length, matters: reminders.length, goals: checkIns.length, quiet: inQuietHours(proactiveStore.get()), token: createHash("sha256").update(keys.join("|")).digest("hex") });
+          send(res, 200, { count: keys.length, matters: reminders.length, goals: checkIns.length, watches: watches.length, quiet: inQuietHours(proactiveStore.get()), token: createHash("sha256").update(keys.join("|")).digest("hex") });
           return;
         }
         if (req.method === "GET" && pathname === "/api/personal-work") {

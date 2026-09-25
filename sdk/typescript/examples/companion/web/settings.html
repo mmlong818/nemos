@@ -431,6 +431,13 @@
                     <div class="proactive-row"><label>时间<input type="time" name="feedTime" value="08:00"></label></div>
                     <p class="hint">到点会联网搜索并调用模型（会消耗额度）。那时应用没开，当天打开时补一次；不补前一天的。</p>
                   </fieldset>
+                  <fieldset id="watchFieldset"><legend>帮我盯着</legend>
+                    <label class="proactive-toggle"><input type="checkbox" id="watchEnabled"> 隔一段时间联网看一眼，有新变化才告诉我</label>
+                    <label>要盯的事（一行一件，最多 5 件）<textarea id="watchItems" rows="4" maxlength="700" placeholder="例如：冰岛 1 号公路有没有封路&#10;《被讨厌的勇气》出没出新版"></textarea></label>
+                    <div class="proactive-row"><label>每隔<select id="watchInterval"><option value="60">1 小时</option><option value="120">2 小时</option><option value="240">4 小时</option><option value="480">8 小时</option><option value="720">12 小时</option><option value="1440">24 小时</option></select></label><button type="button" id="watchRunNow">现在看一次</button></div>
+                    <p class="hint" id="watchHint">每件事每次联网搜一次、调用一次模型（会消耗额度），每天最多 48 次；和上次一样就不出声。只在应用开着时跑。</p>
+                    <ul id="watchResults" class="watch-results"></ul>
+                  </fieldset>
                   <fieldset><legend>开机自动启动</legend>
                     <p class="hint">在桌面版右下角托盘图标的右键菜单里勾选「开机自动启动」。开机后小丑鱼安静地待在托盘里，不弹窗口。</p>
                   </fieldset>
