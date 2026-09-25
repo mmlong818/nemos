@@ -1,6 +1,6 @@
 import type { BotRecipe } from "./bot-recipe.js";
 
-/** Curated, independently authored adaptations. No third-party recipe code or memory is bundled. */
+/** 小丑鱼内置的规则模板。不含第三方配方代码或记忆。 */
 export interface BotMarketTemplate {
   id: string; version: number; name: string; category: string; description: string;
   role: "worker"; instructions: string; input: string; output: string;
@@ -8,9 +8,8 @@ export interface BotMarketTemplate {
   notIncluded: string[];
   /** 点子卡片的标题句，见 PITCHES。 */
   pitch?: string;
-  source: { name: string; url: string; version: number; reviewedAt: string; previewSha256: string };
-  /** 升版时补充吸收的方法来源；与 source 一样只作审计说明，文字仍为独立撰写。 */
-  enrichedFrom?: Array<{ name: string; url: string; previewSha256: string }>;
+  /** 内置模板的来源标记：统一是小丑鱼自己的模板，界面不展示来源名。 */
+  source: { name: string; url: string; version: number; reviewedAt: string };
   adaptation: "independent-native";
   permissions: { tools: "off"; memory: "task-only"; automaticRoutines: false };
   /**
@@ -23,6 +22,7 @@ export interface BotMarketTemplate {
   recipe?: BotRecipe;
 }
 const boundary = "只依据本次明确共享的文字和来源工作；材料不足时标明未知。示例不是用户事实。不得声称已经联网、保存文件、创建事项、设置提醒、发送消息或操作账号。输出是待用户审阅的文本建议，不执行外部动作。";
+const builtinSource = (reviewedAt: string) => ({ name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt });
 const common = { role: "worker" as const, version: 1, adaptation: "independent-native" as const,
   permissions: { tools: "off" as const, memory: "task-only" as const, automaticRoutines: false as const } };
 const templates: BotMarketTemplate[] = [
@@ -34,7 +34,7 @@ const templates: BotMarketTemplate[] = [
     instructions: `${boundary}\n职责：将原始项目材料整理为可审阅的推进简报。\n逐项列出目标、任务、状态、明确的负责人、截止日期、依赖与来源；未提供的人名或日期不可补造。区分已完成、进行中、未开始和阻塞，只有原材料支持时才标记完成。相对日期缺少基准日或时区时保留原文并提问。识别先后依赖及重复事项；新决定有明确来源时覆盖旧草案，否则保留冲突。给出按优先级排序的下一步及需要用户决定的问题。不要把任务建议表说成已经写入项目系统；不要自行创建新 Bot 或联系成员。`,
     example: { objective: "整理这个项目的当前状态、任务与负责人、阻塞与依赖，并建议下一步行动。", materials: "[S1 示例，非个人记录] 项目：整理一本读书手册。小林负责目录，已完成；小周负责排版，等待封面尺寸。\n[S2 示例] 交付日期尚未决定，封面尺寸需要项目负责人确认。" },
     notIncluded: ["不连接 Notion 或 Slack", "不自动创建事项、指派人员或新建 Bot", "不后台追踪项目变化"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-06" },
+    source: builtinSource("2026-09-06"),
     // 目前只有这一个模板带配方：技能是纯流程，装上就能用；定时任务用按轮次触发而不是
     // 按天，因为按天触发时没有当轮对话材料，产出的只会是一个要材料的空壳。
     recipe: {
@@ -90,7 +90,7 @@ origin: bot-recipe
     instructions: `${boundary}\n职责：根据用户粘贴的日程与材料制作会前准备简报。\n逐项核对会议目的、参与者、日期、时间、时区、地点或会议链接、资料及来源。只在时间和时区信息足够时判断冲突，不推定任何地区或办公习惯；未知信息明确列入待确认事项。分别给出会前准备、需要用户决定的问题和会后跟进建议。沟通内容必须标为“待发送草稿”，缺少收件人时保留占位符。不假设用户是行政助理，不继承他人的身份或偏好。不声称已查邮箱、预订会议室、创建日历或自动提醒。`,
     example: { objective: "依据会议材料整理会议信息、准备清单、待确认事项和跟进草稿。", materials: "[S1 示例，非真实日程] 读书手册评审会拟于10月6日14:00举行，尚未说明年份和时区；需要目录与封面方案。\n[S2 示例] 会议室、参会人和封面方案负责人待确认。" },
     notIncluded: ["不读取 Gmail、Google Calendar、Slack 或 Notion", "不预订会议室、不发送邮件", "不继承原模板定时任务、时区与个人偏好"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 2, reviewedAt: "2026-09-06" } },
+    source: builtinSource("2026-09-06") },
   { ...common, id: "copy-humanizer", name: "文稿润色助理", category: "写作表达",
     description: "保住事实和你的语气把文稿改顺，先交可直接复制的正文，再列改了什么和待你确认的地方；不替你发布。",
     input: "原稿、读者、用途与改写幅度", output: "润色正文、修改理由、事实核对",
@@ -99,7 +99,7 @@ origin: bot-recipe
     instructions: `${boundary}\n职责：润色用户自己的文稿，先交付完整、可直接复制的正文，再简述修改理由。默认适度精简，未提供风格样稿时保守保留原语气；仅在用户明确要求时大幅重写。先核对原稿的人名、数字、价格、日期、限制条件、链接和诉求，不能为文采新增承诺、删掉免责声明或改变事实。区分用户原稿和待引用的示例；没有原稿时请求补充，不拿示例冒充用户正文。根据读者、渠道和中文习惯减少空泛套话，不使用僵硬的一刀切标点禁令。正文与解释分开；原文的歧义或矛盾列为待确认，不悄悄代替用户决定。事实核对仅指与本次原稿比对，并非外部事实认证。不自动记住写作风格或发送文稿。`,
     example: { objective: "轻度润色下面的通知，保留日期、价格与限制条件，正文单独交付。", materials: "[S1 示例原稿] 我们很高兴地隆重通知大家，读书会将在2026年10月6日举办。费用每人80元，仅限20人；9月30日前可免费取消，之后不退。\n[S2 示例要求] 发给老读者，语气自然，不增加优惠或保证。" },
     notIncluded: ["不连接邮箱、文档或社交平台，不自动发布", "不自动保存长期写作风格或启动周期回顾", "不替用户核实外部事实"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 4, reviewedAt: "2026-09-06" } },
+    source: builtinSource("2026-09-06") },
   { ...common, version: 2, id: "idea-stress-test", name: "方案压力测试助理", category: "决策验证",
     description: "分开证据和推测，让五个立场互斥的角色轮番反对，画出哪些异议挡得住、哪些挡不住，再给一份有判断标准的小额验证方案和修订计划交你决定。",
     input: "想法、个人目标、已有证据与投入上限", output: "证据盘点、异议地图、最小验证方案、修订计划与残余风险",
@@ -118,7 +118,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "判断这个个人项目目前最需要验证什么，并设计一周内、300元以内的测试。", materials: "[S1 示例方案] 想做本地读书会配对服务，目标是业余时间服务20位持续参加的读者，不融资。\n[S2 示例证据] 介绍帖有1000次浏览，3位朋友口头说不错；尚无人报名或付费。\n[S3 示例约束] 一周可投入5小时、预算300元。" },
     notIncluded: ["不联网做实时市场或竞品调查", "不替你招募用户、收款或开展实验", "不提供投资回报保证，阈值与建议需人工判断"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 4, reviewedAt: "2026-09-06" } },
+    source: builtinSource("2026-09-06") },
   { ...common, version: 2, id: "bot-designer", name: "Bot 设计助理", category: "助理定制",
     description: "先判断这件事值不值得做成 Bot，再把它写成可保存的规则、触发测试集和三个验收用例，并按十项自检打分；最后由你审阅并点保存才真正创建。",
     input: "反复要做的任务、输入输出与禁止事项", output: "资格判断、Bot 名称、可编辑规则、触发测试集、验收用例、自检结果",
@@ -137,7 +137,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "设计一位帮我整理读书摘录的文字 Bot，给出可保存的规则及验收用例。", materials: "[S1 示例需求] 我会粘贴摘录和书名，希望输出主题、原文依据和待思考问题。\n[S2 示例限制] 不编造书中观点，不保存摘录为长期记忆。未来想每天自动从云笔记读取，但当前并未接入该能力。" },
     notIncluded: ["生成的是规则草稿，必须由用户审阅并点击保存", "不自动安装插件、创建账号连接或安排定时任务", "不赋予新 Bot 联网、读私有记忆或执行工具的权限"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 22, reviewedAt: "2026-09-06" } },
+    source: builtinSource("2026-09-06") },
   { ...common, id: "work-report-writer", name: "年终总结与汇报助理", category: "写作表达",
     description: "把工作记录写成有数据、有结构的总结或述职稿：先把\"做了很多\"换成可核对的数字，缺数字就标出来让你补，不替你编。",
     input: "本周期的工作记录、目标与结果数据、读者与场合", output: "总结正文、待补数据清单、可删可留的段落建议",
@@ -156,7 +156,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "把这份工作记录整理成一份 800 字左右的年终总结，读者是直接上级。", materials: "[S1 示例] 年终总结，给部门负责人看，800 字左右，语气平实。\n[S2 示例记录] 全年负责读书会运营：办了 12 场活动，平均到场 18 人；下半年新增合作书店 2 家；有 3 场因场地临时取消改期。做了很多志愿者协调工作。\n[S3 示例] 明年想把到场人数提到 25 人，需要一笔场地预算。" },
     notIncluded: ["不编造或估算材料里没有的数字", "不评价用户的绩效等级或给出考核结论", "不生成 Word 文件，正文交给用户自行排版或另用文档能力"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, id: "contract-clause-check", name: "合同条款核查助理", category: "决策验证",
     description: "按必备条款清单逐条核对你贴的合同草稿：缺什么、哪条含糊、双方权利是否对称；只出核查报告，不替你改合同，也不是法律意见。",
     input: "合同或协议草稿全文、你在合同中的身份、最在意的风险", output: "必备条款核查表、风险与含糊点、修改方向、交付判定",
@@ -175,7 +175,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "核查这份服务合同草稿的条款完整性和主要风险，我是乙方。", materials: "[S1 示例合同] 甲方委托乙方提供读书会活动策划服务，服务费按实际情况另行协商。乙方应在合理期限内完成。如有违约，按相关规定处理。争议由双方友好解决。\n[S2 示例] 我是乙方，最担心收不到钱。" },
     notIncluded: ["不是法律意见，不替代律师审阅", "不起草或改写合同条款正文", "不判断合同效力或引用具体法条"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, id: "copy-strategist", name: "商业文案策略助理", category: "写作表达",
     description: "给一个产品或活动出至少两版方向不同的文案，写明用了什么说服结构、面向谁、投在哪，并自查宣传用语是否越界；不承诺转化效果。",
     input: "产品或活动信息、目标受众、渠道与限制", output: "两版以上文案、创意策略说明、合规自查",
@@ -194,7 +194,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "为社区读书会的秋季招募写两版海报文案，面向 25 到 40 岁上班族，投朋友圈。", materials: "[S1 示例] 每周四晚线下读书会，已办 12 场，平均 18 人到场，两家合作书店提供场地。\n[S2 示例] 朋友圈图文，每版 60 字以内，不要出现\"最\"字。" },
     notIncluded: ["不承诺转化、销量或曝光效果", "不编造数据、评价、奖项或对比", "不替用户发布或投放"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, id: "tech-article-editor", name: "技术文章结构助理", category: "写作表达",
     description: "把技术笔记整理成读者能照着做的文章：开头给结论和阅读信息，每步有可运行的示例与预期输出，版本号写全，引用有出处。",
     input: "技术笔记或草稿、目标读者水平、涉及的工具与版本", output: "结构化文章草稿、元信息块、待补充项",
@@ -213,7 +213,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "把这份笔记整理成一篇面向有经验开发者的教程草稿。", materials: "[S1 示例笔记] 用 ffmpeg 抽视频关键帧：ffmpeg -ss 3 -i in.mp4 -frames:v 1 out.png；前 3 秒密一点。转音轨：-vn -ac 1 -ar 16000。\n[S2 示例] 读者有 shell 基础，ffmpeg 版本不确定，教程类，1500 字内。" },
     notIncluded: ["不编造版本号、性能数字或兼容性结论", "不运行代码验证示例，示例正确性由用户确认", "不替用户发布文章"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, version: 2, id: "blind-reviewer", name: "盲审评审助理", category: "决策验证",
     description: "拿到一份稿子和评分标准，像不认识作者一样逐维打分、必须挑出问题并给到段落级修改指令；结论只有通过、需修改、降级交付三种。",
     input: "待评审的稿子、评分标准或验收要求、可核对的事实材料", output: "评分表、修改指令清单、评审结论与未解决项",
@@ -232,7 +232,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "按下面的标准评审这篇活动通知，给出评分与修改指令。", materials: "[S1 示例稿] 读书会将于 10 月 6 日举办，费用 80 元，限 20 人，效果一定很好，欢迎大家参加。\n[S2 示例标准] 事实准确、信息完整（时间地点费用退改）、语气得当；通过线 75 分。\n[S3 示例事实] 场地：城南书店；9 月 30 日前可免费取消。" },
     notIncluded: ["不改写稿子正文，只给修改指令", "没有事实材料时不认定说法真伪，只标未核对", "不替用户决定是否发布"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, version: 2, id: "source-ledger", name: "多源材料核对汇总助理", category: "工作推进",
     description: "先把你给的每份材料登记在册，逐份读完再汇总；没读到的材料明确标缺，绝不根据文件名猜内容，也不在有材料没读完时宣称\"已汇总\"。",
     input: "多份材料原文（会议记录、聊天导出、文档节选等）与汇总目的", output: "材料登记表、逐份要点、交叉结论、缺失与冲突",
@@ -251,7 +251,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "汇总这几份材料，整理出读书会场地问题的时间线、已做决定和待办。", materials: "[S1 示例目的] 时间线、决定、待办。\n[S2 示例材料 A：9 月 12 日群聊节选] 小周：城南书店 10 月 6 日档期没了。小林：那改 13 日？\n[S2 示例材料 B：9 月 15 日纪要] 决定：活动改到 10 月 13 日，场地待定。\n[S3 示例未取得] 一份名为\"场地报价.xlsx\"的文件，只知道名字。" },
     notIncluded: ["不联网补全材料，不读取用户没有贴出的文件", "不对未取得的材料做任何内容推测", "不替用户裁决材料之间的冲突"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, id: "spreadsheet-audit", name: "表格审计助理", category: "决策验证",
     description: "按固定清单审一份表格的公式与结构：错误值、写死的数字、范围少一行、跨表引用对不上、隐藏行列；先出问题清单，你确认后才谈修改。",
     input: "表格内容或公式导出、各工作表说明、审计范围", output: "问题清单（位置、严重度、类别、建议）、未能核对项",
@@ -270,8 +270,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "审计这张活动预算表的公式和结构，先给问题清单。", materials: "[S1 示例表·预算] A2:A5 项目名，B2:B5 金额 300/500/200/150，B6 =SUM(B2:B4)，C2 =B2*0.1 其余 C 列手填 50、20、15。\n[S2 示例] 审整张表，用来报销，财务在用。" },
     notIncluded: ["不修改任何单元格，只出清单", "不重算或核对表格的业务结果是否正确", "看不到的工作表一律标未能核对"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
-  // 与上一节相同：只吸收方法层，文字全部独立撰写；上面 4 份升到版本 2 的模板在 enrichedFrom 里列出补充来源。
+    source: builtinSource("2026-09-22") },
   { ...common, id: "meeting-decisions", name: "会议决议提取助理", category: "日程沟通",
     description: "把口语化的会议记录变成谁定了什么、谁去做什么、什么卡着谁：先按发言人权威分层，再过滤阻塞与高价值项，每条行动带负责人、前提和置信度；不猜角色，不补造结论。",
     input: "会议记录或访谈文字稿、参会人与角色", output: "发言人权威模型、决策与行动清单、关键阻塞与依赖、待确认事项",
@@ -290,7 +289,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "从这段会议记录里提取决策、行动项、阻塞和待确认事项。", materials: "[S1 示例] 9 月 15 日读书会筹备会。老陈是负责人能拍板，小周负责场地，小林负责宣传。\n[S2 示例记录] 老陈：13 号就定城南书店，小周你去签。小周：得先拿到报价，那个表还在阿May那儿。小林：海报我先搞上去？老陈：行，等场地定了再发。小周：预算感觉应该够吧。" },
     notIncluded: ["不补造负责人、日期或结论，角色不明一律标待确认", "不判断决策对错，只还原会上说了什么", "不写进任务系统，不向参会人发送任何内容"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, id: "requirement-discovery", name: "需求澄清与价值判断助理", category: "决策验证",
     description: "需求还没定、点子不知道值不值得做、几方意见不一致时用它：先判断处于哪个阶段、是什么类型的需求，回答谁在承受问题、是否真实、为什么是现在，再给出推进、试点、搁置或放弃的建议和下一轮最值得问的两个问题。",
     input: "零散讨论、聊天记录或口头要求，提出者与目标用户", output: "阶段与需求类型判断、价值判断、范围收敛、待确认问题",
@@ -309,7 +308,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "判断这个需求现在到哪一步了、值不值得做，并给出下一步建议。", materials: "[S1 示例讨论] 运营小林：好几个读者说找不到往期书单，能不能做个小程序。老陈：先别做小程序，成本高。小林：那放公众号菜单？读者是不是真会去翻我也不确定。\n[S2 示例] 小林提出，目标用户是老读者；这一轮想弄清值不值得做。" },
     notIncluded: ["不设计界面、流程或技术实现", "不替干系人做决定，分歧只并列不裁决", "不估算材料里没有的频率、用户数或损失"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, id: "evidence-grading", name: "证据分级与可声称性核查助理", category: "决策验证",
     description: "把一份方案、报告或文案拆成一条条声明，按 E0 到 E4 和 H 六级给证据定级，标出越级和不可声称的话并给出可声称的改写；交付时写清已验证、推断、未验证路径与剩余风险。",
     input: "待核查文本、可用证据材料及其来源类型、要支撑的决定", output: "声明清单与证据等级、不可声称项与改写、剩余风险与下一步验证",
@@ -328,7 +327,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "核查这段活动方案里的声明各有什么证据支撑，哪些话不能这么说。", materials: "[S1 示例文本] 把报名入口放到海报顶部能让报名率翻倍；我们的读者 90% 是 25 到 40 岁上班族；城南书店场地无障碍设施齐全。\n[S2 示例证据] 一张竞品海报的压缩截图（二手）；上季度 12 场活动的签到表，有年龄段字段（项目实际数据）。\n[S3 示例用途] 决定秋季海报版式和场地。" },
     notIncluded: ["不联网补证，只按用户给的材料定级", "不替代访谈、测试、实验、法律或合规审查", "不判断方案本身好坏，只判断说法有没有证据"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, id: "dual-draft-synthesis", name: "双稿互审合成助理", category: "写作表达",
     description: "同一份任务书下有两份以上独立写成的稿子时，先让每稿对照任务书互审出硬伤、更优的点和建议采纳，再合成一份最终稿并附分歧与取舍理由；只有一稿就明说无法互审。",
     input: "任务书、两份或更多独立稿、已确认的约束", output: "逐稿互审、合成稿、分歧与取舍、已修复硬伤",
@@ -347,7 +346,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "把这两版招募文案互审后合成一版，说明取舍。", materials: "[S1 示例任务书] 秋季读书会招募，朋友圈图文，60 字内，不出现“最”字。\n[S2 示例稿 A] 每周四晚，城南书店，18 位常客等你来聊一本书。已办 12 场。\n[S2 示例稿 B] 最有温度的读书会回来了！每周四晚 7 点，名额有限速抢。\n[S3 示例约束] 平均到场 18 人是签到表数据。" },
     notIncluded: ["不评价作者水平，只审稿子", "不引入任务书和各稿之外的新事实", "只有一稿时不虚构第二稿"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-22" } },
+    source: builtinSource("2026-09-22") },
   { ...common, id: "co-creation-panel", name: "多角色共创小组助理", category: "决策验证",
     description: "让五个分工不同的角色依次过一遍你的想法：定优先级的策略者、找证据缺口的研究者、把它变成可交付步骤的建造者、挑风险与隐私漏洞的评审者、收拢成决定与下一步的整合者；最后只交一份有决定、有待办、有未决问题的纪要。",
     input: "想法或方案原文、已知事实与限制、这次要决定什么", output: "五个角色的意见、决定清单、下一步、未决问题",
@@ -366,7 +365,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "让共创小组过一遍这个想法，走到定下一步。", materials: "[S1 示例想法] 想把社区读书会的往期书单做成一个小程序，读者能搜、能收藏。\n[S2 示例已知] 读者群 160 人，运营只有小林一个人；已排除外包开发。\n[S3 示例目标] 定下一步。" },
     notIncluded: ["不替用户做最终决定，只给合成后的决定候选", "不联网补证，角色发言不是事实来源", "不编造数据、案例或他人观点"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-23" } },
+    source: builtinSource("2026-09-23") },
   { ...common, id: "memory-snapshot-export", name: "记忆快照导出助理", category: "助理定制",
     description: "把你和某个 AI 助手的对话导出，或你自己的笔记，整理成一份能直接导入新助手的记忆快照：固定分节、每条一句、不确定的标（推断）、敏感信息默认不收，最后列出要你逐条确认的推断项。",
     input: "旧助手的对话导出或记忆列表、自我笔记、保留与排除范围", output: "分节的记忆快照、推断项清单、已跳过的敏感类别",
@@ -385,7 +384,7 @@ origin: bot-recipe
 执行边界：${boundary}`,
     example: { objective: "把这些材料整理成一份可导入新助手的记忆快照。", materials: "[S1 示例材料] 旧助手记忆列表：用户在杭州；做社区读书会运营；喜欢简短直接的回答；提过好几次合作方小周；去年说过想学 Python，后来没再提；曾说最近睡不好。\n[S2 示例范围] 保留工作与偏好；不收健康类。" },
     notIncluded: ["不评价用户，不补造材料里没有的事实", "敏感类别默认不收，只列类别名", "不自动写入任何长期记忆，导入由用户操作"],
-    source: { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: "2026-09-23" } },
+    source: builtinSource("2026-09-23") },
 ];
 
 /**

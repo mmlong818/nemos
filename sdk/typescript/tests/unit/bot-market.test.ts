@@ -6,21 +6,17 @@ import type { AgentJobRecord, AgentJobHandlerContext } from "../../src/agent/job
 
 const TEMPLATE_IDS = ["blind-reviewer", "bot-designer", "co-creation-panel", "contract-clause-check", "copy-humanizer", "copy-strategist", "dual-draft-synthesis", "evidence-grading", "idea-stress-test", "meeting-decisions", "meeting-prep", "memory-snapshot-export", "project-guide", "requirement-discovery", "source-ledger", "spreadsheet-audit", "tech-article-editor", "work-report-writer"];
 
-test("精选市场：十八种有来源的原生适配，声明实际边界，目录返回副本", () => {
+test("精选市场：十八种内置模板，声明实际边界，目录返回副本", () => {
   const templates = listBotMarket(); assert.equal(templates.length, 18);
   assert.equal(new Set(templates.map((t) => t.id)).size, 18);
   assert.deepEqual(templates.map((t) => t.id).sort(), TEMPLATE_IDS);
   for (const t of templates) {
     assert.equal(t.adaptation, "independent-native"); assert.equal(t.permissions.tools, "off");
     assert.equal(t.permissions.memory, "task-only"); assert.equal(t.permissions.automaticRoutines, false);
-    assert.match(t.source.url, /^https:\/\/github\.com\/mmlong818\//); assert.match(t.source.previewSha256, /^[0-9A-F]{64}$/);
-    // GitHub 来源必须钉到具体文件与 commit，否则日后无法复核当时看到的是哪一版。
-    if (t.source.url.startsWith("https://github.com/mmlong818/") && t.source.url !== "https://github.com/mmlong818/nemos") assert.match(t.source.name, /^mmlong818\/[\w.-]+ \S+ @[0-9a-f]{7}/);
-    for (const extra of t.enrichedFrom ?? []) {
-      assert.match(extra.url, /^https:\/\/github\.com\/mmlong818\//); assert.match(extra.previewSha256, /^[0-9A-F]{64}$/);
-    }
-    // 升过版的模板必须说明补充来源；没升版的不该带。
-    assert.equal((t.enrichedFrom?.length ?? 0) > 0, t.version > 1, `${t.id} 的 enrichedFrom 与版本不一致`);
+    // 内置模板的来源统一是小丑鱼自己的模板：不写外部出处，也不带补充来源。
+    assert.deepEqual(t.source, { name: "小丑鱼内置模板", url: "https://github.com/mmlong818/nemos", version: 1, reviewedAt: t.source.reviewedAt });
+    assert.match(t.source.reviewedAt, /^\d{4}-\d\d-\d\d$/);
+    assert.equal("enrichedFrom" in t, false);
     assert.ok(t.instructions.length < 4000 && t.instructions.length > 100);
     assert.ok(t.notIncluded.length > 0); assert.match(t.example.materials, /示例/);
     assert.ok(t.inputTemplate.length > 20 && t.inputTemplate.length < 24000);

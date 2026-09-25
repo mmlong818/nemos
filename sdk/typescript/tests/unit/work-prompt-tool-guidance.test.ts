@@ -35,6 +35,7 @@ async function captureWorkSystem(t: TestContext, toolMode?: "off") {
 }
 
 // 真实使用里模型会用 shell 去做有专用工具的事、把"工具已接受"说成"已送达"、卡住后不明说。
+// 这几条规则写进任务模式的系统提示（2026-09-24 起改为中文，与人格同一口吻）。
 test("任务模式的系统提示带工具选择、凭证禁区、送达语义与明示不可行", async (t) => {
   const system = await captureWorkSystem(t);
   assert.match(system, /有专用工具（文件、日历、邮件、浏览器、搜索）时就用它/);

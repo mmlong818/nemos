@@ -26,17 +26,9 @@ test("every user-facing execution ability carries a complete input / output / co
   }
 });
 
-test("contracts enriched from the author's repositories name file, commit and hash; provenance never reaches the prompt", () => {
-  const enriched = ["research-brief", "decision-brief", "presentation-builder", "thinking-workbench", "product-design", "market-opportunity", "ability-builder", "topic-evaluation", "meeting-minutes", "business-deal"];
-  for (const id of enriched) {
-    const contract = BUILTIN_SKILL_CONTRACTS[id];
-    assert.ok(contract.provenance && contract.provenance.length > 0, `${id} should record where its method came from`);
-    for (const source of contract.provenance!) {
-      else {
-        assert.match(source.url, /^https:\/\/github\.com\/mmlong818\/[\w.-]+$/);
-      }
-      assert.match(source.previewSha256, /^[0-9A-F]{64}$/);
-    }
+test("能力契约只写输入、输出与约束，不带任何出处记录；渲染进提示的内容也不含仓库链接", () => {
+  for (const [id, contract] of Object.entries(BUILTIN_SKILL_CONTRACTS)) {
+    assert.equal("provenance" in contract, false, `${id} 不应带出处记录`);
     // 三段契约要能读完：单段不超过 600 字，否则模型会把契约当正文抄一遍。
     for (const key of ["input", "output", "constraints"] as const) assert.ok(contract[key].length <= 600, `${id}.${key} is ${contract[key].length} chars`);
     assert.doesNotMatch(renderSkillContract(contract), /github\.com|mmlong818|@[0-9a-f]{7}/);

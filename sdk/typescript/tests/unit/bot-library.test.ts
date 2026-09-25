@@ -93,7 +93,8 @@ test("both card types escape user content and retain separate start/edit routes"
 test("派生模板详情明确显示来源、独立规则版本与本机私有边界", () => {
   const source = read("assets/assistant-team.js");
   assert.match(source, /查看完整规则 · 本地规则 v/);
-  assert.match(source, /来源：模板 v/);
+  assert.match(source, /来源：小丑鱼内置模板 v/);
+  assert.doesNotMatch(source, /template.source?.name/, "界面不展示存下来的来源名");
   assert.match(source, /本机派生规则 v/);
   assert.match(source, /仅本机私有。模板更新不会自动覆盖你的规则/);
 });
