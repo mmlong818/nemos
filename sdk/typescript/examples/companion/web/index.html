@@ -3924,7 +3924,18 @@ function maybeStartGoalConversation() {
   if (!GOAL_CATEGORY_LABELS[category] || !isOnboardingComplete()) return;
   const goalId = (params.get("goalId") || "").slice(0, 100);
   const title = (params.get("title") || "").slice(0, 60);
+  const session = (params.get("session") || "").slice(0, 120);
   history.replaceState(null, "", location.pathname);
+  // 一个目标一条对话：这条还在就回到它，接着聊，不再发开场白。
+  const existing = session ? ensureConversationTree("persona:" + APP_PERSONA_ID)?.nodes?.[session] : null;
+  if (existing) {
+    openAppIfNeeded();
+    existing.config = { ...existing.config, goal: { category, goalId } };
+    saveConversationTrees();
+    switchConversation(session);
+    $("#txt").focus();
+    return;
+  }
   createConversation("chat");
   const node = activeConversation("persona:" + APP_PERSONA_ID);
   if (!node) return;
@@ -4855,7 +4866,7 @@ function addRow(side, who, text, opts = {}) {
     const actions = document.createElement("div");
     actions.className = "artifact-actions";
     const link = document.createElement("a");
-    link.href = "/?" + new URLSearchParams({ goal: opts.goalCheckIn.category, goalId: opts.goalCheckIn.id, title: opts.goalCheckIn.title }).toString();
+    link.href = "/?" + new URLSearchParams({ goal: opts.goalCheckIn.category, goalId: opts.goalCheckIn.id, title: opts.goalCheckIn.title, ...(opts.goalCheckIn.sessionId ? { session: opts.goalCheckIn.sessionId } : {}) }).toString();
     link.textContent = "聊聊进展";
     actions.appendChild(link);
     bub.appendChild(actions);
@@ -6452,6 +6463,12 @@ function agentToolLabel(name) {
   };
   return labels[name] || name || "高权限操作";
 }
+// 势头也是一次写入：审批卡上要看得见它要标成什么、依据是什么。
+function goalMomentumLine(visible) {
+  const m = visible && visible.momentum;
+  if (!m || !m.status) return "";
+  return "势头标为「" + ({ on_track: "按计划", at_risk: "有风险", behind: "落后" }[m.status] || m.status) + "」：" + (m.note || "");
+}
 function agentApprovalArguments(name, args) {
   const visible = { ...(args || {}) };
   // 目标写入给人看的是"要记下什么"，不是参数表；编号和版本号对用户没有意义。
@@ -6463,6 +6480,7 @@ function agentApprovalArguments(name, args) {
     if (visible.measure) lines.push("怎么算做到：" + visible.measure);
     if (visible.plan) lines.push("计划：" + visible.plan);
     if (visible.dueAt) lines.push("期限：" + String(visible.dueAt).slice(0, 10));
+    if (goalMomentumLine(visible)) lines.push(goalMomentumLine(visible));
     if (visible.status === "completed") lines.push("标记为完成" + (visible.result ? "：" + visible.result : ""));
     if (visible.checkIn === null || (visible.checkIn && visible.checkIn.cadence === "off")) lines.push("取消定期对进度");
     else if (visible.checkIn) {
@@ -6477,7 +6495,7 @@ function agentApprovalArguments(name, args) {
     lines.push("", "只记在本机的目标页，不会执行其他动作。");
     return lines.join("\n");
   }
-  if (name === "goal_log_progress") return "记一条进展：" + (visible.note || "") + "\n\n只记在本机的目标页。";
+  if (name === "goal_log_progress") return "记一条进展：" + (visible.note || "") + (goalMomentumLine(visible) ? "\n" + goalMomentumLine(visible) : "") + "\n\n只记在本机的目标页。";
   if (name === "skill_install" && typeof visible.sourceText === "string") {
     visible.sourceText = "已粘贴能力说明（" + visible.sourceText.length + " 个字符，不在确认框完整显示）";
   }
@@ -7810,7 +7828,7 @@ async function pollGoalCheckIns() {
     const key = "persona:" + APP_PERSONA_ID;
     for (const c of data.checkIns || []) {
       const text = "到了和你对进度的时间：「" + c.title + "」最近怎么样？想聊就点下面，不想聊忽略就好。";
-      const goalCheckIn = { id: c.id, title: c.title, category: c.category };
+      const goalCheckIn = { id: c.id, title: c.title, category: c.category, sessionId: c.sessionId || "" };
       if (logKey() === key) addRow("other", null, text, { pid: APP_PERSONA_ID, goalCheckIn });
       record(key, { side: "other", who: null, text, pid: APP_PERSONA_ID, goalCheckIn });
       saveLogs();

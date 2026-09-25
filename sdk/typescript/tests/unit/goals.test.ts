@@ -233,3 +233,44 @@ test("在定目标的对话里新建目标后，会话绑定到它；已有目�
   assert.match(addendum, /目标 id [\w-]+，\d{4}\/\d{1,2}\/\d{1,2} 建立/);
   assert.match(goalCoachingAddendum("interests"), /只有 ta 明确要定期对进度、并说了多久一次时.*建目标时不要顺手设/);
 });
+
+test("势头：随进展一起记，附依据；变了才进时间线；只收三种；新建的目标绑定到那条对话，已绑定不改", async (t) => {
+  const f = fixture(t);
+  const goal = f.store.saveGoal("me", reading, "user");
+  let after = f.store.logGoalProgress("me", goal.id, "这周只读了 10 页", "assistant", { status: "at_risk", note: "按计划这周该读完第一本" });
+  assert.deepEqual([after.momentum!.status, after.momentum!.note, after.momentum!.by], ["at_risk", "按计划这周该读完第一本", "assistant"]);
+  assert.deepEqual(after.timeline.slice(-2).map((e) => [e.kind, e.text]), [["progress", "这周只读了 10 页"], ["revised", "势头为「有风险」：按计划这周该读完第一本"]]);
+  after = f.store.logGoalProgress("me", goal.id, "又读了 5 页", "assistant", { status: "at_risk", note: "还是慢" });
+  assert.equal(after.timeline.at(-1)!.kind, "progress", "势头没变不再记一条");
+  assert.throws(() => f.store.logGoalProgress("me", goal.id, "x", "assistant", { status: "great", note: "y" }), /按计划、有风险或落后/);
+  assert.throws(() => f.store.logGoalProgress("me", goal.id, "x", "assistant", { status: "behind" }), /请填写势头的依据/);
+  after = f.store.logGoalProgress("me", goal.id, "今天读完了", "assistant");
+  assert.equal(after.momentum!.status, "at_risk", "不带势头时保持原样");
+  const addendum = goalCoachingAddendum("interests", after);
+  assert.match(addendum, /现在是「有风险」：还是慢/);
+
+  const sessions = new Map([["conversation-new", { category: "health" }]]);
+  const provider = createCompanionAgentToolProvider({ memory: () => ({} as Nemos), capabilities: () => ({} as CapabilityRuntime), personalWork: () => f.store, goalSession: (id) => sessions.get(id), bindGoalSession: () => {} });
+  const save = (await provider("就这样定吧", { ...chat, sessionId: "conversation-new" })).find((tool) => tool.definition.name === "goal_save")!;
+  const created = JSON.parse((await save.execute({ ...reading, title: "每天走 8000 步", category: "health" }, { signal: new AbortController().signal, runId: "r", sessionId: "conversation-new" })).content);
+  assert.equal(f.store.getGoal("me", created.id).sessionId, "conversation-new");
+  f.store.bindGoalSession("me", created.id, "conversation-other");
+  assert.equal(f.store.getGoal("me", created.id).sessionId, "conversation-new", "一个目标只认一条对话");
+  const href = new URL("http://x" + page.chatHref("health", f.store.getGoal("me", created.id)));
+  assert.equal(href.searchParams.get("session"), "conversation-new");
+});
+
+test("点子挂到目标：模型按标题指认，对不上就不挂；目标详情列出相关点子", async () => {
+  const { parseIdeas } = await import("../../examples/companion/ideas.js");
+  const goals = [{ id: "g1", title: "今年读完 12 本书" }];
+  const idea = { title: "我可以做一个读书打卡表", summary: "每天勾一次", rationale: "你在养读书习惯", deliverable: "widget", startPrompt: "帮我做一个读书打卡表" };
+  const [linked, loose] = parseIdeas(JSON.stringify({ ideas: [{ ...idea, forGoal: "今年读完 12 本书" }, { ...idea, title: "我可以做别的", forGoal: "不存在的目标" }] }), [], new Date(), goals);
+  assert.equal(linked.goalId, "g1");
+  assert.equal(loose.goalId, undefined);
+  const dialog = { innerHTML: "" };
+  page.detail(dialog, { id: "g1", title: "今年读完 12 本书", category: "interests", measure: "12 本", plan: "", why: "", dueAt: "", status: "active", milestones: [], timeline: [], momentum: { status: "behind", note: "落后两本", at: "", by: "assistant" } }, [linked, loose]);
+  assert.match(dialog.innerHTML, /相关点子/);
+  assert.match(dialog.innerHTML, /我可以做一个读书打卡表/);
+  assert.doesNotMatch(dialog.innerHTML, /我可以做别的/);
+  assert.match(dialog.innerHTML, /<strong>落后<\/strong> 落后两本/);
+});

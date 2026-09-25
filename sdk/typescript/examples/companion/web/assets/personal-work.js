@@ -13,7 +13,12 @@
   function toast(message) { $("#toast").textContent = message; $("#toast").hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $("#toast").hidden = true; }, 4000); }
   async function load() {
     const id = ++sequence;
-    try { const result = await api(); if (id !== sequence) return; data = result; render(); }
+    try {
+      const result = await api(); if (id !== sequence) return;
+      // 目标详情里的"相关点子"：读已有的点子，不生成。
+      try { const r = await fetch("/api/ideas"); result.ideas = r.ok ? (await r.json()).ideas || [] : []; } catch { result.ideas = []; }
+      data = result; render();
+    }
     catch (error) { if (id === sequence) { $("#connection").textContent = error.message; if (!data.matters.length) $("#records").innerHTML = '<p>记录暂时无法读取。<button id="retryLoad">重新读取</button></p>'; } }
   }
   function render() {
@@ -73,7 +78,7 @@
     if (!goal) { if ($("#goalDialog").open) $("#goalDialog").close(); return; }
     openGoalId = id;
     const note = $("#goalNote")?.value || "";
-    window.ClownfishGoals.detail($("#goalDialog"), goal);
+    window.ClownfishGoals.detail($("#goalDialog"), goal, data.ideas || []);
     if (note) $("#goalNote").value = note;
     if (!$("#goalDialog").open) $("#goalDialog").showModal();
   }

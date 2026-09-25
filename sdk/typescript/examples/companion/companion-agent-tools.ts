@@ -125,6 +125,8 @@ function personalWorkTools(store: PersonalWorkStore, context: ChatAgentContext):
 }
 
 const GOAL_CATEGORY_IDS = GOAL_CATEGORIES.map((item) => item.id);
+const MOMENTUM_SCHEMA = { description: "Only when progress can be judged against the deadline and plan: on_track / at_risk / behind, with a one-sentence reason. Omit when unsure.",
+  type: "object", properties: { status: { type: "string", enum: ["on_track", "at_risk", "behind"] }, note: { type: "string", description: "<= 160 chars, the basis" } }, required: ["status", "note"], additionalProperties: false };
 
 function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionGoalId?: string, bind?: (sessionId: string, goalId: string) => void): AgentTool[] {
   // 从目标卡片开的对话已知是哪个目标：id 缺省用它；小丑鱼的更新按字段合并，版本号缺省取当前值。
@@ -153,6 +155,7 @@ function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionG
         status: { type: "string", enum: ["active", "completed", "archived"] },
         milestones: { type: "array", maxItems: 20, description: "When creating, include 2 to 4 concrete milestones the user can tick off. When updating, pass the full list with existing ids.", items: { type: "object", properties: { id: { type: "string" }, title: { type: "string" }, done: { type: "boolean" } }, additionalProperties: false } },
         result: { type: "string", description: "When completing: what was achieved, in the user's words" },
+        momentum: MOMENTUM_SCHEMA,
         checkIn: { description: "Periodic progress check-in the user agreed to; null to cancel. Local time; only fires while the app is running.", anyOf: [{ type: "null" }, { type: "object", properties: {
           cadence: { type: "string", enum: ["daily", "weekly", "biweekly", "monthly", "off"] }, time: { type: "string", description: "HH:MM" },
           weekday: { type: "integer", minimum: 0, maximum: 6, description: "0 = Sunday; weekly/biweekly" }, monthDay: { type: "integer", minimum: 1, maximum: 31 },
@@ -161,15 +164,18 @@ function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionG
     execute: async (input, execution) => {
       ensureActive(execution.signal);
       const saved = store.saveGoal(context.userId, withRevision(input as GoalInput), "assistant");
-      if (!input.id && context.sessionId) bind?.(context.sessionId, saved.id);
+      if (!input.id && context.sessionId) {
+        bind?.(context.sessionId, saved.id);
+        store.bindGoalSession(context.userId, saved.id, context.sessionId);
+      }
       return { content: JSON.stringify(goalBrief(saved)) };
     },
   }, {
     definition: { name: "goal_log_progress", description: "With approval, add one progress entry to a goal's timeline. Only record what the user reported in this conversation, close to their words. Never infer, estimate or invent progress.",
-      inputSchema: { type: "object", properties: { id: { type: "string" }, note: { type: "string", description: "<= 500 chars" } }, required: ["note"], additionalProperties: false }, effect: "write" },
+      inputSchema: { type: "object", properties: { id: { type: "string" }, note: { type: "string", description: "<= 500 chars" }, momentum: MOMENTUM_SCHEMA }, required: ["note"], additionalProperties: false }, effect: "write" },
     execute: async (input, execution) => {
       ensureActive(execution.signal);
-      return { content: JSON.stringify(goalBrief(store.logGoalProgress(context.userId, String(input.id || sessionGoalId || ""), input.note, "assistant"))) };
+      return { content: JSON.stringify(goalBrief(store.logGoalProgress(context.userId, String(input.id || sessionGoalId || ""), input.note, "assistant", input.momentum))) };
     },
   }];
 }

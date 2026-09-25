@@ -941,6 +941,8 @@ function registerGoalSession(body: ChatBody): { category: string; goalId?: strin
   const bound = goalSessions.get(sessionId);
   const goalId = body.goal?.goalId ? String(body.goal.goalId).slice(0, 100) : bound?.category === category ? bound.goalId : undefined;
   const session = { category, ...(goalId ? { goalId } : {}) };
+  // 从卡片开的第一段对话就成了这个目标的那条聊天。
+  if (goalId) { try { personalWork.bindGoalSession(USER, goalId, sessionId); } catch { /* 目标不在了就不绑 */ } }
   goalSessions.delete(sessionId);
   goalSessions.set(sessionId, session);
   while (goalSessions.size > 500) goalSessions.delete(goalSessions.keys().next().value!);
@@ -3721,10 +3723,11 @@ async function generateIdeasNow(): Promise<{ ideas: IdeaCard[]; note: string }> 
   if (!llm.live) throw new IdeaError("还没有连接模型，没法想点子", 409);
   const ctx = await feedContext();
   const taste = ideaStore.taste();
-  const prompt = ideaPrompt({ today: ctx.today, goals: ctx.goals, matters: ctx.matters, preferences: ctx.preferences, feedTopic: ctx.prompt, topics: ctx.topics, taste });
+  const activeGoals = personalWork.listGoals(USER).filter((g) => g.status === "active").slice(0, 8).map((g) => ({ id: g.id, title: g.title }));
+  const prompt = ideaPrompt({ today: ctx.today, goals: ctx.goals, goalTitles: activeGoals.map((g) => g.title), matters: ctx.matters, preferences: ctx.preferences, feedTopic: ctx.prompt, topics: ctx.topics, taste });
   const model = modelConnection ? dailyChatModelForConnection(modelConnection) : undefined;
   const reply = await llm.chat(prompt.system, prompt.user, model, 2_400, feedModelContext("ideas", 8_000));
-  const ideas = parseIdeas(reply, taste.recent);
+  const ideas = parseIdeas(reply, taste.recent, new Date(), activeGoals);
   ideaStore.add(ideas);
   const basis = [ctx.goals.length ? `${ctx.goals.length} 个目标` : "", ctx.matters.length ? `${ctx.matters.length} 件事项` : "", ctx.preferences.length ? "记住的偏好" : ""].filter(Boolean).join("、");
   return { ideas, note: ideas.length ? `根据${basis || "动态话题"}想了 ${ideas.length} 个` : "这次没想到真正有用的，不凑数" };
@@ -6565,7 +6568,7 @@ const server = createServer(async (req, res) => {
         // 聊天页每分钟来取一次：先推进排期，再返回待对的目标。只读取，不需要审计。
         if (req.method === "GET" && pathname === "/api/personal-work/goals/checkins") {
           personalWork.tickGoals(USER);
-          send(res, 200, { checkIns: personalWork.pendingCheckIns(USER).map((g) => ({ id: g.id, title: g.title, category: g.category, pendingSince: g.checkIn!.pendingSince })) });
+          send(res, 200, { checkIns: personalWork.pendingCheckIns(USER).map((g) => ({ id: g.id, title: g.title, category: g.category, sessionId: g.sessionId || "", pendingSince: g.checkIn!.pendingSince })) });
           return;
         }
         if (req.method !== "POST") { send(res, 405, { error: "不支持的操作" }); return; }

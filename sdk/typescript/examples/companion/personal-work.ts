@@ -134,9 +134,9 @@ export class PersonalWorkStore {
       return goal;
     })();
   }
-  logGoalProgress(user: string, id: string, note: unknown, by: GoalEntry["by"]): PersonalGoal {
+  logGoalProgress(user: string, id: string, note: unknown, by: GoalEntry["by"], momentum?: unknown): PersonalGoal {
     return this.db.transaction(() => {
-      const goal = asPersonalWorkError(() => applyGoalProgress(this.getGoal(user, id), note, by));
+      const goal = asPersonalWorkError(() => applyGoalProgress(this.getGoal(user, id), note, by, undefined, momentum));
       this.put(user, "goal", goal);
       return goal;
     })();
@@ -171,6 +171,13 @@ export class PersonalWorkStore {
     const updated = { ...goal, checkIn: rest };
     this.put(user, "goal", updated);
     return updated;
+  }
+  /** 记下这个目标的那条聊天；已有就不改（一个目标只认一条）。不改版本号：这不是内容编辑。 */
+  bindGoalSession(user: string, id: string, sessionId: string): void {
+    const goal = this.getGoal(user, id);
+    if (goal.sessionId || !sessionId) return;
+    const bound: PersonalGoal = { ...goal, sessionId: sessionId.slice(0, 120) };
+    this.put(user, "goal", bound);
   }
   deleteGoal(user: string, id: string) {
     this.getGoal(user, id);

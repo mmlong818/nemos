@@ -41,13 +41,21 @@ export interface PersonalGoal {
   timeline: GoalEntry[];
   /** 定期对进度；没有就不提醒。 */
   checkIn?: GoalCheckIn;
+  /** 势头：对照期限和计划的判断，附一句依据。依据不足时不填，不用百分比冒充进度。 */
+  momentum?: GoalMomentum;
+  /** 这个目标的那条聊天：聊进展、对进度都回到这里。 */
+  sessionId?: string;
   createdAt: string; updatedAt: string;
 }
+export const MOMENTUM_LABELS = { on_track: "按计划", at_risk: "有风险", behind: "落后" } as const;
+export interface GoalMomentum { status: keyof typeof MOMENTUM_LABELS; note: string; at: string; by: GoalEntry["by"] }
 export interface GoalInput {
   id?: unknown; revision?: unknown; title?: unknown; category?: unknown; why?: unknown; measure?: unknown; plan?: unknown;
   dueAt?: unknown; status?: unknown; milestones?: unknown; result?: unknown;
   /** { cadence, time?, weekday?, monthDay? }；null 或 cadence "off" 表示取消。 */
   checkIn?: unknown;
+  /** { status: on_track | at_risk | behind, note }；null 表示清掉。 */
+  momentum?: unknown;
 }
 
 export class GoalError extends Error {
@@ -182,6 +190,16 @@ function checkIn(value: unknown, old: GoalCheckIn | undefined, now: Date): GoalC
   return { ...settings, nextAt: firstOccurrence(settings, now).toISOString() };
 }
 
+function momentum(value: unknown, old: GoalMomentum | undefined, by: GoalEntry["by"], now: string): GoalMomentum | undefined {
+  if (value === undefined) return old ? { ...old } : undefined;
+  if (value === null) return undefined;
+  const input = (value && typeof value === "object" ? value : {}) as { status?: unknown; note?: unknown };
+  const status = String(input.status ?? "");
+  if (!(status in MOMENTUM_LABELS)) throw new GoalError("势头只能是按计划、有风险或落后");
+  const note = text(input.note, "势头的依据", 160, true);
+  return { status: status as GoalMomentum["status"], note, at: now, by };
+}
+
 function entry(kind: GoalEntry["kind"], value: string, by: GoalEntry["by"], at: string): GoalEntry {
   return { id: randomUUID(), at, kind, text: value, by };
 }
@@ -216,6 +234,8 @@ export function applyGoalSave(old: PersonalGoal | undefined, input: GoalInput, b
     milestones: milestones(input.milestones, old?.milestones ?? [], now),
     timeline: old?.timeline.slice() ?? [],
     ...(() => { const c = checkIn(input.checkIn, old?.checkIn, new Date(now)); return c ? { checkIn: c } : {}; })(),
+    ...(() => { const m = momentum(input.momentum, old?.momentum, by, now); return m ? { momentum: m } : {}; })(),
+    ...(old?.sessionId ? { sessionId: old.sessionId } : {}),
     createdAt: old?.createdAt ?? now,
     updatedAt: now,
   };
@@ -234,6 +254,7 @@ export function applyGoalSave(old: PersonalGoal | undefined, input: GoalInput, b
     if (added.length) changed.push(`子目标（新增 ${added.join("、")}）`);
     const before = old.checkIn ? describeCheckIn(old.checkIn) : "", after = goal.checkIn ? describeCheckIn(goal.checkIn) : "";
     if (before !== after) changed.push(after ? `定期对进度（${after}）` : "取消定期对进度");
+    if (goal.momentum && goal.momentum.status !== old.momentum?.status) changed.push(`势头为「${MOMENTUM_LABELS[goal.momentum.status]}」：${goal.momentum.note}`);
     if (changed.length) goal.timeline.push(entry("revised", changed.join("、"), by, now));
     for (const m of goal.milestones) {
       const prior = old.milestones.find((o) => o.id === m.id);
@@ -250,9 +271,12 @@ export function applyGoalSave(old: PersonalGoal | undefined, input: GoalInput, b
 }
 
 /** 记一条进展。只记用户说过或页面上填的内容，不写推断。 */
-export function applyGoalProgress(old: PersonalGoal, value: unknown, by: GoalEntry["by"], now = new Date().toISOString()): PersonalGoal {
+export function applyGoalProgress(old: PersonalGoal, value: unknown, by: GoalEntry["by"], now = new Date().toISOString(), momentumInput?: unknown): PersonalGoal {
   const note = text(value, "进展", 500, true);
-  return { ...old, revision: old.revision + 1, updatedAt: now, timeline: capTimeline([...old.timeline, entry("progress", note, by, now)]) };
+  const nextMomentum = momentum(momentumInput, old.momentum, by, now);
+  const timeline = [...old.timeline, entry("progress", note, by, now)];
+  if (nextMomentum && nextMomentum.status !== old.momentum?.status) timeline.push(entry("revised", `势头为「${MOMENTUM_LABELS[nextMomentum.status]}」：${nextMomentum.note}`, by, now));
+  return { ...old, revision: old.revision + 1, updatedAt: now, ...(nextMomentum ? { momentum: nextMomentum } : {}), timeline: capTimeline(timeline) };
 }
 
 /**
@@ -266,11 +290,12 @@ export function goalCoachingAddendum(category: string, goal?: PersonalGoal): str
     const milestones = goal.milestones.map((m) => `${m.title}（${m.done ? "已完成" : "未完成"}，id ${m.id}）`).join("；");
     const recent = goal.timeline.filter((e) => e.kind === "progress").slice(-3).map((e) => `${e.at.slice(0, 10)} ${e.text}`).join("；");
     return [
-      `【这段对话是关于目标「${goal.title}」的】目标 id ${goal.id}，${new Date(goal.createdAt).toLocaleDateString("zh-CN")} 建立。怎么算做到：${goal.measure}${goal.plan ? `；计划：${goal.plan}` : ""}。`,
+      `【这段对话是关于目标「${goal.title}」的】目标 id ${goal.id}，${new Date(goal.createdAt).toLocaleDateString("zh-CN")} 建立（今天是 ${new Date().toLocaleDateString("zh-CN")}）。怎么算做到：${goal.measure}${goal.plan ? `；计划：${goal.plan}` : ""}。`,
       ...(milestones ? [`子目标：${milestones}。`] : []),
       ...(recent ? [`最近记过的进展：${recent}。`] : [`还没有记过进展。`]),
       `· ta 说了进展就用 goal_log_progress 记下，尽量用 ta 的原话；没说的不要替 ta 估。同一轮里某个子目标因此完成，就同时用 goal_save 勾上（带目标 id 和完整子目标列表）。`,
       `· 进展不顺时先问卡在哪，给一个更小的下一步，不要说教。`,
+      `· 记进展时顺带对照期限和计划判断势头（momentum：on_track 按计划 / at_risk 有风险 / behind 落后），note 写一句依据；只凭一句话判断不了就不填。${goal.momentum ? `现在是「${MOMENTUM_LABELS[goal.momentum.status]}」：${goal.momentum.note}。` : ""}`,
       ...(goal.checkIn ? [`定期对进度：${describeCheckIn(goal.checkIn)}，只在应用开着时提醒。`] : []),
       CHECK_IN_RULE,
     ].join("\n");
@@ -293,6 +318,7 @@ export function goalBrief(goal: PersonalGoal): Record<string, unknown> {
     why: goal.why, measure: goal.measure, plan: goal.plan, dueAt: goal.dueAt,
     milestones: goal.milestones.map((m) => ({ id: m.id, title: m.title, done: m.done })),
     // 给模型本地时间的写法：只给 UTC 时它会把日期换算错（实测把 9/30 说成 10/7）。
+    momentum: goal.momentum ? { status: MOMENTUM_LABELS[goal.momentum.status], note: goal.momentum.note } : null,
     checkIn: goal.checkIn ? { schedule: describeCheckIn(goal.checkIn), next: new Date(goal.checkIn.nextAt).toLocaleString("zh-CN", { month: "long", day: "numeric", weekday: "long", hour: "2-digit", minute: "2-digit" }) } : null,
     recent: goal.timeline.slice(-5).map((item) => ({ at: item.at, kind: item.kind, text: item.text })),
   };

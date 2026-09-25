@@ -30,6 +30,8 @@ export interface IdeaCard {
   deliverable: IdeaDeliverable;
   /** 点"马上开始"后以用户身份发出的第一句话 */
   startPrompt: string;
+  /** 和哪个目标相关：模型按标题指认，对不上就不挂。 */
+  goalId?: string;
   state: "available" | "started" | "dismissed";
   startedAt?: string;
   feedback?: { kind: "more" | "less"; reason?: string; note?: string; at: string };
@@ -122,6 +124,8 @@ export interface IdeaContext {
   matters: string[];
   preferences: string[];
   feedTopic: string;
+  /** 目标标题，供 forGoal 指认。 */
+  goalTitles?: string[];
   topics?: { tellMe: string; neverMention: string };
   taste: ReturnType<IdeaStore["taste"]>;
 }
@@ -130,7 +134,7 @@ export function ideaPrompt(ctx: IdeaContext): { system: string; user: string } {
   return {
     system: [
       "你是用户的个人助理小丑鱼，要主动想几个\"我能帮你做的事\"。只输出 JSON：",
-      `{"ideas": [{"title": "我可以……", "summary": "怎么做、交付什么", "rationale": "为什么想到你", "deliverable": "${Object.keys(IDEA_DELIVERABLES).join("|")}", "startPrompt": "用户点开始后发给你的第一句话"}]}`,
+      `{"ideas": [{"title": "我可以……", "summary": "怎么做、交付什么", "rationale": "为什么想到你", "deliverable": "${Object.keys(IDEA_DELIVERABLES).join("|")}", "startPrompt": "用户点开始后发给你的第一句话", "forGoal": "相关目标的标题（照\"目标标题\"原样写），没有就留空"}]}`,
       `最多 ${IDEA_LIMITS.perBatch} 个。title 用第一人称，不超过 30 个字；summary 不超过 100 个字；rationale 用"你"来写，一句话，依据只能是给出的目标、在做的事、偏好或动态话题，不许说读过对方没给的数据。`,
       `只提你现在真能做到的：${Object.entries(IDEA_DELIVERABLES).map(([k, v]) => `${k}=${v}`).join("、")}。你还不能读邮件、看日历、下单付款、订票订房、发消息，这类不要提。`,
       "startPrompt 以用户的口吻写，说清要做什么，让你一看就能动手（例如\"帮我做一个能勾选的……清单\"）。",
@@ -139,14 +143,14 @@ export function ideaPrompt(ctx: IdeaContext): { system: string; user: string } {
       "没有真正有用的就返回 {\"ideas\": []}，不要凑数。",
     ].join("\n"),
     user: JSON.stringify({
-      今天: ctx.today, 目标: ctx.goals, 在做的事: ctx.matters, 偏好: ctx.preferences, 动态话题: ctx.feedTopic,
+      今天: ctx.today, 目标: ctx.goals, 目标标题: ctx.goalTitles ?? [], 在做的事: ctx.matters, 偏好: ctx.preferences, 动态话题: ctx.feedTopic,
       想听: ctx.topics?.tellMe || "", 别提: ctx.topics?.neverMention || "",
       想多要: ctx.taste.more, 不想要: ctx.taste.less, 已经开始过: ctx.taste.started, 最近提过: ctx.taste.recent,
     }),
   };
 }
 
-export function parseIdeas(raw: string, recentTitles: readonly string[], now = new Date()): IdeaCard[] {
+export function parseIdeas(raw: string, recentTitles: readonly string[], now = new Date(), goals: ReadonlyArray<{ id: string; title: string }> = []): IdeaCard[] {
   const value = parseJsonObject(raw);
   const items = Array.isArray(value?.ideas) ? value!.ideas : [];
   const seen = new Set(recentTitles.map(normalize));
@@ -166,7 +170,9 @@ export function parseIdeas(raw: string, recentTitles: readonly string[], now = n
     const key = normalize(title);
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ id: randomUUID(), createdAt: now.toISOString(), expiresAt, title, summary, rationale, deliverable, startPrompt, state: "available" });
+    const forGoal = String(r.forGoal ?? "").trim();
+    const goal = forGoal ? goals.find((g) => g.title === forGoal || normalize(g.title) === normalize(forGoal)) : undefined;
+    out.push({ id: randomUUID(), createdAt: now.toISOString(), expiresAt, title, summary, rationale, deliverable, startPrompt, ...(goal ? { goalId: goal.id } : {}), state: "available" });
     if (out.length >= IDEA_LIMITS.perBatch) break;
   }
   return out;

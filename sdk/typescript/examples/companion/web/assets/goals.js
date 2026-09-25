@@ -36,7 +36,7 @@
   /** 目标对话的入口：新目标只带类别；已有目标带编号和名字，开场白用得上。 */
   function chatHref(category, goal) {
     const params = new URLSearchParams({ goal: category });
-    if (goal) { params.set("goalId", goal.id); params.set("title", goal.title); }
+    if (goal) { params.set("goalId", goal.id); params.set("title", goal.title); if (goal.sessionId) params.set("session", goal.sessionId); }
     return "/?" + params.toString();
   }
   const WEEK = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
@@ -46,6 +46,10 @@
     if (c.cadence === "monthly") return "每月 " + c.monthDay + " 号 " + c.time;
     return (c.cadence === "biweekly" ? "每两周" : "每周") + WEEK[c.weekday || 0] + " " + c.time;
   }
+  const MOMENTUM = { on_track: "按计划", at_risk: "有风险", behind: "落后" };
+  function momentumHtml(goal) {
+    return goal.momentum ? `<p class="goal-momentum" data-momentum="${esc(goal.momentum.status)}"><strong>${esc(MOMENTUM[goal.momentum.status] || "")}</strong> ${esc(goal.momentum.note)}</p>` : "";
+  }
   const time = (value) => new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
   const dateOnly = (value) => value ? new Date(value).toLocaleDateString("zh-CN", { year: "numeric", month: "numeric", day: "numeric" }) : "";
 
@@ -53,6 +57,7 @@
     const p = progress(goal);
     const last = [...(goal.timeline || [])].pop();
     return `<article class="goal-card" data-goal="${esc(goal.id)}"><header><span class="goal-cat">${esc(label(goal.category))}</span><h2><button class="goal-open" data-goal-open="${esc(goal.id)}">${esc(goal.title)}</button></h2></header>`
+      + momentumHtml(goal)
       + `<p class="goal-measure"><small>怎么算做到</small>${esc(goal.measure)}</p>`
       + (p.total ? `<div class="goal-progress" aria-label="子目标完成 ${p.done} / ${p.total}"><span style="width:${p.percent}%"></span></div><p class="goal-progress-text">子目标 ${p.done} / ${p.total}</p>` : "")
       + (last ? `<p class="goal-last">${esc(dateOnly(last.at))} · ${esc(line(last))}</p>` : "")
@@ -78,12 +83,15 @@
       + `<p class="hint">${c ? esc(describeCheckIn(c)) + "，下次 " + esc(next) + "。" : ""}到点小丑鱼会在聊天里问你一句；只在应用开着时提醒，错过的不补发。</p></div>`;
   }
 
-  function detail(dialog, goal) {
+  function detail(dialog, goal, ideas = []) {
+    const related = (ideas || []).filter((idea) => idea.goalId === goal.id);
     const groups = groupTimeline(goal.timeline);
     const by = (entry) => entry.by === "assistant" ? "小丑鱼记下" : "你";
     dialog.innerHTML = `<form method="dialog" class="goal-detail"><header><div><span class="goal-cat">${esc(label(goal.category))}${goal.status === "completed" ? " · 已完成" : goal.status === "archived" ? " · 已归档" : ""}</span><h2>${esc(goal.title)}</h2></div><button type="button" data-goal-close aria-label="关闭目标详情">×</button></header>`
       + `<dl class="goal-facts"><dt>怎么算做到</dt><dd>${esc(goal.measure)}</dd>${goal.plan ? `<dt>计划</dt><dd>${esc(goal.plan)}</dd>` : ""}${goal.why ? `<dt>为什么</dt><dd>${esc(goal.why)}</dd>` : ""}${goal.dueAt ? `<dt>期限</dt><dd>${esc(dateOnly(goal.dueAt))}</dd>` : ""}</dl>`
       + (goal.milestones.length ? `<fieldset class="goal-milestones"><legend>子目标</legend>${goal.milestones.map((m) => `<label><input type="checkbox" data-milestone="${esc(m.id)}" ${m.done ? "checked" : ""}> ${esc(m.title)}</label>`).join("")}</fieldset>` : "")
+      + momentumHtml(goal)
+      + (related.length ? `<section class="goal-ideas" aria-label="相关点子"><h3>相关点子</h3>${related.map((idea) => `<p><a href="/?idea=${encodeURIComponent(idea.id)}">${esc(idea.title)}</a><small>${esc(idea.rationale)}</small></p>`).join("")}</section>` : "")
       + checkInBlock(goal)
       + `<div class="goal-log"><label for="goalNote">记一条进展</label><div><input id="goalNote" maxlength="500" placeholder="例如：这周读完了第三章"><button type="button" data-goal-log>记下</button></div></div>`
       + `<section class="goal-timeline" aria-label="时间线"><h3>时间线</h3>${groups.map((g) => `<h4>${esc(g.title)}</h4><ol>${g.items.map((e) => `<li data-kind="${esc(e.kind)}"><time>${esc(time(e.at))}</time><span class="goal-who">${esc(by(e))}</span><p><strong>${esc(KIND[e.kind] || "记录")}</strong>${e.text ? " " + esc(e.text) : ""}</p></li>`).join("")}</ol>`).join("")}</section>`
@@ -92,7 +100,7 @@
       + `<p class="form-error" role="alert"></p></form>`;
   }
 
-  const api = { CATEGORIES, label, line, describeCheckIn, groupTimeline, progress, chatHref, render, detail };
+  const api = { CATEGORIES, label, line, describeCheckIn, MOMENTUM, groupTimeline, progress, chatHref, render, detail };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.ClownfishGoals = api;
 })(typeof window !== "undefined" ? window : globalThis);
