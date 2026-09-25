@@ -172,10 +172,23 @@ export function parseIdeas(raw: string, recentTitles: readonly string[], now = n
     seen.add(key);
     const forGoal = String(r.forGoal ?? "").trim();
     const goal = forGoal ? goals.find((g) => g.title === forGoal || normalize(g.title) === normalize(forGoal)) : undefined;
-    out.push({ id: randomUUID(), createdAt: now.toISOString(), expiresAt, title, summary, rationale, deliverable, startPrompt, ...(goal ? { goalId: goal.id } : {}), state: "available" });
+    // 挂在已有目标上的"目标"点子不会是新建目标：按内容认出实际交付什么，认不出就不收。
+    const kind = deliverable === "goal" && goal ? deliverableFromText(title + summary + startPrompt) : deliverable;
+    if (!kind) continue;
+    out.push({ id: randomUUID(), createdAt: now.toISOString(), expiresAt, title, summary, rationale, deliverable: kind, startPrompt, ...(goal ? { goalId: goal.id } : {}), state: "available" });
     if (out.length >= IDEA_LIMITS.perBatch) break;
   }
   return out;
+}
+
+const DELIVERABLE_HINTS: ReadonlyArray<[IdeaDeliverable, RegExp]> = [
+  ["widget", /小工具|打卡|清单|计算器|计时|番茄钟|倒计时|记录表/],
+  ["routine", /定时|每天.{0,6}提醒|每周.{0,8}提醒|提醒你|简报/],
+  ["report", /报告|文档|对照表|提纲|总结|整理一份/],
+  ["skill", /规则|模板/],
+];
+function deliverableFromText(text: string): IdeaDeliverable | null {
+  return DELIVERABLE_HINTS.find(([, pattern]) => pattern.test(text))?.[0] ?? null;
 }
 
 function clip(value: unknown, max: number): string {

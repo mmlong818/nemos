@@ -98,6 +98,12 @@ test("交付前自测：本机没有浏览器时如实记为没做；有浏览�
   const submitted = await selfCheckWidget(form);
   assert.equal(submitted.status, "failed", "submit 没触发时 addedItem 不会被调用，自测就会误报通过");
   assert.match(submitted.detail, /addedItem is not defined/);
+  // 真实使用里番茄钟到点 alert()：在嵌入框里会弹出盖住整个应用的模态框。桥接把它换成页面内的提示条。
+  const alerting = join(dir, "alert.html");
+  writeFileSync(alerting, `<!doctype html><html><body><button onclick="alert('一个番茄完成'); if (!document.querySelector('[role=status]')) throw new Error('没有页面内提示')">完成</button></body></html>`);
+  const toasted = await selfCheckWidget(alerting);
+  assert.equal(toasted.status, "passed", toasted.detail);
+  assert.doesNotMatch(toasted.detail, /确认框/, "alert 不再是浏览器弹框");
 });
 
 test("HTML 交付拆分：页面只要代码块，说明文字留给回复；没写到 </html> 记为没写完", async () => {

@@ -3684,7 +3684,7 @@ async function generateFeedNow(): Promise<{ batch: FeedBatch; posts: FeedPost[] 
         for (const item of result.value) {
           if (!item.url || seen.has(item.url)) continue;
           seen.add(item.url);
-          sources.push({ title: item.title, url: item.url, content: item.content });
+          sources.push({ title: item.title, url: item.url, content: item.content, ...(item.publishedAt ? { publishedAt: item.publishedAt } : {}) });
         }
       }
       sources = sources.slice(0, 12);

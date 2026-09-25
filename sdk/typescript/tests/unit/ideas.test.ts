@@ -35,6 +35,26 @@ test("点子校验：交付类型要在清单里；做不到的（邮件、日�
   assert.deepEqual(parseIdeas("{\"ideas\": []}", []), []);
 });
 
+// 真实使用里：已有"学会自弹自唱《成都》"这个目标，点子却标成"目标"，内容是做一个练琴打卡小工具。
+test("点子标成'目标'却挂在已有目标上：按内容改成实际要交付的类型，看不出来就不收", () => {
+  const goals = [{ id: "g1", title: "学会自弹自唱《成都》" }];
+  const idea = (title: string, summary: string, deliverable = "goal") => ({ title, summary, rationale: "你在练吉他", deliverable, startPrompt: "开始", forGoal: "学会自弹自唱《成都》" });
+  const raw = JSON.stringify({ ideas: [
+    idea("我可以设一个练琴打卡", "建一个练琴打卡小工具，记录每天 20 分钟练习"),
+    idea("我可以每周日提醒你复盘", "每周日晚上 8 点定时提醒你复盘这周练琴"),
+    idea("我可以整理歌词和弦对照表", "整理一份歌词与和弦对照的文档"),
+    idea("我可以把目标定得更清楚", "把这个目标再细化一下"),
+    { ...idea("我可以定一个读书目标", "今年读完 12 本书"), forGoal: "" },
+  ] });
+  const ideas = parseIdeas(raw, [], new Date("2026-09-26T00:00:00Z"), goals);
+  assert.deepEqual(ideas.map((i) => [i.title, i.deliverable, i.goalId ?? null]), [
+    ["我可以设一个练琴打卡", "widget", "g1"],
+    ["我可以每周日提醒你复盘", "routine", "g1"],
+    ["我可以整理歌词和弦对照表", "report", "g1"],
+    ["我可以定一个读书目标", "goal", null],
+  ]);
+});
+
 test("反馈：更多类似留着；不感兴趣要理由并下架；开始过的标出来；过期的不显示；口味进下一次提示", (t) => {
   const file = tempFile(t);
   const store = new IdeaStore(file);

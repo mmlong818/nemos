@@ -107,6 +107,8 @@ test("目标引导：新目标先谈清楚再记，已有目标只记 ta 说的�
   assert.match(draft, /ta 从目标页选了「兴趣」类/);
   assert.match(draft, /每次最多问两个问题/);
   assert.match(draft, /没谈妥之前不要调用 goal_save/);
+  // 真实使用里口径被添了一句"能不看谱（或看谱也行）"，是用户没说过的。
+  assert.match(draft, /口径和计划用 ta 说过的话，不添 ta 没提的条件/);
   const goal = { id: "g1", title: "今年读完 12 本书", measure: "读完 12 本", plan: "每晚 20 分钟", milestones: [], timeline: [] } as unknown as Parameters<typeof goalCoachingAddendum>[1];
   const ongoing = goalCoachingAddendum("interests", goal);
   assert.match(ongoing, /关于目标「今年读完 12 本书」/);

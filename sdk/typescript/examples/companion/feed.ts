@@ -30,7 +30,19 @@ export interface FeedBatch {
   note: string;
   queries: string[];
 }
-export interface FeedCandidateSource { title: string; url: string; content: string }
+export interface FeedCandidateSource { title: string; url: string; content: string; publishedAt?: string }
+
+/** 超过这么多天的来源不算"新消息"。 */
+export const FEED_NEWS_MAX_AGE_DAYS = 30;
+
+/** 来源的发布日期（YYYY-MM-DD）：搜索结果带的，或标题里"发布时间：…"那一段；都没有就是看不出。 */
+export function sourceDate(source: Pick<FeedCandidateSource, "title" | "publishedAt">): string | undefined {
+  const text = `${source.publishedAt ?? ""} ${/发布时间[:：]\s*([0-9-]{8,10})/.exec(source.title)?.[1] ?? ""}`;
+  const match = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(text);
+  if (!match) return undefined;
+  const date = `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+  return Number.isFinite(Date.parse(`${date}T00:00:00Z`)) ? date : undefined;
+}
 
 export const DEFAULT_FEED_PROMPT = "根据我的目标、在做的事和关心的领域，给我几条值得看的：相关的新消息、和目标有关的提醒或建议。简洁直接，方便快速扫一眼，不要标题党。";
 export const FEED_LIMITS = { prompt: 500, posts: 200, batches: 60, perBatch: 5, queries: 3, title: 40, body: 240 } as const;
@@ -190,7 +202,7 @@ export function feedWritePrompt(ctx: FeedContext, sources: FeedCandidateSource[]
       喜欢过: ctx.taste?.liked ?? [], 不想看: ctx.taste?.disliked ?? [],
       想听: ctx.topics?.tellMe || "", 别提: ctx.topics?.neverMention || "",
       联网情况: searchNote,
-      来源: sources.map((s, i) => ({ 编号: i + 1, 标题: s.title, 链接: s.url, 摘要: s.content.slice(0, 400) })),
+      来源: sources.map((s, i) => { const date = sourceDate(s); return { 编号: i + 1, 标题: s.title, 链接: s.url, ...(date ? { 日期: date } : {}), 摘要: s.content.slice(0, 400) }; }),
     }),
   };
 }
@@ -209,16 +221,21 @@ export function parseFeedPosts(raw: string, sources: FeedCandidateSource[], rece
     const body = clip(record.body, FEED_LIMITS.body);
     if (!title || !body) continue;
     const refs = Array.isArray(record.sources) ? record.sources : [];
-    const cited = [...new Set(refs.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 1 && n <= sources.length))]
-      .map((n) => ({ title: sources[n - 1].title || sources[n - 1].url, url: sources[n - 1].url }))
+    const citedSources = [...new Set(refs.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 1 && n <= sources.length))]
+      .map((n) => sources[n - 1])
       .filter((s) => /^https?:\/\//i.test(s.url));
+    const cited = citedSources.map((s) => ({ title: s.title || s.url, url: s.url }));
     // 新闻没有可核对的来源就不收：宁可少一条，也不把模型的记忆当新闻。
     if (kind === "news" && cited.length === 0) continue;
+    // 来源都看得出日期、又都是一个月以前的：是参考资料，不是新消息。有一条看不出日期就不下这个判断。
+    const dates = citedSources.map(sourceDate);
+    const cutoff = new Date(Date.parse(now) - FEED_NEWS_MAX_AGE_DAYS * 86_400_000).toISOString().slice(0, 10);
+    const stale = kind === "news" && dates.every((date) => date !== undefined && date < cutoff);
     const key = normalizeTitle(title);
     if (seen.has(key)) continue;
     seen.add(key);
     const why = clip(record.why, 80);
-    out.push({ id: randomUUID(), batchId, createdAt: now, kind, title, body, sources: cited, ...(why ? { why } : {}) });
+    out.push({ id: randomUUID(), batchId, createdAt: now, kind: stale ? "tip" : kind, title, body, sources: cited, ...(why ? { why } : {}) });
     if (out.length >= FEED_LIMITS.perBatch) break;
   }
   return out;

@@ -305,7 +305,7 @@ export function goalCoachingAddendum(category: string, goal?: PersonalGoal): str
     `【这是一段定目标的对话】ta 从目标页选了「${goalCategoryLabel(category)}」类。`,
     `· 先聊清楚再记：想做到什么、怎么算做到（能核对的口径）、打算怎么做（节奏）。每次最多问两个问题，ta 已经说过的别再问。`,
     `· ta 定的量明显过高时，建议一个更小的起点，由 ta 决定。`,
-    `· 计划用 ta 说过的节奏；ta 没说就问一句，别自己推算后直接记。`,
+    `· 口径和计划用 ta 说过的话，不添 ta 没提的条件（比如"不看谱"）；ta 没说节奏就问一句，别自己推算后直接记。`,
     `· 谈妥后用 goal_save 记下（category 填 ${category}），milestones 里带上 2 到 4 个子目标；记好后用一两句复述，再问要不要定期对一次进度。`,
     `· 没谈妥之前不要调用 goal_save，也不要说"已经帮你记下了"。`,
     CHECK_IN_RULE,

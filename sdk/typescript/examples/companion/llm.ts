@@ -192,6 +192,8 @@ export interface CompanionWebSearchItem {
   title: string;
   content: string;
   url: string;
+  /** 搜索服务给的发布日期；没给就没有。 */
+  publishedAt?: string;
 }
 
 export async function searchWeb(apiKey: string, rawQuery: string, signal?: AbortSignal): Promise<CompanionWebSearchItem[]> {
@@ -204,11 +206,12 @@ export async function searchWeb(apiKey: string, rawQuery: string, signal?: Abort
     signal,
   });
   if (!resp.ok) throw new Error(`搜索失败 HTTP ${resp.status}`);
-  const data = await resp.json() as { search_result?: Array<{ title?: string; content?: string; link?: string }> };
+  const data = await resp.json() as { search_result?: Array<{ title?: string; content?: string; link?: string; publish_date?: string }> };
   return (data.search_result ?? []).slice(0, 8).map((item) => ({
     title: String(item.title || "").trim(),
     content: String(item.content || "").trim(),
     url: String(item.link || "").trim(),
+    ...(item.publish_date ? { publishedAt: String(item.publish_date).trim() } : {}),
   }));
 }
 

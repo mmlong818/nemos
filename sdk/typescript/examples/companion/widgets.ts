@@ -27,6 +27,7 @@ export const WIDGET_CONTRACT = "如果要的是可交互的小工具（勾选清
 /**
  * 注入到构件页面最前面的桥接脚本。页面在沙箱里（没有同源身份），浏览器自带的 localStorage 会直接报错，
  * 所以这里换上一个替身：读写落在"信封"里，由外层小丑鱼页面代存到本机。
+ * alert 在嵌入框里会弹出盖住整个应用的模态框：换成页面底部几秒后自动消失的提示条。confirm / prompt 要同步返回值，保持原样。
  *
  * 信封 { __clownfish: 1, state, storage }：state 给 clownfishState 用，storage 给 localStorage 替身用。
  * 服务端返回页面时直接把上次存的信封嵌进来，页面一加载就能同步读到，不必等消息往返。
@@ -42,6 +43,7 @@ function makeStorage(backing,save){var api={getItem:function(k){k=String(k);retu
 var memory={};
 try{Object.defineProperty(window,"localStorage",{configurable:true,value:makeStorage(function(){return env.storage;},persist)});}catch(e){}
 try{Object.defineProperty(window,"sessionStorage",{configurable:true,value:makeStorage(function(){return memory;},function(){})});}catch(e){}
+window.alert=function(m){var d=document.createElement("div");d.setAttribute("role","status");d.textContent=String(m===undefined?"":m);d.style.cssText="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);max-width:90%;padding:10px 14px;border-radius:8px;background:#1f2d2a;color:#fff;font:14px/1.4 system-ui,sans-serif;z-index:2147483647;box-shadow:0 6px 18px rgba(0,0,0,.2)";(document.body||document.documentElement).appendChild(d);setTimeout(function(){d.remove();},4000);};
 window.clownfishState={hosted:hosted,load:function(){return Promise.resolve(env.state===undefined?null:env.state);},save:function(state){env.state=state===undefined?null:JSON.parse(JSON.stringify(state));persist();}};
 function size(){post({type:"clownfish-widget-size",height:Math.ceil(document.documentElement.scrollHeight)});}
 window.addEventListener("load",function(){size();if(window.ResizeObserver)new ResizeObserver(size).observe(document.documentElement);});
