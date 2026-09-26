@@ -164,3 +164,19 @@ test("official OpenAI media probes become routable per capability without blessi
   assert.throws(() => validateFixedAssignment({ mode: "fixed", ref: { connectionId: "official", modelId: "gpt-transcribe", capability: "vision" } }, resources), /不匹配|证据/);
   assert.throws(() => validateFixedAssignment({ mode: "fixed", ref: { connectionId: "other", modelId: "gpt-5.4", capability: "vision" } }, resources), /不匹配|证据/);
 });
+
+// 只配智谱的用户原来用不了语音输入：没有适配器登记、精选目录没有 glm-asr-2512，
+// 维护清单还会在最后一轮把验证过的记录盖回"接入中"。
+test("智谱官方端点只接语音识别；glm-asr-2512 验证通过后可路由、不被维护清单盖掉、也不被当成文字模型", () => {
+  const zhipu = "https://open.bigmodel.cn/api/paas/v4";
+  assert.equal(providerCapabilityAdapterSupport("zhipu", zhipu, "speech_to_text").state, "available");
+  for (const capability of ["vision", "text_to_speech", "image_generation"] as const) assert.equal(providerCapabilityAdapterSupport("zhipu", zhipu, capability).state, "integration_pending", capability);
+  assert.equal(providerCapabilityAdapterSupport("custom", "https://proxy.example.com/v4", "speech_to_text").state, "integration_pending");
+  const before = allResourcesForConnection({ id: "zp", provider: "zhipu", baseUrl: zhipu, catalog: [{ id: "glm-asr-2512" }], checks: {}, enabledModels: ["glm-asr-2512"] });
+  assert.equal(explainAutomaticRoute("speech_to_text", before).selected ?? null, null, "没验证过不能路由");
+  assert.ok(!before.some((r) => r.modelId === "glm-asr-2512" && r.capabilities.includes("chat")), "asr 不是文字模型");
+  const checks = { "speech_to_text:glm-asr-2512": { modelId: "glm-asr-2512", capability: "speech_to_text" as const, checkedAt: new Date().toISOString(), status: "passed" as const } };
+  const after = allResourcesForConnection({ id: "zp", provider: "zhipu", baseUrl: zhipu, catalog: [], checks: {}, enabledModels: ["glm-asr-2512"], capabilityChecks: checks });
+  assert.equal(explainAutomaticRoute("speech_to_text", after).selected?.modelId, "glm-asr-2512");
+  assert.equal(after.find((r) => r.modelId === "glm-asr-2512" && r.capabilities.includes("speech_to_text"))?.evidence.source, "explicit-check");
+});

@@ -90,11 +90,20 @@ const OPENAI_OFFICIAL_CAPABILITY_ADAPTERS: Partial<Record<ModelCapability, Model
   text_to_speech: "openai-audio-speech", image_generation: "openai-images-generations",
 };
 
+/** 智谱官方端点只接了语音识别：/audio/transcriptions 与 OpenAI 同形（openai-media.ts 放行同一路径）。 */
+const ZHIPU_OFFICIAL_CAPABILITY_ADAPTERS: Partial<Record<ModelCapability, ModelExecutionAdapter>> = {
+  speech_to_text: "openai-audio-transcriptions",
+};
+
 /** Execution support is provider and exact-endpoint scoped. Compatible gateways start unknown. */
 export function providerCapabilityAdapterSupport(provider: CompanionModelProvider, baseUrl: string, capability: ModelCapability): CapabilityAdapterSupport {
   if (provider === "openai" && normalizedEndpoint(baseUrl) === "https://api.openai.com/v1") {
     const adapter = OPENAI_OFFICIAL_CAPABILITY_ADAPTERS[capability];
     if (adapter) return { capability, state: "available", adapters: [adapter], reason: "OpenAI 官方端点已接入；需对当前账号和型号分别验证此能力。" };
+  }
+  if (provider === "zhipu" && normalizedEndpoint(baseUrl) === "https://open.bigmodel.cn/api/paas/v4") {
+    const adapter = ZHIPU_OFFICIAL_CAPABILITY_ADAPTERS[capability];
+    if (adapter) return { capability, state: "available", adapters: [adapter], reason: "智谱官方端点已接入；需对当前账号和型号验证此能力。" };
   }
   return capabilityAdapterSupport(capability);
 }
@@ -138,7 +147,7 @@ export interface CapabilityAssignments {
 }
 
 const DEFAULT_ASSIGNMENT: CapabilityAssignment = Object.freeze({ mode: "auto" });
-const SPECIALIZED_NON_CHAT = /(?:audio|realtime|transcrib|tts|whisper|image|dall-e|sora|embedding|moderation|codex|deep-research|search-preview|video)/i;
+const SPECIALIZED_NON_CHAT = /(?:audio|realtime|transcrib|tts|whisper|asr|image|dall-e|sora|embedding|moderation|codex|deep-research|search-preview|video)/i;
 const OBSOLETE = /(?:^|[-_.])(deprecated|obsolete|legacy|unavailable|disabled)(?:$|[-_.])/i;
 
 export interface CuratedModelEntry {
@@ -182,6 +191,7 @@ export const CURATED_MODEL_CATALOG: CuratedModelCatalog = {
     { provider: "zhipu", officialEndpoints: ["https://open.bigmodel.cn/api/paas/v4"], sourceUrl: "https://docs.bigmodel.cn/cn/guide/develop/openai/introduction", models: [
       curated("glm-5.3", "primary", "https://docs.bigmodel.cn/cn/guide/develop/openai/introduction", "openai-chat-completions"),
       curated("glm-5.3-flash", "fast", "https://docs.bigmodel.cn/llms.txt", "openai-chat-completions", { recommended: false, capabilities: ["vision"], execution: { adapter: "openai-chat-completions", status: "integration_pending" } }),
+      curated("glm-asr-2512", "balanced", "https://docs.bigmodel.cn/llms.txt", "openai-audio-transcriptions", { recommended: false, capabilities: ["speech_to_text"] }),
     ] },
     { provider: "openai", officialEndpoints: ["https://api.openai.com/v1"], sourceUrl: "https://developers.openai.com/api/docs/models", models: [
       curated("gpt-5.4", "primary", "https://developers.openai.com/api/docs/models", "openai-responses", { capabilities: ["chat", "vision"] }),
@@ -389,7 +399,12 @@ export function allResourcesForConnection(input: {
   }
   for (const item of maintainedModelResources(input.provider)) {
     const resource = { ...item, connectionId: input.id, enabled: enabledModels.has(item.modelId) };
-    for (const capability of resource.capabilities) byKey.set(`${resource.modelId}:${capability}`, resource);
+    for (const capability of resource.capabilities) {
+      // 维护清单只是型号事实：同一型号同一能力已经显式验证过，就不能被它盖回"接入中"。
+      const key = `${resource.modelId}:${capability}`;
+      if (byKey.get(key)?.evidence.source === "explicit-check") continue;
+      byKey.set(key, resource);
+    }
   }
   return [...byKey.values()];
 }

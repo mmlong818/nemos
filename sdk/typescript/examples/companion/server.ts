@@ -124,7 +124,7 @@ import {
   type QuickSetupProvider,
   type QuickSetupTarget,
 } from "./model-quick-setup.js";
-import { openAIImage, openAISpeech, openAITranscribe, openAIVision, type OpenAIMediaCapability } from "./openai-media.js";
+import { openAIImage, openAISpeech, openAITranscribe, openAIVision, speechProbeWav, type OpenAIMediaCapability } from "./openai-media.js";
 import { PROVIDER_CATALOG, officialProviderEndpoint, providerCatalogEntry, type ProviderId } from "./provider-catalog.js";
 import { discoverOfficialProviderCatalog, resolveOfficialProviderBaseUrl } from "./provider-catalog-discovery.js";
 import { COMPANION_MEMORY_FEATURES } from "./memory-config.js";
@@ -1951,6 +1951,8 @@ function modelConnectionStatus(): Record<string, unknown> {
   return {
     live: llm.live,
     label: llm.label,
+    // 聊天页据此显示麦克风：有已验证、可路由的语音识别模型才显示。
+    speechToText: Boolean(explainAutomaticRoute("speech_to_text", modelVaultResources()).selected),
     ...connection,
     endpointWarning,
     dailyChatModel: modelConnection ? dailyChatModelForConnection(modelConnection) : "",
@@ -2160,8 +2162,7 @@ async function verifyQuickSetupTarget(target: QuickSetupTarget): Promise<{ passe
     const connection = runtimeModelConnection(record.connection)!;
     if (target.capability === "vision") await openAIVision(connection, target.modelId, "只回答 test", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
     else if (target.capability === "speech_to_text") {
-      const wav = Buffer.from("UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=", "base64");
-      await openAITranscribe(connection, target.modelId, wav, "audio/wav");
+      await openAITranscribe(connection, target.modelId, speechProbeWav(), "audio/wav", undefined, { allowEmpty: true });
     } else if (target.capability === "text_to_speech") await openAISpeech(connection, target.modelId, "测试", { voice: "alloy", format: "mp3", speed: 1 });
     else await openAIImage(connection, target.modelId, "A single small blue circle on white background", { size: "1024x1024", quality: "low" });
     const check = { connectionRevision: record.connection.connectionRevision, modelId: target.modelId, capability: target.capability, checkedAt: new Date().toISOString(), status: "passed" as const, detail: "已通过一次合成最小能力验证。", latencyMs: Date.now() - startedAt };
@@ -6183,8 +6184,7 @@ const server = createServer(async (req, res) => {
         const connection = runtimeModelConnection(targetRecord.connection)!;
         if (capability === "vision") await openAIVision(connection, modelId, "只回答 test", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
         else if (capability === "speech_to_text") {
-          const wav = Buffer.from("UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=", "base64");
-          await openAITranscribe(connection, modelId, wav, "audio/wav");
+          await openAITranscribe(connection, modelId, speechProbeWav(), "audio/wav", undefined, { allowEmpty: true });
         } else if (capability === "text_to_speech") await openAISpeech(connection, modelId, "测试", { voice: "alloy", format: "mp3", speed: 1 });
         else await openAIImage(connection, modelId, "A single small blue circle on white background", { size: "1024x1024", quality: "low" });
         const check = { connectionRevision: targetRecord.connection.connectionRevision, modelId, capability, checkedAt: new Date().toISOString(), status: "passed" as const, detail: "已通过当前连接的显式最小能力检查。", latencyMs: Date.now() - started };
@@ -6954,10 +6954,20 @@ const server = createServer(async (req, res) => {
       try {
         const route = resolveMediaRoute("speech_to_text");
         const language = String(req.headers["x-clownfish-language"] || "auto");
-        const text = await openAITranscribe(route.record.connection, route.modelId, audio, String(mime), language);
+        const transcribe = () => openAITranscribe(route.record.connection, route.modelId, audio, String(mime), language);
+        // 真实使用里经本机代理转发时偶发网络失败，紧接着再发就好：网络类错误多试一次，其余不重试。
+        const text = await transcribe().catch((error) => {
+          if (companionModelFailureDiagnostic(error)?.category !== "network") throw error;
+          return transcribe();
+        });
         send(res, 200, { text, model: route.modelId });
       } catch (e) {
-        send(res, 400, { error: e instanceof Error ? e.message : String(e) });
+        // 原来一律回 400 且不带说明，界面只能显示"请求无法完成"：网络与服务商错误换成可展示的原因，我们自己抛的原样给。
+        const diagnostic = companionModelFailureDiagnostic(e);
+        const userMessage = diagnostic?.category || diagnostic?.httpStatus
+          ? modelConnectionUserMessage(e, "request").replace(/^模型请求失败/, "语音识别失败")
+          : e instanceof Error ? e.message : String(e);
+        send(res, e instanceof Error && e.name === "IntegrationPendingError" ? 409 : 400, { error: "speech_to_text_failed", userMessage });
       }
       return;
     }

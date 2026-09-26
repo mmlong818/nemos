@@ -7,19 +7,30 @@ const OFFICIAL = "https://api.openai.com/v1";
 const AUDIO_TYPES = new Map([["audio/webm", "webm"], ["audio/wav", "wav"], ["audio/mpeg", "mp3"], ["audio/mp4", "m4a"], ["audio/ogg", "ogg"]]);
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
-function assertOfficial(connection: CompanionModelConnection): void {
-  if (connection.provider !== "openai" || connection.baseUrl.replace(/\/+$/, "") !== OFFICIAL) throw new Error("此能力仅对 OpenAI 官方端点开放；兼容服务需要分别验证适配器。");
+/** 智谱官方端点：只接了语音识别，接口与 OpenAI 的 /audio/transcriptions 同形。 */
+export const ZHIPU_OFFICIAL = "https://open.bigmodel.cn/api/paas/v4";
+/** 每个官方端点放行哪些路径：兼容网关与未验证的能力一律不放行。 */
+const OFFICIAL_MEDIA_PATHS: ReadonlyArray<{ provider: string; base: string; paths: readonly string[] }> = [
+  { provider: "openai", base: OFFICIAL, paths: ["/responses", "/audio/transcriptions", "/audio/speech", "/images/generations"] },
+  { provider: "zhipu", base: ZHIPU_OFFICIAL, paths: ["/audio/transcriptions"] },
+];
+
+function officialBase(connection: CompanionModelConnection, path: string): string {
+  const base = connection.baseUrl.replace(/\/+$/, "");
+  const entry = OFFICIAL_MEDIA_PATHS.find((item) => item.provider === connection.provider && item.base === base);
+  if (!entry || !entry.paths.includes(path)) throw new Error("此能力仅对已接入的官方端点开放；兼容服务需要分别验证适配器。");
+  return entry.base;
 }
 async function request(connection: CompanionModelConnection, path: string, init: RequestInit, timeoutMs = 30_000): Promise<Response> {
-  assertOfficial(connection);
+  const base = officialBase(connection, path);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await undiciFetch(`${OFFICIAL}${path}`, {
+    const response = await undiciFetch(`${base}${path}`, {
       ...init, signal: controller.signal, dispatcher: connection.transportDispatcher,
       headers: { Authorization: `Bearer ${connection.apiKey}`, ...(init.headers || {}) },
     });
-    if (!response.ok) throw new CompanionModelHttpError(response.status, "OpenAI 能力请求", safeProviderRequestId(response.headers));
+    if (!response.ok) throw new CompanionModelHttpError(response.status, connection.provider === "zhipu" ? "智谱能力请求" : "OpenAI 能力请求", safeProviderRequestId(response.headers));
     return response as unknown as Response;
   } finally { clearTimeout(timer); }
 }
@@ -59,18 +70,65 @@ export async function openAIVision(connection: CompanionModelConnection, model: 
   return text;
 }
 
-export async function openAITranscribe(connection: CompanionModelConnection, model: string, audio: Buffer, mime: string, language?: string): Promise<string> {
+/**
+ * 连接验证用的合成音频：16kHz 单声道 16 位、0.6 秒低音量正弦波。
+ * 原来用的是只有文件头、没有一个采样点的 WAV，服务商会当成空音频直接拒绝，验证永远过不了。
+ */
+export function speechProbeWav(): Buffer {
+  const rate = 16_000, samples = Math.round(rate * 0.6);
+  const data = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i++) data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 3000), i * 2);
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii"); header.writeUInt32LE(36 + data.length, 4); header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii"); header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(rate, 24); header.writeUInt32LE(rate * 2, 28); header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34);
+  header.write("data", 36, "ascii"); header.writeUInt32LE(data.length, 40);
+  return Buffer.concat([header, data]);
+}
+
+/**
+ * PCM WAV 规整成标准 44 字节头（fmt 16 字节 + data）。
+ * 真实调用：Windows 语音合成的 WAV 格式块是 18 字节，智谱直接回 400；ffmpeg 转出的 WAV 还带 LIST 元数据块。
+ * 不是 PCM、或块结构读不通的原样返回，交给服务商自己判断。
+ */
+export function normalizePcmWav(audio: Buffer): Buffer {
+  if (audio.length < 12 || audio.toString("ascii", 0, 4) !== "RIFF" || audio.toString("ascii", 8, 12) !== "WAVE") return audio;
+  let fmt: Buffer | undefined, data: Buffer | undefined;
+  for (let offset = 12; offset + 8 <= audio.length;) {
+    const id = audio.toString("ascii", offset, offset + 4), size = audio.readUInt32LE(offset + 4);
+    const end = offset + 8 + size;
+    if (end > audio.length) { if (id === "data") data = audio.subarray(offset + 8); break; }
+    if (id === "fmt ") fmt = audio.subarray(offset + 8, end);
+    else if (id === "data") data = audio.subarray(offset + 8, end);
+    offset = end + (size % 2);
+  }
+  if (!fmt || fmt.length < 16 || !data || fmt.readUInt16LE(0) !== 1) return audio;
+  if (audio.length === 44 + data.length && audio.readUInt32LE(16) === 16) return audio;
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii"); header.writeUInt32LE(36 + data.length, 4); header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii"); header.writeUInt32LE(16, 16); fmt.copy(header, 20, 0, 16);
+  header.write("data", 36, "ascii"); header.writeUInt32LE(data.length, 40);
+  return Buffer.concat([header, data]);
+}
+
+/**
+ * 语音识别：OpenAI 与智谱官方端点同一接口形状（multipart 的 model + file，返回 { text }）。
+ * allowEmpty 只给连接验证用：验证用的是极短的合成音频，识别不出字不代表接口不通。
+ */
+export async function openAITranscribe(connection: CompanionModelConnection, model: string, audio: Buffer, mime: string, language?: string, options: { allowEmpty?: boolean } = {}): Promise<string> {
   const type = String(mime).split(";")[0]!.toLowerCase();
   const ext = AUDIO_TYPES.get(type);
   if (!ext || !audio.length || audio.length > 12 * 1024 * 1024 || !validAudioSignature(audio, type)) throw new Error("音频格式不支持、文件签名无效、为空或超过 12MB 限制。");
   const form = new FormData();
   form.set("model", model);
-  form.set("file", new Blob([new Uint8Array(audio)], { type }), `audio.${ext}`);
+  const payload = type === "audio/wav" ? normalizePcmWav(audio) : audio;
+  form.set("file", new Blob([new Uint8Array(payload)], { type }), `audio.${ext}`);
   if (language && language !== "auto" && /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(language)) form.set("language", language);
   const response = await request(connection, "/audio/transcriptions", { method: "POST", body: form as never }, 60_000);
-  const json = await response.json() as { text?: string };
-  const text = String(json.text || "").trim();
-  if (!text) throw new Error("OpenAI 语音识别响应格式无效。");
+  const json = await response.json() as { text?: unknown };
+  if (typeof json.text !== "string") throw new Error("语音识别响应格式无效。");
+  const text = json.text.trim();
+  if (!text && !options.allowEmpty) throw new Error("没有识别出文字。");
   return text;
 }
 

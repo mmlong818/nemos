@@ -3,7 +3,7 @@
 ## 0.7.6
 
 - Provides the Clownfish local-first work application with conversations, matters, tasks, skills, files, deliverables, automations, Pantheon, and user-controlled long-term memory.
-- Supports OpenAI and Zhipu BigModel key setup with explicit connection checks, capability assignment, and local credential protection on Windows.
+- Supports OpenAI and Zhipu BigModel key setup with explicit connection checks, capability assignment, and local credential protection on Windows; Zhipu speech-to-text powers voice dictation into the input.
 - Includes an auditable Agent runtime with bounded execution, approvals, cancellation, structured step receipts, model-call records, and resumable task state.
 - Keeps source files intact while creating editable working copies and new export artifacts for supported document workflows.
 - Greets new users with what Clownfish can actually do and three starter actions it can carry out in chat.

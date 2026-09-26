@@ -42,7 +42,7 @@ The current application brings these areas together:
 
 ### One assistant for talking and doing
 
-Clownfish's persona is an editable setting: renaming it changes how it refers to itself, while "Clownfish" remains the app name; saying "call you … from now on" in chat renames it after your approval. Conversation and task work share one speaking style; during tasks it delivers results directly instead of promising to "send it later", and it names what is missing when information is insufficient. When you need to choose, a reply can end with two to four quick-reply buttons. Typing `/` in the input opens a command menu: start a new conversation, open conversation history or the activity rail, see how many model calls ran today and their usage, or jump to goals, the feed, ideas, and "keep an eye on it"; commands run locally and are not sent to the model.
+Clownfish's persona is an editable setting: renaming it changes how it refers to itself, while "Clownfish" remains the app name; saying "call you … from now on" in chat renames it after your approval. Conversation and task work share one speaking style; during tasks it delivers results directly instead of promising to "send it later", and it names what is missing when information is insufficient. When you need to choose, a reply can end with two to four quick-reply buttons. Typing `/` in the input opens a command menu: start a new conversation, open conversation history or the activity rail, see how many model calls ran today and their usage, or jump to goals, the feed, ideas, and "keep an eye on it"; commands run locally and are not sent to the model. Once speech-to-text is verified, a microphone appears on the input: dictated text is filled in for you to edit before sending.
 
 The activity rail on the assistant page has four tabs: **Activity** (background results, taken from recorded status rather than model-written summaries), **Approvals** (pending actions you can allow once or for the session), **Upcoming** (next scheduled tasks and goal check-ins), and **Identity** (assistant settings, memory, and work guidelines).
 
@@ -148,7 +148,7 @@ What each provider handles:
 | Provider | Capabilities |
 | --- | --- |
 | OpenAI | Text, vision, speech-to-text, text-to-speech, and image generation; actual readiness depends on the account, model, permission, and verification result |
-| Zhipu BigModel | Text tasks and web search |
+| Zhipu BigModel | Text tasks, web search, and speech-to-text |
 
 ## Data, privacy, and security
 

@@ -4147,7 +4147,7 @@ function emptyStateHtml() {
       + '    <p>' + esc(content.desc) + '</p>'
       + '    <p class="wb-assistant-role-hint">直接说出目标，让' + esc(assistantName) + '帮你推进。需要复用一种工作方法？<a href="/skills">查看技能库 →</a></p>'
       + (assistantName === "小丑鱼" ? '    <p class="wb-assistant-role-hint">想换个称呼？<button type="button" class="link-button" data-edit-persona>给 ta 起个名字、定个说话方式</button></p>' : '')
-      + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><select id="heroModelSelect" aria-label="任务模型" hidden></select><button type="button" id="heroFileBtn" class="hero-file-btn' + (state.pendingFile ? ' on' : '') + '" aria-label="上传文件" title="上传文件（可与第一句话一起发送）">上传文件</button><small id="heroAttachment" class="hero-attachment" aria-live="polite">' + (state.pendingFile ? esc('已附加：' + state.pendingFile.name) : '') + '</small><small id="heroModelStatus" role="status" aria-live="polite"></small><button type="button" id="heroSend">发送</button></div></div>'
+      + '    <div class="hero-composer"><textarea id="heroTxt" rows="3" placeholder="输入内容，Enter 发送，Shift+Enter 换行"></textarea><div class="hero-composer-bar"><select id="heroModelSelect" aria-label="任务模型" hidden></select><button type="button" id="heroFileBtn" class="hero-file-btn' + (state.pendingFile ? ' on' : '') + '" aria-label="上传文件" title="上传文件（可与第一句话一起发送）">上传文件</button><button type="button" id="heroMicBtn" class="hero-file-btn" aria-label="语音输入" title="点一下开始说，再点一下结束，识别出的文字会填进输入框"' + (state.speechToText ? '' : ' hidden') + '>说话</button><small id="heroAttachment" class="hero-attachment" aria-live="polite">' + (state.pendingFile ? esc('已附加：' + state.pendingFile.name) : '') + '</small><small id="heroModelStatus" role="status" aria-live="polite"></small><button type="button" id="heroSend">发送</button></div></div>'
       + '  </article>'
       + '</section>';
   }
@@ -5679,34 +5679,70 @@ async function toggleToolRecording() {
   }
 }
 
-// 语音输入：点麦克风开始录音，再点结束 → ASR 转文字 → 作为语音消息发送
-let mediaRec = null, recChunks = [];
-async function toggleRec() {
+// 麦克风只在有已验证的语音识别模型时显示：原来写死 hidden，接上智谱后也从没露出来过。
+function syncVoiceButton(status) {
+  const button = $("#vbtn");
+  if (!button || !status || typeof status.speechToText !== "boolean") return;
+  state.speechToText = status.speechToText;
+  button.hidden = !status.speechToText;
+  const hero = document.querySelector("#heroMicBtn");
+  if (hero) hero.hidden = !status.speechToText;
+  button.title = "语音输入：点一下开始说，再点一下结束，识别出的文字会填进输入框";
+}
+// 听写：识别出的文字填进输入框，由你改好再发；原来识别完立刻当语音消息发出，认错了没机会改。
+function insertDictation(text) {
+  const input = document.querySelector("#heroTxt") || $("#txt");
+  const current = input.value;
+  input.value = current + (current && !/\s$/.test(current) ? " " : "") + text;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+// 语音输入：点麦克风开始录音，再点结束 → 语音识别 → 文字填进输入框。
+// 空对话时是首页大输入框上的"说话"按钮，有对话后是底部的麦克风图标，两个走同一套录音。
+let mediaRec = null, recChunks = [], micButton = null;
+function setMicState(mode, progress = "") {
+  const button = micButton;
+  if (!button) return;
+  if (button.id === "heroMicBtn") {
+    button.textContent = mode === "rec" ? "结束" : mode === "busy" ? "识别中…" + progress : "说话";
+    button.classList.toggle("on", mode === "rec");
+    return;
+  }
+  button.classList.toggle("rec", mode === "rec");
+  setIcon(button, mode === "rec" ? "square" : mode === "busy" ? "loader" : "mic", mode === "busy" ? progress : "");
+}
+async function toggleRec(event) {
   if (mediaRec && mediaRec.state === "recording") { mediaRec.stop(); return; }
   if (!state.target) { alert("先打开一个对话"); return; }
+  micButton = (event && event.currentTarget) || $("#vbtn");
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRec = new MediaRecorder(stream); recChunks = [];
     mediaRec.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
     mediaRec.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop());
-      $("#vbtn").classList.remove("rec"); setIcon($("#vbtn"), "mic");
+      setMicState("idle");
       const blob = new Blob(recChunks, { type: (mediaRec && mediaRec.mimeType) || "audio/webm" });
       if (blob.size < 1200) return;
-      setIcon($("#vbtn"), "loader");
+      setMicState("busy");
       try {
         const wav = await blobToWav(blob);
-        const text = await transcribeWav(wav, (i, n) => { setIcon($("#vbtn"), "loader", n > 1 ? `${i}/${n}` : ""); });
-        setIcon($("#vbtn"), "mic");
-        if (text) sendMsg(true, text);
+        const text = await transcribeWav(wav, (i, n) => setMicState("busy", n > 1 ? `${i}/${n}` : ""));
+        setMicState("idle");
+        if (text) insertDictation(text);
         else alert("没听清，再说一次？");
-      } catch (e) { setIcon($("#vbtn"), "mic"); alert("识别失败：" + e); }
+      } catch (e) { setMicState("idle"); alert("识别失败：" + (e && e.message ? e.message : e)); }
     };
     mediaRec.start();
-    $("#vbtn").classList.add("rec"); setIcon($("#vbtn"), "square");
+    setMicState("rec");
   } catch (e) { alert("麦克风打不开（需 localhost 或 https + 授权）：" + e); }
 }
 $("#vbtn").onclick = toggleRec;
+document.addEventListener("click", (event) => {
+  const hero = event.target.closest && event.target.closest("#heroMicBtn");
+  if (hero) toggleRec({ currentTarget: hero });
+});
 
 $("#imgbtn").onclick = () => $("#imgfile").click();
 $("#filebtn").onclick = () => $("#chatfile").click();
@@ -7595,6 +7631,7 @@ async function refreshLLMStatus(hydrateForm = false) {
   try {
     const s = await api("/api/llm");
     renderModelConnectionStatus(s, hydrateForm);
+    syncVoiceButton(s);
     return s;
   } catch {
     $("#sm-model-summary").textContent = "连接状态读取失败";

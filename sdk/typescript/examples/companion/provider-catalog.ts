@@ -140,7 +140,7 @@ export const PROVIDER_CATALOG = Object.freeze({
       officialEndpoints: ["https://open.bigmodel.cn/api/paas/v4"], defaultEndpoint: "https://open.bigmodel.cn/api/paas/v4", sourceUrls: [ZHIPU_MODELS, "https://docs.bigmodel.cn/llms.txt"],
       discoveryMode: "staticCuratedThenProbe", catalogAdapter: "none", credentialFields: [key()], settingFields: [],
       models: [model("glm-5.3", ["chat"], ZHIPU_MODELS, { recommended: true }), model("glm-5.3-flash", ["vision"], ZHIPU_MODELS), model("glm-5.3-flashx", ["vision"], ZHIPU_MODELS), model("glm-asr-2512", ["speech_to_text"], ZHIPU_MODELS), model("glm-tts", ["text_to_speech"], ZHIPU_MODELS), model("glm-image", ["image_generation"], ZHIPU_MODELS), model("cogvideox-3", ["video_generation"], ZHIPU_MODELS), model("embedding-3", ["embedding"], ZHIPU_MODELS)],
-      adapterStatus: { chat: "wired", vision: "integration_pending", speech_to_text: "integration_pending", text_to_speech: "integration_pending", image_generation: "integration_pending", video_generation: "integration_pending", embedding: "integration_pending" },
+      adapterStatus: { chat: "wired", vision: "integration_pending", speech_to_text: "wired", text_to_speech: "integration_pending", image_generation: "integration_pending", video_generation: "integration_pending", embedding: "integration_pending" },
       verificationPolicy: { catalogIsAuthenticationOnly: true, automaticPaidProbe: false, note: "没有通用 models API；只载入官方静态候选，用户确认后才付费验证。" }, note: "静态候选不是账号可用性证明。",
     },
     {
