@@ -201,6 +201,7 @@ import { attachScheduledTaskHandoffProjection, FileScheduledTaskHandoffStore } f
 import { PersonalWorkStore, PersonalWorkError, type PersonalMatter, type LearningProposal } from "./personal-work.js";
 import { GOAL_CATEGORIES, goalCoachingAddendum, type GoalInput } from "./goals.js";
 import { hasWidgetIntent } from "./widgets.js";
+import { onboardingMessages } from "./onboarding.js";
 import { ProactiveError, ProactiveStore, feedDue, inQuietHours } from "./proactive.js";
 import { IdeaError, IdeaStore, ideaPrompt, parseIdeas, type IdeaCard } from "./ideas.js";
 import { WatchError, WatchStore, parseWatchCheck, watchCheckPrompt } from "./watch.js";
@@ -3006,17 +3007,8 @@ function saveUserProfile(next: Partial<UserProfile>): UserProfile {
   return publicUserProfile();
 }
 
-const OFFICIAL_ONBOARDING_COPY = [
-  "{name}，你好，我是小丑鱼。",
-  "你可以直接告诉我想聊什么或想完成什么。我会回答、调用能力，并把结果留在这段对话里。",
-  "需要不同专业判断时，我会按需邀请可行性顾问、产品顾问、决策顾问等功能型专家；他们不会默认占据你的首页。",
-  "你的长期偏好、任务记录和交付物默认保存在本机。你可以随时查看、修正或清除。",
-  "现在直接说一件你想完成的事就可以。",
-] as const;
-
 function officialOnboardingMessages(profile: UserProfile): string[] {
-  const name = profile.spokenName || profile.displayName || "朋友";
-  return OFFICIAL_ONBOARDING_COPY.map((line) => line.replaceAll("{name}", name));
+  return onboardingMessages(profile.spokenName || profile.displayName || "朋友");
 }
 
 function completeOnboarding(displayName: unknown): { profile: UserProfile; messages: string[] } {
