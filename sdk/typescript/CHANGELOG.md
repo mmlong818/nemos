@@ -1,7 +1,11 @@
 # Current release
 
-## 0.7.6
+## 0.7.7
 
+- Redesigns Models & Services as four parts: what is in use now, service accounts, which model each capability uses, and a collapsed advanced area; capabilities that are not wired yet are no longer shown.
+- Brings Pantheon onto the shared navigation, theme, and page frame used by every other page.
+- Smooths the first run: the input stays usable while the welcome plays, a notice above the input explains that no model is connected and links to setup, service cards link to where keys are issued, and a rejected key explains what to do instead of showing a bare HTTP status.
+- Adds an opt-in update check: only after the user agrees, Clownfish reads the latest published version number from GitHub at most every 12 hours and shows new versions in the sidebar; the current version and a feedback link are always visible, and the check can be turned off under Data & Privacy.
 - Provides the Clownfish local-first work application with conversations, matters, tasks, skills, files, deliverables, automations, Pantheon, and user-controlled long-term memory.
 - Supports OpenAI and Zhipu BigModel key setup with explicit connection checks, capability assignment, and local credential protection on Windows; Zhipu speech-to-text powers voice dictation into the input.
 - Includes an auditable Agent runtime with bounded execution, approvals, cancellation, structured step receipts, model-call records, and resumable task state.
