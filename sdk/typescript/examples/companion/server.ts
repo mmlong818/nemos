@@ -966,6 +966,12 @@ const companionAgentTools = createCompanionAgentToolProvider({
   goalSession: (sessionId) => goalSessions.get(sessionId),
   bindGoalSession: (sessionId, goalId) => { const session = goalSessions.get(sessionId); if (session) goalSessions.set(sessionId, { ...session, goalId }); },
   watch: () => ({ store: watchStore, searchReady: () => !!liveSearchKey() }),
+  renamePersona: (name) => {
+    const previous = engine.listPersonas().find((persona) => persona.id === "clownfish")?.name || "小丑鱼";
+    engine.updatePersona("clownfish", { name });
+    savePersonaOverrides();
+    return { previous, name };
+  },
   enqueueOrchestration: (input, idempotencyKey) => agentJobQueue.enqueue({
     type: "orchestration",
     payload: {

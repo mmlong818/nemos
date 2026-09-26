@@ -6038,6 +6038,10 @@ async function savePersona() {
   pendingAvatarClear = false;
   $("#personaAvatarFile").value = "";
   alert(target.owner === "me" ? "头像已保存。" : "已保存并生效（下一句回复就用新人设）。");
+  await refreshPersonaNames();
+}
+// 重读角色后把标题、活动栏上的名字换成新的；身份页保存和聊天里改名都走这里。
+async function refreshPersonaNames() {
   const previousTarget = state.target ? { ...state.target } : null;
   await loadState();
   window.ClownfishActivityRail?.refresh?.();
@@ -6496,6 +6500,7 @@ function showAgentApproval(approval) {
     goal_save: "在对话里谈妥后建立或调整目标，只记在本机",
     goal_log_progress: "把你在对话里说的进展记到目标的时间线上",
     watch_add: "加到「帮我盯着」：隔一段时间联网看一眼，有变化才告诉你",
+    persona_rename: "给助手换个名字：只改它怎么自称，应用名不变",
     personal_work_save: "记录或更新一件事项，只提醒，不执行外部动作",
     personal_learning_propose: "提交一条待你确认的偏好或决定，确认后才成为长期记忆",
   };
@@ -6539,6 +6544,7 @@ function agentToolLabel(name) {
     goal_save: "记录目标",
     goal_log_progress: "记录进展",
     watch_add: "添加要盯的事",
+    persona_rename: "改名字",
     assistant_team_start: "专职 Bot 协作",
     capability_task_create: "创建能力或任务",
     capability_task_update: "更新常规任务",
@@ -6619,6 +6625,7 @@ function agentApprovalArguments(name, args) {
     return lines.join("\n");
   }
   if (name === "goal_log_progress") return (visible.goalTitle ? "目标：" + visible.goalTitle + "\n" : "") + "记一条进展：" + (visible.note || "") + (goalMomentumLine(visible) ? "\n" + goalMomentumLine(visible) : "") + "\n\n只记在本机的目标页。";
+  if (name === "persona_rename") return "新名字：" + (visible.name || "") + "\n\n只改它怎么自称，“小丑鱼”仍是应用名。想改回可以在「活动 → 身份」里改。";
   if (name === "watch_add") return "要盯的事：" + (visible.text || "") + "\n多久看一次：" + (visible.intervalHours ? "每 " + visible.intervalHours + " 小时" : "沿用现在的设置")
     + "\n\n只在应用开着时联网查，每天有次数上限；和上次一样就不出声。可在设置的「提醒与后台」里改或删。";
   if (name === "skill_install" && typeof visible.sourceText === "string") {
@@ -6637,8 +6644,13 @@ async function decideAgentApproval(id, allowed) {
   const denyButton = $("#approvalDeny");
   allowButton.disabled = true;
   denyButton.disabled = true;
+  const decided = (agentOpsState.approvals || []).find((item) => item.id === id);
   try {
     await api("/api/agent/approval/decision", { id, allowed });
+    // 聊天里改了名：批准后工具才执行，稍等再重读角色，界面上的名字跟着换。
+    if (allowed && decided && decided.call && decided.call.name === "persona_rename") {
+      for (const wait of [1500, 4000]) setTimeout(refreshPersonaNames, wait);
+    }
     if (currentApprovalId === id) {
       currentApprovalId = null;
       $("#approvalmodal").classList.remove("show");

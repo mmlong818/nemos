@@ -38,6 +38,8 @@ export interface CompanionAgentToolDependencies {
   enqueueOrchestration?: (input: CompanionDelegationJobInput, idempotencyKey: string) => { id: string; status: string };
   /** "帮我盯着"：清单与联网搜索是否已配置（没配就记下，但如实说不会运行）。 */
   watch?: () => { store: WatchStore; searchReady: () => boolean };
+  /** 给小丑鱼改名：只改自称，与"身份"页保存同一路径。 */
+  renamePersona?: (name: string) => { previous: string; name: string };
 }
 
 const MEMORY_CUE = /(记得|记忆|想起|之前.{0,8}(说|提|聊)|我.{0,8}(说过|提过)|remember|memory|mentioned before)/i;
@@ -47,6 +49,7 @@ const SKILL_INSTALL_CUE = /((安装|导入|添加|注册).{0,24}(skill|skills|SK
 const DELEGATION_CUE = /(多.{0,4}(角色|专家|人)|团队|分工|并行|分别.{0,10}(分析|研究|核验|给出)|不同.{0,6}(角度|视角)|交叉.{0,4}(验证|复核)|让.{0,12}(可行性顾问|产品顾问|决策顾问|思考教练|原理工程师|产品主理人|决策分析师|思辨教练).{0,12}(和|与|、))/i;
 const GOAL_CUE = /(目标|打卡|坚持|习惯|进展|里程碑|goal|habit|milestone)/i;
 const WATCH_CUE = /(盯着|盯一下|盯紧|帮我盯|留意.{0,16}(变化|消息|动静)|有(新)?(变化|消息|动静).{0,8}(告诉|提醒|通知)我|keep an eye|watch for)/i;
+const RENAME_CUE = /((以后|今后|从现在起|往后).{0,6}叫你|叫你.{1,12}(吧|好了|就行|怎么样)|给你(起|换|改)(个|一个)?(新)?名字|(换|改)(个|一个)?名字|改名|rename you|call you)/i;
 const ARTIFACT_CUE =/(产物|交付物|生成的.{0,6}(报告|文件|文档)|最近的.{0,6}(报告|文件|文档)|artifact|deliverable)/i;
 
 /**
@@ -68,6 +71,9 @@ export function createCompanionAgentToolProvider(
     }
     if (dependencies.watch && context.personaId === "clownfish" && !["capability", "office"].includes(context.surface || "") && WATCH_CUE.test(instruction)) {
       tools.push(watchAddTool(dependencies.watch()));
+    }
+    if (dependencies.renamePersona && context.personaId === "clownfish" && !["capability", "office"].includes(context.surface || "") && RENAME_CUE.test(instruction)) {
+      tools.push(personaRenameTool(dependencies.renamePersona));
     }
     // 目标对话里用户最后常说的是"好""就这样"，不含关键词；按会话识别，不只看这一句。
     const goalSession = context.sessionId ? dependencies.goalSession?.(context.sessionId) : undefined;
@@ -215,6 +221,24 @@ function watchAddTool(watch: { store: WatchStore; searchReady: () => boolean }):
       // 真实使用里模型拿到条件后仍说"有新动静我第一时间告诉你"：把转告要求写进结果，不只列条件。
       const replyRule = "回复时照实说明运行条件（多久看一次、只在应用开着时查）；不要说\"第一时间\"\"实时\"\"一有消息就\"。";
       return { content: JSON.stringify({ watching: saved.items.map((item) => item.text), intervalHours, note, replyRule }) };
+    },
+  };
+}
+
+/** 聊天里给小丑鱼改名：之前没有这个工具，模型只能嘴上答应"好，以后我就叫阿福"，其实什么也没改。 */
+function personaRenameTool(rename: (name: string) => { previous: string; name: string }): AgentTool {
+  return {
+    definition: { name: "persona_rename", effect: "write",
+      description: "With approval, change the name the assistant calls itself. Use only when the user clearly wants to give YOU (the assistant) a new name and has said the name; ask first if they haven't. The app itself stays named Clownfish.",
+      inputSchema: { type: "object", properties: { name: { type: "string", description: "The new name, exactly as the user said it, 1-12 characters" } }, required: ["name"], additionalProperties: false } },
+    execute: async (input, execution) => {
+      ensureActive(execution.signal);
+      const name = String(input.name ?? "").trim();
+      if (!name || name.length > 12) throw new Error("名字需要 1 到 12 个字");
+      if (/[\r\n<>]/.test(name)) throw new Error("名字里不能有换行或尖括号");
+      if (!/[\p{L}\p{N}]/u.test(name)) throw new Error("名字不能全是标点");
+      const result = rename(name);
+      return { content: JSON.stringify({ ...result, note: `名字改好了：下一句起用「${result.name}」自称，应用名仍是「小丑鱼」；想改回可以在「活动 → 身份」里改。` }) };
     },
   };
 }
