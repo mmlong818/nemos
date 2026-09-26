@@ -5,6 +5,8 @@ title: 'bug: '
 labels: bug
 ---
 
+> 请不要在这里贴 API Key、对话内容或其他个人信息。安全问题请按 SECURITY.md 私下报告。
+
 ## 描述
 
 简明描述 bug。
@@ -22,7 +24,7 @@ labels: bug
 ## 环境
 
 - 影响范围：小丑鱼应用 / Nemos Memory SDK
-- 小丑鱼版本（如适用）：
+- 小丑鱼版本（应用左下角显示）：
 - Nemos Memory SDK 版本：
 - 运行方式：网页 / Windows 客户端 / 嵌入式 SDK
 - 操作系统与运行时：

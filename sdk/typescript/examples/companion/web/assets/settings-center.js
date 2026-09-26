@@ -1470,12 +1470,35 @@
       alert(error.message);
     }
   };
+  // 检查新版本：与侧栏询问卡片共用 /api/app-update；关掉后不再联网。
+  function renderAppUpdateRow(update) {
+    const row = $("#appUpdateRow");
+    if (!row || !update) return;
+    const detail = update.enabled === true
+      ? (update.available && update.latest ? `有新版本 ${escapeHtml(update.latest.version)}（当前 ${escapeHtml(update.current)}）。` : `已开启，当前 ${escapeHtml(update.current)} 已是最新${update.lastError ? `；上次检查：${escapeHtml(update.lastError)}` : ""}。`)
+      : update.enabled === false ? "已关闭，不会访问 GitHub。" : "还没选择。开启后每 12 小时最多访问一次 GitHub，只读取最新版本号，不发送任何个人数据。";
+    row.innerHTML = `<div><b>检查新版本</b><p>${detail}</p></div><div class="form-actions">${update.available && update.latest ? `<a class="button" href="${escapeHtml(update.latest.url)}" target="_blank" rel="noopener noreferrer">查看新版本</a>` : ""}<button type="button" data-app-update-toggle="${update.enabled === true ? "false" : "true"}">${update.enabled === true ? "关闭" : "开启"}</button></div>`;
+  }
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest?.("[data-app-update-toggle]");
+    if (!button) return;
+    button.disabled = true;
+    try {
+      const update = await api("/api/app-update", { method: "POST", body: JSON.stringify({ enabled: button.dataset.appUpdateToggle === "true" }) });
+      renderAppUpdateRow(update);
+      window.dispatchEvent(new CustomEvent("clownfish:app-update", { detail: update }));
+    } catch (error) {
+      button.disabled = false;
+      alert(error.message);
+    }
+  });
   async function loadPrivacy() {
     try {
       const state = await api("/api/runtime");
       const version = escapeHtml(state.manifest?.version || "未知");
+      void fetch("/api/app-update", { cache: "no-store" }).then((response) => response.ok ? response.json() : null).then(renderAppUpdateRow).catch(() => {});
       $("#privacyList").innerHTML =
-        `<div class="privacy-row"><div><b>隐私协议 · v${version}</b><p>生效日期：2026 年 8 月 17 日。说明本机保存、外部模型、插件、同步、导出和删除边界。</p></div><a class="button" href="https://github.com/mmlong818/nemos/blob/main/PRIVACY.md" target="_blank" rel="noopener">查看协议</a></div><div class="privacy-row"><div><b>本机数据目录</b><p>${escapeHtml(state.dataDir)}</p></div></div><div class="privacy-row"><div><b>数据何时离开本机</b><p>仅在你配置并使用模型、搜索、插件或自托管同步时，必要内容才会发送给对应服务。</p></div></div><div class="privacy-row"><div><b>记忆与偏好</b><p>可查看、修正和删除整理后的记忆，不展示内部原始归档。</p></div><a class="button" href="/memory">查看记忆</a></div><div class="privacy-row"><div><b>运行与审计记录</b><p>能力执行、权限确认和异常都可以追溯。</p></div><a class="button" href="/runs">查看记录</a></div><div class="privacy-row"><div><b>备份</b><p>${state.backups?.latest ? `最近备份：${escapeHtml(state.backups.latest)}` : "暂未读取到备份记录"}</p></div></div>`;
+        `<div class="privacy-row"><div><b>隐私协议 · v${version}</b><p>生效日期：2026 年 8 月 17 日。说明本机保存、外部模型、插件、同步、导出和删除边界。</p></div><a class="button" href="https://github.com/mmlong818/nemos/blob/main/PRIVACY.md" target="_blank" rel="noopener">查看协议</a></div><div class="privacy-row"><div><b>本机数据目录</b><p>${escapeHtml(state.dataDir)}</p></div></div><div class="privacy-row"><div><b>数据何时离开本机</b><p>仅在你配置并使用模型、搜索、插件或自托管同步时，必要内容才会发送给对应服务；开启“检查新版本”后，会定期向 GitHub 读取最新版本号。</p></div></div><div class="privacy-row" id="appUpdateRow"><div><b>检查新版本</b><p>正在读取…</p></div></div><div class="privacy-row"><div><b>记忆与偏好</b><p>可查看、修正和删除整理后的记忆，不展示内部原始归档。</p></div><a class="button" href="/memory">查看记忆</a></div><div class="privacy-row"><div><b>运行与审计记录</b><p>能力执行、权限确认和异常都可以追溯。</p></div><a class="button" href="/runs">查看记录</a></div><div class="privacy-row"><div><b>备份</b><p>${state.backups?.latest ? `最近备份：${escapeHtml(state.backups.latest)}` : "暂未读取到备份记录"}</p></div></div>`;
     } catch (error) {
       $("#privacyList").innerHTML =
       `<p class="status error">${escapeHtml(error.message)}</p>`;

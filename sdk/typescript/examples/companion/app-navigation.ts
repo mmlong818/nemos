@@ -56,5 +56,5 @@ function renderAppShell(html: string, path: string, title: string): string {
     .replace(/<main\b/, renderWorkbenchBar() + '<main');
   return html.replace(marker, renderWorkbenchNavigation(path))
     .replace(/<title>[^<]*<\/title>/, `<title>${escape(title)} · 小丑鱼</title>`)
-    .replace("</head>", `${wallpaper}<link rel="stylesheet" href="/assets/app-shell.css"><script id="app-route-manifest" type="application/json">${manifest}</script><script src="/assets/app-navigation.js"></script><link rel="stylesheet" href="/assets/workbench-ui.css"><script src="/assets/workbench-ui.js" defer></script></head>`);
+    .replace("</head>", `${wallpaper}<link rel="stylesheet" href="/assets/app-shell.css"><script id="app-route-manifest" type="application/json">${manifest}</script><script src="/assets/app-navigation.js"></script><link rel="stylesheet" href="/assets/workbench-ui.css"><script src="/assets/workbench-ui.js" defer></script><script src="/assets/app-update.js" defer></script></head>`);
 }

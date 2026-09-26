@@ -13,6 +13,8 @@
 > [!IMPORTANT]
 > This is **source-available software, not OSI-approved open source**. The current version is licensed only for personal, educational, and nonprofit research use. Direct and indirect commercial use is prohibited, including paid services, internal business operations, commercial product integration, resale, SaaS or hosted offerings, commercial training, and any other for-profit activity. Commercial rights require separate written permission from the copyright holder. [LICENSE](LICENSE) is authoritative; third-party components retain their own licenses.
 
+> **Just want to use it?** Download the Windows portable build from [Releases](https://github.com/mmlong818/nemos/releases) and unzip it; step-by-step instructions are in the [download guide](docs/user-guide.md) (Chinese).
+
 ![Clownfish overview with a topic-based feed and a pinned training-checklist widget](docs/assets/readme/overview.png)
 
 _Captured from the current application with isolated synthetic demo data; no user data or real service credentials are shown._

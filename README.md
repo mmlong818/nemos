@@ -13,6 +13,8 @@
 > [!IMPORTANT]
 > 本仓库是 **source-available（源码可见）项目，不是 OSI 认证的开源软件**。当前版本只允许个人、教育和非营利研究用途；禁止直接或间接商业使用，包括付费服务、企业内部业务运营、商业产品集成、转售、SaaS / 托管、商业训练及其他营利活动。商业授权必须取得版权所有者的单独书面许可。完整条款以 [LICENSE](LICENSE) 为准，第三方组件仍适用各自的许可证。
 
+> **直接使用**：到[发布页](https://github.com/mmlong818/nemos/releases)下载 Windows 便携版，解压即用，步骤见[下载与上手](docs/user-guide.md)。
+
 ![小丑鱼总览：按话题生成的动态与钉住的训练清单构件](docs/assets/readme/overview.png)
 
 _真实当前界面，使用隔离的合成演示数据；不含用户资料或真实服务凭据。_

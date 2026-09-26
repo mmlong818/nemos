@@ -230,6 +230,8 @@ import { createSystemRoutes } from "./routes/system.js";
 import { createSourceRoutes } from "./routes/sources.js";
 import { createCapabilityRoutes } from "./routes/capabilities.js";
 import { createPantheonRoutes } from "./routes/pantheon.js";
+import { createUpdateRoutes } from "./routes/update.js";
+import { AppUpdateChecker } from "./app-update.js";
 import { PantheonService } from "./pantheon.js";
 import { ThoughtLibraryStore } from "./thought-library.js";
 
@@ -297,6 +299,7 @@ const X_TOKEN_FILE = runtimePath("COMPANION_X_TOKEN", "x-token.dpapi.json");
 const TOOL_SETTINGS_FILE = runtimePath("COMPANION_TOOL_SETTINGS", "tool-settings.dpapi.json");
 const DATA_SYNC_SETTINGS_FILE = runtimePath("COMPANION_DATA_SYNC_SETTINGS", "data-sync.dpapi.json");
 const USER_PROFILE_FILE = runtimePath("COMPANION_USER_PROFILE", "user-profile.json");
+const appUpdate = new AppUpdateChecker(runtimePath("COMPANION_APP_UPDATE", "update-check.json"), String(APP_MANIFEST.version || "0.0.0"));
 const AGENT_RUNS_FILE = runtimePath("COMPANION_AGENT_RUNS", "agent-runs.json");
 const LLM_CALL_LEDGER_FILE = runtimePath("COMPANION_LLM_CALL_LEDGER", "llm-call-ledger.json");
 const AGENT_APPROVALS_FILE = runtimePath("COMPANION_AGENT_APPROVALS", "agent-approvals.json");
@@ -4741,7 +4744,8 @@ function buildApiRoutes(): RouteTable {
   .add(...createReminderRoutes({ agentJobQueue, agentUserActions, backgroundScheduler, createHkReminderDelivery, loadHkReminders, readBody, sanitizeHkReminder, saveHkReminders, send }))
   .add(...createProfileRoutes({ agentUserActions, completeOnboarding, generateConversationTitle, publicUserProfile, readBody, saveUserProfile, send }))
   .add(...createPeopleRoutes({ addedContactIds, agentUserActions, allPersonaIdsInOrder, applyRel, currentContactIds, loadAvatarOverrides, readBody, relOf, relationships, saveAvatarOverride, saveContacts, saveRel, send }))
-  .add(...createPantheonRoutes({ pantheon, thoughtLibrary, send }));
+  .add(...createPantheonRoutes({ pantheon, thoughtLibrary, send }))
+  .add(...createUpdateRoutes({ appUpdate, send }));
 }
 
 let apiRoutes: RouteTable | undefined;

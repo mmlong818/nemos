@@ -19,7 +19,8 @@ Data is sent outside the device only when the user configures, enables, or invok
 - search and web-reading features send queries and target URLs to the relevant services;
 - plugins and connectors receive only the permissions and inputs shown before installation or use;
 - coding engines receive the selected project context and may call their configured model provider;
-- self-hosted sync uploads a snapshot encrypted on the device to the server selected by the user.
+- self-hosted sync uploads a snapshot encrypted on the device to the server selected by the user;
+- update checks, once the user agrees, read the latest published version number from GitHub at most every 12 hours. The request contains no account, usage data, or local content, although GitHub can see the requesting IP address. The user can turn this off at any time in Settings → Data & Privacy.
 
 Third-party services process data under their own terms. Do not submit personal data, confidential information, or restricted material that should not be handled by the selected service.
 
