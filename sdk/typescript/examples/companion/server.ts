@@ -12,6 +12,7 @@ import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, m
 import { homedir, tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { windowsPowerShellPath } from "./windows-powershell.js";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import Database from "better-sqlite3";
 import {
@@ -1665,7 +1666,7 @@ async function rebuildLLM(
 }
 
 function runDpapi(script: string, input: string): string {
-  return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+  return execFileSync(windowsPowerShellPath(), ["-NoProfile", "-NonInteractive", "-Command", script], {
     input,
     encoding: "utf8",
     windowsHide: true,
@@ -2751,7 +2752,7 @@ try {
   [Console]::Out.Write((@{ ok = $false; status = $status; body = [string]$body } | ConvertTo-Json -Compress -Depth 5))
 }
 `;
-  const raw = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+  const raw = execFileSync(windowsPowerShellPath(), ["-NoProfile", "-NonInteractive", "-Command", script], {
     input: JSON.stringify({
       url,
       method: opts.method ?? "GET",

@@ -78,6 +78,9 @@ namespace ClownfishClient
             if (polluted.EnvironmentVariables["NODE_OPTIONS"] != null || polluted.EnvironmentVariables["NODE_PATH"] != null || polluted.EnvironmentVariables["INIT_CWD"] != null) return 34;
             if (!polluted.EnvironmentVariables["PATH"].StartsWith(Path.GetDirectoryName(packageNode), StringComparison.OrdinalIgnoreCase)
                 || polluted.EnvironmentVariables["PATH"].IndexOf("malicious-npm-shim", StringComparison.OrdinalIgnoreCase) >= 0) return 35;
+            // 密钥靠 powershell.exe 做 DPAPI 解密：它在 WindowsPowerShell\v1.0 下，不在 System32 根目录。
+            // PATH 里没有它时桌面版读不出密钥，一直是"离线模式"。
+            if (polluted.EnvironmentVariables["PATH"].IndexOf("WindowsPowerShell\\v1.0", StringComparison.OrdinalIgnoreCase) < 0) return 38;
             File.Delete(packageEntry);
             try { MainForm.ResolvePackagedServerLaunch(packageRoot); return 36; }
             catch (InvalidOperationException error) { if (error.Message.IndexOf("portable-launcher.js", StringComparison.Ordinal) < 0) return 37; }

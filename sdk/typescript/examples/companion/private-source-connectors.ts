@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { windowsPowerShellPath } from "./windows-powershell.js";
 
 export interface WeChatPrivateSourceConfig {
   enabled: boolean;
@@ -421,7 +422,7 @@ try {
   [Console]::Out.Write((@{ ok = $false; status = $status; body = [string]$body } | ConvertTo-Json -Compress -Depth 5))
 }
 `;
-  const raw = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+  const raw = execFileSync(windowsPowerShellPath(), ["-NoProfile", "-NonInteractive", "-Command", script], {
     input: JSON.stringify({ url, headers }),
     encoding: "utf8",
     windowsHide: true,

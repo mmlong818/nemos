@@ -1131,6 +1131,8 @@ namespace ClownfishClient
             {
                 safePath.Add(Path.Combine(windows, "System32"));
                 safePath.Add(windows);
+                // 密钥靠 powershell.exe 做 DPAPI 解密；它不在 System32 根目录，漏了它桌面版读不出密钥、一直离线。
+                safePath.Add(Path.Combine(windows, "System32", "WindowsPowerShell", "v1.0"));
             }
             info.EnvironmentVariables["PATH"] = string.Join(";", safePath.ToArray());
         }

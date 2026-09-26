@@ -15,5 +15,6 @@
 - Adds quiet hours, tell-me and never-mention topic preferences, scheduled feed generation, and optional start-in-tray at Windows sign-in.
 - Adds a bottom tab bar on narrow screens (assistant, overview, matters, tasks, more) so every page stays reachable on a phone.
 - Opens model-generated HTML deliverables in an origin-less sandbox so their scripts cannot call the application API.
+- Fixes the Windows portable client starting in offline mode: saved model keys are decrypted with the full PowerShell path, so the desktop app uses the configured model.
 - Ships the Windows portable client, local web application, optional encrypted self-hosted synchronization service, and current privacy and security documentation.
 - Uses the Clownfish Source-Available Non-Commercial License 1.0; third-party components retain their own licenses.
