@@ -12,7 +12,7 @@ import { fetch as undiciFetch } from "undici";
 import { modelResourceKey, modelScheduler } from "./model-scheduler.js";
 import { AGENT_BUDGET, resolveAgentBudget, type AgentBudget } from "./runtime-limits.js";
 import { parseUnifiedTaskContext } from "./unified-task-context.js";
-import { type FileLlmCallLedger, type LlmCallPurpose } from "./llm-call-ledger.js";
+import { LLM_CALL_PURPOSES, type FileLlmCallLedger, type LlmCallPurpose } from "./llm-call-ledger.js";
 
 import {
   AgentRuntime,
@@ -758,7 +758,7 @@ function agentMetadata(
 }
 
 function isLlmCallPurpose(value: unknown): value is LlmCallPurpose {
-  return ["task_turn", "team_plan", "team_worker", "team_review", "team_final", "memory_extract", "completion_verify", "other"].includes(String(value));
+  return (LLM_CALL_PURPOSES as readonly string[]).includes(String(value));
 }
 
 function runObjective(instruction: string): string {

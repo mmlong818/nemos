@@ -2,7 +2,9 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
-export type LlmCallPurpose = "task_turn" | "team_plan" | "team_worker" | "team_review" | "team_final" | "memory_extract" | "completion_verify" | "other";
+/** chat：聊天回复；feed / watch / ideas：动态、帮我盯着、点子的后台调用。/状态 要分开讲。 */
+export const LLM_CALL_PURPOSES = ["chat", "task_turn", "team_plan", "team_worker", "team_review", "team_final", "memory_extract", "completion_verify", "feed", "watch", "ideas", "other"] as const;
+export type LlmCallPurpose = (typeof LLM_CALL_PURPOSES)[number];
 export type LlmCallStatus = "in_progress" | "completed" | "failed" | "cancelled" | "interrupted";
 export interface LlmCallUsage {
   reported: boolean;
@@ -72,14 +74,18 @@ export class FileLlmCallLedger {
     record.errorKind = outcome.status === "failed" ? classifyError(outcome.error) : null;
     this.trim(); this.persist();
   }
-  list(options: { limit?: number; runId?: string; taskId?: string; purpose?: LlmCallPurpose } = {}): LlmCallRecord[] {
+  list(options: { limit?: number; runId?: string; taskId?: string; purpose?: LlmCallPurpose; since?: string } = {}): LlmCallRecord[] {
     const limit = Math.max(1, Math.min(500, Math.floor(options.limit ?? 50)));
     return this.records.filter((record) => (!options.runId || record.runId === options.runId)
-      && (!options.taskId || record.taskId === options.taskId) && (!options.purpose || record.purpose === options.purpose))
+      && (!options.taskId || record.taskId === options.taskId) && (!options.purpose || record.purpose === options.purpose)
+      && (!options.since || record.startedAt >= options.since))
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, limit).map(copyRecord);
   }
-  summarize(options: { runId?: string; taskId?: string } = {}) {
+  summarize(options: { runId?: string; taskId?: string; since?: string } = {}) {
     const records = this.list({ ...options, limit: 500 });
+    // 账本有上限：满了而且最早一条也在 since 之后，说明更早的已被挤掉，这段时间的数不保证完整。
+    const oldest = this.records[0];
+    const complete = !options.since || this.records.length < this.cap || !oldest || oldest.startedAt < options.since;
     const byPurpose: Partial<Record<LlmCallPurpose, number>> = {};
     const byStatus: Partial<Record<LlmCallStatus, number>> = {};
     let knownInputTokens = 0, knownOutputTokens = 0, knownTotalTokens = 0, unknownUsageCalls = 0;
@@ -89,7 +95,7 @@ export class FileLlmCallLedger {
       if (!item.usage.reported) unknownUsageCalls++;
       else { knownInputTokens += item.usage.inputTokens ?? 0; knownOutputTokens += item.usage.outputTokens ?? 0; knownTotalTokens += item.usage.totalTokens ?? 0; }
     }
-    return { calls: records.length, byPurpose, byStatus, knownUsage: { inputTokens: knownInputTokens, outputTokens: knownOutputTokens, totalTokens: knownTotalTokens }, unknownUsageCalls };
+    return { calls: records.length, complete, byPurpose, byStatus, knownUsage: { inputTokens: knownInputTokens, outputTokens: knownOutputTokens, totalTokens: knownTotalTokens }, unknownUsageCalls };
   }
   private read(): LlmCallRecord[] {
     try {
@@ -111,7 +117,7 @@ function normalizeRecord(value: unknown): LlmCallRecord[] {
   const row = value as Partial<LlmCallRecord>;
   if (typeof row.id !== "string" || !validTime(row.startedAt) || typeof row.provider !== "string" || typeof row.model !== "string") return [];
   const status: LlmCallStatus = ["in_progress", "completed", "failed", "cancelled", "interrupted"].includes(String(row.status)) ? row.status as LlmCallStatus : "interrupted";
-  const purpose: LlmCallPurpose = ["task_turn", "team_plan", "team_worker", "team_review", "team_final", "memory_extract", "completion_verify", "other"].includes(String(row.purpose)) ? row.purpose as LlmCallPurpose : "other";
+  const purpose: LlmCallPurpose = (LLM_CALL_PURPOSES as readonly string[]).includes(String(row.purpose)) ? row.purpose as LlmCallPurpose : "other";
   return [{ id: row.id, runId: cleanId(row.runId), taskId: cleanId(row.taskId), purpose, provider: boundedLabel(row.provider, "unknown"), model: boundedLabel(row.model, "unknown"), status, startedAt: row.startedAt!, finishedAt: validTime(row.finishedAt), latencyMs: typeof row.latencyMs === "number" && row.latencyMs >= 0 ? row.latencyMs : null, usage: normalizeUsage(row.usage), errorKind: typeof row.errorKind === "string" ? boundedLabel(row.errorKind, "error") : null }];
 }
 function normalizeUsage(value: unknown): LlmCallUsage {

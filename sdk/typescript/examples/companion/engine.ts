@@ -74,7 +74,7 @@ export interface ChatAgentContext {
   /** The exact admitted source/boundary snapshot for this run; persisted for safe resume. */
   taskContext?: UnifiedTaskContext;
   /** Product-owned call classification; never derived from model text or prompt contents. */
-  llmPurpose?: "task_turn" | "team_plan" | "team_worker" | "team_review" | "team_final" | "memory_extract" | "completion_verify" | "other";
+  llmPurpose?: import("./llm-call-ledger.js").LlmCallPurpose;
 }
 
 /** 人格“开口回复”用的 LLM。与 SDK 的抽取 LLM 分开。model/maxTokens 可按角色覆盖。 */
@@ -930,6 +930,8 @@ export class CompanionEngine {
       runtimeLimits,
       reasoningEffort,
       taskContext,
+      // 聊天调用没有运行编号，账本原来一律记成 other，和各种后台杂活混在一起，/状态 讲不清用在哪。
+      ...(!runId && surface !== "capability" && surface !== "office" ? { llmPurpose: mode === "chat" ? "chat" as const : "task_turn" as const } : {}),
     };
   }
 

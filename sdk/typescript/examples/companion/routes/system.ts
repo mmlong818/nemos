@@ -74,6 +74,13 @@ export function createSystemRoutes(deps: SystemDeps): RouteEntry[] {
       send(res, 200, modelConnectionStatus());
       return;
     }),
+    // /状态 用：从本机今天零点起的模型调用汇总；只读账本，不估算金额。
+    route("GET", "/api/llm-usage", ({ res }) => {
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      send(res, 200, { since: midnight.toISOString(), today: llmCallLedger.summarize({ since: midnight.toISOString() }) });
+      return;
+    }),
     route("GET", "/api/version", ({ res }) => {
       send(res, 200, {
         manifest: APP_MANIFEST,

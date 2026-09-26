@@ -3654,7 +3654,10 @@ async function feedContext(): Promise<FeedContext> {
 }
 
 function feedModelContext(scope: string, maxOutputChars: number) {
+  // 账本里按用途分开记，/状态 才讲得清今天的调用花在哪。
+  const llmPurpose = scope.startsWith("feed") ? "feed" as const : scope === "watch" ? "watch" as const : scope === "ideas" ? "ideas" as const : "other" as const;
   return {
+    llmPurpose,
     sessionId: `feed-${randomBytes(6).toString("hex")}`, userId: USER, personaId: APP_PERSONA_ID,
     instruction: "生成个人动态", scope, memoryScopes: [], mode: "task" as const, toolMode: "off" as const,
     // 低推理强度：思考模型会把 max_tokens 吃在推理上，正文反而是空的（实测过）。

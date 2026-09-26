@@ -5275,12 +5275,19 @@ function runSlashCommand(command) {
   scheduleSaveConversationDraft();
   closeSlashMenu();
   const action = command.action;
-  if (action.type === "help") {
-    addRow("other", null, api.helpText(), { pid: APP_PERSONA_ID });
+  // 命令的结果是本机直接回的一条消息，不经过模型，也不存进对话记录。
+  const localReply = (text) => {
+    addRow("other", null, text, { pid: APP_PERSONA_ID });
     // 在首页大输入框里敲的：空状态随 addRow 一起移除，要把常规输入框换回来，不然页面上没有输入框。
     const composer = $("#composer");
     if (composer) composer.classList.remove("hero-mode");
     $("#txt").focus();
+  };
+  if (action.type === "help") { localReply(api.helpText()); return; }
+  if (action.type === "status") {
+    Promise.all([fetch("/api/llm-usage").then((r) => r.json()), fetch("/api/llm").then((r) => r.json())])
+      .then(([usage, llm]) => localReply(api.statusText(usage.today, llm && llm.hasKey ? (llm.dailyChatModel || llm.model || "") : "还没有连接模型")))
+      .catch(() => localReply("用量暂时读不出来，稍后再试。"));
     return;
   }
   if (action.type === "navigate") { window.location.href = action.href; return; }

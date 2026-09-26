@@ -11,7 +11,7 @@
   const SLASH_COMMANDS = [
     { name: "新对话", aliases: ["new", "clear"], hint: "开一段新对话", action: { type: "click", selector: "#quickGroup" } },
     { name: "记录", aliases: ["history", "对话记录"], hint: "打开对话记录", action: { type: "click", text: "对话记录" } },
-    { name: "状态", aliases: ["status", "本机状态"], hint: "看模型、记忆和本机状态", action: { type: "click", text: "本机状态" } },
+    { name: "状态", aliases: ["status", "用量"], hint: "今天调了几次模型、用在哪、用了多少", action: { type: "status" } },
     { name: "活动", aliases: ["activity"], hint: "打开右侧活动栏：在做什么、等你批准什么、接下来排了什么", action: { type: "open-rail", selector: ".ar-toggle" } },
     { name: "目标", aliases: ["goal", "goals"], hint: "去目标页", action: { type: "navigate", href: "/matters?view=goals" } },
     { name: "动态", aliases: ["feed"], hint: "去总览看动态", action: { type: "navigate", href: "/overview" } },
@@ -44,7 +44,33 @@
     return "可以用的命令：\n" + SLASH_COMMANDS.map((command) => `/${command.name}（/${command.aliases[0]}）：${command.hint}`).join("\n");
   }
 
-  const api = { SLASH_COMMANDS, matchSlashCommands, exactSlashCommand, helpText };
+  // 账本的用途归成用户看得懂的几类。
+  const USAGE_GROUPS = [
+    ["聊天", ["chat"]], ["任务", ["task_turn", "completion_verify"]],
+    ["专职协作", ["team_plan", "team_worker", "team_review", "team_final"]],
+    ["动态", ["feed"]], ["盯着", ["watch"]], ["点子", ["ideas"]],
+    ["记忆整理", ["memory_extract"]], ["其他", ["other"]],
+  ];
+
+  /** /状态 的回复：只讲账本里记下的，不估算金额；服务商没返回用量的照实说没算进去。 */
+  function statusText(today, modelLabel) {
+    const lines = [];
+    if (!today || !today.calls) lines.push("今天还没调用过模型。");
+    else {
+      const by = today.byPurpose || {};
+      const parts = USAGE_GROUPS.map(([label, keys]) => [label, keys.reduce((sum, key) => sum + (by[key] || 0), 0)]).filter(([, count]) => count > 0);
+      lines.push(`今天（从 0 点起）调用了 ${today.calls} 次模型：${parts.map(([label, count]) => `${label} ${count} 次`).join("、")}。`);
+      const tokens = (today.knownUsage && today.knownUsage.totalTokens) || 0;
+      const unknown = today.unknownUsageCalls || 0;
+      if (tokens || unknown < today.calls) lines.push(`服务商返回的用量合计 ${tokens.toLocaleString("en-US")} tokens${unknown ? `，另有 ${unknown} 次没返回用量，没算进去` : ""}。`);
+      else lines.push("服务商都没有返回用量，没法统计 tokens。");
+      if (today.complete === false) lines.push("账本只保留最近 500 次，今天更早的已经不在账本里，实际次数可能更多。");
+    }
+    if (modelLabel) lines.push(`当前模型：${modelLabel}`);
+    return lines.join("\n");
+  }
+
+  const api = { SLASH_COMMANDS, matchSlashCommands, exactSlashCommand, helpText, statusText };
   if (typeof module === "object" && module.exports) { module.exports = api; return; }
   root.ClownfishSlashCommands = api;
 })(typeof window !== "undefined" ? window : globalThis);
