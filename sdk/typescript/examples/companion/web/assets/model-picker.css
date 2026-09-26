@@ -193,3 +193,39 @@ body[data-ui] button.model-recommendation { display: grid; gap: 5px; flex: 1 1 2
   .model-quick-action .status { max-width: none; text-align: left; }
   .model-quick-progress { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* 模型与服务页：正在使用 → 服务账号 → 各项能力 → 高级。 */
+.model-now { margin-top: 20px; padding: 18px 20px; border: 1px solid var(--cf-line, #dfe5e2); border-radius: 14px; background: var(--cf-surface, #fff); }
+.model-now h3 { margin: 0 0 12px; font-size: 15px; }
+.model-now-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+.model-now-label { color: var(--cf-ink-soft, #66746f); font-size: 12px; }
+.model-now-main strong { font-size: 18px; }
+.model-now-main small { color: var(--cf-ink-soft, #66746f); }
+.model-now-main em { margin-left: auto; font-style: normal; font-size: 12px; padding: 3px 10px; border-radius: 999px; background: #fbeee9; color: #a3462d; }
+.model-now-main em[data-ok=true] { background: var(--cf-coral-soft, #e8f1ed); color: var(--cf-accent, #26715f); }
+.model-now-summary { margin: 12px 0 8px; color: var(--cf-ink-soft, #66746f); font-size: 12px; }
+.model-now-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.model-now-chip { padding: 4px 10px; border-radius: 999px; font-size: 12px; background: var(--cf-surface-soft, #f3f6f5); color: var(--cf-ink-soft, #66746f); }
+.model-now-chip[data-state=ok] { background: var(--cf-coral-soft, #e8f1ed); color: var(--cf-accent, #26715f); }
+.model-now-chip[data-state=fail] { background: #fbeee9; color: #a3462d; }
+.model-now-empty { margin: 0; color: var(--cf-ink-soft, #66746f); }
+.model-now-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.model-now-actions .status { font-size: 12px; }
+/* 进度只在配置过程中出现，平时不常驻。 */
+#modelQuickProgress:not(:has(li.is-active)) { display: none; }
+.model-add-provider { margin: 12px 0 0; }
+.model-add-provider .link-button { padding: 0; border: 0; background: none; color: var(--cf-accent, #26715f); font: inherit; font-size: 13px; cursor: pointer; }
+.model-capabilities { margin-top: 28px; }
+.model-advanced-heading { margin: 22px 0 10px; font-size: 14px; }
+#modelQuickResults[hidden] { display: none; }
+
+/* 候选型号测试按钮默认收起，只在还没有可用模型时展开。 */
+.model-capability-probe-group { margin-top: 6px; }
+.model-capability-probe-group > summary { cursor: pointer; font-size: 12px; color: var(--accent, #1f6f5c); list-style-position: inside; }
+.model-capability-probe-group > summary small { color: var(--muted, #6b7280); margin-left: 4px; }
+.model-capability-probes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.model-capability-probes > button { font-size: 12px; padding: 3px 10px; min-height: 0; }
+.model-capability-probes > small { flex-basis: 100%; }
+.model-capability-row .model-capability-probe-group > summary small { display: inline; }
+.model-capability-row .model-capability-probes { display: flex; flex-direction: row; align-items: center; }
+.model-capability-row .model-capability-probes > button { display: inline-flex; width: auto; }

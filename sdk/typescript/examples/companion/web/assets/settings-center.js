@@ -1,8 +1,6 @@
 "use strict";
 (() => {
   const $ = (selector) => document.querySelector(selector);
-  document.querySelector('[data-panel="models"] .section-head p').textContent =
-    "填写 OpenAI 或智谱 Key 后，系统会自动筛选、验证并配置推荐模型。";
   $("#modelSave").textContent = "保存并读取模型";
   $("#modelSave").insertAdjacentHTML("afterend", '<button id="modelSaveOnly" type="button">仅保存</button><button id="modelTest" type="button">重新测试所选型号</button><button id="modelConnectCancel" type="button" hidden>取消</button>');
   document.querySelector("#modelForm > small.field.full").textContent =
@@ -327,21 +325,22 @@
     const choices = ["auto", ...supported];
     return `${inherit ? `<option value="inherit"${current === "inherit" ? " selected" : ""}>跟随系统默认</option>` : ""}${choices.map((value) => `<option value="${value}"${current === value ? " selected" : ""}>${escapeHtml(effortLabels[value] || value)}</option>`).join("")}`;
   }
+  // 当前版本没接通执行流程的能力（例如视频生成）不出现在页面上：没法用的东西只是噪音。
+  const NOW_CAPABILITIES = ["chat", "vision", "speech_to_text", "text_to_speech", "image_generation", "video_generation"];
+  function capabilityOffered(center, capability) {
+    return center.capabilitySupport?.[capability]?.state === "available"
+      || (center.connections || []).some((item) => item.capabilitySupport?.[capability]?.state === "available");
+  }
   function renderResourceCenter(state) {
     const center = state.resourceCenter || { connections: [], resources: [], assignments: { system: {}, scenes: {} }, automaticRoutes: {} };
-    const purposeSection = $("#modelCapabilityAssignments")?.closest(".model-resource-section");
-    if (purposeSection) {
-      purposeSection.querySelector("h3").textContent = "用途设置";
-      purposeSection.querySelector(".section-head p").textContent = "为日常用途设置默认模型。只有经过连接验证并已接通实际执行流程的用途才可以选择。";
-    }
     $("#modelProviderConnections").innerHTML = `<div class="form-actions"><button type="button" data-new-model-connection>添加另一连接</button></div>` + ((center.connections || []).map((item) => `<article class="connection-row"><div><h3>${escapeHtml(item.label)}${item.active ? '<span class="badge ready">当前连接</span>' : ""}</h3><p>${escapeHtml(item.providerName)} · ${escapeHtml(item.baseUrl)} · 已启用 ${item.enabledModels?.length || 0} 个 / 已验证 ${item.modelStates?.filter((model) => model.verified).length || 0} 个</p><p>${item.hasKey ? "密钥已加密保存" : "无需密钥或尚未填写"} · ${item.endpointWarning ? escapeHtml(item.endpointWarning) : item.catalogSource === "maintained" ? "官方维护目录" : item.catalogSource === "provider" ? `账号目录 ${item.rawModels?.length || 0} 个` : "目录未读取"}</p></div><button type="button" data-edit-model-connection="${escapeHtml(item.id)}">编辑模型库</button></article>`).join("") || '<p class="status">尚未连接模型服务。</p>');
     const activeConnection = (center.connections || []).find((item) => item.id === selectedConnectionId) || (center.connections || []).find((item) => item.active);
     const enabledCount = activeConnection?.enabledModels?.length || 0;
     const verifiedCount = activeConnection?.modelStates?.filter((model) => model.enabled && model.verified).length || 0;
     const poolHint = verifiedCount
-      ? `已启用 ${enabledCount}，已验证 ${verifiedCount}${enabledCount > verifiedCount ? `；另 ${enabledCount - verifiedCount} 个测试后可选` : ""}`
-      : "没有已验证模型，先到模型库选择并测试。";
-    const visiblePurposes = ["chat", "vision", "speech_to_text", "text_to_speech", "image_generation", "video_generation"];
+      ? `已验证 ${verifiedCount} 个模型${enabledCount > verifiedCount ? `；另有 ${enabledCount - verifiedCount} 个测试后可选（在“高级 → 模型库”里测试）` : ""}`
+      : "还没有验证通过的文字模型：在上面“服务账号”里保存 Key 即可自动验证。";
+    const visiblePurposes = NOW_CAPABILITIES.filter((capability) => capabilityOffered(center, capability));
     $("#modelCapabilityAssignments").innerHTML = visiblePurposes.map((capability) => {
       const system = center.assignments?.system?.[capability] || { mode: "auto" };
       const route = center.automaticRoutes?.[capability];
@@ -355,11 +354,11 @@
       const systemReasoning = capability === "chat" ? `<label><span>默认思考强度</span><select data-reasoning-scope="system">${reasoningOptions(state, systemModel, systemEffort)}</select><small class="model-policy-save-status status" aria-live="polite" data-policy-status-kind="reasoning" data-policy-status-scope="system" data-policy-status-scene=""></small></label>` : "";
       const candidates = (center.resources || []).filter((item) => item.curated && (item.capabilities || []).includes(capability));
       const capabilityChecks = activeConnection?.capabilityChecks || {};
-      const probeControls = wired && capability !== "chat" ? `<div class="model-capability-probes">${candidates.map((item) => {
+      const probeControls = wired && capability !== "chat" ? `<details class="model-capability-probe-group"${route?.selected ? "" : " open"}><summary>测试其他型号 <small>${candidates.length} 个候选</small></summary><div class="model-capability-probes">${candidates.map((item) => {
         const check = capabilityChecks[`${capability}:${item.modelId}`];
         const stateLabel = check?.status === "passed" ? "已验证" : check?.status === "failed" ? "检查失败" : "待验证";
         return `<button type="button" data-capability-probe="${escapeHtml(capability)}" data-capability-model="${escapeHtml(item.modelId)}" data-capability-connection="${escapeHtml(item.connectionId)}">${escapeHtml(item.modelId)} · ${stateLabel}</button>`;
-      }).join("") || '<small>官方候选尚未载入。</small>'}<small>显式测试会发送一次最小请求，可能产生少量费用；启用型号本身不调用模型。</small>${capability === "text_to_speech" ? '<small>朗读支持 voice、format、speed；默认 alloy / mp3 / 1×。</small>' : capability === "speech_to_text" ? '<small>语言默认自动识别。</small>' : capability === "image_generation" ? '<small>默认 1024×1024、中等质量。</small>' : ""}</div>` : "";
+      }).join("") || '<small>官方候选尚未载入。</small>'}<small>显式测试会发送一次最小请求，可能产生少量费用；启用型号本身不调用模型。</small>${capability === "text_to_speech" ? '<small>朗读支持 voice、format、speed；默认 alloy / mp3 / 1×。</small>' : capability === "speech_to_text" ? '<small>语言默认自动识别。</small>' : capability === "image_generation" ? '<small>默认 1024×1024、中等质量。</small>' : ""}</div></details>` : "";
       const mediaWorkbench = wired && capability === "text_to_speech" ? '<div class="model-media-workbench"><label><span>试听文字</span><input data-tts-preview-text maxlength="4000" value="你好，我是小丑鱼。"></label><button type="button" data-tts-preview>朗读</button><button type="button" data-tts-stop disabled>停止</button><small data-tts-status aria-live="polite"></small></div>'
         : wired && capability === "image_generation" ? '<div class="model-media-workbench"><label><span>图片描述</span><input data-image-prompt maxlength="4000" placeholder="例如：海边书桌上的橙色小丑鱼图标"></label><button type="button" data-image-generate>生成并保存到成果</button><small data-image-status aria-live="polite"></small><div data-image-result></div></div>' : "";
       const overrides = wired && relevantScenes.length ? `<details class="model-application-overrides"><summary>按应用单独选择 <small>${relevantScenes.length} 个应用</small></summary><div class="model-application-list">${relevantScenes.map((scene) => { const current = center.assignments?.scenes?.[scene.id]?.[capability]; const modelId = selectedResourceId(center, current || system, current ? null : route); const effort = center.chatPreferences?.scenes?.[scene.id]?.reasoningEffort || "inherit"; const selected = current?.mode === "fixed" ? assignmentValue(current) : "inherit"; return `<section class="model-scene-policy" data-model-scene="${escapeHtml(scene.id)}"><header><strong>${escapeHtml(scene.name)}</strong><small>${escapeHtml(scene.description)}</small></header>${scene.modelOverride ? `<label><span>模型</span><select data-routing-scope="scene" data-scene="${escapeHtml(scene.id)}" data-capability="${capability}"><option value="inherit"${!current ? " selected" : ""}>跟随系统默认</option>${assignmentOptions(center, capability, selected, true, { activeOnly: true, includeAuto: false })}</select><small class="model-policy-save-status status" aria-live="polite" data-policy-status-kind="routing" data-policy-status-scope="scene" data-policy-status-scene="${escapeHtml(scene.id)}"></small></label>` : `<p class="status">${escapeHtml(scene.unavailableReason || "此应用暂不支持单独选择模型。")}</p>`}${capability === "chat" && scene.reasoningOverride ? `<label><span>思考强度</span><select data-reasoning-scope="scene" data-scene="${escapeHtml(scene.id)}">${reasoningOptions(state, modelId, effort, true)}</select><small class="model-policy-save-status status" aria-live="polite" data-policy-status-kind="reasoning" data-policy-status-scope="scene" data-policy-status-scene="${escapeHtml(scene.id)}"></small></label>` : ""}</section>`; }).join("")}</div></details>` : "";
@@ -369,6 +368,66 @@
     const recommendations = [chatRoute.selected, ...(chatRoute.fallbacks || [])].filter(Boolean).slice(0, 4);
     $("#modelRecommendations").innerHTML = recommendations.map((item, index) => `<button type="button" class="model-recommendation" data-recommend-connection="${escapeHtml(item.connectionId)}" data-recommend-model="${escapeHtml(item.modelId)}"><strong>${escapeHtml(item.modelId)}</strong><span>${index === 0 ? '<b class="badge ready">官方推荐</b>' : '<b class="badge">官方回退</b>'}${typeof item.evidence?.latencyMs === "number" && item.evidence.latencyMs <= 500 ? '<b class="badge">快速</b>' : ""}${item.capabilities?.includes("reasoning") ? '<b class="badge">深度思考</b>' : ""}</span><small>${escapeHtml(item.reason || chatRoute.reason || "已验证文字能力")}</small></button>`).join("") || '<p class="status">连接并验证官方短名单型号后显示推荐。</p>';
     $("#modelRecommendationHint").textContent = recommendations.length ? "标签只来自实际检查或应用内已有运行时能力，不依据名称猜测成本和上下文。" : "连接后显示少量有依据的推荐。";
+    renderModelNow(state, center);
+  }
+  // "正在使用"：每项能力此刻实际走哪个模型——固定分配优先，否则取自动路由选中的那个；
+  // 只有验证通过、执行流程已接通的才算可用。结论只取服务端给的状态，不在这里推断。
+  function capabilityInUse(center, capability) {
+    const assignment = center.assignments?.system?.[capability] || { mode: "auto" };
+    const pick = assignment.mode === "fixed" && assignment.ref
+      ? { connectionId: assignment.ref.connectionId, modelId: assignment.ref.modelId, fixed: true }
+      : center.automaticRoutes?.[capability]?.selected
+        ? { connectionId: center.automaticRoutes[capability].selected.connectionId, modelId: center.automaticRoutes[capability].selected.modelId, fixed: false }
+        : null;
+    const connection = pick && (center.connections || []).find((item) => item.id === pick.connectionId);
+    const support = connection?.capabilitySupport?.[capability] || center.capabilitySupport?.[capability];
+    const wired = support?.state === "available" || (pick && (center.resources || []).some((item) => item.connectionId === pick.connectionId && item.modelId === pick.modelId && item.executionState?.[capability] === "available"));
+    const usable = Boolean(pick) && (center.resources || []).some((item) => item.connectionId === pick.connectionId && item.modelId === pick.modelId
+      && item.enabled !== false && (item.capabilities || []).includes(capability) && item.evidence?.verified === true
+      && item.evidence?.health !== "unhealthy" && item.executionState?.[capability] === "available");
+    const anyWired = wired || (center.connections || []).some((item) => item.capabilitySupport?.[capability]?.state === "available");
+    return { pick, providerName: connection?.providerName || connection?.label || "", usable, supported: anyWired, reason: support?.reason || "" };
+  }
+  function renderModelNow(state, center) {
+    const body = $("#modelNowBody");
+    if (!body) return;
+    if (!state.live && !(center.connections || []).length) {
+      body.innerHTML = '<p class="model-now-empty">还没有连接模型。在下面的“服务账号”里填一个 Key，保存后就能用。</p>';
+      return;
+    }
+    const chat = capabilityInUse(center, "chat");
+    const chatLine = chat.pick
+      ? `<div class="model-now-main"><span class="model-now-label">对话</span><strong>${escapeHtml(chat.pick.modelId)}</strong><small>${escapeHtml(chat.providerName)}${chat.pick.fixed ? " · 你固定的" : " · 自动选择"}${state.check && state.model === chat.pick.modelId ? ` · ${escapeHtml(modelCheckLabel(state.check, state))}` : ""}</small><em data-ok="${chat.usable}">${chat.usable ? "可用" : "需要重新检查"}</em></div>`
+      : '<div class="model-now-main"><span class="model-now-label">对话</span><strong>还没有可用的文字模型</strong><em data-ok="false">不可用</em></div>';
+    const rows = NOW_CAPABILITIES.filter((capability) => capabilityOffered(center, capability)).map((capability) => ({ capability, ...capabilityInUse(center, capability) }));
+    const usableCount = rows.filter((row) => row.usable).length;
+    const chips = rows.map((row) => {
+      const mark = row.usable ? "✓" : row.supported ? "✗" : "—";
+      const title = row.usable ? `${row.pick.modelId}${row.providerName ? ` · ${row.providerName}` : ""}` : row.supported ? "已接入，但还没有验证通过的模型" : (row.reason || "当前版本不支持");
+      return `<span class="model-now-chip" data-state="${row.usable ? "ok" : row.supported ? "fail" : "none"}" title="${escapeHtml(title)}">${mark} ${escapeHtml(capabilityLabels[row.capability] || row.capability)}</span>`;
+    }).join("");
+    body.innerHTML = `${chatLine}<p class="model-now-summary">${rows.length} 项能力中 ${usableCount} 项可用</p><div class="model-now-chips">${chips}</div>`;
+  }
+  $("#modelNowChange")?.addEventListener("click", () => {
+    const select = document.querySelector('#modelCapabilityAssignments select[data-routing-scope="system"][data-capability="chat"]');
+    const target = select || $("#modelCapabilityAssignments");
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (select) select.focus();
+  });
+  $("#modelAddProvider")?.addEventListener("click", () => {
+    const advanced = $("#modelLegacySettings");
+    if (advanced) advanced.open = true;
+    document.querySelector("[data-new-model-connection]")?.click();
+    $("#modelConnectHeading")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    $("#modelProvider")?.focus();
+  });
+  // "重新检查"的进度写在服务账号那一栏的状态里：在按钮旁边同步显示一份，点了就能看到结果。
+  let mirrorRecheckUntil = 0;
+  $("#modelQuickRecheck")?.addEventListener("click", () => { mirrorRecheckUntil = Date.now() + 60_000; });
+  if ($("#modelQuickStatus") && $("#modelNowStatus")) {
+    new MutationObserver(() => {
+      if (Date.now() < mirrorRecheckUntil) $("#modelNowStatus").textContent = $("#modelQuickStatus").textContent;
+    }).observe($("#modelQuickStatus"), { childList: true, characterData: true, subtree: true });
   }
   function selectedResourceId(center, assignment, route) {
     if (assignment?.mode === "fixed") return assignment.ref.modelId;

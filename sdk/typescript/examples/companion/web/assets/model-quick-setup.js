@@ -155,6 +155,8 @@
       if (status) status.textContent = `检查失败：${error.message}`;
     } finally {
       button.disabled = false;
+      // 设置页顶部的"正在使用"据此重读状态，否则检查完仍显示旧结论。
+      window.dispatchEvent(new CustomEvent("clownfish:model-setup-complete"));
     }
   }
 
