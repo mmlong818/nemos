@@ -2225,17 +2225,25 @@ function modelConnectionUserMessage(error: unknown, stage: ModelConnectionFailur
   if (diagnostic?.networkKind === "timeout") return `${prefix}：连接超时。请检查网络出口与代理模式。`;
   if (diagnostic?.networkKind === "tls") return `${prefix}：TLS 证书或安全握手失败。请检查系统时间、证书链与代理的 HTTPS 支持。`;
   if (diagnostic?.category === "network") return `${prefix}：网络连接失败。请检查网络出口与代理模式。`;
-  if (diagnostic?.httpStatus === 401) return `${prefix}：API Key 无效或未被服务接受（HTTP 401）。`;
+  if (diagnostic?.httpStatus === 401) return `${prefix}：API Key 无效或未被服务接受（HTTP 401）。请到服务商后台重新复制完整的 Key 再粘贴。`;
   if (diagnostic?.httpStatus === 403) return `${prefix}：API Key 没有访问该服务或模型的权限（HTTP 403）。`;
   if (diagnostic?.httpStatus === 404) return stage === "catalog"
     ? `${prefix}：服务没有提供该模型目录端点（HTTP 404）。请检查 API 基础地址。`
     : `${prefix}：所选模型或接口不存在（HTTP 404）。请从当前目录选择可用模型。`;
-  if (diagnostic?.httpStatus === 429) return `${prefix}：服务额度不足或请求过于频繁（HTTP 429）。`;
+  if (diagnostic?.httpStatus === 429) return `${prefix}：服务额度不足或请求过于频繁（HTTP 429）。请检查账户余额，或稍后再试。`;
   if (diagnostic?.httpStatus === 400 || diagnostic?.httpStatus === 422) return `${prefix}：服务拒绝了请求参数；所选模型可能不兼容（HTTP ${diagnostic.httpStatus}）。`;
   if (diagnostic?.httpStatus && diagnostic.httpStatus >= 500) return `${prefix}：服务暂时不可用（HTTP ${diagnostic.httpStatus}）。请稍后重试。`;
   if (error instanceof SyntaxError) return `${prefix}：服务返回的 JSON 格式无效。请检查基础地址和协议。`;
   if (error instanceof OutboundProxyError) return `${prefix}：${error.message}`;
   return `${prefix}：发生未分类错误；连接未提交。请检查基础地址和协议。`;
+}
+
+// 一键配置把每步的错误原样展示给用户；能识别的模型/网络错误换成可照做的说明，其余（本来就写清楚的）原样抛出。
+function explainQuickSetupFailure(stage: ModelConnectionFailureStage) {
+  return (error: unknown): never => {
+    if (companionModelFailureDiagnostic(error)) throw new Error(modelConnectionUserMessage(error, stage));
+    throw error;
+  };
 }
 
 function currentPlatformConnectors() {
@@ -5811,8 +5819,8 @@ const server = createServer(async (req, res) => {
         const run = modelQuickSetupCoordinator.run(requestId, modelVault.quickSetup, () => runModelQuickSetup({ requestId, keys, resetRecommendations: body.resetRecommendations === true }, {
           persist: (snapshot) => { modelVault = { ...modelVault, quickSetup: snapshot }; writeSavedLLMVault(); },
           save: async (provider, key) => saveQuickSetupProvider(provider, key),
-          discover: discoverQuickSetupTargets,
-          verify: verifyQuickSetupTarget,
+          discover: (provider, connectionId) => discoverQuickSetupTargets(provider, connectionId).catch(explainQuickSetupFailure("catalog")),
+          verify: (target) => verifyQuickSetupTarget(target).catch(explainQuickSetupFailure("probe")),
           assign: assignQuickSetupTargets,
         }));
         const snapshot = await run.promise;

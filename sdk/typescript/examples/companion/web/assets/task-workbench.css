@@ -657,3 +657,12 @@
   font-size: 13px !important;
   font-weight: 650 !important;
 }
+
+/* 未连接模型提示：输入框上方一条，连上模型后隐藏。 */
+.model-missing-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; box-sizing: border-box; width: min(840px, calc(100% - 48px)); margin: 8px auto 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--cf-warning, #94631b) 35%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--cf-warning, #94631b) 8%, #fff); color: var(--cf-ink, #253331); font-size: 13px; line-height: 1.5; }
+.model-missing-notice[hidden] { display: none; }
+.model-missing-notice p { margin: 0; }
+.model-missing-notice b { margin-right: 8px; }
+.model-missing-action { flex: none; padding: 6px 14px; border-radius: 8px; background: var(--cf-coral, #276b5b); color: #fff; font-weight: 600; text-decoration: none; }
+.model-missing-action:hover { background: var(--cf-coral-hover, #205749); }
+@media (max-width: 600px) { .model-missing-notice { flex-direction: column; align-items: stretch; } .model-missing-action { text-align: center; } }

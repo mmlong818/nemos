@@ -35,7 +35,7 @@ test("模型与服务页顺序：正在使用 → 服务账号 → 各项能力 
   assert.match(center, /function renderModelNow\(state, center\)/);
   assert.doesNotMatch(center, /textContent = "用途设置"/, "不再把能力表标题改回旧名字");
   assert.doesNotMatch(center, /系统会自动筛选、验证并配置推荐模型/, "页头说明以 settings.html 为准，不再被脚本改回旧文案");
-  assert.match(center, /const visiblePurposes = NOW_CAPABILITIES\.filter\(\(capability\) => capabilityOffered\(center, capability\)\)/, "没接通的能力不出现在能力表");
+  assert.match(center, /const visiblePurposes = \(center\.connections \|\| \[\]\)\.length \? NOW_CAPABILITIES\.filter\(\(capability\) => capabilityOffered\(center, capability\)\) : \[\];/, "没接通的能力不出现在能力表");
   assert.match(center, /NOW_CAPABILITIES\.filter\(\(capability\) => capabilityOffered\(center, capability\)\)\.map/, "也不出现在正在使用");
   assert.match(center, /<details class="model-capability-probe-group"\$\{route\?\.selected \? "" : " open"\}>/, "候选型号测试默认收起，没有可用模型时才展开");
   assert.match(script, /\/api\/model-quick-setup/);

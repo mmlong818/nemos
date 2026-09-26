@@ -896,29 +896,29 @@
     width:430px;
     max-width:calc(100vw - 36px);
     border-radius:18px;
-    background:linear-gradient(180deg,#ffffff,#f8f2ff);
-    border:1px solid rgba(255,255,255,.78);
-    box-shadow:0 30px 80px rgba(28,18,58,.28);
+    background:var(--cf-surface,#fff);
+    border:1px solid var(--cf-line,#dfe5e2);
+    box-shadow:0 24px 70px rgba(30,58,50,.18);
     overflow:hidden;
   }
   .onboard-head { padding:22px 24px 12px; }
-  .onboard-head b { display:block; color:#211543; font-size:22px; line-height:1.25; }
-  .onboard-head span { display:block; margin-top:8px; color:#75688f; font-size:13px; line-height:1.6; }
+  .onboard-head b { display:block; color:var(--cf-ink,#253331); font-size:22px; line-height:1.25; }
+  .onboard-head span { display:block; margin-top:8px; color:var(--cf-ink-soft,#66746f); font-size:13px; line-height:1.6; }
   .onboard-form { padding:8px 24px 24px; display:flex; flex-direction:column; gap:12px; }
-  .onboard-form label { color:#38275d; font-size:13px; font-weight:850; }
+  .onboard-form label { color:var(--cf-ink,#253331); font-size:13px; font-weight:850; }
   .onboard-form input {
     height:42px;
-    border:1px solid rgba(139,92,246,.2);
+    border:1px solid var(--cf-line,#dfe5e2);
     border-radius:12px;
     background:#fff;
     padding:0 12px;
-    color:#211543;
+    color:var(--cf-ink,#253331);
     font-size:14px;
     outline:none;
   }
-  .onboard-form input:focus { border-color:rgba(139,92,246,.55); box-shadow:0 0 0 4px rgba(139,92,246,.12); }
-  .onboard-hint { color:#8a7ca8; font-size:12px; line-height:1.55; }
-  .onboard-error { min-height:18px; color:#d94678; font-size:12px; }
+  .onboard-form input:focus { border-color:var(--cf-coral,#276b5b); box-shadow:0 0 0 4px var(--cf-coral-soft,#e8f1ed); }
+  .onboard-hint { color:var(--cf-ink-soft,#66746f); font-size:12px; line-height:1.55; }
+  .onboard-error { min-height:18px; color:var(--cf-danger,#a92d48); font-size:12px; }
   #onboardStart { height:42px; border-radius:12px; }
   .smlist { padding:6px 0; }
   .smitem { padding:14px 20px; cursor:pointer; font-size:14.5px; transition:background .15s; }
@@ -3166,6 +3166,7 @@
   </div>
   <div id="main" class="task-workbench-main">
     <div id="msgs" class="task-workbench-stage"></div>
+      <div id="modelMissingNotice" class="model-missing-notice" role="status" hidden><p><b>还没有连接模型</b>现在只能做基础回复。填一个 OpenAI 或智谱的 Key，就能正常对话和办事。</p><a class="model-missing-action" href="/settings">去连接</a></div>
       <div id="composer" class="task-workbench-composer">
         <div id="txtWrap" class="task-workbench-input-wrap">
           <div id="attachmentPreview" class="attachment-preview" aria-live="polite">
@@ -4489,6 +4490,7 @@ async function loadState() {
   state.profile = s.profile || null;
   renderRailUserAvatar();
   $("#llm").textContent = (s.live ? "● " : "○ ") + s.label;
+  syncModelMissingNotice(s.live);
   renderCapabilityOwnerLabels();
   renderContacts();
   if (isOnboardingComplete()) {
@@ -4867,6 +4869,8 @@ function addRow(side, who, text, opts = {}) {
   const msgs = $("#msgs");
   const hint = msgs.querySelector(".hint"); if (hint) hint.remove();
   const empty = msgs.querySelector(".empty-state"); if (empty) empty.remove();
+  // 空白页的大输入框随空状态一起移除，底部输入框必须同时恢复；否则首次引导逐条播放欢迎语时整段无处输入。
+  if (empty) $("#composer")?.classList.remove("hero-mode");
   const row = document.createElement("div");
   row.className = "row " + side;
   if (opts.messageId) row.dataset.messageId = String(opts.messageId);
@@ -7564,8 +7568,14 @@ let modelConnectionState = null;
 function modelPreset(id) {
   return (modelConnectionState?.providers || []).find((item) => item.id === id) || null;
 }
+// 没连模型时回复只是固定建议，新人会以为应用听不懂话；输入框上方常驻说明原因和去处，连上后自动消失。
+function syncModelMissingNotice(live) {
+  const notice = $("#modelMissingNotice");
+  if (notice) notice.hidden = Boolean(live);
+}
 function renderModelConnectionStatus(state, hydrateForm = false) {
   modelConnectionState = state;
+  syncModelMissingNotice(state.live);
   const summary = $("#sm-model-summary");
   const current = $("#modelCurrent");
   const offline = $("#modelOffline");

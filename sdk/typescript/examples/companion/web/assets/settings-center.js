@@ -340,14 +340,16 @@
     const poolHint = verifiedCount
       ? `已验证 ${verifiedCount} 个模型${enabledCount > verifiedCount ? `；另有 ${enabledCount - verifiedCount} 个测试后可选（在“高级 → 模型库”里测试）` : ""}`
       : "还没有验证通过的文字模型：在上面“服务账号”里保存 Key 即可自动验证。";
-    const visiblePurposes = NOW_CAPABILITIES.filter((capability) => capabilityOffered(center, capability));
-    $("#modelCapabilityAssignments").innerHTML = visiblePurposes.map((capability) => {
+    const visiblePurposes = (center.connections || []).length ? NOW_CAPABILITIES.filter((capability) => capabilityOffered(center, capability)) : [];
+    $("#modelCapabilityAssignments").innerHTML = !visiblePurposes.length
+      ? '<p class="model-capabilities-empty">在上面“服务账号”里保存一个 Key 后，这里会列出对话、看图、语音等能力各用哪个模型。</p>'
+      : visiblePurposes.map((capability) => {
       const system = center.assignments?.system?.[capability] || { mode: "auto" };
       const route = center.automaticRoutes?.[capability];
       const relevantScenes = (center.scenes || []).filter((scene) => scene.executionState === "wired" && scene.capabilities?.includes(capability));
       const support = activeConnection?.capabilitySupport?.[capability] || center.capabilitySupport?.[capability] || { state: "integration_pending", reason: "执行适配尚未完成。" };
       const wired = support.state === "available";
-      const status = wired ? (route?.selected ? `当前可用 · ${route.reason || "已通过连接验证"}` : `尚无已验证的${capabilityLabels[capability] || capability}模型，请先显式测试一个候选`) : support.reason;
+      const status = wired ? (route?.selected ? `当前可用 · ${route.reason || "已通过连接验证"}` : (capability === "chat" ? "还没有验证通过的模型" : `还没有验证通过的${capabilityLabels[capability] || capability}模型：展开下面的“测试其他型号”，点一个试试`)) : support.reason;
       const selector = wired ? `<label><span class="sr-only">${escapeHtml(capabilityLabels[capability])}系统默认</span><select data-routing-scope="system" data-capability="${capability}">${assignmentOptions(center, capability, assignmentValue(system), true)}</select><small class="model-policy-save-status status" aria-live="polite" data-policy-status-kind="routing" data-policy-status-scope="system" data-policy-status-scene=""></small></label>` : '<span class="badge">待接入</span>';
       const systemModel = selectedResourceId(center, system, route);
       const systemEffort = center.chatPreferences?.system?.reasoningEffort || "auto";
@@ -391,7 +393,10 @@
   function renderModelNow(state, center) {
     const body = $("#modelNowBody");
     if (!body) return;
-    if (!state.live && !(center.connections || []).length) {
+    const empty = !state.live && !(center.connections || []).length;
+    // 没有任何连接时“换模型”“重新检查”都无事可做，只留一句去处。
+    for (const id of ["#modelNowChange", "#modelQuickRecheck"]) { const button = $(id); if (button) button.hidden = empty; }
+    if (empty) {
       body.innerHTML = '<p class="model-now-empty">还没有连接模型。在下面的“服务账号”里填一个 Key，保存后就能用。</p>';
       return;
     }
