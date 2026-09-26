@@ -6,7 +6,7 @@
 - Supports OpenAI and Zhipu BigModel key setup with explicit connection checks, capability assignment, and local credential protection on Windows.
 - Includes an auditable Agent runtime with bounded execution, approvals, cancellation, structured step receipts, model-call records, and resumable task state.
 - Keeps source files intact while creating editable working copies and new export artifacts for supported document workflows.
-- Gives Clownfish one editable persona shared by conversation and task work, quick-reply buttons, and an activity rail showing live status, approvals, upcoming schedules, and identity settings.
+- Gives Clownfish one editable persona shared by conversation and task work, quick-reply buttons, local slash commands in the input, and an activity rail showing live status, approvals, upcoming schedules, and identity settings.
 - Adds goals clarified in conversation and saved only after approval, with milestones, a dated timeline, momentum judgements with their basis, periodic check-ins, and one conversation thread per goal.
 - Adds a sourced feed written from an editable topic, learning only from explicit likes, discussions, and "not interested" feedback, plus personalised ideas that the assistant can start in chat.
 - Adds interactive widgets built in chat: sandboxed, locally stateful, self-checked in a local browser under the same sandbox before delivery, and pinnable to the overview. Forms inside widgets submit to the page's own script while form data still cannot leave the sandbox.

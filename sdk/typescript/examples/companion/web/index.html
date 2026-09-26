@@ -1779,6 +1779,12 @@
   .quick-replies { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
   .quick-replies button { min-height:30px; padding:4px 12px; border:1px solid #cfd6e2; border-radius:15px; background:#fff; color:#2f343c; font-size:13px; line-height:1.4; cursor:pointer; }
   .quick-replies button:hover { background:#f1f4f9; border-color:#aeb8c8; }
+  .slash-menu { position:fixed; z-index:60; max-height:min(300px, 60vh); overflow-y:auto; padding:6px; border:1px solid #d7dde6; border-radius:10px; background:#fff; box-shadow:0 10px 28px rgba(20,30,45,.14); }
+  .slash-menu[hidden] { display:none; }
+  .slash-menu button { display:flex; width:100%; gap:10px; align-items:baseline; padding:7px 10px; border:0; border-radius:7px; background:none; color:#1f2d2a; font-size:13px; text-align:left; cursor:pointer; }
+  .slash-menu button b { min-width:64px; font-weight:700; }
+  .slash-menu button small { color:#66737a; font-size:12px; }
+  .slash-menu button[aria-selected="true"], .slash-menu button:hover { background:#eef4f2; }
   .quick-replies button:focus-visible { outline:2px solid #4f7cff; outline-offset:1px; }
   #msgs .row:not(:last-child) .quick-replies, body.is-busy .quick-replies { display:none; }
   .link-button { padding:0; border:0; background:none; color:#2f6fdb; font:inherit; cursor:pointer; }
@@ -3171,7 +3177,8 @@
             <img id="imagePreviewImg" alt="待发送图片" width="74" height="54" />
             <button id="imageClear" type="button" title="移除图片" aria-label="移除图片" data-icon="x"></button>
           </div>
-          <textarea id="txt" class="task-workbench-input" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）" autocomplete="off" rows="3"></textarea>
+          <div id="slashMenu" class="slash-menu" role="listbox" aria-label="命令" hidden></div>
+          <textarea id="txt" class="task-workbench-input" placeholder="说点什么…（Enter 发送，Shift+Enter 换行，/ 看命令）" autocomplete="off" rows="3"></textarea>
         </div>
         <div id="composerTools" class="task-workbench-tools">
           <div class="tool-left">
@@ -3225,6 +3232,7 @@
 <link rel="stylesheet" href="/assets/activity-rail.css">
 <script src="/assets/activity-rail.js"></script>
 <script src="/assets/quick-replies.js"></script>
+<script src="/assets/slash-commands.js"></script>
 <script src="/assets/widget-host.js"></script>
 <script>
 const BUILD = "v16 clownfish-identity-migration";
@@ -5222,6 +5230,92 @@ document.addEventListener("keydown", (e) => {
     if (heroBtn) heroBtn.click();
   }
 });
+// 斜杠命令：敲 / 弹菜单，选中后在本机执行，不发给模型；匹配不到就照常发送。
+// 空对话时用的是首页大输入框 #heroTxt，有对话后是 #txt：两个都接，菜单挪到当前输入框上方。
+const slashMenu = { items: [], index: 0, input: null };
+const isSlashInput = (node) => !!node && (node.id === "txt" || node.id === "heroTxt");
+function renderSlashMenu() {
+  const menu = $("#slashMenu");
+  if (!menu) return;
+  // 首页输入框的外框 overflow:hidden 会把菜单裁掉：菜单挂在 body 上，按输入框位置固定在它上方。
+  if (menu.parentElement !== document.body) document.body.appendChild(menu);
+  const host = slashMenu.input && (slashMenu.input.closest(".hero-composer, #txtWrap") || slashMenu.input);
+  if (host && slashMenu.items.length) {
+    const rect = host.getBoundingClientRect();
+    menu.style.left = rect.left + "px";
+    menu.style.width = rect.width + "px";
+    menu.style.bottom = (window.innerHeight - rect.top + 6) + "px";
+  }
+  menu.hidden = slashMenu.items.length === 0;
+  menu.innerHTML = "";
+  slashMenu.items.forEach((command, i) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", String(i === slashMenu.index));
+    button.innerHTML = "<b></b><small></small>";
+    button.querySelector("b").textContent = "/" + command.name;
+    button.querySelector("small").textContent = command.hint;
+    // mousedown 先于输入框失焦：点菜单时输入框里的 / 还在。
+    button.addEventListener("mousedown", (event) => { event.preventDefault(); runSlashCommand(command); });
+    menu.appendChild(button);
+  });
+}
+function updateSlashMenu(input) {
+  const api = window.ClownfishSlashCommands;
+  slashMenu.input = input;
+  slashMenu.items = api ? api.matchSlashCommands(input.value) : [];
+  slashMenu.index = Math.min(slashMenu.index, Math.max(0, slashMenu.items.length - 1));
+  renderSlashMenu();
+}
+function closeSlashMenu() { slashMenu.items = []; slashMenu.index = 0; renderSlashMenu(); }
+function runSlashCommand(command) {
+  const api = window.ClownfishSlashCommands;
+  if (slashMenu.input) slashMenu.input.value = "";
+  scheduleSaveConversationDraft();
+  closeSlashMenu();
+  const action = command.action;
+  if (action.type === "help") {
+    addRow("other", null, api.helpText(), { pid: APP_PERSONA_ID });
+    // 在首页大输入框里敲的：空状态随 addRow 一起移除，要把常规输入框换回来，不然页面上没有输入框。
+    const composer = $("#composer");
+    if (composer) composer.classList.remove("hero-mode");
+    $("#txt").focus();
+    return;
+  }
+  if (action.type === "navigate") { window.location.href = action.href; return; }
+  if (action.type === "open-rail") {
+    const open = document.body.classList.contains("activity-rail-on") || document.body.classList.contains("activity-rail-open");
+    if (!open) document.querySelector(action.selector)?.click();
+    return;
+  }
+  const target = action.selector ? document.querySelector(action.selector)
+    : [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === action.text);
+  if (target) target.click();
+  else addRow("other", "系统", "这个入口现在不在页面上，命令没能执行。");
+}
+document.addEventListener("input", (e) => { if (isSlashInput(e.target)) updateSlashMenu(e.target); });
+document.addEventListener("focusout", (e) => { if (isSlashInput(e.target)) setTimeout(closeSlashMenu, 120); });
+// 捕获阶段先处理：命令键在这里吃掉，就不会再走到下面"Enter 发送"的监听。
+document.addEventListener("keydown", (e) => {
+  if (!isSlashInput(e.target)) return;
+  const handled = () => { e.preventDefault(); e.stopPropagation(); };
+  if (slashMenu.items.length && slashMenu.input === e.target) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      handled();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      slashMenu.index = (slashMenu.index + step + slashMenu.items.length) % slashMenu.items.length;
+      renderSlashMenu();
+      return;
+    }
+    if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") { handled(); runSlashCommand(slashMenu.items[slashMenu.index]); return; }
+    if (e.key === "Escape") { handled(); closeSlashMenu(); return; }
+  }
+  if (e.key === "Enter" && !e.shiftKey) {
+    const exact = window.ClownfishSlashCommands && window.ClownfishSlashCommands.exactSlashCommand(e.target.value);
+    if (exact) { handled(); slashMenu.input = e.target; runSlashCommand(exact); }
+  }
+}, true);
 $("#txt").addEventListener("input", scheduleSaveConversationDraft);
 $("#txt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {

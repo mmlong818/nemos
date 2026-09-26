@@ -42,7 +42,7 @@ The current application brings these areas together:
 
 ### One assistant for talking and doing
 
-Clownfish's persona is an editable setting: renaming it changes how it refers to itself, while "Clownfish" remains the app name. Conversation and task work share one speaking style; during tasks it delivers results directly instead of promising to "send it later", and it names what is missing when information is insufficient. When you need to choose, a reply can end with two to four quick-reply buttons.
+Clownfish's persona is an editable setting: renaming it changes how it refers to itself, while "Clownfish" remains the app name. Conversation and task work share one speaking style; during tasks it delivers results directly instead of promising to "send it later", and it names what is missing when information is insufficient. When you need to choose, a reply can end with two to four quick-reply buttons. Typing `/` in the input opens a command menu: start a new conversation, open conversation history, local status, or the activity rail, or jump to goals, the feed, ideas, and "keep an eye on it"; commands run locally and are not sent to the model.
 
 The activity rail on the assistant page has four tabs: **Activity** (background results, taken from recorded status rather than model-written summaries), **Approvals** (pending actions you can allow once or for the session), **Upcoming** (next scheduled tasks and goal check-ins), and **Identity** (assistant settings, memory, and work guidelines).
 
