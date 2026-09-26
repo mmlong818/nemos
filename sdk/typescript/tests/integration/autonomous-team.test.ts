@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {startModelHarness} from '../fixtures/companion-model-harness.js';
+import {requestsMentioning,startModelHarness} from '../fixtures/companion-model-harness.js';
 import {onboardModel} from '../helpers/onboard-model.js';
 
 test('自主协作 HTTP 入口校验同意、保存规划和预算并完成文字交付', {timeout:60000}, async()=>{
@@ -10,7 +10,7 @@ test('自主协作 HTTP 入口校验同意、保存规划和预算并完成文�
     await onboardModel(h.base,{provider:'custom',protocol:'openai-compatible',baseUrl:h.modelBase+'/v1',model:'manual',selectionMode:'manual'});
     const info=await (await fetch(h.base+'/api/assistant-team')).json() as any;
     assert.equal(info.planningVersion,1);
-    const request={requestId:'autonomous-http',objective:'整理合成测试材料',assignmentMode:'auto',planningBudget:5};
+    const request={requestId:'autonomous-http',objective:'QA-AUTO 整理合成测试材料',assignmentMode:'auto',planningBudget:5};
     assert.equal((await post('/api/assistant-team/start',request)).status,400);
     const before=h.requests.length;
     h.state.replyFor=(body:any)=>{
@@ -37,6 +37,6 @@ test('自主协作 HTTP 入口校验同意、保存规划和预算并完成文�
     assert.equal(record.payload.teamPlan.executionMode,'planned-text-v1');
     assert.equal(record.checkpoints.filter((c:any)=>c.data?.teamBudgetReservation).length,3);
     assert.equal(record.checkpoints.filter((c:any)=>c.data?.teamExecutionPlan).length,1);
-    assert.equal(h.requests.length-before,3);
+    assert.equal(requestsMentioning(h.requests,'QA-AUTO',before).length,3,'规划、整理、汇总三次，后台请求不算');
   }finally{await h.stop();}
 });

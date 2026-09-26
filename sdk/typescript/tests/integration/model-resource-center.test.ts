@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DPAPI_ONLY, startModelHarness } from "../fixtures/companion-model-harness.js";
+import { DPAPI_ONLY, requestsMentioning, startModelHarness } from "../fixtures/companion-model-harness.js";
 
 const postTo = (base: string) => async (path: string, body: unknown, expected = 200) => {
   const response = await fetch(base + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -36,14 +36,15 @@ test("unwired media fails closed and deprecated write routes stay closed", { tim
   try {
     await onboard(post, { provider: "custom", protocol: "openai-compatible", baseUrl: h.modelBase + "/v1", model: "manual", selectionMode: "manual", key: "fixture" });
     const before = h.requests.length;
-    for (const [path, body] of [["/api/tts", { text: "测试" }], ["/api/chat", { text: "看图", image: "data:image/png;base64,AA==" }]] as const) {
+    for (const [path, body] of [["/api/tts", { text: "QA-TTS 测试" }], ["/api/chat", { text: "QA-IMG 看图", image: "data:image/png;base64,AA==" }]] as const) {
       const response = await fetch(h.base + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); assert.equal(response.status, 409);
     }
-    assert.equal(h.requests.length, before);
+    // 后台活动（人格简介预热等）会打模型，数总数会偶发失败：只看这两条内容有没有到过模型。
+    assert.deepEqual([requestsMentioning(h.requests, "QA-TTS", before).length, requestsMentioning(h.requests, "QA-IMG", before).length], [0, 0]);
     for (const endpoint of ["/api/llm-connect", "/api/llm-config", "/api/llm-key"]) {
       const result = await post(endpoint, { key: "must-not-save" }, 410); assert.equal(result.code, "deprecated_endpoint"); assert.doesNotMatch(JSON.stringify(result), /must-not-save/);
     }
-    assert.equal(h.requests.length, before);
+    assert.equal(requestsMentioning(h.requests, "must-not-save", before).length, 0);
   } finally { await h.stop(); }
 });
 

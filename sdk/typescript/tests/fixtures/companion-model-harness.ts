@@ -10,6 +10,15 @@ async function listen(server: Server): Promise<number> {
   return (server.address() as { port: number }).port;
 }
 
+/**
+ * 发给模型、内容里带着 marker 的请求（从第 since 个请求往后数）。
+ * 整合测试别数请求总数：人格简介预热、例行任务调度、记忆整合都会在后台打模型，总数随时会多出来。
+ * 判据落到"这条内容有没有到过模型"。
+ */
+export function requestsMentioning(requests: ReadonlyArray<{ body: any }>, marker: string, since = 0) {
+  return requests.slice(since).filter((request) => request.body && JSON.stringify(request.body).includes(marker));
+}
+
 /** Local synthetic provider plus a real Companion process with a fresh data directory. */
 export async function startModelHarness() {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-model-check-"));

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { startModelHarness } from "../fixtures/companion-model-harness.js";
+import { requestsMentioning, startModelHarness } from "../fixtures/companion-model-harness.js";
 import { onboardModel } from "../helpers/onboard-model.js";
 import { listBotMarket } from "../../examples/companion/bot-market.js";
 
@@ -74,7 +74,7 @@ test("助理团队 HTTP：配置、实际队列执行、自动收尾、回执恢
     const retried = await waitJob(failedId, ["succeeded", "failed"]);
     assert.equal(retried.status, "succeeded");
     assert.deepEqual(retried.stepReceipts.filter((receipt: any) => receipt.stepId === "final").map((receipt: any) => [receipt.attempt, receipt.state]), [[1, "failed"], [2, "succeeded"]]);
-    assert.equal(h.requests.length - before, 1); // only final, not the specialists
+    assert.equal(requestsMentioning(h.requests, "QA-TEAM", before).length, 1); // only final, not the specialists
     await h.restart();
     assert.equal((await team()).bots.find((b: any) => b.id === custom.record.id).instructions, "只整理当前材料");
     assert.equal((await team("/job?id=" + id)).job.result.data.receipts.length, 3);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DPAPI_ONLY, startModelHarness } from "../fixtures/companion-model-harness.js";
+import { DPAPI_ONLY, requestsMentioning, startModelHarness } from "../fixtures/companion-model-harness.js";
 
 test("one credential enables several independently checked models and preserves routing across restart", { timeout: 120_000, skip: DPAPI_ONLY }, async () => {
   const h = await startModelHarness();
@@ -32,7 +32,10 @@ test("one credential enables several independently checked models and preserves 
 
     const providerRequestsBeforeAdd = h.requests.length;
     const manual = await post("/api/llm-model/register-enable", { connectionId, model: "outside-manual-id" });
-    assert.equal(h.requests.length, providerRequestsBeforeAdd, "adding and enabling a manual ID must make zero provider calls");
+    // 后台活动只会发对话请求：列目录、探测之类的请求一个都不许有，对话请求里也不许带这个编号。
+    const sinceAdd = h.requests.slice(providerRequestsBeforeAdd);
+    assert.deepEqual(sinceAdd.filter((r) => !/\/chat\/completions$/.test(r.url)).map((r) => r.url), [], "adding and enabling a manual ID must make zero provider calls");
+    assert.equal(requestsMentioning(h.requests, "outside-manual-id", providerRequestsBeforeAdd).length, 0, "adding and enabling a manual ID must make zero provider calls");
     const manualConnection = manual.resourceCenter.connections.find((item: any) => item.id === connectionId);
     assert.ok(manualConnection.registeredModels.includes("outside-manual-id"));
     assert.ok(manualConnection.enabledModels.includes("outside-manual-id"));
