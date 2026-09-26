@@ -13,6 +13,7 @@
 - Adds interactive widgets built in chat: sandboxed, locally stateful, self-checked in a local browser under the same sandbox before delivery, and pinnable to the overview. Forms inside widgets submit to the page's own script while form data still cannot leave the sandbox.
 - Adds "keep an eye on it" web checks that speak up only when something changes and cite their sources, with fixed daily limits; items can be added from settings or, with approval, from chat.
 - Adds quiet hours, tell-me and never-mention topic preferences, scheduled feed generation, and optional start-in-tray at Windows sign-in.
+- Adds a bottom tab bar on narrow screens (assistant, overview, matters, tasks, more) so every page stays reachable on a phone.
 - Opens model-generated HTML deliverables in an origin-less sandbox so their scripts cannot call the application API.
 - Ships the Windows portable client, local web application, optional encrypted self-hosted synchronization service, and current privacy and security documentation.
 - Uses the Clownfish Source-Available Non-Commercial License 1.0; third-party components retain their own licenses.

@@ -50,6 +50,31 @@
     if(product)body.dataset.productArea=product.area(location.pathname,location.search);
     const activePath=route.path==='/runs'?'/settings':['/tasks','/collaboration'].includes(route.path)?'/bots':route.path;
     nav.querySelectorAll('[data-wb-path]').forEach(a=>{const active=product?a.dataset.productKey===product.area(location.pathname,location.search):a.dataset.wbPath===activePath;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+    if(product)document.querySelectorAll('.wb-tabbar [data-tab-key]').forEach(a=>{if(a.dataset.tabKey===product.area(location.pathname,location.search))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  }
+  // 手机上的底部标签栏（窄屏才显示）：常去的四页一点就到，"更多"打开完整导航。
+  // 聊天页会把顶栏连同 ☰ 一起藏起来，手机上原来进了聊天就去不了别的页面。
+  const TABBAR_KEYS=['assistant','overview','matters','tasks'];
+  // 内联图标：不是每个页面都加载 app-icons.js，标签栏不能依赖它。
+  const TABBAR_ICONS={
+    assistant:'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    overview:'<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+    matters:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/>',
+    tasks:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
+    more:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+  };
+  const tabbarIcon=key=>'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+TABBAR_ICONS[key]+'</svg>';
+  if(product){
+    const bar=document.createElement('nav');bar.className='wb-tabbar';bar.setAttribute('aria-label','常用页面');
+    for(const key of TABBAR_KEYS){
+      const item=product.items.find(entry=>entry.key===key);if(!item)continue;
+      const link=document.createElement('a');link.href=item.href;link.dataset.tabKey=key;
+      link.innerHTML=tabbarIcon(key)+'<b></b>';link.querySelector('b').textContent=item.label;bar.append(link);
+    }
+    const more=document.createElement('button');more.type='button';more.className='wb-tabbar-more';more.setAttribute('aria-controls','wbNavigation');
+    more.innerHTML=tabbarIcon('more')+'<b>更多</b>';
+    more.onclick=event=>{event.stopPropagation();menu.click();};
+    bar.append(more);body.append(bar);
   }
   function closeNav(){body.classList.remove('wb-nav-open');menu.setAttribute('aria-expanded','false');}
   menu.onclick=()=>{saveNavState();const open=body.classList.toggle('wb-nav-open');menu.setAttribute('aria-expanded',String(open));if(open)restoreNavState();};
