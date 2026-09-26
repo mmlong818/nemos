@@ -23,6 +23,19 @@ test("万神殿是统一工作区而非人物卡市场或普通群聊", () => {
   assert.doesNotMatch(html, /人物市场|加入群聊|模拟真人/);
 });
 
+// 万神殿曾自带一套配色、编号圈和悬浮卡片，导航标签也停在旧名字；它应与其他页面共用同一框架。
+test("万神殿使用统一导航框架与主题色，不再单独设计", () => {
+  const source = readFileSync(join(webRoot, "pantheon.html"), "utf8");
+  const css = readFileSync(join(webRoot, "assets", "pantheon.css"), "utf8");
+  assert.match(source, /\/assets\/product-structure\.js/);
+  assert.match(source, /\/assets\/app-navigation-labels\.css/);
+  assert.match(source, /<main class="personal-main pantheon-main">/);
+  assert.doesNotMatch(source, /<span>0[123]<\/span>/, "不再用编号圈");
+  assert.doesNotMatch(css, /#9a6330|#f4eadb|#25332e|#f1eee8|#d9b481|#17231f/, "不写死独立配色");
+  assert.doesNotMatch(css, /box-shadow:var\(--cf-workspace-shadow\)/, "不再是悬浮卡片");
+  assert.match(css, /body\{margin:0\}/);
+});
+
 test("万神殿前端包含空、加载、错误与阶段反馈，并从同源API读写", () => {
   const script = readFileSync(join(webRoot, "assets", "pantheon.js"), "utf8");
   const css = readFileSync(join(webRoot, "assets", "pantheon.css"), "utf8");

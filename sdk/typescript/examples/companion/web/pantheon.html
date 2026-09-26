@@ -2,18 +2,18 @@
 <html lang="zh-CN"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>万神殿 · 小丑鱼</title><link rel="icon" href="/assets/brand/clownfish-mark.png">
-  <link rel="stylesheet" href="/assets/clownfish-theme.css"><link rel="stylesheet" href="/assets/pantheon.css">
-  <script src="/assets/unsandboxed-notice.js" defer></script>
+  <link rel="stylesheet" href="/assets/clownfish-theme.css"><link rel="stylesheet" href="/assets/app-navigation-labels.css"><link rel="stylesheet" href="/assets/pantheon.css">
+  <script src="/assets/product-structure.js" defer></script><script src="/assets/unsandboxed-notice.js" defer></script>
   <script src="/assets/pantheon.js" defer></script>
 </head><body><div class="personal-shell pantheon-shell"><!-- APP_NAVIGATION -->
-<main class="pantheon-main">
+<main class="personal-main pantheon-main">
   <header class="pantheon-head">
     <div><p class="pantheon-kicker">结构化多视角推演</p><h1>万神殿</h1><p>先由系统理解议题并安排思维席位，再逐阶段立论、质询与回应。席位是方法，不是真人的替身。</p></div>
     <div class="pantheon-status" id="phaseStatus" role="status"><span>尚未开议</span><small>写下议题即可自动配席</small></div>
   </header>
 
   <section class="issue-bench" aria-labelledby="issueTitle">
-    <div class="section-label"><span>01</span><div><h2 id="issueTitle">提出议题</h2><p>无需预选人物或模型；你随时可以查看并调整系统的选择。</p></div></div>
+    <div class="section-label"><div><h2 id="issueTitle">提出议题</h2><p>无需预选人物或模型；你随时可以查看并调整系统的选择。</p></div></div>
     <form id="issueForm">
       <label for="pantheonIssue">你真正想厘清什么？</label>
       <textarea id="pantheonIssue" maxlength="12000" required placeholder="例如：我们是否应该把核心服务迁移到新架构？哪些假设最值得先验证？"></textarea>
@@ -24,14 +24,14 @@
 
   <div class="hall-layout">
     <aside class="seat-rail" aria-labelledby="seatTitle">
-      <div class="section-label compact"><span>02</span><div><h2 id="seatTitle">入席理由</h2><p id="intentReason">等待议题</p></div></div>
+      <div class="section-label compact"><div><h2 id="seatTitle">入席理由</h2><p id="intentReason">等待议题</p></div></div>
       <div id="seatRationale" data-empty="true"><p class="empty-copy">系统会选择 1–3 个互补方法，并公开命中线索和边界。</p></div>
       <button id="saveSeats" class="quiet-action" type="button" hidden>应用席位调整</button>
       <details class="audit-drawer"><summary>查看选择审计与预算</summary><div id="auditTrail"><p>暂无审计记录。</p></div></details>
     </aside>
 
     <section class="debate-stage" aria-labelledby="stageTitle">
-      <header><div class="section-label compact"><span>03</span><div><h2 id="stageTitle">对话舞台</h2><p>立论彼此独立；质询必须指向具体席位。</p></div></div><span class="round-meter" id="roundMeter">第 0 / 2 轮</span></header>
+      <header><div class="section-label compact"><div><h2 id="stageTitle">对话舞台</h2><p>立论彼此独立；质询必须指向具体席位。</p></div></div><span class="round-meter" id="roundMeter">第 0 / 2 轮</span></header>
       <ol id="debateStage" data-empty="true"><li class="stage-empty"><strong>大殿尚未开场</strong><span>提交议题后，先核对自动识别的意图与入席理由。</span></li></ol>
       <div class="stage-controls">
         <button id="advancePhase" class="primary-action" type="button" disabled>开始立论</button>

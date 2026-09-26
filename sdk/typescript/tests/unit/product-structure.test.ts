@@ -10,7 +10,7 @@ test('six primary destinations and secondary legacy addresses map consistently',
   const product=api('product-structure','ClownfishProductStructure');
   assert.equal(product.items.slice(0,6).map((x:any)=>x.key).join(','),'overview,assistant,matters,tasks,files,memory');
   for(const [path,query,key] of [
-    ['/','','assistant'],['/overview','','overview'],['/bots','','tasks'],['/bots','?view=tasks','tasks'],
+    ['/','','assistant'],['/overview','','overview'],['/pantheon','','pantheon'],['/bots','','tasks'],['/bots','?view=tasks','tasks'],
     ['/bots','?view=bots','bots'],['/bots','?view=market','bots'],['/tasks','','tasks'],['/collaboration','','tasks'],
     ['/spaces','','tasks'],['/matters','','matters'],['/matters','?view=ongoing','matters'],['/matters','?view=completed','matters'],['/memory','?view=learning','memory'],
     ['/artifacts','','files'],['/resources','','files'],['/office.html','','files'],['/memory/','','memory'],

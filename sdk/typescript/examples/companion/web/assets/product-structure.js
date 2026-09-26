@@ -17,6 +17,7 @@
     if(path==='/bots')return ['bots','market'].includes(new URLSearchParams(search).get('view'))?'bots':'tasks';
     if(path==='/skills')return 'bots';
     if(path==='/overview')return 'overview';
+    if(path==='/pantheon')return 'pantheon';
     // 事项 (personal matters) is its own primary area; learning proposals moved to /memory?view=learning.
     if(path==='/matters')return 'matters';
     // 任务 owns 进行中 / 项目 / 自动化 as in-page tabs.
