@@ -71,7 +71,7 @@ The **feed** sits at the top of the overview. Write a topic and press Generate (
 
 _Each idea names its deliverable type and basis; the basis can only come from goals, matters, and preferences._
 
-**Keep an eye on it** lives in Settings → Reminders and background. Write up to five things, one per line, and choose an interval of one to twenty-four hours. Each check searches the web once and compares with what was seen last time; nothing is said if nothing changed, and a change is reported in chat with sources. At most 48 checks run per day, and nothing runs without a configured web search — model memory is never passed off as a fresh check.
+**Keep an eye on it** lives in Settings → Reminders and background; you can also say "keep an eye on …" in chat, and after your approval it joins the same list. Write up to five things, one per line, and choose an interval of one to twenty-four hours. Each check searches the web once and compares with what was seen last time; nothing is said if nothing changed, and a change is reported in chat with sources. At most 48 checks run per day, and nothing runs without a configured web search — model memory is never passed off as a fresh check.
 
 "Tell me about / never mention" preferences on the same page are read before writing the feed or proposing ideas; never-mention topics do not appear.
 

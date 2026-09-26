@@ -23,6 +23,6 @@ test("三件起手的事都能在聊天里真的办：触发目标、构件、�
   assert.match(goal, /目标/, "目标工具靠'目标'这类词才会带上");
   assert.equal(hasWidgetIntent(widget), true, "要被认成构件请求");
   assert.match(matter, /跟进/, "事项工具靠'跟进'这类词才会带上");
-  // "帮我盯着"没有聊天里的工具，只能在设置里配：不能当成起手选项。
+  // "帮我盯着"要先配好联网搜索才会跑，新用户点了多半白等：不当成起手选项。
   assert.ok(!ONBOARDING_STARTERS.some((item) => /盯/.test(item)));
 });

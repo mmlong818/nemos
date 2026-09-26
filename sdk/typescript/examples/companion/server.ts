@@ -965,6 +965,7 @@ const companionAgentTools = createCompanionAgentToolProvider({
   listPersonas: () => engine.listPersonas().map((persona) => ({ id: persona.id, name: persona.name })),
   goalSession: (sessionId) => goalSessions.get(sessionId),
   bindGoalSession: (sessionId, goalId) => { const session = goalSessions.get(sessionId); if (session) goalSessions.set(sessionId, { ...session, goalId }); },
+  watch: () => ({ store: watchStore, searchReady: () => !!liveSearchKey() }),
   enqueueOrchestration: (input, idempotencyKey) => agentJobQueue.enqueue({
     type: "orchestration",
     payload: {

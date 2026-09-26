@@ -96,6 +96,7 @@ const COMPANION_RUNTIME_TOOLS = [
   { name: "personal_learning_propose", id: "agent.learning-propose", label: "提议记住", description: "把稳定偏好或已确认的决定提交待确认，由用户确认后才成为长期记忆。", toolset: "memory", effect: "write", risk: "normal", permissions: ["memory-propose"] },
   { name: "goal_list", id: "agent.goal-list", label: "查看目标", description: "读取用户的目标、口径、子目标与最近进展。", toolset: "task", effect: "read", risk: "normal", permissions: ["task-read"] },
   { name: "goal_save", id: "agent.goal-save", label: "记录目标", description: "在对话里谈妥后建立或调整目标；只记录，不执行其他动作。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
+  { name: "watch_add", id: "agent.watch-add", label: "帮我盯着", description: "经确认后加一件要隔一段时间联网看一眼的事；有变化才在聊天里说。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
   { name: "goal_log_progress", id: "agent.goal-progress", label: "记录进展", description: "把用户在对话里报告的进展记到目标时间线上。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
 ] as const;
 

@@ -7,6 +7,7 @@ import { expertAssignmentPrompt, expertContract, finalDeliveryPrompt } from "./e
 import { isCurrentUserMemory, userMemoryEvidence, userMemoryPrompt } from "./memory-evidence.js";
 import type { PersonalWorkStore, PersonalMatter } from "./personal-work.js";
 import { GOAL_CATEGORIES, goalBrief, type GoalInput } from "./goals.js";
+import { WATCH_LIMITS, WatchError, type WatchStore } from "./watch.js";
 import { createHash } from "node:crypto";
 import type { AssistantBot } from "./assistant-team.js";
 
@@ -35,6 +36,8 @@ export interface CompanionAgentToolDependencies {
   /** 新建目标后把这段对话绑定到它：下一轮引导里就有编号，改节奏不必先花一次工具调用去查。 */
   bindGoalSession?: (sessionId: string, goalId: string) => void;
   enqueueOrchestration?: (input: CompanionDelegationJobInput, idempotencyKey: string) => { id: string; status: string };
+  /** "帮我盯着"：清单与联网搜索是否已配置（没配就记下，但如实说不会运行）。 */
+  watch?: () => { store: WatchStore; searchReady: () => boolean };
 }
 
 const MEMORY_CUE = /(记得|记忆|想起|之前.{0,8}(说|提|聊)|我.{0,8}(说过|提过)|remember|memory|mentioned before)/i;
@@ -43,6 +46,7 @@ const TASK_CREATE_CUE = /((创建|新增|登记|保存|安排|设为).{0,12}(能
 const SKILL_INSTALL_CUE = /((安装|导入|添加|注册).{0,24}(skill|skills|SKILL\.md|技能包|能力包)|((skill|skills|SKILL\.md|技能包|能力包).{0,24}(安装|导入|添加|注册)))/i;
 const DELEGATION_CUE = /(多.{0,4}(角色|专家|人)|团队|分工|并行|分别.{0,10}(分析|研究|核验|给出)|不同.{0,6}(角度|视角)|交叉.{0,4}(验证|复核)|让.{0,12}(可行性顾问|产品顾问|决策顾问|思考教练|原理工程师|产品主理人|决策分析师|思辨教练).{0,12}(和|与|、))/i;
 const GOAL_CUE = /(目标|打卡|坚持|习惯|进展|里程碑|goal|habit|milestone)/i;
+const WATCH_CUE = /(盯着|盯一下|盯紧|帮我盯|留意.{0,16}(变化|消息|动静)|有(新)?(变化|消息|动静).{0,8}(告诉|提醒|通知)我|keep an eye|watch for)/i;
 const ARTIFACT_CUE =/(产物|交付物|生成的.{0,6}(报告|文件|文档)|最近的.{0,6}(报告|文件|文档)|artifact|deliverable)/i;
 
 /**
@@ -61,6 +65,9 @@ export function createCompanionAgentToolProvider(
     if (dependencies.personalWork && context.memoryScopes.length > 0 && context.personaId === "clownfish" && !["capability", "office"].includes(context.surface || "")
       && /事项|目标|下一步|跟进|等待|截止|记住|学习|偏好|采纳|进行中|matter|goal|follow.up/i.test(instruction)) {
       tools.push(...personalWorkTools(dependencies.personalWork(), context));
+    }
+    if (dependencies.watch && context.personaId === "clownfish" && !["capability", "office"].includes(context.surface || "") && WATCH_CUE.test(instruction)) {
+      tools.push(watchAddTool(dependencies.watch()));
     }
     // 目标对话里用户最后常说的是"好""就这样"，不含关键词；按会话识别，不只看这一句。
     const goalSession = context.sessionId ? dependencies.goalSession?.(context.sessionId) : undefined;
@@ -178,6 +185,38 @@ function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionG
       return { content: JSON.stringify(goalBrief(store.logGoalProgress(context.userId, String(input.id || sessionGoalId || ""), input.note, "assistant", input.momentum))) };
     },
   }];
+}
+
+/**
+ * 在聊天里加一件"帮我盯着"的事：和设置页是同一份清单，经批准才写入。
+ * 结果里带上真实的运行条件（只在应用开着时、每天上限、有没有配联网搜索），由模型如实转告，不许说成"一有消息就通知你"。
+ */
+function watchAddTool(watch: { store: WatchStore; searchReady: () => boolean }): AgentTool {
+  return {
+    definition: { name: "watch_add", effect: "write",
+      description: "With approval, add one thing to the user's 'keep an eye on it' list: Clownfish searches the web for it every few hours and only speaks up in chat when something changed. Use only when the user asks to watch/track something for changes. Report the returned note truthfully.",
+      inputSchema: { type: "object", properties: {
+        text: { type: "string", description: `What to watch, in the user's words, <= ${WATCH_LIMITS.text} chars` },
+        intervalHours: { type: "integer", minimum: 1, maximum: 24, description: "Only when the user said how often; otherwise omit to keep the current interval." },
+      }, required: ["text"], additionalProperties: false } },
+    execute: async (input, execution) => {
+      ensureActive(execution.signal);
+      const text = String(input.text ?? "").trim();
+      if (!text) throw new WatchError("要盯的事不能是空的");
+      const hours = input.intervalHours === undefined ? undefined : Number(input.intervalHours);
+      if (hours !== undefined && (!Number.isInteger(hours) || hours < 1 || hours > 24)) throw new WatchError("间隔需要在 1 到 24 小时之间");
+      const current = watch.store.snapshot().items.map((item) => item.text);
+      const items = current.includes(text) ? current : [...current, text];
+      const saved = watch.store.update({ items, enabled: true, ...(hours !== undefined ? { intervalMinutes: hours * 60 } : {}) });
+      const intervalHours = saved.intervalMinutes / 60;
+      const note = watch.searchReady()
+        ? `每 ${intervalHours} 小时联网看一次，和上次一样就不出声；只在应用开着时（包括托盘后台）查，每天最多 ${WATCH_LIMITS.dailyChecks} 次。清单在设置的「提醒与后台」里。`
+        : "已经记下，但联网搜索没有配置，现在不会运行；配好后才会开始看。清单在设置的「提醒与后台」里。";
+      // 真实使用里模型拿到条件后仍说"有新动静我第一时间告诉你"：把转告要求写进结果，不只列条件。
+      const replyRule = "回复时照实说明运行条件（多久看一次、只在应用开着时查）；不要说\"第一时间\"\"实时\"\"一有消息就\"。";
+      return { content: JSON.stringify({ watching: saved.items.map((item) => item.text), intervalHours, note, replyRule }) };
+    },
+  };
 }
 
 function assistantTeamTool(team: NonNullable<CompanionAgentToolDependencies["assistantTeam"]>, context: ChatAgentContext): AgentTool {
