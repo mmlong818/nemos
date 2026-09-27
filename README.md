@@ -133,7 +133,7 @@ _已记住与待确认分开呈现；每条内容保留主体、来源和修正�
 
 普通设置流程只需要填写 **OpenAI** 和 / 或 **智谱 BigModel** API Key：一个 Key 可以独立使用，两个 Key 可以互补。提交后系统依次完成：
 
-![小丑鱼模型设置：OpenAI 与智谱双 Key 自动配置](docs/assets/readme/model-setup.png)
+![小丑鱼模型与服务：正在使用的模型、OpenAI 与智谱服务账号和 Key 申请入口](docs/assets/readme/model-setup.png)
 
 _截图中的两个 Key 输入框均为空；应用不会在此页面回显已经保存的完整密钥。_
 

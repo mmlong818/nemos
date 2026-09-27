@@ -35,6 +35,17 @@ test("自动选择一到三种思维方法并留下可审计理由，用户可�
   assert.equal(adjusted.audit.at(-1)?.event, "seats_adjusted");
 });
 
+// 入席理由直接展示给用户（README 配图里也有），不能露出 decision、意图:xxx 这类内部代码。
+test("入席理由与命中线索用讨论方式的中文名，不露出内部代码", () => {
+  const service = new PantheonService({ completion: deterministicCompletion, idFactory: () => "session-labels" });
+  for (const [intent, label] of [["decision", "形成决策"], ["explore", "探索可能性"], ["challenge", "挑战一个主张"], ["answer", "只要答案"]] as const) {
+    const session = service.createSession({ issue: "是否先做一周小范围试点，再决定全面发布？", intent });
+    assert.equal(session.plan.intentReason, `你把讨论方式设为“${label}”。`);
+    const visible = [session.plan.intentReason, ...session.plan.seats.flatMap((seat) => [seat.selectionReason, ...seat.matchedSignals])].join("\n");
+    assert.doesNotMatch(visible, /\b(?:decision|explore|challenge|answer)\b|意图:/, visible);
+  }
+});
+
 test("完整一轮包含独立立论、定向质询、回应和主持总结，插话进入下一阶段", async () => {
   const calls: PantheonCompletionRequest[] = [];
   let inFlight = 0;

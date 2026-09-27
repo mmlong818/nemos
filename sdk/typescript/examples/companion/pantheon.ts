@@ -2,6 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { ThoughtLibraryStore, ThoughtUnit } from "./thought-library.js";
 
 export type PantheonIntent = "explore" | "challenge" | "decision" | "answer";
+/** 与页面“讨论方式”下拉框的文字一致；入席理由里只用这些名字，不露出内部代码。 */
+export const PANTHEON_INTENT_LABELS: Readonly<Record<PantheonIntent, string>> = {
+  explore: "探索可能性",
+  challenge: "挑战一个主张",
+  decision: "形成决策",
+  answer: "只要答案",
+};
 export type PantheonPhase = "planned" | "positions" | "questions" | "responses" | "summary" | "paused" | "complete";
 export type PantheonAdvanceAction = "next" | "continue" | "converge";
 
@@ -256,7 +263,7 @@ export class PantheonService {
       plan: {
         issueScope: issueScope(issue),
         intent,
-        intentReason: input.intent ? `用户将讨论方式设为“${intent}”。` : detected.reason,
+        intentReason: input.intent ? `你把讨论方式设为“${PANTHEON_INTENT_LABELS[intent]}”。` : detected.reason,
         wantsConclusion,
         seats: selected.map(({ model, signals }, index) => this.toSeat(model, index, signals)),
       },
@@ -490,7 +497,7 @@ export class PantheonService {
       if (intent === "decision" && model.id.includes("reversibility")) score += 8;
       if (intent === "explore" && model.id.includes("systems")) score += 5;
       if (intent === "answer" && model.id.includes("first-principles")) score += 5;
-      return { model, signals: signals.length ? signals : [intent === "explore" ? "开放探索" : `意图:${intent}`], score };
+      return { model, signals: signals.length ? signals : [`讨论方式：${PANTHEON_INTENT_LABELS[intent]}`], score };
     }).sort((a, b) => b.score - a.score);
     return scored.slice(0, Math.min(seatCount(intent), scored.length));
   }

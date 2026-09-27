@@ -133,7 +133,7 @@ Automations schedule recurring work locally and support pause, edit, and run-now
 
 The standard setup asks only for an **OpenAI** and/or **Zhipu BigModel** API key. Either key can be used alone; two keys can complement one another. Submission runs one coordinated flow:
 
-![Clownfish model setup with OpenAI and Zhipu two-key automatic configuration](docs/assets/readme/model-setup.png)
+![Clownfish Models & Services showing the model in use, OpenAI and Zhipu service accounts, and where to get a key](docs/assets/readme/model-setup.png)
 
 _Both key fields are empty in this screenshot; the application does not reveal complete saved keys on this page._
 
