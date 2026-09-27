@@ -1,7 +1,11 @@
 # Current release
 
-## 0.7.8
+## 0.7.9
 
+- Fixes image generation checks that always failed with HTTP 400: requests no longer send `response_format`, which GPT image models reject. When OpenAI names a rejected parameter, the message now says which one, without keeping any provider text.
+- Reorganizes Models & Services into three parts: a one-line status, service accounts that show what each service is used for (or that it is a backup) with in-place key replacement and adding services, and one row per capability. Rarely used tools live under Advanced, and duplicate entry points are gone.
+- Shows model names plainly (for example "gpt 5.5"), adding the service name only when the same model comes from two services.
+- Removes contradictory messages on that page: stale results of an earlier setup, a false "model not in catalog" warning, and speech, image, and voice models shown as unverified after passing their checks.
 - Recommends gpt-5.5 for OpenAI and adds Claude Opus 5.5; superseded models such as gpt-5.4 stay usable, and when the account offers the replacement, Models & Services offers a one-click test before switching conversation to it.
 - Explains in the setup result when a newly verified key ends up unused, either because earlier fixed model choices were kept or because it serves as the backup, and points to where to change it.
 - Redesigns Models & Services as four parts: what is in use now, service accounts, which model each capability uses, and a collapsed advanced area; capabilities that are not wired yet are no longer shown.
