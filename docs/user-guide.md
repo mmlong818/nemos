@@ -4,7 +4,7 @@
 
 ## 1. 下载
 
-到 [GitHub 发布页](https://github.com/mmlong818/nemos/releases) 下载最新版本里的 `小丑鱼-版本号-windows-x64-portable.zip`。目前只提供 Windows 64 位版本。
+到 [GitHub 发布页](https://github.com/mmlong818/nemos/releases) 下载最新版本里的 `Clownfish-版本号-windows-x64-portable.zip`（Clownfish 是小丑鱼的英文名）。目前只提供 Windows 64 位版本。
 
 压缩包大约 170 MB，里面已经带好运行所需的一切。
 

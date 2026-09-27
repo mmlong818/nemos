@@ -442,7 +442,7 @@ if ($LASTEXITCODE -ne 0) { throw "Portable root launcher compilation failed" }
 Write-Host "Launcher: $Exe"
 Write-Host "Portable: $PortableRoot"
 Remove-BuildDirectoryTree -Path $BuildWork
-$ArchivePath = Join-Path $Dist ("小丑鱼-" + $AppVersion + "-windows-x64-portable.zip")
+$ArchivePath = Join-Path $Dist ("Clownfish-" + $AppVersion + "-windows-x64-portable.zip")
 Compress-Archive -Path $PortableRoot -DestinationPath $ArchivePath -CompressionLevel Optimal
 $ArchiveHash = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 [System.IO.File]::WriteAllText($ArchivePath + ".sha256.txt", $ArchiveHash + " *" + [System.IO.Path]::GetFileName($ArchivePath) + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
