@@ -7,6 +7,7 @@
 //
 // 无 key 也能开（离线兜底，仍演示拓扑）。记忆持久化到 COMPANION_DB，跨次保留。
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync, renameSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -138,6 +139,7 @@ import {
 import {
   CapabilityRuntime,
   type ArtifactFormat,
+  type CapabilityArtifact,
   type CapabilityNotification,
   type CapabilityStreamCb,
 } from "./capabilities.js";
@@ -967,8 +969,20 @@ function goalSessionAddendum(session: { category: string; goalId?: string } | un
   try { goal = session.goalId ? personalWork.getGoal(USER, session.goalId) : undefined; } catch { goal = undefined; }
   return goalCoachingAddendum(session.category, goal);
 }
+// 这一轮对话里工具生成的成果（目前是图片）：随 done/回复一起交给前端显示。
+const chatTurnArtifacts = new AsyncLocalStorage<CapabilityArtifact[]>();
 const companionAgentTools = createCompanionAgentToolProvider({
   memory: () => mem,
+  imageGeneration: {
+    available: () => { try { resolveMediaRoute("image_generation"); return true; } catch { return false; } },
+    create: async (prompt, options) => {
+      const route = resolveMediaRoute("image_generation");
+      const image = await openAIImage(route.record.connection, route.modelId, prompt, options);
+      const artifact = capabilities.saveGeneratedImage(image.data, prompt.split(/[。！？!?\n]/)[0]!.trim().slice(0, 30) || "AI 生成图片");
+      chatTurnArtifacts.getStore()?.push(artifact);
+      return artifact;
+    },
+  },
   assistantTeam: { list: () => assistantBots.list(USER).filter((bot) => bot.placement !== "market"), enqueue: enqueueAssistantTeam },
   personalWork: () => personalWork,
   capabilities: () => capabilities,
@@ -7184,12 +7198,13 @@ const server = createServer(async (req, res) => {
             ev({ type: "reply", personaId: r.personaId, name, messages: splitBubbles(r.reply), facts: bullets(r.context.userFacts) });
           }
         } else {
-          const r = await engine.sendStream(USER, b.target.id, text, opts, {
+          const turnArtifacts: CapabilityArtifact[] = [];
+          const r = await chatTurnArtifacts.run(turnArtifacts, () => engine.sendStream(USER, b.target.id, text, opts, {
             onStatus: (s) => ev({ type: "status", text: s }),
             onToken: (t) => ev({ type: "token", text: t }),
-          });
+          }));
           capabilities.recordPersonaTurn(r.personaId);
-          ev({ type: "done", facts: bullets(r.context.userFacts) });
+          ev({ type: "done", facts: bullets(r.context.userFacts), ...(turnArtifacts.length ? { artifact: turnArtifacts.at(-1) } : {}) });
         }
         const scheduledJobs = enqueueDueCapabilityTasks("turn");
         if (b.target.kind === "group") ev({ type: "done", facts: [] });
@@ -7255,9 +7270,10 @@ const server = createServer(async (req, res) => {
         send(res, 200, { replies: [adHocWork], taskReplies: [] });
         return;
       }
+      const turnArtifacts: CapabilityArtifact[] = [];
       const out =
         b.target.kind === "persona"
-          ? [await engine.send(USER, b.target.id, text, opts)]
+          ? [await chatTurnArtifacts.run(turnArtifacts, () => engine.send(USER, b.target.id, text, opts))]
           : await engine.sendToGroup(USER, b.target.id, text, opts);
       for (const r of out) capabilities.recordPersonaTurn(r.personaId);
       enqueueDueCapabilityTasks("turn");
@@ -7269,6 +7285,7 @@ const server = createServer(async (req, res) => {
           reply: r.reply,
           messages: splitBubbles(r.reply), // 微信式：拆成多条气泡
           facts: bullets(r.context.userFacts),
+          ...(turnArtifacts.length ? { artifact: turnArtifacts.at(-1) } : {}),
         })),
         taskReplies: [],
       });

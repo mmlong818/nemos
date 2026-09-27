@@ -98,6 +98,7 @@ const COMPANION_RUNTIME_TOOLS = [
   { name: "goal_save", id: "agent.goal-save", label: "记录目标", description: "在对话里谈妥后建立或调整目标；只记录，不执行其他动作。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
   { name: "persona_rename", id: "agent.persona-rename", label: "改名字", description: "经确认后改小丑鱼的自称；应用名不变。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
   { name: "watch_add", id: "agent.watch-add", label: "帮我盯着", description: "经确认后加一件要隔一段时间联网看一眼的事；有变化才在聊天里说。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
+  { name: "image_generate", id: "agent.image-generate", label: "生成图片", description: "用设置里验证过的生图型号画一张图，存进成果库并显示在回复里；每次都会产生服务费用。", toolset: "artifact", effect: "write", risk: "normal", permissions: ["artifact-write"] },
   { name: "goal_log_progress", id: "agent.goal-progress", label: "记录进展", description: "把用户在对话里报告的进展记到目标时间线上。", toolset: "task", effect: "write", risk: "normal", permissions: ["task-write"] },
 ] as const;
 

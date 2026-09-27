@@ -1769,6 +1769,8 @@
   .bub.rendered a:hover { text-decoration:underline; }
   .html-preview { width:min(520px,100%); height:260px; margin:7px 0; border:1px solid #e5e7eb; border-radius:5px; background:#fff; }
   .artifact-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .artifact-image { display:block; max-width:100%; max-height:420px; margin-top:8px; border-radius:8px; cursor:zoom-in; }
+  .artifact-image-missing { color:#6b7280; font-size:13px; }
   .artifact-actions button { height:26px; padding:0 9px; border:1px solid #d8dde6; border-radius:4px; background:#fff; color:#2f343c; font-size:12px; cursor:pointer; }
   .artifact-actions button:hover { background:#f4f5f7; }
   .widget-holder { margin-top:10px; }
@@ -4829,6 +4831,17 @@ function renderBubbleContent(bub, text, opts = {}) {
     bub.insertBefore(holder, bub.querySelector(".artifact-actions"));
     window.ClownfishWidgetHost.mount(holder, opts.artifact.id, { title: opts.artifact.title || "构件", maxHeight: 560 });
   }
+  // 生成的图片直接显示在回复里；文件在本机成果库，刷新后按编号重新读取。
+  if (opts.artifact && opts.artifact.format === "png" && opts.artifact.id) {
+    const img = document.createElement("img");
+    img.className = "artifact-image";
+    img.loading = "lazy";
+    img.alt = opts.artifact.title || "生成的图片";
+    img.src = "/api/capabilities/artifact?id=" + encodeURIComponent(opts.artifact.id);
+    img.onclick = () => window.open("/api/capabilities/artifact/preview?id=" + encodeURIComponent(opts.artifact.id), "_blank");
+    img.onerror = () => { const note = document.createElement("p"); note.className = "artifact-image-missing"; note.textContent = "图片文件已不在成果库里。"; img.replaceWith(note); };
+    bub.insertBefore(img, bub.querySelector(".artifact-actions"));
+  }
   if (opts.artifact) bindArtifactActions(bub, opts.artifact);
   appendQuickReplies(bub, quick.options);
 }
@@ -4836,7 +4849,7 @@ function artifactActionsHtml(artifact) {
   if (!artifact || !artifact.id) return "";
   return '<div class="artifact-actions">'
     + '<button type="button" data-artifact-action="preview">预览</button>'
-    + '<button type="button" data-artifact-action="edit">在文件中继续</button>'
+    + (artifact.format === "png" ? '' : '<button type="button" data-artifact-action="edit">在文件中继续</button>')
     + '<button type="button" data-artifact-action="download">下载</button>'
     + (artifact.format === "html" ? '<button type="button" data-artifact-action="pin">钉到总览</button>' : '')
     + '</div>';
@@ -6548,6 +6561,7 @@ function showAgentApproval(approval) {
     goal_log_progress: "把你在对话里说的进展记到目标的时间线上",
     watch_add: "加到「帮我盯着」：隔一段时间联网看一眼，有变化才告诉你",
     persona_rename: "给助手换个名字：只改它怎么自称，应用名不变",
+    image_generate: "用设置里验证过的生图型号画一张图，存进成果库并显示在回复里；每张都会从你的账户扣一次费用",
     personal_work_save: "记录或更新一件事项，只提醒，不执行外部动作",
     personal_learning_propose: "提交一条待你确认的偏好或决定，确认后才成为长期记忆",
   };
@@ -6592,6 +6606,7 @@ function agentToolLabel(name) {
     goal_log_progress: "记录进展",
     watch_add: "添加要盯的事",
     persona_rename: "改名字",
+    image_generate: "生成图片",
     assistant_team_start: "专职 Bot 协作",
     capability_task_create: "创建能力或任务",
     capability_task_update: "更新常规任务",
@@ -6645,6 +6660,11 @@ function goalMomentumLine(visible) {
 }
 function agentApprovalArguments(name, args) {
   const visible = { ...(args || {}) };
+  if (name === "image_generate") {
+    const sizes = { "1024x1024": "方形", "1536x1024": "横版", "1024x1536": "竖版" };
+    const qualities = { low: "草稿", medium: "标准", high: "精细" };
+    return ["要画的内容：" + String(visible.prompt || ""), "尺寸：" + (sizes[visible.size] || "方形") + (visible.quality ? " · 质量：" + (qualities[visible.quality] || visible.quality) : "")].join("\n");
+  }
   // 目标写入给人看的是"要记下什么"，不是参数表；编号和版本号对用户没有意义。
   if (name === "goal_save") {
     const categories = { health: "健康", relationships: "人际关系", finance: "财务", career: "职业", interests: "兴趣", productivity: "效率提升", other: "其他" };

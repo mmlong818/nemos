@@ -1,5 +1,5 @@
 import type { AgentTool, Nemos } from "../../src/index.js";
-import type { CapabilityRuntime, CapabilitySchedule, CapabilityTask } from "./capabilities.js";
+import type { CapabilityArtifact, CapabilityRuntime, CapabilitySchedule, CapabilityTask } from "./capabilities.js";
 import { scheduleNotice } from "./schedule-notice.js";
 import type { ChatAgentContext } from "./engine.js";
 import type { AgentToolProvider } from "./llm.js";
@@ -40,6 +40,11 @@ export interface CompanionAgentToolDependencies {
   watch?: () => { store: WatchStore; searchReady: () => boolean };
   /** 给小丑鱼改名：只改自称，与"身份"页保存同一路径。 */
   renamePersona?: (name: string) => { previous: string; name: string };
+  /** 聊天里生成图片：只在设置里有验证过的生图型号时提供；生成结果存进成果库，并随这一轮回复显示。 */
+  imageGeneration?: {
+    available: () => boolean;
+    create: (prompt: string, options: { size?: string; quality?: string }) => Promise<CapabilityArtifact>;
+  };
 }
 
 const MEMORY_CUE = /(记得|记忆|想起|之前.{0,8}(说|提|聊)|我.{0,8}(说过|提过)|remember|memory|mentioned before)/i;
@@ -50,6 +55,7 @@ const DELEGATION_CUE = /(多.{0,4}(角色|专家|人)|团队|分工|并行|分�
 const GOAL_CUE = /(目标|打卡|坚持|习惯|进展|里程碑|goal|habit|milestone)/i;
 const WATCH_CUE = /(盯着|盯一下|盯紧|帮我盯|留意.{0,16}(变化|消息|动静)|有(新)?(变化|消息|动静).{0,8}(告诉|提醒|通知)我|keep an eye|watch for)/i;
 const RENAME_CUE = /((以后|今后|从现在起|往后).{0,6}叫你|叫你.{1,12}(吧|好了|就行|怎么样)|给你(起|换|改)(个|一个)?(新)?名字|(换|改)(个|一个)?名字|改名|rename you|call you)/i;
+const IMAGE_CUE = /((画|生成|做|来|出|设计|绘制|创作)(一)?(张|幅|个|组|些)?.{0,16}(图|图片|图像|插画|插图|海报|头像|壁纸|封面|配图|logo|图标|表情包))|(draw|generate|create|make).{0,24}(image|picture|illustration|poster|logo|icon)/i;
 const ARTIFACT_CUE =/(产物|交付物|生成的.{0,6}(报告|文件|文档)|最近的.{0,6}(报告|文件|文档)|artifact|deliverable)/i;
 
 /**
@@ -108,6 +114,10 @@ export function createCompanionAgentToolProvider(
     }
     if (ARTIFACT_CUE.test(instruction)) {
       tools.push(artifactListTool(dependencies, context));
+    }
+    if (dependencies.imageGeneration && context.personaId === "clownfish" && context.mode !== "group"
+      && IMAGE_CUE.test(instruction) && dependencies.imageGeneration.available()) {
+      tools.push(imageGenerateTool(dependencies.imageGeneration));
     }
     return tools;
   };
@@ -221,6 +231,29 @@ function watchAddTool(watch: { store: WatchStore; searchReady: () => boolean }):
       // 真实使用里模型拿到条件后仍说"有新动静我第一时间告诉你"：把转告要求写进结果，不只列条件。
       const replyRule = "回复时照实说明运行条件（多久看一次、只在应用开着时查）；不要说\"第一时间\"\"实时\"\"一有消息就\"。";
       return { content: JSON.stringify({ watching: saved.items.map((item) => item.text), intervalHours, note, replyRule }) };
+    },
+  };
+}
+
+/** 聊天里生成图片：图片存进成果库，这一轮回复会直接显示它；工具结果里不带本机路径。 */
+function imageGenerateTool(generator: NonNullable<CompanionAgentToolDependencies["imageGeneration"]>): AgentTool {
+  return {
+    definition: { name: "image_generate", effect: "write",
+      description: "With approval, generate ONE image with the user's verified image model and show it in this reply. Use only when the user asks you to draw/generate/design an image. Write the prompt in English or Chinese, describing subject, style, composition and any text to render. Each call costs the user money; never call it twice for one request unless asked. After it succeeds, briefly say what you drew; do not paste links or file paths — the image is shown automatically.",
+      inputSchema: { type: "object", properties: {
+        prompt: { type: "string", description: "Full image description, 1-4000 characters" },
+        size: { type: "string", enum: ["1024x1024", "1536x1024", "1024x1536"], description: "Square by default; 1536x1024 landscape, 1024x1536 portrait" },
+        quality: { type: "string", enum: ["low", "medium", "high"], description: "Omit unless the user asks for draft or high quality" },
+      }, required: ["prompt"], additionalProperties: false } },
+    execute: async (input, execution) => {
+      ensureActive(execution.signal);
+      const prompt = String(input.prompt ?? "").trim();
+      if (!prompt || prompt.length > 4000) throw new Error("图片描述需为 1–4000 个字符");
+      const artifact = await generator.create(prompt, {
+        size: typeof input.size === "string" ? input.size : undefined,
+        quality: typeof input.quality === "string" ? input.quality : undefined,
+      });
+      return { content: JSON.stringify({ generated: true, title: artifact.title, note: "图片已生成并保存到成果库，会显示在这条回复里。" }) };
     },
   };
 }
