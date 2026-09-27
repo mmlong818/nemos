@@ -2243,6 +2243,7 @@ function modelConnectionUserMessage(error: unknown, stage: ModelConnectionFailur
     ? `${prefix}：服务没有提供该模型目录端点（HTTP 404）。请检查 API 基础地址。`
     : `${prefix}：所选模型或接口不存在（HTTP 404）。请从当前目录选择可用模型。`;
   if (diagnostic?.httpStatus === 429) return `${prefix}：服务额度不足或请求过于频繁（HTTP 429）。请检查账户余额，或稍后再试。`;
+  if (diagnostic?.httpStatus === 400 && diagnostic.providerParam) return `${prefix}：服务不接受参数 ${diagnostic.providerParam}（HTTP 400）；这是小丑鱼发出的请求与该型号不匹配，请把这句话反馈给我们。`;
   if (diagnostic?.httpStatus === 400 || diagnostic?.httpStatus === 422) return `${prefix}：服务拒绝了请求参数；所选模型可能不兼容（HTTP ${diagnostic.httpStatus}）。`;
   if (diagnostic?.httpStatus && diagnostic.httpStatus >= 500) return `${prefix}：服务暂时不可用（HTTP ${diagnostic.httpStatus}）。请稍后重试。`;
   if (error instanceof SyntaxError) return `${prefix}：服务返回的 JSON 格式无效。请检查基础地址和协议。`;

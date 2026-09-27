@@ -72,11 +72,13 @@ export interface CompanionModelFailureDiagnostic {
   requestId?: string;
   /** Official, numeric provider error code only; provider messages are never retained. */
   providerCode?: string;
+  /** OpenAI 错误里的 `error.param`：出错的请求参数名，只接受简短标识符，不含任何服务商原文。 */
+  providerParam?: string;
   networkKind?: "dns" | "refused" | "timeout" | "tls" | "proxy_unavailable";
 }
 
 export class CompanionModelHttpError extends Error {
-  constructor(readonly status: number, operation = "模型请求", readonly requestId?: string, readonly providerCode?: string) {
+  constructor(readonly status: number, operation = "模型请求", readonly requestId?: string, readonly providerCode?: string, readonly providerParam?: string) {
     // Never persist or expose a provider's raw response: gateways can echo keys.
     super(`${operation}失败 HTTP ${status}。`);
   }
@@ -86,6 +88,20 @@ export class CompanionModelHttpError extends Error {
 export function safeProviderRequestId(headers: Headers): string | undefined {
   const value = headers.get("x-request-id") || headers.get("request-id") || headers.get("x-correlation-id");
   return value && /^[A-Za-z0-9._:/-]{1,128}$/.test(value) ? value : undefined;
+}
+
+/**
+ * OpenAI 的错误信封里 `error.param` 指出哪个请求参数被拒（例如 response_format）。只取这个字段，
+ * 且必须是简短标识符；message 等自由文本一律不读，网关可能在里面回显密钥或提示词。
+ */
+export async function safeOpenAIErrorParam(response: Response): Promise<string | undefined> {
+  let payload: unknown;
+  try { payload = await response.json(); } catch { return undefined; }
+  const error = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>).error : undefined;
+  const param = error && typeof error === "object" && !Array.isArray(error)
+    ? (error as Record<string, unknown>).param : undefined;
+  return typeof param === "string" && /^[A-Za-z_][A-Za-z0-9_.[\]]{0,63}$/.test(param) ? param : undefined;
 }
 
 /**
@@ -113,7 +129,7 @@ export function companionModelFailureDiagnostic(error: unknown): CompanionModelF
       : error.status === 404 ? "model"
       : error.status === 400 || error.status === 422 ? "parameter"
       : "protocol";
-    return { category, httpStatus: error.status, ...(error.requestId ? { requestId: error.requestId } : {}), ...(error.providerCode ? { providerCode: error.providerCode } : {}) };
+    return { category, httpStatus: error.status, ...(error.requestId ? { requestId: error.requestId } : {}), ...(error.providerCode ? { providerCode: error.providerCode } : {}), ...(error.providerParam ? { providerParam: error.providerParam } : {}) };
   }
   const networkKind = companionNetworkFailureKind(error);
   if (networkKind || error instanceof TypeError || (error instanceof DOMException && error.name === "AbortError")) {

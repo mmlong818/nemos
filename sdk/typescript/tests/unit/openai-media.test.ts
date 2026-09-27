@@ -2,11 +2,44 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MockAgent } from "undici";
 import { openAIImage, openAISpeech, openAITranscribe, openAIVision, normalizePcmWav, speechProbeWav, validateImageDataUrl } from "../../examples/companion/openai-media.js";
-import type { CompanionModelConnection } from "../../examples/companion/model-connection.js";
+import { CompanionModelHttpError, companionModelFailureDiagnostic, type CompanionModelConnection } from "../../examples/companion/model-connection.js";
 
 function connection(dispatcher: MockAgent): CompanionModelConnection {
   return { provider: "openai", protocol: "openai-compatible", baseUrl: "https://api.openai.com/v1", model: "gpt-5.4", apiKey: "test-secret", transportDispatcher: dispatcher };
 }
+
+// 真实账号里 gpt-image-2.5-sunburst / flare 的验证都回 HTTP 400：请求带了 GPT 图片型号不接受的 response_format。
+test("GPT 图片型号不发送 response_format；400 时只保留出错的参数名", async () => {
+  const mock = new MockAgent();
+  mock.disableNetConnect();
+  const api = mock.get("https://api.openai.com");
+  const bodies: Array<Record<string, unknown>> = [];
+  const capture = (body: string) => { bodies.push(JSON.parse(body)); return true; };
+  const png = { data: [{ b64_json: Buffer.from("png").toString("base64") }] };
+  api.intercept({ path: "/v1/images/generations", method: "POST", body: capture }).reply(200, png, { headers: { "content-type": "application/json" } });
+  const c = connection(mock);
+  await openAIImage(c, "gpt-image-2.5-sunburst", "blue dot", { size: "1024x1024", quality: "low" });
+  assert.equal("response_format" in bodies[0]!, false, JSON.stringify(bodies[0]));
+  assert.deepEqual({ model: bodies[0]!.model, size: bodies[0]!.size, quality: bodies[0]!.quality, n: bodies[0]!.n }, { model: "gpt-image-2.5-sunburst", size: "1024x1024", quality: "low", n: 1 });
+
+  api.intercept({ path: "/v1/images/generations", method: "POST" }).reply(400, {
+    error: { message: "Unknown parameter: 'response_format'. echoed sk-leaked-secret", type: "invalid_request_error", param: "response_format", code: "unknown_parameter" },
+  }, { headers: { "content-type": "application/json", "x-request-id": "req_param" } });
+  await assert.rejects(() => openAIImage(c, "gpt-image-2.5-flare", "blue dot"), (error: unknown) => {
+    assert.ok(error instanceof CompanionModelHttpError);
+    assert.equal(error.status, 400);
+    assert.equal(error.providerParam, "response_format");
+    assert.equal(companionModelFailureDiagnostic(error)?.providerParam, "response_format");
+    assert.doesNotMatch(`${error.message}${JSON.stringify(companionModelFailureDiagnostic(error))}`, /sk-leaked|Unknown parameter/, "服务商原文不保留");
+    return true;
+  });
+  api.intercept({ path: "/v1/images/generations", method: "POST" }).reply(400, { error: { message: "bad", param: "prompt with spaces; injected" } }, { headers: { "content-type": "application/json" } });
+  await assert.rejects(() => openAIImage(c, "gpt-image-2.5-flare", "blue dot"), (error: unknown) => {
+    assert.ok(error instanceof CompanionModelHttpError);
+    assert.equal(error.providerParam, undefined, "不是简短标识符的 param 一律丢弃");
+    return true;
+  });
+});
 
 test("official OpenAI media adapters use four exact endpoints and validate response types", async () => {
   const mock = new MockAgent();

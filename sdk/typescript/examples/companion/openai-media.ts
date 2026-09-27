@@ -1,6 +1,6 @@
 import { fetch as undiciFetch, FormData } from "undici";
 import type { CompanionModelConnection } from "./model-connection.js";
-import { CompanionModelHttpError, safeProviderRequestId } from "./model-connection.js";
+import { CompanionModelHttpError, safeOpenAIErrorParam, safeProviderRequestId } from "./model-connection.js";
 
 export type OpenAIMediaCapability = "vision" | "speech_to_text" | "text_to_speech" | "image_generation";
 const OFFICIAL = "https://api.openai.com/v1";
@@ -30,7 +30,10 @@ async function request(connection: CompanionModelConnection, path: string, init:
       ...init, signal: controller.signal, dispatcher: connection.transportDispatcher,
       headers: { Authorization: `Bearer ${connection.apiKey}`, ...(init.headers || {}) },
     });
-    if (!response.ok) throw new CompanionModelHttpError(response.status, connection.provider === "zhipu" ? "智谱能力请求" : "OpenAI 能力请求", safeProviderRequestId(response.headers));
+    if (!response.ok) {
+      const param = connection.provider === "openai" && response.status === 400 ? await safeOpenAIErrorParam(response as unknown as Response) : undefined;
+      throw new CompanionModelHttpError(response.status, connection.provider === "zhipu" ? "智谱能力请求" : "OpenAI 能力请求", safeProviderRequestId(response.headers), undefined, param);
+    }
     return response as unknown as Response;
   } finally { clearTimeout(timer); }
 }
@@ -151,7 +154,8 @@ export async function openAIImage(connection: CompanionModelConnection, model: s
   if (!text || text.length > 4_000) throw new Error("图片描述需为 1–4000 个字符。");
   const response = await request(connection, "/images/generations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
     model, prompt: text, size: ["1024x1024", "1536x1024", "1024x1536"].includes(String(options.size)) ? options.size : "1024x1024",
-    quality: ["low", "medium", "high"].includes(String(options.quality)) ? options.quality : "medium", response_format: "b64_json", n: 1,
+    quality: ["low", "medium", "high"].includes(String(options.quality)) ? options.quality : "medium", n: 1,
+    // GPT 图片型号总是返回 base64，不接受 response_format（传了会 HTTP 400）。
   }) }, 120_000);
   const json = await response.json() as { data?: Array<{ b64_json?: string }> };
   const encoded = String(json.data?.[0]?.b64_json || "");
