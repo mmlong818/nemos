@@ -36,6 +36,7 @@ test("设置中心仅保留模型、连接与本机数据", () => {
   assert.match(html, /id="serverStorageFields"/);
   assert.match(script, /\/api\/llm-connect/);
   assert.match(script, /\/api\/llm-disconnect/);
+  assert.match(script, /\/api\/llm-connection\/delete/);
   assert.doesNotMatch(script, /\/api\/llm-(?:config|key)/);
   assert.doesNotMatch(readWeb("index.html"), /\/api\/llm-(?:config|key)/);
   assert.match(client, /EnvironmentVariables\["NODE_USE_ENV_PROXY"\] = "1"/);

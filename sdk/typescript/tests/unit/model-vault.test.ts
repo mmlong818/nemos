@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decodeModelVault, encodeModelVault, runAtomicVaultActivation } from "../../examples/companion/model-vault.js";
+import { decodeModelVault, encodeModelVault, runAtomicVaultActivation, withoutConnection } from "../../examples/companion/model-vault.js";
 
 test("v4 migrates to a multi-connection vault without losing its default or encrypted key", () => {
   const decoded = decodeModelVault({ version: 4, provider: "custom", protocol: "openai-compatible", baseUrl: "http://127.0.0.1:9911/v1", model: "manual", cipher: "cipher-a", connectionRevision: "11111111-1111-1111-1111-111111111111", models: [{ id: "manual" }], modelChecks: {} }, (cipher) => cipher === "cipher-a" ? "secret-a" : "", () => "22222222-2222-2222-2222-222222222222");
@@ -172,4 +172,25 @@ test("v9 encrypts every credential separately and exposes no plaintext secret", 
   assert.doesNotMatch(JSON.stringify(encoded), /AKID-secret|secret-key-value/);
   assert.deepEqual(encoded.connections?.[0]?.providerSettings, { region: "ap-guangzhou" });
   assert.deepEqual(encoded.connections?.[0]?.rawModels?.[0]?.directory, { capabilities: ["video-generation"], contextTokens: 32000 });
+});
+
+test("deleting a connection releases every assignment that pinned it and keeps the rest", () => {
+  const vault = decodeModelVault(undefined, () => "", () => "unused");
+  const record = (id: string) => ({ id, label: id, connection: { provider: "custom", protocol: "openai-compatible", baseUrl: "http://127.0.0.1/" + id, model: "m", apiKey: "k" }, rawCatalog: [], catalog: [], catalogFetchedAt: "", catalogConnectionRevision: "", catalogSource: "none" }) as any;
+  const fixed = (connectionId: string, capability: string) => ({ mode: "fixed", ref: { connectionId, modelId: "m", capability } }) as any;
+  vault.connections = [record("keep"), record("gone")];
+  vault.activeConnectionId = "gone";
+  vault.assignments.system.chat = fixed("gone", "chat");
+  vault.assignments.system.image_generation = fixed("gone", "image_generation");
+  vault.assignments.system.vision = fixed("keep", "vision");
+  vault.assignments.scenes.assistant_chat = { chat: fixed("gone", "chat") };
+  vault.assignments.scenes.pantheon = { chat: fixed("keep", "chat") };
+  const next = withoutConnection(vault, "gone");
+  assert.deepEqual(next.connections.map((item) => item.id), ["keep"]);
+  assert.equal(next.activeConnectionId, null);
+  assert.deepEqual([next.assignments.system.chat, next.assignments.system.image_generation], [{ mode: "auto" }, { mode: "auto" }]);
+  assert.equal((next.assignments.system.vision as any).ref.connectionId, "keep");
+  assert.equal(next.assignments.scenes.assistant_chat.chat, undefined, "场景覆盖撤掉后回到继承系统");
+  assert.equal((next.assignments.scenes.pantheon.chat as any).ref.connectionId, "keep");
+  assert.equal((vault.assignments.system.chat as any).ref.connectionId, "gone", "不改动传入的保险库");
 });

@@ -111,6 +111,7 @@ import {
   decodeModelVault,
   encodeModelVault,
   runAtomicVaultActivation,
+  withoutConnection,
   type RuntimeModelConnectionRecord,
   type RuntimeModelVault,
   type SavedModelVaultFile,
@@ -6077,6 +6078,62 @@ const server = createServer(async (req, res) => {
         if (sendModelSwitchRefusal(res, error)) return;
         const detail = modelConnectionUserMessage(error, "request");
         send(res, 400, { ok: false, error: detail, userMessage: detail });
+      }
+      return;
+    }
+    if (req.method === "POST" && url === "/api/llm-connection/delete") {
+      const b = (await readBody(req)) as { connectionId?: string; waitForJobsMs?: number };
+      const record = modelVault.connections.find((item) => item.id === b.connectionId);
+      if (!record) { send(res, 404, { ok: false, error: "没有找到这个服务。", userMessage: "没有找到这个服务。", ...modelConnectionStatus() }); return; }
+      try {
+        const action = await modelSwitch.run(
+          { target: `delete/${record.id}`, drainMs: Number(b.waitForJobsMs) || 0 },
+          () => agentUserActions.execute({
+            name: "llm_connection_delete",
+            description: "删除一个已保存的模型服务及其加密凭据",
+            arguments: { connectionId: record.id, provider: record.connection.provider },
+            execute: async () => {
+              const next = withoutConnection(modelVault, record.id);
+              // 删的是最后一个：与“断开所有服务”相同，连同凭据文件一起清掉。
+              if (!next.connections.length) { await rebuildLLM(undefined); return modelConnectionStatus(); }
+              if (modelVault.activeConnectionId !== record.id) {
+                modelVault = next;
+                writeSavedLLMVault();
+                capabilityTools.invalidateReadiness();
+                return modelConnectionStatus();
+              }
+              // 删的是正在对话的服务：对话改走剩下服务里自动挑中的那个；一个都挑不中就停在离线，其余服务保留。
+              const previousVault = modelVault;
+              const previous = { connection: modelConnection, catalog: modelCatalog, fetchedAt: modelCatalogFetchedAt, revision: modelCatalogConnectionRevision };
+              modelVault = next;
+              const selected = explainAutomaticRoute("chat", modelVaultResources()).selected;
+              const selectedRecord = selected && next.connections.find((item) => item.id === selected.connectionId);
+              try {
+                if (selectedRecord) {
+                  await activateModelVaultRecord({ ...selectedRecord, connection: { ...selectedRecord.connection, model: selected.modelId } }, next.assignments);
+                } else {
+                  writeSavedLLMVault();
+                  modelConnection = undefined; modelCatalog = []; modelCatalogFetchedAt = ""; modelCatalogConnectionRevision = "";
+                  delete process.env.ZHIPU_API_KEY;
+                  await rebuildModelRuntime();
+                }
+              } catch (error) {
+                modelVault = previousVault;
+                writeSavedLLMVault();
+                modelConnection = previous.connection; modelCatalog = previous.catalog; modelCatalogFetchedAt = previous.fetchedAt; modelCatalogConnectionRevision = previous.revision;
+                await rebuildModelRuntime().catch(() => undefined);
+                throw error;
+              }
+              return modelConnectionStatus();
+            },
+            summarizeResult: (value) => ({ ok: true, live: value.live }),
+          }),
+        );
+        send(res, 200, { ok: true, ...action.value, auditRunId: action.runId });
+      } catch (error) {
+        if (sendModelSwitchRefusal(res, error)) return;
+        const detail = modelConnectionUserMessage(error, "request");
+        send(res, 400, { ok: false, error: detail, userMessage: detail, ...modelConnectionStatus() });
       }
       return;
     }

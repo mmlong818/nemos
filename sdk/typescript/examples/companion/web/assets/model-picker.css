@@ -268,6 +268,7 @@ body[data-ui] button.model-recommendation { display: grid; gap: 5px; flex: 1 1 2
 .model-account-row[data-state="pending"] .model-account-state::before { color: var(--cf-warning, #94631b); }
 .model-account-use { color: var(--cf-ink-soft, #66746f); font-size: 13px; }
 .model-account-row button { min-height: 30px; padding: 0 12px; font-size: 12px; }
+.model-account-actions { display: flex; gap: 6px; }
 #modelQuickSetup { margin-top: 14px; }
 #modelQuickSetup[hidden], .model-key-card[hidden], #modelConnectPanel[hidden], .model-now-actions [hidden] { display: none !important; }
 .model-connect-panel { margin-top: 14px; padding: 16px 18px; border: 1px solid var(--cf-line, #dfe5e2); border-radius: 12px; }

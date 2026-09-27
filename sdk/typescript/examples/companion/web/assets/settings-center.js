@@ -469,7 +469,7 @@
       const used = picks.filter((row) => row.pick?.connectionId === item.id).map((row) => CAPABILITY_SHORT_NAMES[row.capability] || row.capability);
       const verified = (item.modelStates || []).some((model) => model.verified) || Object.values(item.capabilityChecks || {}).some((check) => check?.status === "passed");
       const [state, stateText] = verified ? ["ok", "可用"] : item.hasKey ? ["pending", "待验证"] : ["missing", "未填 Key"];
-      return `<article class="model-account-row" data-state="${state}"><div class="model-account-name"><strong>${escapeHtml(connectionDisplayName(item))}</strong><span class="model-account-state">${stateText}</span></div><small class="model-account-use">用于：${used.length ? escapeHtml(used.join("、")) : "备用"}</small><button type="button" data-account-rekey="${escapeHtml(item.id)}" data-account-provider="${escapeHtml(item.provider || "")}">换 Key</button></article>`;
+      return `<article class="model-account-row" data-state="${state}"><div class="model-account-name"><strong>${escapeHtml(connectionDisplayName(item))}</strong><span class="model-account-state">${stateText}</span></div><small class="model-account-use">用于：${used.length ? escapeHtml(used.join("、")) : "备用"}</small><span class="model-account-actions"><button type="button" data-account-rekey="${escapeHtml(item.id)}" data-account-provider="${escapeHtml(item.provider || "")}">换 Key</button><button type="button" class="danger-quiet" data-account-delete="${escapeHtml(item.id)}" data-account-uses="${escapeHtml(used.join("、"))}">删除</button></span></article>`;
     }).join("");
     // 快速卡片只给还没连上的 OpenAI/智谱，或正在换 Key 的那一个。
     const connected = (provider) => connections.some((item) => item.provider === provider && item.hasKey);
@@ -504,6 +504,29 @@
     openConnectPanel();
     document.querySelector(`#modelProviderConnections [data-edit-model-connection="${CSS.escape(button.dataset.accountRekey)}"]`)?.click();
     $("#modelConnectPanel input[type=password]")?.focus();
+  });
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest?.("[data-account-delete]");
+    if (!button) return;
+    const connectionId = button.dataset.accountDelete;
+    const item = (modelState?.resourceCenter?.connections || []).find((connection) => connection.id === connectionId);
+    const name = item ? connectionDisplayName(item) : "这个服务";
+    const uses = button.dataset.accountUses;
+    const last = (modelState?.resourceCenter?.connections || []).length <= 1;
+    const effect = last ? "这是最后一个服务，删除后进入离线模式。" : uses ? `它现在用于${uses}，删除后这些能力改由其他服务承担；没有可用的就暂停。` : "它现在没有被使用。";
+    if (!confirm(`删除 ${name}？保存的 Key 会一起删掉。${effect}`)) return;
+    button.disabled = true;
+    try {
+      const state = await api("/api/llm-connection/delete", { method: "POST", body: JSON.stringify({ connectionId }) });
+      if (rekeyProvider === item?.provider) rekeyProvider = "";
+      renderModel(state, true);
+      $("#modelStatus").className = "status success";
+      $("#modelStatus").textContent = state.live ? `已删除 ${name}。` : `已删除 ${name}；现在没有可用的对话模型，可在“各项能力”里选一个。`;
+    } catch (error) {
+      button.disabled = false;
+      $("#modelStatus").className = "status error";
+      $("#modelStatus").textContent = `删除失败：${error.message}；服务和当前设置都没有改变。`;
+    }
   });
   window.addEventListener("clownfish:model-setup-complete", () => { rekeyProvider = ""; });
   $("#modelAddProvider")?.addEventListener("click", () => {

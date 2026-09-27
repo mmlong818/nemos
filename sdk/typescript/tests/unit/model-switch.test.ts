@@ -164,8 +164,11 @@ test("统一连接与离线入口经过协调器，旧写入口只返回迁移�
   const connect = server.slice(server.indexOf('url === "/api/llm-connect"'), server.indexOf('url === "/api/llm-disconnect"'));
   assert.match(connect, /modelSwitch\.run\(/);
   assert.match(connect, /waitForJobsMs/, "要允许调用方给排空预算");
-  const disconnect = server.slice(server.indexOf('url === "/api/llm-disconnect"'), server.indexOf('url === "/api/llm-routing"'));
+  const disconnect = server.slice(server.indexOf('url === "/api/llm-disconnect"'), server.indexOf('url === "/api/llm-connection/delete"'));
   assert.match(disconnect, /modelSwitch\.run\(/);
+  const remove = server.slice(server.indexOf('url === "/api/llm-connection/delete"'), server.indexOf('url === "/api/llm-routing"'));
+  assert.match(remove, /modelSwitch\.run\(/, "删除单个服务也会换掉正在用的连接");
+  assert.match(remove, /withoutConnection\(/);
   const config = server.slice(server.indexOf('url === "/api/llm-config"'), server.indexOf('url === "/api/llm-key"'));
   assert.match(config, /deprecated_endpoint/);
   assert.match(config, /migrateTo: "\/api\/llm-connect"/);

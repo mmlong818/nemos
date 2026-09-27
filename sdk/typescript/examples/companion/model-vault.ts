@@ -124,6 +124,25 @@ function migrateLegacyEnabledModels(connections: RuntimeModelConnectionRecord[],
   });
 }
 
+/** 删除一个连接：指向它的系统级固定分配退回自动，场景覆盖直接撤掉（场景回到继承系统）。 */
+export function withoutConnection(vault: RuntimeModelVault, connectionId: string): RuntimeModelVault {
+  const pointsHere = (assignment: CapabilityAssignments["system"][ModelCapability] | undefined) =>
+    assignment?.mode === "fixed" && assignment.ref.connectionId === connectionId;
+  const assignments = structuredClone(vault.assignments);
+  for (const capability of Object.keys(assignments.system) as ModelCapability[]) {
+    if (pointsHere(assignments.system[capability])) assignments.system[capability] = { mode: "auto" };
+  }
+  for (const scene of Object.values(assignments.scenes)) {
+    for (const capability of Object.keys(scene) as ModelCapability[]) if (pointsHere(scene[capability])) delete scene[capability];
+  }
+  return {
+    ...vault,
+    activeConnectionId: vault.activeConnectionId === connectionId ? null : vault.activeConnectionId,
+    connections: vault.connections.filter((item) => item.id !== connectionId),
+    assignments,
+  };
+}
+
 function normalizeChatPreferences(value: unknown): ChatInvocationPreferences {
   const allowed = new Set(["auto", "none", "low", "medium", "high", "xhigh", "max"]);
   const source = value && typeof value === "object" ? value as Partial<ChatInvocationPreferences> : {};
