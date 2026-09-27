@@ -220,8 +220,30 @@ export async function runModelQuickSetup(input: {
       : pending
         ? `已完成 ${ready} 项能力配置；其余能力需要另一个服务或仍未接入。`
         : `已完成 ${ready} 项能力配置。`;
+  if (!assignmentError && ready) snapshot.message += unusedProviderNote(snapshot);
   await checkpoint(snapshot, deps);
   return snapshot;
+}
+
+const QUICK_SETUP_PROVIDER_NAMES: Record<QuickSetupProvider, string> = { openai: "OpenAI", zhipu: "智谱" };
+const QUICK_SETUP_CAPABILITY_NAMES: Readonly<Record<string, string>> = {
+  chat: "对话", vision: "看图", speech_to_text: "语音输入", text_to_speech: "朗读", image_generation: "生成图片",
+};
+
+/**
+ * 用户刚填的 Key 验证通过、却一项能力都没分到时（被之前固定的选择占着，或双 Key 时默认优先另一家），
+ * 界面上看起来像“填了没用”。在结果里说明原因和去哪里改。
+ */
+function unusedProviderNote(snapshot: ModelQuickSetupSnapshot): string {
+  const used = (provider: QuickSetupProvider) => snapshot.capabilityResults.some((item) => item.provider === provider && (item.status === "ready" || item.status === "preserved"));
+  const unused = snapshot.providerResults.filter((item) => item.status === "ready" && !used(item.provider)).map((item) => QUICK_SETUP_PROVIDER_NAMES[item.provider]);
+  if (!unused.length) return "";
+  const preserved = snapshot.capabilityResults.filter((item) => item.status === "preserved");
+  if (preserved.length) {
+    const names = preserved.map((item) => QUICK_SETUP_CAPABILITY_NAMES[item.capability] || item.capability).join("、");
+    return `${unused.join("、")}的 Key 已验证，但${names} ${preserved.length} 项沿用你之前固定的模型，所以暂时没用上；想换，在“各项能力用哪个模型”里选择。`;
+  }
+  return `${unused.join("、")}的 Key 已验证，目前作为备用；想让某项能力用它，在“各项能力用哪个模型”里选择。`;
 }
 
 export function normalizeModelQuickSetupSnapshot(value: unknown): ModelQuickSetupSnapshot | undefined {

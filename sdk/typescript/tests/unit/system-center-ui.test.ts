@@ -96,9 +96,9 @@ test("模型设置分开管理官方短名单、账号原始目录和显式能�
   assert.match(script, /createLatestPolicyQueue/);
   assert.match(script, /正在保存最新选择/);
   assert.match(html, /model-policy-save-queue\.js\?v=0\.7\.6-policy2/);
-  assert.match(html, /settings-center\.js\?v=0\.7\.6-modelux8/);
+  assert.match(html, /settings-center\.js\?v=0\.7\.7-modelux9/);
   const ttsPlayer = html.indexOf("tts-preview-player.js?v=0.7.6-media1");
-  const settingsCenter = html.indexOf("settings-center.js?v=0.7.6-modelux8");
+  const settingsCenter = html.indexOf("settings-center.js?v=0.7.7-modelux9");
   assert.ok(ttsPlayer >= 0 && settingsCenter > ttsPlayer, "TTS player must load before the settings controller");
   assert.match(script, /setPolicyControlsDisabled/);
   assert.match(script, /data-policy-status-kind/);

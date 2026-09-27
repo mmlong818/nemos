@@ -91,7 +91,8 @@ export const PROVIDER_CATALOG = Object.freeze({
       sourceUrls: [OPENAI_MODELS, "https://developers.openai.com/api/reference/cli/resources/models/methods/retrieve"],
       discoveryMode: "accountCatalog", catalogAdapter: "openai-models", credentialFields: [key()], settingFields: [],
       models: [
-        model("gpt-5.4", ["chat", "vision"], OPENAI_MODELS, { recommended: true }),
+        model("gpt-5.5", ["chat", "vision"], OPENAI_MODELS, { recommended: true }),
+        model("gpt-5.4", ["chat", "vision"], OPENAI_MODELS),
         model("gpt-transcribe", ["speech_to_text"], OPENAI_MODELS, { recommended: true }),
         model("gpt-4o-transcribe", ["speech_to_text"], OPENAI_MODELS),
         model("gpt-4o-mini-transcribe", ["speech_to_text"], OPENAI_MODELS),
@@ -115,6 +116,7 @@ export const PROVIDER_CATALOG = Object.freeze({
       settingFields: [{ id: "workspaceId", label: "Workspace ID（可选）", required: false, kind: "text" }],
       models: [
         model("claude-fable-5-1", ["chat", "vision"], ANTHROPIC_MODELS, { recommended: true }),
+        model("claude-opus-5-5", ["chat", "vision"], ANTHROPIC_MODELS, { recommended: true }),
         model("claude-opus-5", ["chat", "vision"], ANTHROPIC_MODELS),
         model("claude-sonnet-5", ["chat", "vision"], ANTHROPIC_MODELS, { recommended: true }),
         model("claude-haiku-4-5-20251001", ["chat", "vision"], ANTHROPIC_MODELS, { recommended: true }),

@@ -236,3 +236,11 @@ body[data-ui] button.model-recommendation { display: grid; gap: 5px; flex: 1 1 2
 .model-capabilities-empty { margin: 8px 0 0; color: var(--cf-ink-soft, #66746f); font-size: 13px; }
 .model-now-actions > button[hidden] { display: none; }
 .model-now-actions:not(:has(> button:not([hidden]))) { display: none; }
+
+/* 对话型号有更新的推荐替代时的升级提示。 */
+.model-upgrade-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--cf-coral-soft, #e8f1ed); color: var(--cf-ink, #253331); font-size: 12px; }
+.model-upgrade-hint button { min-height: 28px; padding: 0 10px; border: 1px solid var(--cf-coral, #276b5b); border-radius: 7px; background: var(--cf-coral, #276b5b); color: #fff; font-size: 12px; cursor: pointer; }
+.model-upgrade-hint button:disabled { opacity: .6; cursor: progress; }
+.model-upgrade-hint small { flex-basis: 100%; color: var(--cf-ink-soft, #66746f); }
+.model-upgrade-hint small:empty { display: none; }
+.model-now-upgrade { margin: 6px 0 0; font-size: 12px; color: var(--cf-coral, #276b5b); }

@@ -364,7 +364,7 @@
       const mediaWorkbench = wired && capability === "text_to_speech" ? '<div class="model-media-workbench"><label><span>试听文字</span><input data-tts-preview-text maxlength="4000" value="你好，我是小丑鱼。"></label><button type="button" data-tts-preview>朗读</button><button type="button" data-tts-stop disabled>停止</button><small data-tts-status aria-live="polite"></small></div>'
         : wired && capability === "image_generation" ? '<div class="model-media-workbench"><label><span>图片描述</span><input data-image-prompt maxlength="4000" placeholder="例如：海边书桌上的橙色小丑鱼图标"></label><button type="button" data-image-generate>生成并保存到成果</button><small data-image-status aria-live="polite"></small><div data-image-result></div></div>' : "";
       const overrides = wired && relevantScenes.length ? `<details class="model-application-overrides"><summary>按应用单独选择 <small>${relevantScenes.length} 个应用</small></summary><div class="model-application-list">${relevantScenes.map((scene) => { const current = center.assignments?.scenes?.[scene.id]?.[capability]; const modelId = selectedResourceId(center, current || system, current ? null : route); const effort = center.chatPreferences?.scenes?.[scene.id]?.reasoningEffort || "inherit"; const selected = current?.mode === "fixed" ? assignmentValue(current) : "inherit"; return `<section class="model-scene-policy" data-model-scene="${escapeHtml(scene.id)}"><header><strong>${escapeHtml(scene.name)}</strong><small>${escapeHtml(scene.description)}</small></header>${scene.modelOverride ? `<label><span>模型</span><select data-routing-scope="scene" data-scene="${escapeHtml(scene.id)}" data-capability="${capability}"><option value="inherit"${!current ? " selected" : ""}>跟随系统默认</option>${assignmentOptions(center, capability, selected, true, { activeOnly: true, includeAuto: false })}</select><small class="model-policy-save-status status" aria-live="polite" data-policy-status-kind="routing" data-policy-status-scope="scene" data-policy-status-scene="${escapeHtml(scene.id)}"></small></label>` : `<p class="status">${escapeHtml(scene.unavailableReason || "此应用暂不支持单独选择模型。")}</p>`}${capability === "chat" && scene.reasoningOverride ? `<label><span>思考强度</span><select data-reasoning-scope="scene" data-scene="${escapeHtml(scene.id)}">${reasoningOptions(state, modelId, effort, true)}</select><small class="model-policy-save-status status" aria-live="polite" data-policy-status-kind="reasoning" data-policy-status-scope="scene" data-policy-status-scene="${escapeHtml(scene.id)}"></small></label>` : ""}</section>`; }).join("")}</div></details>` : "";
-      return `<article class="model-capability-row"><div><strong>${escapeHtml(capabilityLabels[capability])}</strong><small>${escapeHtml(status)}</small>${capability === "chat" ? `<small class="model-pool-hint">${escapeHtml(poolHint)}</small>` : ""}${probeControls}${mediaWorkbench}</div>${selector}${systemReasoning}${overrides}</article>`;
+      return `<article class="model-capability-row"><div><strong>${escapeHtml(capabilityLabels[capability])}</strong><small>${escapeHtml(status)}</small>${capability === "chat" ? `<small class="model-pool-hint">${escapeHtml(poolHint)}</small>${modelUpgradeHint(center.upgrades?.chat)}` : ""}${probeControls}${mediaWorkbench}</div>${selector}${systemReasoning}${overrides}</article>`;
     }).join("");
     const chatRoute = center.automaticRoutes?.chat || {};
     const recommendations = [chatRoute.selected, ...(chatRoute.fallbacks || [])].filter(Boolean).slice(0, 4);
@@ -372,6 +372,31 @@
     $("#modelRecommendationHint").textContent = recommendations.length ? "标签只来自实际检查或应用内已有运行时能力，不依据名称猜测成本和上下文。" : "连接后显示少量有依据的推荐。";
     renderModelNow(state, center);
   }
+  // 维护目录把当前对话型号标为已被取代、账号里又有替代者时（服务端算好放在 upgrades.chat），提示一键测试并切换。
+  function modelUpgradeHint(upgrade) {
+    if (!upgrade) return "";
+    return `<p class="model-upgrade-hint">有更新的推荐型号 <b>${escapeHtml(upgrade.to)}</b>（当前 ${escapeHtml(upgrade.from)}）。<button type="button" data-model-upgrade="${escapeHtml(upgrade.to)}" data-model-upgrade-connection="${escapeHtml(upgrade.connectionId)}">测试并换成 ${escapeHtml(upgrade.to)}</button><small data-model-upgrade-status aria-live="polite"></small></p>`;
+  }
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest?.("[data-model-upgrade]");
+    if (!button) return;
+    const modelId = button.dataset.modelUpgrade;
+    const connectionId = button.dataset.modelUpgradeConnection;
+    const status = button.parentElement?.querySelector("[data-model-upgrade-status]");
+    button.disabled = true;
+    if (status) status.textContent = `正在测试 ${modelId}（会发送一次很小的请求，可能产生少量费用）…`;
+    try {
+      const result = await api("/api/llm-model/check", { method: "POST", body: JSON.stringify({ connectionId, candidateModel: modelId, force: true }) });
+      if (result.checked?.chat !== "passed") throw new Error(result.checked?.detail || `${modelId} 没有通过检查。`);
+      await api("/api/llm-routing", { method: "POST", body: JSON.stringify({ scope: "system", capability: "chat", assignment: { mode: "fixed", ref: { connectionId, modelId, capability: "chat" } } }) });
+      await loadModel();
+      $("#modelStatus").className = "status success";
+      $("#modelStatus").textContent = `对话已换成 ${modelId}。`;
+    } catch (error) {
+      button.disabled = false;
+      if (status) status.textContent = error.message;
+    }
+  });
   // "正在使用"：每项能力此刻实际走哪个模型——固定分配优先，否则取自动路由选中的那个；
   // 只有验证通过、执行流程已接通的才算可用。结论只取服务端给的状态，不在这里推断。
   function capabilityInUse(center, capability) {
@@ -411,7 +436,8 @@
       const title = row.usable ? `${row.pick.modelId}${row.providerName ? ` · ${row.providerName}` : ""}` : row.supported ? "已接入，但还没有验证通过的模型" : (row.reason || "当前版本不支持");
       return `<span class="model-now-chip" data-state="${row.usable ? "ok" : row.supported ? "fail" : "none"}" title="${escapeHtml(title)}">${mark} ${escapeHtml(capabilityLabels[row.capability] || row.capability)}</span>`;
     }).join("");
-    body.innerHTML = `${chatLine}<p class="model-now-summary">${rows.length} 项能力中 ${usableCount} 项可用</p><div class="model-now-chips">${chips}</div>`;
+    const upgrade = center.upgrades?.chat;
+    body.innerHTML = `${chatLine}${upgrade ? `<p class="model-now-upgrade">有更新的推荐型号 ${escapeHtml(upgrade.to)}，可在下面“各项能力用哪个模型”里一键测试并切换。</p>` : ""}<p class="model-now-summary">${rows.length} 项能力中 ${usableCount} 项可用</p><div class="model-now-chips">${chips}</div>`;
   }
   $("#modelNowChange")?.addEventListener("click", () => {
     const select = document.querySelector('#modelCapabilityAssignments select[data-routing-scope="system"][data-capability="chat"]');

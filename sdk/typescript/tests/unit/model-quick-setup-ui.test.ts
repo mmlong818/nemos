@@ -43,6 +43,17 @@ test("模型与服务页顺序：正在使用 → 服务账号 → 各项能力 
   assert.doesNotMatch(script, /sourceUrl|资料来源|收藏|手动登记/);
 });
 
+test("对话型号被取代时，设置页先测试替代型号、通过后才固定到对话", () => {
+  const center = readFileSync(join(root, "web", "assets", "settings-center.js"), "utf8");
+  assert.match(server, /upgrades: \{ chat: chatUpgrade && chatPick \? \{ \.\.\.chatUpgrade, connectionId: chatPick\.connectionId \} : null \}/);
+  assert.match(center, /\$\{modelUpgradeHint\(center\.upgrades\?\.chat\)\}/);
+  const handler = center.slice(center.indexOf('closest?.("[data-model-upgrade]")'), center.indexOf('// "正在使用"：每项能力此刻实际走哪个模型'));
+  const check = handler.indexOf('api("/api/llm-model/check"'), gate = handler.indexOf('result.checked?.chat !== "passed"'), assign = handler.indexOf('api("/api/llm-routing"');
+  assert.ok(check > 0 && gate > check && assign > gate, "先测试、检查通过，再改分配");
+  assert.match(handler, /candidateModel: modelId, force: true/);
+  assert.match(handler, /可能产生少量费用/);
+});
+
 test("自动配置由单一后端接口编排且不会回显密钥", () => {
   assert.match(server, /POST" && url === "\/api\/model-quick-setup/);
   assert.match(server, /ModelQuickSetupCoordinator/);
@@ -53,7 +64,7 @@ test("自动配置由单一后端接口编排且不会回显密钥", () => {
 
 test("OpenAI 公开推荐目录不再混入 Codex 内部模型名", () => {
   const openaiBlock = catalog.slice(catalog.indexOf('providerId: "openai"'), catalog.indexOf('providerId: "anthropic"'));
-  assert.match(openaiBlock, /model\("gpt-5\.4"/);
+  assert.match(openaiBlock, /model\("gpt-5\.5", \["chat", "vision"\], OPENAI_MODELS, \{ recommended: true \}\)/);
   assert.doesNotMatch(openaiBlock, /gpt-6-astra|gpt-5\.6-(?:sol|terra|luna)/);
   assert.doesNotMatch(picker, /gpt-6-astra|gpt-5\.6-(?:sol|terra|luna)/);
 });

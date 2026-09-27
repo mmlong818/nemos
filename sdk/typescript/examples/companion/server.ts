@@ -96,6 +96,7 @@ import {
   detectCompanionProvider,
   eligibleCuratedCatalog,
   explainAutomaticRoute,
+  modelUpgradeFor,
   normalizeCapabilityAssignments,
   planOnboardingModel,
   validateFixedAssignment,
@@ -1946,6 +1947,13 @@ function modelConnectionStatus(): Record<string, unknown> {
       && item.modelId === assignment.ref.modelId && item.capabilities.includes(capability)) || null;
     return [capability, { selected, fallbacks: [], reason: selected ? "使用你设置的系统默认模型。" : "已保存的默认模型当前不可用，请重新验证或选择其他模型。" }];
   }));
+  // 对话当前用的型号若在维护目录里已被取代、且这个账号的目录里有替代者，设置页提示一键测试并切换。
+  const chatAssignment = modelVault.assignments.system.chat;
+  const chatPick = chatAssignment.mode === "fixed" ? chatAssignment.ref : routes.chat?.selected || null;
+  const chatRecord = chatPick ? modelVault.connections.find((item) => item.id === chatPick.connectionId) : undefined;
+  const chatUpgrade = chatPick && chatRecord
+    ? modelUpgradeFor(chatRecord.connection.provider, chatRecord.connection.baseUrl, chatPick.modelId, [...chatRecord.catalog, ...chatRecord.rawCatalog].map((item) => item.id))
+    : null;
   const sceneRoutes = Object.fromEntries(MODEL_SCENES.map((scene) => [scene,
     Object.fromEntries(MODEL_CAPABILITIES.map((capability) => {
       const override = modelVault.assignments.scenes[scene]?.[capability];
@@ -2003,6 +2011,7 @@ function modelConnectionStatus(): Record<string, unknown> {
       assignments: modelVault.assignments,
       chatPreferences: modelVault.chatPreferences,
       automaticRoutes: routes,
+      upgrades: { chat: chatUpgrade && chatPick ? { ...chatUpgrade, connectionId: chatPick.connectionId } : null },
       effectiveSceneRoutes: sceneRoutes,
       executionNotice: "这里只开放已通过统一连接、验证与执行路由的用途；其余用途会说明尚缺的执行环节。",
     },

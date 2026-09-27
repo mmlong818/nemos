@@ -176,7 +176,10 @@ export interface CuratedModelCatalog {
 }
 
 const RETRIEVED_AT = "2026-09-18";
-const evidence = (sourceUrl: string, statement: string) => ({ sourceUrl, statement, retrievedAt: RETRIEVED_AT });
+// 逐条复核：只有这次重新核对过的条目用新日期，其余仍标原核验日。整份目录的 expiresAt 不因局部复核顺延。
+const REVIEWED_AT = "2026-09-27";
+const evidence = (sourceUrl: string, statement: string, retrievedAt = RETRIEVED_AT) => ({ sourceUrl, statement, retrievedAt });
+const reviewed = (sourceUrl: string) => evidence(sourceUrl, "官方模型资料与当前执行适配器共同限定此条目；仍需对当前账号做一次轻量验证。", REVIEWED_AT);
 const curated = (exactId: string, tier: CuratedModelEntry["tier"], sourceUrl: string, adapter: CuratedModelEntry["execution"]["adapter"], options: Partial<CuratedModelEntry> = {}): CuratedModelEntry => ({
   exactId, tier, recommended: true, lifecycle: "active", capabilities: ["chat"], execution: { adapter, status: "wired" }, requiresProbe: true,
   evidence: evidence(sourceUrl, "官方模型资料与当前执行适配器共同限定此条目；仍需对当前账号做一次轻量验证。"), ...options,
@@ -184,7 +187,7 @@ const curated = (exactId: string, tier: CuratedModelEntry["tier"], sourceUrl: st
 
 export const CURATED_MODEL_CATALOG: CuratedModelCatalog = {
   schema: "clownfish.curated-model-catalog",
-  catalogVersion: "2026-09-18.1",
+  catalogVersion: "2026-09-27.1",
   retrievedAt: RETRIEVED_AT,
   expiresAt: "2026-12-18",
   providers: [
@@ -194,14 +197,16 @@ export const CURATED_MODEL_CATALOG: CuratedModelCatalog = {
       curated("glm-asr-2512", "balanced", "https://docs.bigmodel.cn/llms.txt", "openai-audio-transcriptions", { recommended: false, capabilities: ["speech_to_text"] }),
     ] },
     { provider: "openai", officialEndpoints: ["https://api.openai.com/v1"], sourceUrl: "https://developers.openai.com/api/docs/models", models: [
-      curated("gpt-5.4", "primary", "https://developers.openai.com/api/docs/models", "openai-responses", { capabilities: ["chat", "vision"] }),
+      curated("gpt-5.5", "primary", "https://developers.openai.com/api/docs/models", "openai-responses", { capabilities: ["chat", "vision"], evidence: reviewed("https://developers.openai.com/api/docs/models") }),
+      curated("gpt-5.4", "compat", "https://developers.openai.com/api/docs/models", "openai-responses", { recommended: false, replacement: "gpt-5.5", capabilities: ["chat", "vision"], evidence: reviewed("https://developers.openai.com/api/docs/models") }),
       curated("gpt-transcribe", "balanced", "https://developers.openai.com/api/docs/guides/speech-to-text", "openai-audio-transcriptions", { recommended: false, capabilities: ["speech_to_text"] }),
       curated("gpt-4o-mini-tts", "fast", "https://developers.openai.com/api/docs/guides/text-to-speech", "openai-audio-speech", { recommended: false, capabilities: ["text_to_speech"] }),
       curated("gpt-image-2.5-sunburst", "primary", "https://developers.openai.com/api/docs/guides/image-generation", "openai-images-generations", { recommended: false, capabilities: ["image_generation"] }),
       curated("gpt-image-2.5-flare", "fast", "https://developers.openai.com/api/docs/guides/image-generation", "openai-images-generations", { recommended: false, capabilities: ["image_generation"] }),
     ] },
     { provider: "anthropic", officialEndpoints: ["https://api.anthropic.com"], sourceUrl: "https://platform.claude.com/docs/en/models/overview", models: [
-      curated("claude-opus-5", "primary", "https://platform.claude.com/docs/en/models/overview", "anthropic-messages"),
+      curated("claude-opus-5-5", "primary", "https://platform.claude.com/docs/en/models/overview", "anthropic-messages", { evidence: reviewed("https://platform.claude.com/docs/en/models/overview") }),
+      curated("claude-opus-5", "compat", "https://platform.claude.com/docs/en/models/overview", "anthropic-messages", { recommended: false, replacement: "claude-opus-5-5", evidence: reviewed("https://platform.claude.com/docs/en/models/overview") }),
       curated("claude-sonnet-5", "balanced", "https://platform.claude.com/docs/en/models/overview", "anthropic-messages"),
       curated("claude-haiku-4-5-20251001", "fast", "https://platform.claude.com/docs/en/models/overview", "anthropic-messages"),
     ] },
@@ -248,6 +253,18 @@ export function curatedProviderCatalog(provider: CompanionModelProvider, baseUrl
 
 export function curatedModelEntry(provider: CompanionModelProvider, baseUrl: string, modelId: string): CuratedModelEntry | undefined {
   return curatedProviderCatalog(provider, baseUrl)?.models.find((item) => item.exactId === modelId);
+}
+
+/**
+ * 当前型号在维护目录里标了替代者、替代者可以执行，而且这个账号的目录里确实有它时，建议升级。
+ * 维护目录之外、用户自己挑的型号不打扰。每次复核目录时给被取代的型号写上 replacement，用户就会收到提示。
+ */
+export function modelUpgradeFor(provider: CompanionModelProvider, baseUrl: string, currentModelId: string, accountModelIds: readonly string[]): { from: string; to: string } | null {
+  const to = curatedModelEntry(provider, baseUrl, currentModelId)?.replacement;
+  if (!to || to === currentModelId || !accountModelIds.includes(to)) return null;
+  const target = curatedModelEntry(provider, baseUrl, to);
+  if (!target || target.lifecycle !== "active" || target.execution.status !== "wired") return null;
+  return { from: currentModelId, to };
 }
 
 export function eligibleCuratedCatalog(provider: CompanionModelProvider, baseUrl: string, now = Date.now()): CompanionModelInfo[] {

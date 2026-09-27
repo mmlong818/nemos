@@ -127,6 +127,18 @@ test("仅智谱 Key 配好文字，其他能力保持明确未通过", async () 
   assert.equal(fake.calls.filter((item) => item.startsWith("verify:")).length, 1);
 });
 
+// 用户填了智谱 Key 却看到对话仍是 GPT：Key 已验证，但能力被旧的固定选择或默认优先级占着，结果里必须说明。
+test("验证通过却没分到任何能力的服务，结果里说明原因和去哪里改", async () => {
+  const pinned = fakeSetup({ configured: ["openai"], preserved: ["chat", "vision"] });
+  const kept = await runModelQuickSetup({ requestId: "request-pinned", keys: { zhipu: "new" } }, pinned.deps);
+  assert.equal(kept.providerResults.find((item) => item.provider === "zhipu")?.status, "ready");
+  assert.match(kept.message, /智谱的 Key 已验证，但对话、看图 2 项沿用你之前固定的模型，所以暂时没用上；想换，在“各项能力用哪个模型”里选择。/);
+  const both = await runModelQuickSetup({ requestId: "request-backup", keys: { openai: "one", zhipu: "two" } }, fakeSetup().deps);
+  assert.match(both.message, /智谱的 Key 已验证，目前作为备用；想让某项能力用它，在“各项能力用哪个模型”里选择。/);
+  const only = await runModelQuickSetup({ requestId: "request-only01", keys: { openai: "one" } }, fakeSetup().deps);
+  assert.doesNotMatch(only.message, /已验证，/, "每个验证过的服务都分到了能力时不多说");
+});
+
 test("双 Key 时每个 Key 各做一次最小连接验证，能力默认仍稳定优先 OpenAI", async () => {
   const fake = fakeSetup();
   const result = await runModelQuickSetup({ requestId: "request-both01", keys: { openai: "one", zhipu: "two" } }, fake.deps);

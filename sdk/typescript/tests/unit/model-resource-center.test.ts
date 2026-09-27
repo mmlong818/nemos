@@ -12,6 +12,7 @@ import {
   checkedModelResource,
   detectCompanionProvider,
   eligibleCuratedCatalog,
+  modelUpgradeFor,
   explainAutomaticRoute,
   maintainedModelResources,
   normalizeCapabilityAssignments,
@@ -55,12 +56,26 @@ test("provider detection uses exact maintained endpoints and never guesses custo
   assert.equal(detectCompanionProvider("https://api.minimax.cn/v1").provider, "minimax");
 });
 
+// 用户：“5.4 已经是旧的模型了”。被取代的型号仍可用，但账号里有替代者时要提示升级；目录外的型号不打扰。
+test("被取代的推荐型号在账号支持时提示升级到替代者", () => {
+  const openai = "https://api.openai.com/v1";
+  assert.deepEqual(modelUpgradeFor("openai", openai, "gpt-5.4", ["gpt-5.4", "gpt-5.5"]), { from: "gpt-5.4", to: "gpt-5.5" });
+  assert.equal(modelUpgradeFor("openai", openai, "gpt-5.4", ["gpt-5.4"]), null, "账号里没有替代者时不提示");
+  assert.equal(modelUpgradeFor("openai", openai, "gpt-5.5", ["gpt-5.4", "gpt-5.5"]), null, "已是推荐型号");
+  assert.equal(modelUpgradeFor("openai", openai, "gpt-5.4-mini", ["gpt-5.4-mini", "gpt-5.5"]), null, "用户自选的目录外型号不打扰");
+  assert.equal(modelUpgradeFor("openai", "https://proxy.example.com/v1", "gpt-5.4", ["gpt-5.5"]), null, "非官方地址不套用官方目录");
+  assert.deepEqual(modelUpgradeFor("anthropic", "https://api.anthropic.com", "claude-opus-5", ["claude-opus-5", "claude-opus-5-5"]), { from: "claude-opus-5", to: "claude-opus-5-5" });
+  const reviewedEntry = CURATED_MODEL_CATALOG.providers.find((item) => item.provider === "openai")!.models.find((item) => item.exactId === "gpt-5.5")!;
+  assert.equal(reviewedEntry.evidence.retrievedAt, "2026-09-27");
+  assert.equal(CURATED_MODEL_CATALOG.expiresAt, "2026-12-18", "局部复核不顺延整份目录的有效期");
+});
+
 test("versioned official catalog exposes only active recommended wired chat entries", () => {
-  assert.equal(CURATED_MODEL_CATALOG.catalogVersion, "2026-09-18.1");
+  assert.equal(CURATED_MODEL_CATALOG.catalogVersion, "2026-09-27.1");
   assert.equal(CURATED_MODEL_CATALOG.retrievedAt, "2026-09-18");
   assert.ok(CURATED_MODEL_CATALOG.providers.every((provider) => provider.sourceUrl.startsWith("https://")));
   assert.deepEqual(eligibleCuratedCatalog("zhipu", "https://open.bigmodel.cn/api/paas/v4").map((item) => item.id), ["glm-5.3"]);
-  assert.deepEqual(eligibleCuratedCatalog("openai", "https://api.openai.com/v1").map((item) => item.id), ["gpt-5.4"]);
+  assert.deepEqual(eligibleCuratedCatalog("openai", "https://api.openai.com/v1").map((item) => item.id), ["gpt-5.5"]);
   assert.deepEqual(eligibleCuratedCatalog("minimax", "https://api.minimax.cn/v1"), []);
   assert.deepEqual(eligibleCuratedCatalog("custom", "http://127.0.0.1:1234/v1"), []);
 });
