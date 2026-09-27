@@ -1,7 +1,8 @@
 # Current release
 
-## 0.7.10
+## 0.7.11
 
+- Clownfish can draw in chat: when you ask for an image and Models & Services has a verified image model, it generates one after you approve a card that states each image is billed to your account. The image appears in the reply, stays after a refresh, can be previewed or downloaded, and is kept in the results library.
 - Lets each service account be deleted on its own, together with its saved key. Capabilities pinned to it go back to automatic; if it was the conversation service, conversation moves to another automatically selected service, or pauses while the other services stay. Deleting the last one is the same as disconnecting all services.
 - Images sent in chat now get a reply from the persona, with memory and context, instead of the raw output of the image model. The image is first read by the verified vision model with room for a full description or OCR result; without a verified vision model the message is still refused.
 - The image and video plugin generates images with the image model verified in Models & Services, and uses environment-variable endpoints only when that model is unavailable. That path no longer sends `response_format` to GPT image models, which rejected it with HTTP 400.

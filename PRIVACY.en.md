@@ -1,6 +1,6 @@
 # Clownfish Privacy Policy
 
-Version: 0.7.10
+Version: 0.7.11
 Effective date: September 27, 2026
 
 Clownfish is a local-first AI work application. The project currently provides no hosted account service, advertising profile, or centralized product telemetry.
