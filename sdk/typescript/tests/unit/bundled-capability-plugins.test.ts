@@ -90,9 +90,11 @@ test("官方 Playwright MCP 使用已探测浏览器真实打开并读取本机�
 
 test("媒体插件通过本机模拟端点生成图像并完成视频生命周期", { timeout: 10_000 }, async () => {
   const requests: string[] = [];
-  const server = createServer((request, response) => {
+  const imageBodies: string[] = [];
+  const server = createServer(async (request, response) => {
     requests.push(`${request.method} ${request.url}`);
     if (request.url === "/v1/images/generations") {
+      let raw = ""; for await (const chunk of request) raw += chunk; imageBodies.push(raw);
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ data: [{ b64_json: Buffer.from("image-bytes").toString("base64") }] }));
       return;
@@ -131,6 +133,7 @@ test("媒体插件通过本机模拟端点生成图像并完成视频生命周�
     const imageFile = (image.data as { file: string }).file;
     assert.equal(existsSync(imageFile), true);
     assert.equal(readFileSync(imageFile, "utf8"), "image-bytes");
+    assert.doesNotMatch(imageBodies[0] || "", /response_format/, "GPT 图片型号不接受 response_format，传了会 HTTP 400");
     const created = await (await provider.loadTool("create_video", context.signal)).execute({ prompt: "游动" }, context);
     assert.match(created.content, /video_test_1/);
     const checked = await (await provider.loadTool("check_video", context.signal)).execute({ id: "video_test_1" }, context);
@@ -176,4 +179,32 @@ test("邮件日历插件可解析 EML 和检查 ICS 冲突", async () => {
   const connectors = platformConnectorStatuses([{ enabled: true, manifest: item.manifest }]);
   assert.equal(connectors.find((connector) => connector.id === "email")?.state, "not-installed");
   assert.equal(connectors.find((connector) => connector.id === "calendar")?.state, "not-installed");
+});
+
+test("媒体插件生成图像优先用设置里验证过的生图型号，不碰环境变量端点", async () => {
+  const previousKey = process.env.NEMOS_MEDIA_API_KEY;
+  const previousOpenAI = process.env.OPENAI_API_KEY;
+  delete process.env.NEMOS_MEDIA_API_KEY; delete process.env.OPENAI_API_KEY;
+  try {
+    const item = bundledCapabilityPluginCatalog({ packageRoot }).find((candidate) => candidate.id === "media.generate")!;
+    const context = { runId: "run", sessionId: "session", signal: AbortSignal.timeout(5_000) };
+    const calls: Array<{ prompt: string; size?: string }> = [];
+    const provider = createBundledCapabilityProvider(item.manifest, mkdtempSync(resolve(tmpdir(), "nemos-media-verified-")), {
+      generateImage: async (prompt, options) => { calls.push({ prompt, size: options.size }); return { data: Buffer.from("verified-bytes"), mime: "image/png" }; },
+    })!;
+    const image = await (await provider.loadTool("generate_image", context.signal)).execute({ prompt: "一条小丑鱼", size: "1536x1024" }, context);
+    assert.equal(readFileSync((image.data as { file: string }).file, "utf8"), "verified-bytes");
+    assert.deepEqual(calls, [{ prompt: "一条小丑鱼", size: "1536x1024" }]);
+    const unavailable = createBundledCapabilityProvider(item.manifest, mkdtempSync(resolve(tmpdir(), "nemos-media-verified-")), {
+      generateImage: async () => { throw new Error("没有可用于image_generation的已启用且已验证模型。"); },
+    })!;
+    await assert.rejects(
+      async () => (await unavailable.loadTool("generate_image", context.signal)).execute({ prompt: "x" }, context),
+      /已验证模型/,
+      "没有环境变量时如实报出设置里的原因，而不是泛泛的缺密钥",
+    );
+  } finally {
+    if (previousKey !== undefined) process.env.NEMOS_MEDIA_API_KEY = previousKey;
+    if (previousOpenAI !== undefined) process.env.OPENAI_API_KEY = previousOpenAI;
+  }
 });

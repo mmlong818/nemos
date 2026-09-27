@@ -686,7 +686,12 @@ function createExtensionProvider(manifest: AgentExtensionManifest) {
     const dataDir = manifest.permissions.includes("storage")
       ? agentExtensionStorage.directoryFor(manifest.id)
       : undefined;
-    const provider = createBundledCapabilityProvider(manifest, DATA_DIR)
+    const provider = createBundledCapabilityProvider(manifest, DATA_DIR, {
+      generateImage: async (prompt, options) => {
+        const route = resolveMediaRoute("image_generation");
+        return openAIImage(route.record.connection, route.modelId, prompt, options);
+      },
+    })
       ?? createMcpProviderFromManifest(manifest, dataDir ? { dataDir } : {});
     agentExtensionRuntimeErrors.delete(manifest.id);
     return provider;
@@ -4049,16 +4054,10 @@ async function prepareChatTextWithImage(b: ChatBody): Promise<PreparedChatText> 
   if (!b.image) return { text: originalText, ocrIntent };
 
   const base = originalText.trim() || (ocrIntent ? "请识别这张图片" : "（看看这张图）");
-  if (!llm.vision) {
-    const message = "视觉模型不可用，请先在设置里保存可用的模型 Key。";
-    const text = ocrIntent
-      ? `${base}\n\n[OCR识别失败：${message}]`
-      : `${base}\n\n[我发来一张图片，但识图出错了：${message}]`;
-    return { text, ocrIntent, imageError: ocrIntent ? message : undefined };
-  }
-
   try {
-    const desc = await llm.vision(b.image, visionPromptFor(originalText));
+    // 看图只走设置里验证过的看图型号；读出的内容交给人格，和正常对话一样带记忆与上下文回复。
+    const route = resolveMediaRoute("vision");
+    const desc = await openAIVision(route.record.connection, route.modelId, visionPromptFor(originalText), b.image, ocrIntent ? 2000 : 800);
     const text = ocrIntent
       ? `${base}\n\n[OCR识别结果：\n${desc}\n]`
       : `${base}\n\n[我发来一张图片，它的内容是：${desc}]`;
@@ -7100,14 +7099,10 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url === "/api/chat/stream") {
       if (!beginImmediateModelRequest(res)) { send(res, 409, { error: "model_update_busy", userMessage: "模型连接正在切换，请稍后发送。" }); return; }
       const b = (await readBody(req)) as ChatBody;
+      // 没有验证过的看图型号就直接拒绝，不把"识图失败"塞给对话模型去猜。
       if (b.image) {
-        try {
-          const route = resolveMediaRoute("vision");
-          const text = await openAIVision(route.record.connection, route.modelId, b.text || "请描述这张图片。", b.image);
-          res.writeHead(200, { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" });
-          res.end(`${JSON.stringify({ type: "token", text })}\n${JSON.stringify({ type: "done", facts: [] })}\n`);
-        } catch (error) { send(res, error instanceof Error && error.name === "IntegrationPendingError" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) }); }
-        return;
+        try { resolveMediaRoute("vision"); }
+        catch (error) { send(res, error instanceof Error && error.name === "IntegrationPendingError" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) }); return; }
       }
       let conversationOptions: ReturnType<typeof conversationSendOptions>;
       try { conversationOptions = conversationSendOptions(b); }
@@ -7216,12 +7211,8 @@ const server = createServer(async (req, res) => {
       if (!beginImmediateModelRequest(res)) { send(res, 409, { error: "model_update_busy", userMessage: "模型连接正在切换，请稍后发送。" }); return; }
       const b = (await readBody(req)) as ChatBody;
       if (b.image) {
-        try {
-          const route = resolveMediaRoute("vision");
-          const reply = await openAIVision(route.record.connection, route.modelId, b.text || "请描述这张图片。", b.image);
-          send(res, 200, { replies: [{ personaId: b.target.id, name: PERSONAS.find((p) => p.id === b.target.id)?.name || b.target.id, reply, messages: splitBubbles(reply), facts: [] }], taskReplies: [] });
-        } catch (error) { send(res, error instanceof Error && error.name === "IntegrationPendingError" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) }); }
-        return;
+        try { resolveMediaRoute("vision"); }
+        catch (error) { send(res, error instanceof Error && error.name === "IntegrationPendingError" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) }); return; }
       }
       let conversationOptions: ReturnType<typeof conversationSendOptions>;
       try { conversationOptions = conversationSendOptions(b); }

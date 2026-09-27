@@ -62,10 +62,10 @@ function validAudioSignature(data: Buffer, mime: string): boolean {
   return false;
 }
 
-export async function openAIVision(connection: CompanionModelConnection, model: string, prompt: string, image: string): Promise<string> {
+export async function openAIVision(connection: CompanionModelConnection, model: string, prompt: string, image: string, maxOutputTokens = 180): Promise<string> {
   const safe = validateImageDataUrl(image);
   const response = await request(connection, "/responses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-    model, max_output_tokens: 180, input: [{ role: "user", content: [{ type: "input_text", text: prompt || "请简要描述这张图片。" }, { type: "input_image", image_url: safe.dataUrl }] }],
+    model, max_output_tokens: maxOutputTokens, input: [{ role: "user", content: [{ type: "input_text", text: prompt || "请简要描述这张图片。" }, { type: "input_image", image_url: safe.dataUrl }] }],
   }) });
   const json = await response.json() as { output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string }> }> };
   const text = String(json.output_text || json.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text")?.text || "").trim();

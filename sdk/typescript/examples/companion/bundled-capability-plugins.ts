@@ -8,6 +8,9 @@ import type {
   AgentTool,
 } from "../../src/index.js";
 
+/** 用设置里验证过的生图型号出图；没有可用型号时抛错说明原因。 */
+export type VerifiedImageGenerator = (prompt: string, options: { size?: string; quality?: string }) => Promise<{ data: Buffer; mime: string }>;
+
 export type BundledCapabilityPluginId = "browser.playwright" | "analysis.safe-table" | "productivity.communication-files" | "media.generate";
 
 export interface BundledCapabilityPluginStatus {
@@ -172,10 +175,11 @@ function browserDisplayName(path: string): string {
 export function createBundledCapabilityProvider(
   manifest: AgentExtensionManifest,
   dataDir: string,
+  options: { generateImage?: VerifiedImageGenerator } = {},
 ): AgentExtensionProvider | undefined {
   if (manifest.id === "analysis.safe-table") return staticProvider(manifest, safeAnalysisTools());
   if (manifest.id === "productivity.communication-files") return staticProvider(manifest, productivityTools());
-  if (manifest.id === "media.generate") return staticProvider(manifest, mediaTools(dataDir));
+  if (manifest.id === "media.generate") return staticProvider(manifest, mediaTools(dataDir, options.generateImage));
   return undefined;
 }
 
@@ -255,7 +259,7 @@ function mediaManifest(): AgentExtensionManifest {
     id: "media.generate",
     name: "图像与视频生成",
     version: "1.0.0",
-    description: "通过用户配置的 OpenAI 兼容媒体端点生成图像，或创建、查询和下载视频任务；密钥只从本机环境变量读取。",
+    description: "生成图像时优先使用设置里验证过的生图型号；视频任务以及没有可用生图型号时，使用本机环境变量配置的 OpenAI 兼容媒体端点。",
     kind: "connector",
     source: { type: "builtin", location: "builtin:media.generate" },
     runtime: { type: "module", entry: "builtin:media.generate", requestTimeoutMs: 300_000 },
@@ -410,13 +414,13 @@ function unfoldLines(content: string): string[] {
   return content.replace(/\r?\n[ \t]/g, "").split(/\r?\n/);
 }
 
-function mediaTools(dataDir: string): Record<string, AgentTool> {
+function mediaTools(dataDir: string, verified?: VerifiedImageGenerator): Record<string, AgentTool> {
   return {
     generate_image: tool("generate_image", "生成图像并保存到本机。", "write", {
       type: "object",
       properties: { prompt: { type: "string" }, size: { type: "string" }, quality: { type: "string" }, model: { type: "string" } },
       required: ["prompt"], additionalProperties: false,
-    }, async (input, signal) => generateImage(input, dataDir, signal)),
+    }, async (input, signal) => generateImage(input, dataDir, signal, verified)),
     create_video: tool("create_video", "创建视频生成任务。", "write", {
       type: "object",
       properties: { prompt: { type: "string" }, size: { type: "string" }, seconds: { type: "string" }, model: { type: "string" } },
@@ -439,25 +443,43 @@ function mediaConfig() {
   return { baseUrl, apiKey };
 }
 
-async function generateImage(input: Record<string, unknown>, dataDir: string, signal: AbortSignal) {
+async function generateImage(input: Record<string, unknown>, dataDir: string, signal: AbortSignal, verified?: VerifiedImageGenerator) {
+  // 先用设置里验证过的生图型号；只有它不可用、而用户另配了环境变量时，才走环境变量那条路。
+  let verifiedError: unknown;
+  if (verified) {
+    try {
+      const image = await verified(String(input.prompt || ""), { size: typeof input.size === "string" ? input.size : undefined, quality: typeof input.quality === "string" ? input.quality : undefined });
+      return saveGeneratedImage(dataDir, image.data);
+    } catch (error) {
+      if (!String(process.env.NEMOS_MEDIA_API_KEY || process.env.OPENAI_API_KEY || "").trim()) throw error;
+      verifiedError = error;
+    }
+  }
   const config = mediaConfig();
+  const model = String(input.model || process.env.NEMOS_IMAGE_MODEL || "gpt-image-2");
   const response = await fetch(`${config.baseUrl}/images/generations`, {
     method: "POST", signal, headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-    body: JSON.stringify({ model: String(input.model || process.env.NEMOS_IMAGE_MODEL || "gpt-image-2"), prompt: String(input.prompt || ""), size: String(input.size || "1024x1024"), quality: String(input.quality || "auto"), response_format: "b64_json" }),
+    // GPT 图片型号总是返回 base64，不接受 response_format（传了会 HTTP 400）。
+    body: JSON.stringify({ model, prompt: String(input.prompt || ""), size: String(input.size || "1024x1024"), quality: String(input.quality || "auto"), ...(/^gpt-image/i.test(model) ? {} : { response_format: "b64_json" }) }),
   });
   const body = await response.json() as { data?: Array<{ b64_json?: string; url?: string }>; error?: { message?: string } };
-  if (!response.ok) throw new Error(body.error?.message || `图像服务返回 ${response.status}`);
+  if (!response.ok) {
+    const reason = body.error?.message || `图像服务返回 ${response.status}`;
+    throw new Error(verifiedError ? `设置里的生图型号不可用（${verifiedError instanceof Error ? verifiedError.message : String(verifiedError)}）；环境变量配置的服务也失败：${reason}` : reason);
+  }
   const item = body.data?.[0];
   if (!item?.b64_json && !item?.url) throw new Error("图像服务没有返回可保存的结果。");
+  if (item.b64_json) return saveGeneratedImage(dataDir, Buffer.from(item.b64_json, "base64"));
+  const download = await fetch(item.url!, { signal });
+  if (!download.ok) throw new Error(`图像下载失败：${download.status}`);
+  return saveGeneratedImage(dataDir, Buffer.from(await download.arrayBuffer()));
+}
+
+function saveGeneratedImage(dataDir: string, data: Buffer) {
   const directory = resolve(dataDir, "generated-media");
   mkdirSync(directory, { recursive: true });
   const file = resolve(directory, `image-${Date.now()}-${randomUUID().slice(0, 8)}.png`);
-  if (item.b64_json) writeFileSync(file, Buffer.from(item.b64_json, "base64"));
-  else {
-    const download = await fetch(item.url!, { signal });
-    if (!download.ok) throw new Error(`图像下载失败：${download.status}`);
-    writeFileSync(file, Buffer.from(await download.arrayBuffer()));
-  }
+  writeFileSync(file, data);
   return { content: `图像已生成并保存：${file}`, data: { file } };
 }
 
