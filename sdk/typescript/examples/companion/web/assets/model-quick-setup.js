@@ -11,6 +11,8 @@
   };
   const stageOrder = ["saving", "discovering", "verifying", "assigning"];
   let activeRequestId = "";
+  // 上一次配置的结论存在服务端；页面重新打开时它往往已过时（例如当时有能力没通过，后来单独测过了），只在本页操作过之后才显示。
+  let ranThisPage = false;
   let pollTimer = 0;
 
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -82,7 +84,7 @@
     renderProgress(snapshot);
     renderResults(snapshot);
     const status = $("#modelQuickStatus");
-    if (status) status.textContent = snapshot?.message || "填写一个或两个 Key 后即可自动完成。";
+    if (status) status.textContent = ranThisPage ? snapshot?.message || "" : "";
     const running = snapshot && ["saving", "discovering", "verifying", "assigning"].includes(snapshot.stage);
     for (const id of ["modelQuickSubmit", "modelQuickRetry", "modelQuickReset"]) {
       const button = $("#" + id);
@@ -105,6 +107,7 @@
 
   async function run({ resetRecommendations = false, includeKeys = false } = {}) {
     if (activeRequestId) return;
+    ranThisPage = true;
     activeRequestId = globalThis.crypto?.randomUUID?.() || `setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const keys = includeKeys ? {
       openai: $("#modelQuickOpenAIKey")?.value.trim() || "",

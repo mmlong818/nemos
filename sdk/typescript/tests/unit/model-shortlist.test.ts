@@ -241,7 +241,7 @@ test("settings saves and discovers first while paid verification stays explicit"
   assert.match(script, /textContent = "保存并读取模型"/);
   assert.match(html, /id="modelConnectProgress"/);
   assert.match(html, /id="modelCapabilityAssignments"/);
-  assert.match(html, /高级选择与诊断/);
+  assert.match(html, /诊断：完整目录与检查记录/);
   assert.match(script, /id="modelSaveOnly"/);
   assert.match(script, /id="modelConnectCancel"/);
   assert.match(script, /api\("\/api\/llm-connection\/save"/);
@@ -267,16 +267,16 @@ test("settings saves and discovers first while paid verification stays explicit"
 
 test("fixed routing stays visible for a read-only runtime snapshot and an offline historical reference", () => {
   const source = read("assets/settings-center.js");
-  const fn = source.slice(source.indexOf("function resourceOption"), source.indexOf("function policyControlKey"))
+  const fn = source.slice(source.indexOf("const PROVIDER_SHORT_NAMES"), source.indexOf("function policyControlKey"))
     + source.slice(source.indexOf("function assignmentOptions"), source.indexOf("const effortLabels"));
   const selected = JSON.stringify(["connection-a", "old-model"]);
   const [running, offline] = runInNewContext(fn + `\n[
     assignmentOptions({ connections: [{ id: "connection-a", label: "主连接" }], resources: [{ connectionId: "connection-a", modelId: "old-model", capabilities: ["chat"], runtimeSnapshot: true, readOnly: true, evidence: { verified: true }, executionState: { chat: "available" } }] }, "chat", ${JSON.stringify(selected)}, true),
     assignmentOptions({ connections: [], resources: [] }, "chat", ${JSON.stringify(selected)}, true)
   ];`, { escapeHtml: (value: unknown) => String(value) });
-  assert.match(running, /selected disabled>.*old-model.*当前仍在运行/);
+  assert.match(running, /selected disabled>.*old model.*当前仍在运行/);
   assert.doesNotMatch(running, /value="auto" selected/);
-  assert.match(offline, /old-model · 已保存固定引用，当前未连接或不可用/);
+  assert.match(offline, /old model · 已保存，但现在不可用/);
   assert.match(offline, /selected disabled/);
 });
 

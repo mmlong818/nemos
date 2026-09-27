@@ -13,10 +13,10 @@ const catalog = readFileSync(join(root, "provider-catalog.ts"), "utf8");
 test("普通模型设置只要求 OpenAI 与智谱两个 Key 并把手工模型库折叠到高级区", () => {
   assert.match(html, /id="modelQuickOpenAIKey"/);
   assert.match(html, /id="modelQuickZhipuKey"/);
-  assert.match(html, /保存并完成配置/);
+  assert.match(html, /id="modelQuickSubmit" type="button">保存并验证</);
   assert.match(html, /每个 Key 验证一次连接/);
   assert.match(html, /<details class="model-resource-section model-legacy-settings"/);
-  assert.match(html, /高级：其他服务、模型目录、网络与排错/);
+  assert.match(html, /高级：启用更多型号、恢复推荐、离线模式与诊断/);
   assert.ok(html.indexOf("modelQuickOpenAIKey") < html.indexOf("modelLegacySettings"));
 });
 

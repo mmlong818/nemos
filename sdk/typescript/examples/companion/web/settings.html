@@ -48,64 +48,153 @@
                 <header class="section-head">
                   <h2>模型与服务</h2>
                   <p>
-                    看现在用的是哪个模型、管理服务账号，并为每项能力选择模型。
+                    看能不能用、管理服务账号、给每项能力选模型。
                   </p>
                 </header>
-                <!-- 一页只回答四件事：正在用什么、有哪些账号、每项能力用哪个模型；其余进"高级"。 -->
-                <section class="model-now" id="modelNow" aria-labelledby="modelNowTitle">
-                  <h3 id="modelNowTitle">正在使用</h3>
+                <!-- 三块：状态、服务账号、各项能力；偶尔用的进“高级”。
+                     不再展示的旧区块（推荐型号、流程图、重新检测等）仍留在 DOM 里：settings-center.js 按 ID 直接引用它们。 -->
+                <section class="model-now" id="modelNow" aria-label="当前状态">
                   <div id="modelNowBody" aria-live="polite"><span class="cf-skeleton"></span></div>
                   <div class="model-now-actions">
-                    <button type="button" id="modelNowChange">换模型</button>
-                    <button id="modelQuickRecheck" type="button" title="对当前默认文字模型重新做文字、流式和工具调用检查；检查有效期 7 天，过期后聊天会被拦下">重新检查</button>
+                    <button id="modelQuickRecheck" type="button" title="对当前对话模型重新做文字、流式和工具调用检查；检查有效期 7 天，过期后聊天会被拦下">重新检查</button>
+                    <button type="button" id="modelNowChange" hidden>换模型</button>
                     <span class="status" id="modelNowStatus" role="status"></span>
                   </div>
                 </section>
-                <section class="model-quick-setup" aria-labelledby="modelQuickSetupTitle">
-                  <div class="model-quick-intro">
-                    <div>
-                      <h3 id="modelQuickSetupTitle">服务账号</h3>
-                      <p>填上你有的 Key 就行，一个可以先用，两个互为补充；保存后会自动验证并分配各项能力。</p>
-                    </div>
+                <section class="model-accounts" aria-labelledby="modelQuickSetupTitle">
+                  <div class="model-accounts-head">
+                    <h3 id="modelQuickSetupTitle">服务账号</h3>
                     <span class="model-quick-security">Key 仅加密保存在本机</span>
+                    <button type="button" class="link-button" id="modelAddProvider">+ 添加服务</button>
                   </div>
-                  <div class="model-key-cards">
-                    <label class="model-key-card" data-quick-provider="openai">
-                      <span class="model-key-card-head"><b>OpenAI</b><em id="modelQuickOpenAIState">未配置</em></span>
-                      <span class="model-key-card-copy">文字、看图、语音和图像能力的主要来源</span>
-                      <a class="model-key-help" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">还没有 Key？去 OpenAI 申请 ↗</a>
-                      <input id="modelQuickOpenAIKey" type="password" autocomplete="new-password" placeholder="粘贴 OpenAI API Key" />
-                      <small id="modelQuickOpenAIDetail">留空会继续使用已保存的 Key。</small>
-                    </label>
-                    <label class="model-key-card" data-quick-provider="zhipu">
-                      <span class="model-key-card-head"><b>智谱 BigModel</b><em id="modelQuickZhipuState">未配置</em></span>
-                      <span class="model-key-card-copy">中文文字任务与备用模型；国内网络可直接使用</span>
-                      <a class="model-key-help" href="https://bigmodel.cn/usercenter/proj-mgmt/apikeys" target="_blank" rel="noopener noreferrer">还没有 Key？去智谱开放平台申请 ↗</a>
-                      <input id="modelQuickZhipuKey" type="password" autocomplete="new-password" placeholder="粘贴智谱 API Key" />
-                      <small id="modelQuickZhipuDetail">留空会继续使用已保存的 Key。</small>
-                    </label>
-                  </div>
-                  <div class="model-quick-action">
-                    <div>
-                      <button class="primary" id="modelQuickSubmit" type="button">保存并完成配置</button>
-                      <p>会为每个 Key 验证一次连接，并为每项额外能力发送一次合成最小验证，可能产生少量模型费用。</p>
+                  <div id="modelAccountList" class="model-account-list" aria-live="polite"></div>
+                  <div class="model-quick-setup" id="modelQuickSetup">
+                    <div class="model-key-cards">
+                      <label class="model-key-card" data-quick-provider="openai">
+                        <span class="model-key-card-head"><b>OpenAI</b><em id="modelQuickOpenAIState">未配置</em></span>
+                        <span class="model-key-card-copy">对话、看图、语音、图片都能用</span>
+                        <a class="model-key-help" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">还没有 Key？去 OpenAI 申请 ↗</a>
+                        <input id="modelQuickOpenAIKey" type="password" autocomplete="new-password" placeholder="粘贴 OpenAI API Key" />
+                        <small id="modelQuickOpenAIDetail">填写后将加密保存在本机。</small>
+                      </label>
+                      <label class="model-key-card" data-quick-provider="zhipu">
+                        <span class="model-key-card-head"><b>智谱</b><em id="modelQuickZhipuState">未配置</em></span>
+                        <span class="model-key-card-copy">中文对话与任务；国内网络可直接使用</span>
+                        <a class="model-key-help" href="https://bigmodel.cn/usercenter/proj-mgmt/apikeys" target="_blank" rel="noopener noreferrer">还没有 Key？去智谱开放平台申请 ↗</a>
+                        <input id="modelQuickZhipuKey" type="password" autocomplete="new-password" placeholder="粘贴智谱 API Key" />
+                        <small id="modelQuickZhipuDetail">填写后将加密保存在本机。</small>
+                      </label>
                     </div>
-                    <span id="modelQuickStatus" class="status" role="status"></span>
+                    <div class="model-quick-action">
+                      <div>
+                        <button class="primary" id="modelQuickSubmit" type="button">保存并验证</button>
+                        <p>每个 Key 验证一次连接，可能产生少量费用；验证通过后自动分配到各项能力。</p>
+                      </div>
+                      <span id="modelQuickStatus" class="status" role="status"></span>
+                    </div>
+                    <ol class="model-quick-progress" id="modelQuickProgress" aria-label="自动配置进度" hidden>
+                      <li data-stage="saving">安全保存</li>
+                      <li data-stage="discovering">筛选推荐</li>
+                      <li data-stage="verifying">能力验证</li>
+                      <li data-stage="assigning">自动分配</li>
+                    </ol>
+                    <div class="model-quick-results" id="modelQuickResults" aria-live="polite" hidden></div>
                   </div>
-                  <ol class="model-quick-progress" id="modelQuickProgress" aria-label="自动配置进度">
-                    <li data-stage="saving">安全保存</li>
-                    <li data-stage="discovering">筛选推荐</li>
-                    <li data-stage="verifying">能力验证</li>
-                    <li data-stage="assigning">自动分配</li>
-                  </ol>
-                  <!-- 每项能力的结果在下面的能力表里，这里不再重复一份。 -->
-                  <div class="model-quick-results" id="modelQuickResults" aria-live="polite" hidden></div>
-                  <p class="model-add-provider"><button type="button" class="link-button" id="modelAddProvider">+ 添加其他服务（Anthropic、DeepSeek、通义千问、自定义地址…）</button></p>
+                  <!-- 添加其他服务、给非 OpenAI/智谱 的服务换 Key 都用这张表单；平时收起。 -->
+                  <div class="model-connect-panel" id="modelConnectPanel" hidden>
+                    <div class="model-connect-panel-head">
+                      <h4 id="modelConnectHeading">添加或编辑服务</h4>
+                      <button type="button" class="link-button" id="modelConnectPanelClose">收起</button>
+                    </div>
+                    <div class="current-line" hidden>
+                      <div>
+                        <b id="modelCurrentTitle"
+                          ><span class="cf-skeleton is-inline"></span></b
+                        ><small id="modelCurrentDetail">读取当前连接状态</small>
+                      </div>
+                      <span class="dot" id="modelDot"></span>
+                    </div>
+                    <form class="form-grid model-connect-form" id="modelForm">
+                      <label class="field full"
+                        ><span>服务</span><select id="modelProvider"></select
+                        ><small id="modelProviderNote"
+                          >选择服务后只填写该厂商需要的凭据和区域。</small
+                        ></label
+                      ><div id="modelProviderFields" class="form-grid field full"></div>
+                      <label class="field full" id="modelBaseUrlField" hidden
+                        ><span>API 服务地址</span
+                        ><input
+                          id="modelBaseUrl"
+                          placeholder="仅高级自定义服务需要填写"
+                          inputmode="url"
+                        /><small
+                          >官方服务使用内置受信端点，不需要普通用户填写地址。</small
+                        ></label
+                      ><label class="field full" id="modelLegacyKeyField" hidden
+                        ><span>API Key</span
+                        ><input
+                          id="modelKey"
+                          type="password"
+                          autocomplete="new-password"
+                          placeholder="留空则继续使用同一连接已保存的密钥"
+                        /><small id="modelKeyHint"
+                          >密钥提交后立即清空，只由当前 Windows
+                          用户加密保存在本机。</small
+                        ></label
+                      ><input id="modelConnectionId" type="hidden" /><input
+                        id="modelName"
+                        type="hidden"
+                      /><input
+                        id="modelSelectionMode"
+                        type="hidden"
+                        value="manual"
+                      />
+                      <details class="field full model-advanced-fields">
+                        <summary>高级：连接协议与网络</summary>
+                        <div class="form-grid">
+                          <label class="field"
+                            ><span>连接协议</span
+                            ><select id="modelProtocol">
+                              <option value="openai-compatible">OpenAI 兼容</option>
+                              <option value="anthropic">Anthropic</option>
+                              <option value="gemini-native">Gemini 原生</option>
+                              <option value="dashscope-native">百炼原生</option>
+                              <option value="ark">火山方舟</option>
+                              <option value="async-media">异步媒体</option>
+                              <option value="tencent-tc3">腾讯 TC3</option>
+                            </select></label
+                          >
+                        </div>
+                      </details>
+                      <div class="form-actions">
+                        <button class="primary" id="modelSave" type="submit">
+                          保存并连接</button
+                        >
+                      </div>
+                      <small class="field full"
+                        >连接时仅对选中的一个文字模型发送一次合成轻量请求，可能产生极少量费用；不会循环试探其他型号。</small
+                      >
+                    </form>
+                    <ol
+                      id="modelConnectProgress"
+                      class="model-connect-progress"
+                      aria-label="连接进度"
+                      aria-live="polite"
+                      hidden
+                    >
+                      <li data-step="saved">加密保存</li>
+                      <li data-step="provider">识别服务</li>
+                      <li data-step="catalog">读取目录</li>
+                      <li data-step="recommend">生成推荐</li>
+                      <li data-step="verify">轻量验证</li>
+                      <li data-step="ready">可用于任务</li>
+                    </ol>
+                  </div>
                 </section>
                 <section class="model-resource-section model-capabilities">
                   <div class="section-head">
-                    <h3>各项能力用哪个模型</h3>
-                    <p>下拉框里只列出验证通过的模型；候选型号点一下就测试一次，通过后即可选用。</p>
+                    <h3>各项能力</h3>
+                    <p>下拉框只列出验证通过的模型。</p>
                   </div>
                   <div
                     id="modelCapabilityAssignments"
@@ -114,108 +203,25 @@
                   <p class="status" id="modelStatus" role="status"></p>
                 </section>
                 <details class="model-resource-section model-legacy-settings" id="modelLegacySettings">
-                  <summary>高级：其他服务、模型目录、网络与排错</summary>
+                  <summary>高级：启用更多型号、恢复推荐、离线模式与诊断</summary>
                   <div class="model-legacy-settings-body">
-                <section class="model-resource-section">
-                  <h3>重新配置</h3>
-                  <p>“重新检测”保留仍健康的手工默认值；“恢复系统推荐”会用本次验证通过的模型重新分配。</p>
-                  <div class="form-actions">
-                    <button id="modelQuickRetry" type="button">重新检测</button>
-                    <button id="modelQuickReset" type="button">恢复系统推荐</button>
-                  </div>
-                </section>
-                <h3 class="model-advanced-heading" id="modelConnectHeading">添加或编辑服务连接</h3>
-                <div class="current-line">
-                  <div>
-                    <b id="modelCurrentTitle"
-                      ><span class="cf-skeleton is-inline"></span></b
-                    ><small id="modelCurrentDetail">读取当前连接状态</small>
-                  </div>
-                  <span class="dot" id="modelDot"></span>
-                </div>
-                <form class="form-grid model-connect-form" id="modelForm">
-                  <label class="field full"
-                    ><span>AI 服务</span><select id="modelProvider"></select
-                    ><small id="modelProviderNote"
-                      >选择服务后只填写该厂商需要的凭据和区域。</small
-                    ></label
-                  ><div id="modelProviderFields" class="form-grid field full"></div>
-                  <label class="field full" id="modelBaseUrlField" hidden
-                    ><span>API 服务地址</span
-                    ><input
-                      id="modelBaseUrl"
-                      placeholder="仅高级自定义服务需要填写"
-                      inputmode="url"
-                    /><small
-                      >官方服务使用内置受信端点，不需要普通用户填写地址。</small
-                    ></label
-                  ><label class="field full" id="modelLegacyKeyField" hidden
-                    ><span>API Key</span
-                    ><input
-                      id="modelKey"
-                      type="password"
-                      autocomplete="new-password"
-                      placeholder="留空则继续使用同一连接已保存的密钥"
-                    /><small id="modelKeyHint"
-                      >密钥提交后立即清空，只由当前 Windows
-                      用户加密保存在本机。</small
-                    ></label
-                  ><input id="modelConnectionId" type="hidden" /><input
-                    id="modelName"
-                    type="hidden"
-                  /><input
-                    id="modelSelectionMode"
-                    type="hidden"
-                    value="manual"
-                  />
-                  <details class="field full model-advanced-fields">
-                    <summary>高级自定义连接</summary>
-                    <div class="form-grid">
-                      <label class="field"
-                        ><span>连接协议</span
-                        ><select id="modelProtocol">
-                          <option value="openai-compatible">OpenAI 兼容</option>
-                          <option value="anthropic">Anthropic</option>
-                          <option value="gemini-native">Gemini 原生</option>
-                          <option value="dashscope-native">百炼原生</option>
-                          <option value="ark">火山方舟</option>
-                          <option value="async-media">异步媒体</option>
-                          <option value="tencent-tc3">腾讯 TC3</option>
-                        </select></label
-                      >
-                    </div>
-                  </details>
-                  <div class="form-actions">
-                    <button class="primary" id="modelSave" type="submit">
-                      保存并连接</button
-                    ><button id="modelOffline" type="button">
-                      使用离线模式
-                    </button>
-                  </div>
-                  <small class="field full"
-                    >连接时仅对选中的一个文字模型发送一次合成轻量请求，可能产生极少量费用；不会循环试探其他型号。</small
-                  >
-                </form>
-                <ol
-                  id="modelConnectProgress"
-                  class="model-connect-progress"
-                  aria-label="连接进度"
-                  aria-live="polite"
-                >
-                  <li data-step="saved">加密保存</li>
-                  <li data-step="provider">识别服务</li>
-                  <li data-step="catalog">读取目录</li>
-                  <li data-step="recommend">生成推荐</li>
-                  <li data-step="verify">轻量验证</li>
-                  <li data-step="ready">可用于任务</li>
-                </ol>
-                <section class="model-resource-section">
-                  <h3>已连接服务与模型库</h3>
+                <section class="model-resource-section model-more-models">
+                  <h3>启用更多型号</h3>
+                  <p>先选服务，再从它的完整目录里勾选要启用的型号；启用后在上面对应能力里测试和选用。</p>
                   <div id="modelProviderConnections" class="connection-list">
                     <span class="cf-skeleton"></span>
                   </div>
                 </section>
                 <section class="model-resource-section">
+                  <h3>重置与离线</h3>
+                  <p>“恢复系统推荐”会重新验证已保存的 Key，并按推荐重新分配各项能力的模型，会覆盖你手动选的模型。</p>
+                  <div class="form-actions">
+                    <button id="modelQuickReset" type="button">恢复系统推荐</button>
+                    <button id="modelQuickRetry" type="button" hidden>重新检测</button>
+                    <button id="modelOffline" type="button" class="danger-quiet">断开所有服务（离线模式）</button>
+                  </div>
+                </section>
+                <section class="model-resource-section" hidden>
                   <h3>推荐型号</h3>
                   <p id="modelRecommendationHint">
                     连接后显示少量有依据的推荐。
@@ -226,7 +232,7 @@
                   ></div>
                 </section>
                 <details class="model-resource-section model-diagnostics">
-                  <summary>高级选择与诊断</summary>
+                  <summary>诊断：完整目录与检查记录</summary>
                   <div class="form-actions">
                     <button
                       id="modelChoiceOpen"
@@ -510,8 +516,8 @@
     <script src="/assets/model-shortlist.js"></script>
     <script src="/assets/model-policy-save-queue.js?v=0.7.6-policy2"></script>
     <script src="/assets/tts-preview-player.js?v=0.7.6-media1"></script>
-    <script src="/assets/model-quick-setup.js?v=0.7.6-quick3"></script>
-    <script src="/assets/settings-center.js?v=0.7.7-modelux9"></script>
+    <script src="/assets/model-quick-setup.js?v=0.7.8-quick4"></script>
+    <script src="/assets/settings-center.js?v=0.7.8-models10"></script>
     <script src="/assets/settings-proactive.js" defer></script><script src="/assets/settings-wallpaper.js"></script>
     <script src="/assets/scramble-confetti.js" defer></script>
   </body>

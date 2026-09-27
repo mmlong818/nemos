@@ -244,3 +244,48 @@ body[data-ui] button.model-recommendation { display: grid; gap: 5px; flex: 1 1 2
 .model-upgrade-hint small { flex-basis: 100%; color: var(--cf-ink-soft, #66746f); }
 .model-upgrade-hint small:empty { display: none; }
 .model-now-upgrade { margin: 6px 0 0; font-size: 12px; color: var(--cf-coral, #276b5b); }
+
+/* —— 模型与服务 v2：状态行 / 服务账号 / 各项能力 —— */
+.model-now { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 14px 18px; }
+.model-now-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; font-size: 14px; }
+.model-now-line b { font-size: 15px; color: var(--cf-coral, #276b5b); }
+.model-now-line b[data-ok="false"] { color: var(--cf-warning, #94631b); }
+.model-now-line small { color: var(--cf-warning, #94631b); }
+.model-now .model-upgrade-hint { flex-basis: 100%; margin-top: 0; }
+.model-now-actions { display: flex; align-items: center; gap: 10px; }
+
+.model-accounts { margin-top: 26px; }
+.model-accounts-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.model-accounts-head h3 { margin: 0; }
+.model-accounts-head .model-quick-security { margin-left: auto; }
+.model-account-list { display: grid; gap: 0; border-top: 1px solid var(--cf-line, #dfe5e2); }
+.model-account-list:empty { display: none; }
+.model-account-row { display: grid; grid-template-columns: minmax(150px, 220px) 1fr auto; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--cf-line, #dfe5e2); }
+.model-account-name { display: flex; align-items: center; gap: 10px; }
+.model-account-state { font-size: 12px; color: var(--cf-ink-soft, #66746f); }
+.model-account-state::before { content: "●"; margin-right: 4px; color: var(--cf-line-strong, #bbc9c3); }
+.model-account-row[data-state="ok"] .model-account-state::before { color: var(--cf-coral, #276b5b); }
+.model-account-row[data-state="pending"] .model-account-state::before { color: var(--cf-warning, #94631b); }
+.model-account-use { color: var(--cf-ink-soft, #66746f); font-size: 13px; }
+.model-account-row button { min-height: 30px; padding: 0 12px; font-size: 12px; }
+#modelQuickSetup { margin-top: 14px; }
+#modelQuickSetup[hidden], .model-key-card[hidden], #modelConnectPanel[hidden], .model-now-actions [hidden] { display: none !important; }
+.model-connect-panel { margin-top: 14px; padding: 16px 18px; border: 1px solid var(--cf-line, #dfe5e2); border-radius: 12px; }
+.model-connect-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.model-connect-panel-head h4 { margin: 0; font-size: 15px; }
+
+.model-capability-row .model-cap-state { display: block; margin-top: 2px; font-size: 12px; color: var(--cf-coral, #276b5b); }
+.model-capability-row .model-cap-state[data-ok="false"] { color: var(--cf-warning, #94631b); }
+.model-try { margin-top: 6px; }
+.model-try > summary { cursor: pointer; font-size: 12px; color: var(--cf-coral, #276b5b); }
+.model-try .model-media-workbench { margin-top: 6px; }
+.danger-quiet { color: var(--cf-danger, #a92d48); }
+/* 第三列固定宽度：只有对话行有“思考强度”，其余行留空，下拉框才能上下对齐。 */
+.model-capability-row { grid-template-columns: minmax(150px, .8fr) minmax(220px, 1.2fr) 170px; }
+@media (max-width: 760px) { .model-capability-row { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .model-account-row { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .model-account-use { grid-column: 1 / -1; grid-row: 2; }
+  .model-accounts-head .model-quick-security { display: none; }
+  .model-accounts-head #modelAddProvider { margin-left: auto; }
+}

@@ -43,7 +43,7 @@ test("服务账号卡片告诉新用户去哪申请 Key，外链交给系统浏�
 });
 
 test("一个服务都没连时，正在使用不摆无用按钮，能力表只留一句去处", () => {
-  assert.match(center, /for \(const id of \["#modelNowChange", "#modelQuickRecheck"\]\) \{ const button = \$\(id\); if \(button\) button\.hidden = empty; \}/);
+  assert.match(center, /const recheck = \$\("#modelQuickRecheck"\);\n\s*if \(recheck\) recheck\.hidden = empty;/);
   assert.match(center, /const visiblePurposes = \(center\.connections \|\| \[\]\)\.length \?/);
   assert.match(center, /model-capabilities-empty/);
   assert.doesNotMatch(center, /请先显式测试一个候选/);
