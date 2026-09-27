@@ -1,7 +1,9 @@
 # Current release
 
-## 0.7.7
+## 0.7.8
 
+- Recommends gpt-5.5 for OpenAI and adds Claude Opus 5.5; superseded models such as gpt-5.4 stay usable, and when the account offers the replacement, Models & Services offers a one-click test before switching conversation to it.
+- Explains in the setup result when a newly verified key ends up unused, either because earlier fixed model choices were kept or because it serves as the backup, and points to where to change it.
 - Redesigns Models & Services as four parts: what is in use now, service accounts, which model each capability uses, and a collapsed advanced area; capabilities that are not wired yet are no longer shown.
 - Brings Pantheon onto the shared navigation, theme, and page frame used by every other page.
 - Smooths the first run: the input stays usable while the welcome plays, a notice above the input explains that no model is connected and links to setup, service cards link to where keys are issued, and a rejected key explains what to do instead of showing a bare HTTP status.

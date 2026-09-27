@@ -5,7 +5,7 @@
 [中文](README.md) · **English**
 
 [![CI](https://github.com/mmlong818/nemos/actions/workflows/ci.yml/badge.svg)](https://github.com/mmlong818/nemos/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-v0.7.7-b33f72)](https://github.com/mmlong818/nemos/tree/v0.7.7)
+[![Version](https://img.shields.io/badge/version-v0.7.8-b33f72)](https://github.com/mmlong818/nemos/tree/v0.7.8)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A522.19-brightgreen)](#install-and-run)
 [![Status](https://img.shields.io/badge/status-Alpha-orange)](#current-boundaries)
 [![License](https://img.shields.io/badge/license-noncommercial%20only-blue)](LICENSE)
