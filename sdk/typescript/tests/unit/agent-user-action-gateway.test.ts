@@ -67,6 +67,24 @@ test("explicit user action failures become failed runs and preserve the original
   assert.equal(failures[0]?.message, "skill not found");
 });
 
+test("server-issued action run IDs remain the audit identity on observer events", async () => {
+  const runIds: string[] = [];
+  const gateway = new AgentUserActionGateway({
+    onStart: (input) => { if (input.runId) runIds.push(input.runId); },
+    onEvent: (runId) => { runIds.push(runId); },
+  });
+  const result = await gateway.execute({
+    runId: "collaboration-action:server-synthetic-id",
+    name: "capability_task_collaborate",
+    description: "Start the frozen synthetic collaboration plan",
+    arguments: { taskId: "task-synthetic", requestId: "request-synthetic" },
+    execute: () => ({ jobId: "job-synthetic" }),
+  });
+  assert.equal(result.runId, "collaboration-action:server-synthetic-id");
+  assert.ok(runIds.length > 1);
+  assert.ok(runIds.every((runId) => runId === result.runId));
+});
+
 test("long user actions can declare an appropriate timeout without changing the default", async () => {
   const gateway = new AgentUserActionGateway();
   await assert.rejects(gateway.execute({

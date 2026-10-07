@@ -34,6 +34,11 @@ import type { CapabilityStreamCb } from "./capabilities.js";
 import { makeOpenAIResponsesAgentModel } from "./openai-responses.js";
 import { makeAnthropicMessagesAgentModel } from "./anthropic-messages.js";
 import { effectiveReasoningEffort, resolveReasoningEffort, type ReasoningEffort } from "./model-reasoning.js";
+import { MODEL_CALL_POLICY, reserveModelOutputTokens, reservePersistentModelOutputTokens } from "./model-call-policy.js";
+import type { ModelBudgetStore } from "./model-budget-store.js";
+
+let persistentBudgetStore: ModelBudgetStore | undefined;
+export function configurePersistentModelBudgetStore(store: ModelBudgetStore): void { persistentBudgetStore = store; }
 import {
   CompanionModelHttpError,
   companionModelCapabilities,
@@ -437,6 +442,7 @@ function makeConnectionChat(
     const selectedModel = model || defaultModel;
     const completionTokens = Math.min(requestedMaxTokens, limits.maxTokens);
     const runId = context?.runId ?? `companion-chat-${randomUUID()}`;
+    const budgetIdentity = context?.budgetIdentity ?? randomUUID();
     const runtime = new AgentRuntime(
       makeConnectionAgentModel({
         connection,
@@ -446,7 +452,9 @@ function makeConnectionChat(
         maxTokens: completionTokens,
         temperature: 0.85,
         stream: false,
-        runId: context?.runId,
+        runId,
+        budgetIdentity,
+        budgetOwnerKey: context?.budgetOwnerKey ?? runId,
         purpose: context?.llmPurpose,
         ledger: ledger(),
       }),
@@ -466,6 +474,9 @@ function makeConnectionChat(
       prompt: user,
       signal: context?.signal,
       metadata: agentMetadata(context, {
+        budgetIdentity,
+        budgetOwnerKey: context?.budgetOwnerKey ?? runId,
+        budgetPolicyVersion: "3",
         model: selectedModel,
         maxTokens: String(completionTokens),
         maxRounds: String(limits.maxRounds),
@@ -506,6 +517,7 @@ function makeConnectionChatStream(
     const completionTokens = Math.min(requestedMaxTokens, limits.maxTokens);
     let emittedChars = 0;
     const runId = context?.runId ?? `companion-stream-${randomUUID()}`;
+    const budgetIdentity = context?.budgetIdentity ?? randomUUID();
     const runtime = new AgentRuntime(
       makeConnectionAgentModel({
         connection,
@@ -515,7 +527,9 @@ function makeConnectionChatStream(
         maxTokens: completionTokens,
         temperature: 0.6,
         stream: true,
-        runId: context?.runId,
+        runId,
+        budgetIdentity,
+        budgetOwnerKey: context?.budgetOwnerKey ?? runId,
         purpose: context?.llmPurpose,
         ledger: ledger(),
       }),
@@ -535,6 +549,9 @@ function makeConnectionChatStream(
       prompt: user,
       signal: context?.signal,
       metadata: agentMetadata(context, {
+        budgetIdentity,
+        budgetOwnerKey: context?.budgetOwnerKey ?? runId,
+        budgetPolicyVersion: "3",
         model: selectedModel,
         maxTokens: String(completionTokens),
         maxRounds: String(limits.maxRounds),
@@ -574,6 +591,9 @@ function makeConnectionAgentResume(
   ledger: () => FileLlmCallLedger | undefined,
 ): NonNullable<ResolvedLLM["resumeAgentRun"]> {
   return async (run, checkpoint, cb) => {
+    if (persistentBudgetStore && (run.metadata?.budgetPolicyVersion !== "3" || !run.metadata?.budgetIdentity)) {
+      throw new Error("旧 Agent 运行缺少持久预算绑定，请新建任务。");
+    }
     const context = storedAgentContext(run);
     const extraTools = [...await additionalTools(context?.instruction ?? run.prompt, context)];
     const runtimeTools = context?.toolMode === "off"
@@ -597,6 +617,8 @@ function makeConnectionAgentResume(
         temperature: 0.6,
         stream: Boolean(cb),
         runId: run.runId,
+        budgetIdentity: run.metadata?.budgetIdentity,
+        budgetOwnerKey: run.metadata?.budgetOwnerKey ?? run.runId,
         purpose: context?.llmPurpose,
         ledger: ledger(),
       }),
@@ -672,6 +694,9 @@ export function completedAgentOutput(result: AgentRunResult, maxOutputChars: num
   if (result.disposition.state === "blocked" || result.disposition.state === "cancelled") {
     throw new AgentTurnDispositionError(result.disposition);
   }
+  if (!body && result.disposition.evidence.length === 0) {
+    throw new Error("模型这次没有给出可见的回答或成果；请重试。");
+  }
   return body;
 }
 
@@ -701,6 +726,7 @@ export function storedAgentContext(run: Pick<AgentStoredRun, "metadata" | "runId
   }
   return {
     runId: run.runId,
+    budgetIdentity: metadata.budgetIdentity,
     sessionId: run.sessionId,
     userId: metadata.userId,
     personaId: metadata.personaId,
@@ -805,6 +831,12 @@ interface ConnectionAgentModelOptions {
   stream: boolean;
   /** Existing application run id, never a synthesized task identity. */
   runId?: string;
+  /** Opaque task incarnation. The run id is diagnostic and is not a budget key. */
+  budgetIdentity?: string;
+  /** Stable owner key bound before provider admission; team stages use the queue idempotency key. */
+  budgetOwnerKey?: string;
+  /** Isolated tests can supply a store without changing the server singleton. */
+  budgetStore?: ModelBudgetStore;
   purpose?: LlmCallPurpose;
   ledger?: FileLlmCallLedger;
   /** Synthetic readiness requests omit optional sampling/limit parameters. */
@@ -847,7 +879,8 @@ function makeConnectionAgentModelInternal(options: ConnectionAgentModelOptions, 
     : transport === "openai-responses"
       ? makeOpenAIResponsesAgentModel(effective)
       : makeOpenAICompatibleAgentModel({ ...effective, readinessProbe });
-  return { complete: (request) => {
+  const anonymousIdentity = Symbol("model-call-task");
+  return { complete: async (request) => {
     if (check?.chat === "failed") throw new Error("当前模型连接检查未通过，请在设置中重新检查或选择其他模型。");
     // A resumed checkpoint is rebuilt through this same adapter. Its historical
     // model name never grants access after the current connection has changed.
@@ -857,27 +890,59 @@ function makeConnectionAgentModelInternal(options: ConnectionAgentModelOptions, 
     if (request.tools.length && !readinessProbe && options.connection.connectionRevision && !isModelCheckEligible(options.connection, check, options.model, "tools")) {
       throw new Error("当前模型的工具调用检查未通过。请选择已验证工具调用的模型，或关闭工具后仅进行文字对话。");
     }
-    return modelScheduler.run(modelResourceKey(options.connection), request.signal, async () => {
-      // The entry is started only after admission, immediately before an adapter performs HTTP.
-      // Thus queue waiting, tool work and retries are not misreported as provider calls.
-      const entry = safelyStartLedger(options.ledger, {
-        runId: options.runId,
-        taskId: taskIdFromRunId(options.runId),
-        purpose: options.purpose ?? purposeFromRunId(options.runId),
-        provider: options.connection.provider,
-        model: options.model,
-      });
+    const purpose = options.purpose ?? purposeFromRunId(options.runId);
+    const safeRetry = !readinessProbe && !options.stream && request.tools.length === 0;
+    for (let attempt = 0; attempt <= (safeRetry ? MODEL_CALL_POLICY.maxAutomaticRetries : 0); attempt++) {
+      const requested = Math.min(options.maxTokens, request.maxOutputTokens ?? options.maxTokens);
+      const store = options.budgetStore ?? persistentBudgetStore;
+      const persistentReservation = !readinessProbe && store && options.budgetIdentity && options.budgetOwnerKey
+        ? reservePersistentModelOutputTokens(store, "companion", options.budgetOwnerKey, options.budgetIdentity, purpose, requested)
+        : undefined;
+      const reservation = readinessProbe ? undefined : persistentReservation
+        ?? reserveModelOutputTokens(options.budgetIdentity ?? anonymousIdentity, purpose, requested);
+      let emitted = false;
       try {
-        const response = await adapter.complete(request);
-        safelyFinishLedger(entry, { status: "completed", usage: providerUsage(response.inputTokens, response.outputTokens) });
-        return response;
+        return await modelScheduler.run(modelResourceKey(options.connection), request.signal, async () => {
+          reservation?.start();
+          // One ledger entry per admitted provider attempt, including a safe retry.
+          const entry = safelyStartLedger(options.ledger, {
+            runId: options.runId,
+            taskId: taskIdFromRunId(options.runId),
+            purpose,
+            provider: options.connection.provider,
+            model: options.model,
+          });
+          try {
+            const boundedRequest = reservation
+              ? { ...request, maxOutputTokens: reservation.tokens, onTextDelta: (text: string) => {
+                if (text) emitted = true;
+                request.onTextDelta?.(text);
+              } }
+              : request;
+            const response = await adapter.complete(boundedRequest);
+            if (!readinessProbe && !response.text.trim() && !response.toolCalls?.length) {
+              throw new EmptyModelOutputError("模型没有返回正文；请重试或调整思考强度。");
+            }
+            safelyFinishLedger(entry, { status: "completed", usage: providerUsage(response.inputTokens, response.outputTokens) });
+            persistentReservation?.finish(response.outputTokens);
+            return response;
+          } catch (error) {
+            safelyFinishLedger(entry, { status: request.signal.aborted ? "cancelled" : "failed", error });
+            persistentReservation?.markAmbiguous();
+            throw error;
+          }
+        }, options.onModelAdmission);
       } catch (error) {
-        safelyFinishLedger(entry, { status: request.signal.aborted ? "cancelled" : "failed", error });
+        reservation?.releaseIfUnstarted();
+        if (safeRetry && attempt < MODEL_CALL_POLICY.maxAutomaticRetries && error instanceof EmptyModelOutputError && !emitted && !request.signal.aborted) continue;
         throw error;
       }
-    }, options.onModelAdmission);
+    }
+    throw new Error("模型重试次数已用完。");
   } };
 }
+
+export class EmptyModelOutputError extends Error {}
 
 function purposeFromRunId(runId: string | undefined): LlmCallPurpose {
   if (!runId) return "other";
@@ -974,7 +1039,7 @@ function makeOpenAICompatibleAgentModel(options: ConnectionAgentModelOptions): A
  */
 function assertVisibleModelOutput<T extends { text: string; toolCalls: unknown[]; stopReason?: string }>(result: T): T {
   if (result.stopReason === "length" && !result.text.trim() && result.toolCalls.length === 0) {
-    throw new Error("模型的输出上限被推理过程用完，没有返回正文；请把思考强度调低后重试。");
+    throw new EmptyModelOutputError("模型的输出上限被推理过程用完，没有返回正文；请把思考强度调低后重试。");
   }
   return result;
 }

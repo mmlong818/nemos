@@ -30,6 +30,8 @@ export interface AgentToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** Optional JSON Schema for the full AgentToolResult returned by execute(). */
+  outputSchema?: Record<string, unknown>;
   effect?: AgentToolEffect;
   /** destructive 工具一旦执行失败，本次运行后续同类操作会立即熔断。 */
   risk?: AgentToolRisk;

@@ -1,6 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import { supportedReasoningEfforts, type ReasoningEffort } from "./model-reasoning.js";
+import { userFacingMessage } from "./office-errors.js";
+import type { CompanionModelConnection } from "./model-connection.js";
+
+export function feedReasoningEffort(connection: Pick<CompanionModelConnection, "provider" | "protocol"> | undefined, model: string | undefined): ReasoningEffort | undefined {
+  return model && supportedReasoningEfforts(connection, model).includes("low") ? "low" : undefined;
+}
+
+export function feedFailureNote(error: unknown): string {
+  return `这次没生成出来：${error instanceof FeedError ? error.message : userFacingMessage(error) || "生成时遇到问题，请稍后重试或检查模型连接。"}`;
+}
 
 /**
  * 动态：按用户写的"话题"，结合目标、事项和记住的偏好，生成几条值得看的内容。

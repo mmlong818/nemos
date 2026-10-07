@@ -5,8 +5,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { createCanvas } from "@napi-rs/canvas";
 
-import { CapabilityRuntime } from "../../examples/companion/capabilities.js";
+import { CapabilityRuntime, withArtifactProof } from "../../examples/companion/capabilities.js";
 
 const NEW_CAPABILITIES = [
   "research-brief",
@@ -57,15 +58,55 @@ test("生成图片以受限 PNG 成果保存，不把 base64 塞进成果索引"
   const dir = mkdtempSync(join(tmpdir(), "clownfish-image-artifact-"));
   try {
     const runtime = new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "", facts: [] }) });
-    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("fixture")]);
+    const canvas = createCanvas(64, 48);
+    canvas.getContext("2d").fillRect(0, 0, 64, 48);
+    const png = canvas.toBuffer("image/png");
     const artifact = runtime.saveGeneratedImage(png, "测试图片");
     assert.equal(artifact.format, "png"); assert.ok(existsSync(artifact.file));
     assert.equal(readFileSync(artifact.file).equals(png), true);
+    assert.equal(artifact.metadata?.imageValidation?.width, 64);
+    assert.equal(artifact.metadata?.imageValidation?.height, 48);
+    assert.equal(artifact.proof?.level, "validated");
+    assert.ok(artifact.proof?.checks.some((check) => check.id === "png-decode" && check.status === "passed"));
     assert.equal(runtime.snapshot().artifacts.some((item) => item.id === artifact.id), true);
     assert.doesNotMatch(JSON.stringify(runtime.snapshot()), /iVBOR/);
     const restarted = new CapabilityRuntime({ dataDir: dir, personas: () => [{ id: "clownfish", name: "小丑鱼" }], notify: async () => ({ reply: "", facts: [] }) });
     assert.equal(restarted.snapshot().artifacts.some((item) => item.id === artifact.id && existsSync(item.file)), true);
+    assert.equal(restarted.snapshot().artifacts.find((item) => item.id === artifact.id)?.metadata?.imageValidation?.width, 64);
     assert.throws(() => runtime.saveGeneratedImage(Buffer.from("fake")), /有效 PNG/);
+    assert.throws(() => runtime.saveGeneratedImage(png.subarray(0, 8)), /有效 PNG/);
+    assert.throws(() => runtime.saveGeneratedImage(png.subarray(0, -12)), /有效 PNG/);
+    const badCrc = Buffer.from(png);
+    badCrc.writeUInt32BE((badCrc.readUInt32BE(29) ^ 1) >>> 0, 29);
+    assert.throws(() => runtime.saveGeneratedImage(badCrc), /块校验失败/);
+    const oversized = Buffer.from(png);
+    oversized.writeUInt32BE(10_000, 16);
+    assert.throws(() => runtime.saveGeneratedImage(oversized), /尺寸/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("DOCX 导出的结构回执随成果保存，版面仍标为未检查", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clownfish-docx-proof-"));
+  const options = {
+    dataDir: dir,
+    personas: () => [{ id: "clownfish", name: "小丑鱼" }],
+    notify: async () => ({ reply: "会议纪要\n\n1. 张三负责整理行动项。\n2. 李四周五前确认期限。", facts: [] }),
+  };
+  try {
+    const result = await new CapabilityRuntime(options).runAdHocTask({ title: "会议纪要", personaId: "clownfish", capabilityId: "document-draft", instruction: "整理会议纪要", format: "doc" });
+    const artifact = result.artifact;
+    assert.ok(artifact);
+    assert.equal(artifact.metadata?.officeValidation?.passed, true);
+    assert.equal(artifact.metadata?.officeValidation?.byteLength, readFileSync(artifact.file).length);
+    assert.equal(artifact.metadata?.officeValidation?.sha256, artifact.proof?.contentHash);
+    assert.equal(artifact.proof?.level, "validated");
+    assert.ok(artifact.proof?.checks.some((check) => check.label === "可以重新读取" && check.status === "passed"));
+    assert.ok(artifact.proof?.checks.some((check) => check.id === "docx-layout-review" && check.status === "not-run"));
+    const persisted = new CapabilityRuntime(options).snapshot().artifacts.find((item) => item.id === artifact.id);
+    assert.equal(persisted?.metadata?.officeValidation?.sha256, artifact.proof?.contentHash);
+    assert.ok(persisted?.proof?.checks.some((check) => check.id === "docx-layout-review"));
+    artifact.metadata!.validationChecks![0]!.status = "failed";
+    assert.equal(withArtifactProof(artifact).proof?.level, "produced");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -621,7 +662,8 @@ test("工作页以任务脉络展示长期进展，聊天仍保持小丑鱼单�
 
   assert.match(workHtml, /id="storyDialog"/);
   assert.match(workHtml, /任务脉络/);
-  assert.match(workHtml, /专家由小丑鱼按任务动态组织/);
+  assert.match(workHtml, /协作分工先预览后执行/);
+  assert.match(workHtml, /每步成果会单独保存/);
   assert.doesNotMatch(workHtml, /id="expertAssignments"|id="addExpertAssignment"/);
   assert.match(workHtml, /关键决定/);
   assert.match(workScript, /\/api\/capabilities\/task\/storyline/);

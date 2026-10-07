@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ServerResponse } from "node:http";
@@ -9,7 +9,7 @@ import type { CapabilityToolRegistry, CapabilityToolSummary, PersonaToolBinding 
 import { capabilityToolFilterForSurface } from "./capability-system-registry.js";
 import { buildCapabilityRoadmap, type CapabilityRoadmap } from "./capability-roadmap.js";
 import { ROUTINE_LIMITS } from "./runtime-limits.js";
-import { BUILTIN_SKILL_CONTRACTS, renderSkillContract, type SkillContract } from "./skill-contract.js";
+import { BUILTIN_SKILL_CONTRACTS, checkSkillOutput, renderSkillContract, snapshotSkillContract, type SkillContract, type SkillContractSnapshot } from "./skill-contract.js";
 import { tabularStatsForMaterials } from "./tabular-stats.js";
 import { openQuestionsPrompt, parseOpenQuestions, skipsOpenQuestions, type OpenQuestion } from "./deliverable-alignment.js";
 import { failureShapeByName } from "./failure-registry.js";
@@ -37,6 +37,8 @@ import {
 } from "./native-capability-contracts.js";
 import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
 import { exportOfficeDocument } from "./office-export.js";
+import type { ValidationReceipt } from "./office-validation.js";
+import { validateGeneratedPng, type PngValidationReceipt } from "./png-validation.js";
 import { ArtifactWorkspaceStore, type ArtifactWorkspaceState } from "./artifact-workspace.js";
 import type { ProfessionalArtifactReceipt } from "./professional-artifact-gate.js";
 import { admitGeneratedAbilitySpec, admitInstalledSkillContent, type CapabilityAdmissionReceipt } from "./capability-admission.js";
@@ -153,6 +155,11 @@ export interface CapabilityTaskOrigin {
   conversationId?: string;
   parentJobId?: string;
   jobId?: string;
+  collaborationStepId?: string;
+  /** M2 correlation: client request reference linked to a server-issued action run. */
+  rootRequestId?: string;
+  actionRunId?: string;
+  invocationId?: string;
 }
 
 function capabilityAgentSurface(task: Pick<CapabilityTask, "oneOff" | "origin">): CapabilityAgentSurface {
@@ -177,6 +184,10 @@ const UNREAD_ROUTINE_PAUSE_CODE = failureShapeByName("routinePausedUnread")!.cod
 
 export interface CapabilityTask {
   id: string;
+  /** Explicitly selected PersonalGoal; absent for legacy and unrelated tasks. */
+  goalId?: string;
+  /** Frozen contract for this task; old tasks omit it until edited or run. */
+  contract?: SkillContractSnapshot;
   title: string;
   personaId: string;
   capabilityId: string;
@@ -241,6 +252,9 @@ export interface CapabilityArtifact {
     generatedAbilityId?: string;
     contextFile?: string;
     validationChecks?: CapabilityArtifactValidationCheck[];
+    officeValidation?: ValidationReceipt;
+    imageValidation?: PngValidationReceipt;
+    skillContract?: SkillContractSnapshot;
     workspace?: { status: "draft" | "review" | "done"; updatedAt: string; versionCount: number };
     presentationVersion?: { state: "validated" | "needs-review"; lastGoodArtifactId?: string };
     presentationVisualReview?: import("./presentation-visual-review.js").PresentationVisualReview;
@@ -470,13 +484,17 @@ export class CapabilityRuntime {
 
   saveGeneratedImage(data: Buffer, title = "AI 生成图片"): CapabilityArtifact {
     if (!data.length || data.length > 20 * 1024 * 1024) throw new Error("图片为空或超过 20MB 限制。");
-    const png = data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-    if (!png) throw new Error("生成结果不是有效 PNG 图片。");
+    const imageValidation = validateGeneratedPng(data);
     const id = uniqueId("artifact");
     const file = join(this.artifactDir, `${id}.png`);
     writeFileSync(file, data, { flag: "wx" });
+    if (!readFileSync(file).equals(data)) throw new Error("图片落盘后内容与验证结果不一致。");
     const createdAt = new Date().toISOString();
-    const artifact: CapabilityArtifact = { id, taskId: `generated-image-${id}`, capabilityId: "image-generation", personaId: "clownfish", title: text(title, "AI 生成图片", 120), format: "png", file, createdAt, summary: "由已配置的图片生成模型创建并安全保存在本机成果库。" };
+    const artifact: CapabilityArtifact = { id, taskId: `generated-image-${id}`, capabilityId: "image-generation", personaId: "clownfish", title: text(title, "AI 生成图片", 120), format: "png", file, createdAt, summary: "由已配置的图片生成模型创建并安全保存在本机成果库。", metadata: { imageValidation, validationChecks: [
+      { id: "png-decode", label: "PNG 已完整解码", status: "passed", phase: "validation", detail: `${imageValidation.width} × ${imageValidation.height} 像素` },
+      { id: "png-file-readback", label: "文件落盘后回读一致", status: "passed", phase: "validation" },
+      { id: "image-visual-review", label: "画面内容人工复核", status: "not-run", phase: "verification", detail: "尚未复核画面内容" },
+    ] } };
     withArtifactProof(artifact);
     this.artifacts.push(artifact);
     this.saveArtifacts();
@@ -760,7 +778,7 @@ export class CapabilityRuntime {
     };
     if (kinds.has("artifact")) {
       for (const artifact of this.artifacts) {
-        const content = safeReadArtifactText(artifact.previewFile || artifact.file);
+        const content = this.readArtifactSearchText(artifact);
         add({
           kind: "artifact",
           id: artifact.id,
@@ -1028,11 +1046,13 @@ export class CapabilityRuntime {
     spaceId?: string;
     knowledgeIds?: string[];
     counterpartId?: string;
+    goalId?: string;
   }): CapabilityTask {
     const ability = this.requireAbility(input.capabilityId);
     const now = new Date().toISOString();
     const task: CapabilityTask = {
       id: uniqueId("task"),
+      goalId: input.goalId?.trim() || undefined,
       title: text(input.title, ability.name, 60),
       personaId: input.personaId,
       capabilityId: ability.id,
@@ -1047,6 +1067,11 @@ export class CapabilityRuntime {
       updatedAt: now,
       storyline: createTaskStoryline(now),
     };
+    task.contract = taskSkillContract(task, ability);
+    if (task.contract?.inputState === "missing") {
+      task.storyline.status = "waiting";
+      task.storyline.nextAction = "补齐任务要求后再运行。";
+    }
     skipPassedOccurrenceToday(task, new Date(now));
     this.tasks.push(task);
     this.saveTasks();
@@ -1076,6 +1101,7 @@ export class CapabilityRuntime {
     if (typeof input.capabilityId === "string") task.capabilityId = this.requireAbility(input.capabilityId).id;
     if (typeof input.instruction === "string") task.instruction = text(input.instruction, task.instruction, 2000);
     if (input.format) task.format = normalizeFormat(input.format);
+    if (input.instruction !== undefined || input.format || input.capabilityId) task.contract = taskSkillContract(task, this.requireAbility(task.capabilityId));
     if (input.schedule) {
       task.schedule = normalizeSchedule(input.schedule);
       skipPassedOccurrenceToday(task, new Date());
@@ -1392,6 +1418,7 @@ export class CapabilityRuntime {
     const task = this.requireTask(id);
     const ability = this.requireAbility(task.capabilityId);
     const persona = this.persona(task.personaId);
+    this.requireTaskInputs(task, ability);
     this.appendTaskStorylineEvent(task, { type: "handoff", text: `${persona.name}开始处理`, personaId: task.personaId });
     this.saveTasks();
     try {
@@ -1404,6 +1431,19 @@ export class CapabilityRuntime {
       this.recordTaskRunFailure(task);
       throw error;
     }
+  }
+
+  private requireTaskInputs(task: CapabilityTask, ability: Capability): void {
+    const contract = task.contract ?? taskSkillContract(task, ability);
+    if (!contract || contract.inputState !== "missing") return;
+    task.contract = contract;
+    task.storyline.status = "waiting";
+    task.storyline.summary = "任务要求尚未补齐，未开始生成成果。";
+    task.storyline.nextAction = "填写具体任务要求后重试。";
+    task.updatedAt = new Date().toISOString();
+    this.appendTaskStorylineEvent(task, { type: "error", text: "缺少任务要求；未调用模型或工具" });
+    this.saveTasks();
+    throw new Error("缺少任务要求；请补齐后再运行");
   }
 
   /**
@@ -1424,6 +1464,7 @@ export class CapabilityRuntime {
     const task = this.requireTask(id);
     const ability = this.requireAbility(task.capabilityId);
     const persona = this.persona(task.personaId);
+    this.requireTaskInputs(task, ability);
     this.appendTaskStorylineEvent(task, { type: "handoff", text: `${persona.name}开始处理`, personaId: task.personaId });
     this.saveTasks();
     try {
@@ -1490,6 +1531,7 @@ export class CapabilityRuntime {
   ): Promise<CapabilityNotification> {
     const artifact = await this.writeArtifact(task, ability, reply);
     if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
+    applyTaskSkillChecks(task, ability, artifact);
     withArtifactProof(artifact);
     if (ability.id === "presentation-builder") {
       const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level !== "produced");
@@ -1693,6 +1735,10 @@ export class CapabilityRuntime {
       conversationId: text(input.origin.conversationId, "", 200) || undefined,
       parentJobId: text(input.origin.parentJobId, "", 160) || undefined,
       jobId: text(input.origin.jobId, "", 160) || undefined,
+      collaborationStepId: text(input.origin.collaborationStepId, "", 100) || undefined,
+      rootRequestId: text(input.origin.rootRequestId, "", 100) || undefined,
+      actionRunId: text(input.origin.actionRunId, "", 160) || undefined,
+      invocationId: text(input.origin.invocationId, "", 200) || undefined,
     } : { kind: "direct" };
     const existing = input.continuationTaskId
       ? this.tasks.find((item) => item.id === input.continuationTaskId && item.oneOff)
@@ -1751,6 +1797,7 @@ export class CapabilityRuntime {
       } : undefined,
       storyline,
     };
+    task.contract = taskSkillContract(task, ability);
     this.tasks.push(task);
     this.saveTasks();
     return { task, ability, persona };
@@ -1771,6 +1818,7 @@ export class CapabilityRuntime {
       lineage: { version, previousArtifactId: previousArtifact?.id },
     };
     if (runtimeMetadata) artifact.metadata = { ...artifact.metadata, ...runtimeMetadata };
+    applyTaskSkillChecks(task, ability, artifact);
     withArtifactProof(artifact);
     if (ability.id === "presentation-builder") {
       const previousGood = [...this.artifacts].reverse().find((item) => item.capabilityId === ability.id && item.proof?.level !== "produced");
@@ -1837,9 +1885,11 @@ export class CapabilityRuntime {
     if (!id) return null;
     const artifact = this.artifacts.find((item) => item.id === id);
     if (!artifact) return null;
-    if (artifact.capabilityId === "research-brief" && artifact.metadata?.contextFile && existsSync(artifact.metadata.contextFile)) {
+    if (!this.readArtifactContent(artifact, artifact.file)) return null;
+    const contextFile = artifact.metadata?.contextFile ? this.safeArtifactPath(artifact.metadata.contextFile) : null;
+    if (artifact.capabilityId === "research-brief" && contextFile) {
       try {
-        const payload = parseNativeCapabilityPayload("research-brief", readFileSync(artifact.metadata.contextFile, "utf8"));
+        const payload = parseNativeCapabilityPayload("research-brief", readFileSync(contextFile, "utf8"));
         const sources = Array.isArray(payload.data.sources) ? payload.data.sources : [];
         const findings = Array.isArray(payload.data.findings) ? payload.data.findings : [];
         const evidence = { sources };
@@ -1906,9 +1956,10 @@ export class CapabilityRuntime {
   sendArtifact(res: ServerResponse, id: string | null, disposition: "inline" | "attachment" = "inline"): boolean {
     const artifact = this.findVisibleArtifact(id);
     if (!artifact) return false;
-    const root = resolve(this.artifactDir);
-    const file = resolve(artifact.file);
-    if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) return false;
+    const content = this.readArtifactContent(artifact, artifact.file);
+    if (!content) return false;
+    const file = this.safeArtifactPath(artifact.file);
+    if (!file) return false;
     const filename = basename(file);
     res.writeHead(200, {
       "Content-Type": contentType(artifact.format),
@@ -1916,17 +1967,17 @@ export class CapabilityRuntime {
       "Cache-Control": "no-store",
       ...ARTIFACT_SANDBOX_HEADERS,
     });
-    createReadStream(file).pipe(res);
+    res.end(content);
     return true;
   }
 
   artifactHandoff(id: string | null): { artifact: CapabilityArtifact; text: string } | null {
     const artifact = this.artifacts.find((item) => item.id === id);
     if (!artifact) return null;
-    const root = resolve(this.artifactDir);
-    const contextFile = artifact.metadata?.contextFile ? resolve(artifact.metadata.contextFile) : "";
+    if (!this.readArtifactContent(artifact, artifact.file)) return null;
+    const contextFile = artifact.metadata?.contextFile ? this.safeArtifactPath(artifact.metadata.contextFile) : null;
     const workspaceContext = this.artifactWorkspaceStore.context(artifact.id);
-    if (!contextFile || !contextFile.startsWith(root) || !existsSync(contextFile) || !statSync(contextFile).isFile()) {
+    if (!contextFile) {
       return { artifact, text: [artifact.summary, workspaceContext].filter(Boolean).join("\n\n") };
     }
     return { artifact, text: [readFileSync(contextFile, "utf8").slice(0, 160000), workspaceContext].filter(Boolean).join("\n\n") };
@@ -1935,9 +1986,11 @@ export class CapabilityRuntime {
   previewArtifact(res: ServerResponse, id: string | null): boolean {
     const artifact = this.findVisibleArtifact(id);
     if (!artifact) return false;
-    const root = resolve(this.artifactDir);
-    const file = resolve(artifact.previewFile || artifact.file);
-    if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) return false;
+    if (!this.readArtifactContent(artifact, artifact.file)) return false;
+    const file = this.safeArtifactPath(artifact.previewFile || artifact.file);
+    if (!file) return false;
+    let content: Buffer;
+    try { content = readFileSync(file); } catch { return false; }
     if (artifact.previewFile || artifact.format === "html") {
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
@@ -1945,8 +1998,8 @@ export class CapabilityRuntime {
         "Cache-Control": "no-store",
         ...ARTIFACT_SANDBOX_HEADERS,
       });
-      if (artifact.format === "html" && !artifact.previewFile) res.end(injectWidgetBridge(readFileSync(file, "utf8"), artifact.id, this.widgetState.get(artifact.id)));
-      else createReadStream(file).pipe(res);
+      if (artifact.format === "html" && !artifact.previewFile) res.end(injectWidgetBridge(content.toString("utf8"), artifact.id, this.widgetState.get(artifact.id)));
+      else res.end(content);
       return true;
     }
     if (["doc", "pptx", "xlsx"].includes(artifact.format)) {
@@ -1963,10 +2016,10 @@ export class CapabilityRuntime {
         "Content-Disposition": "inline",
         "Cache-Control": "no-store",
       });
-      createReadStream(file).pipe(res);
+      res.end(content);
       return true;
     }
-    const raw = readFileSync(file, "utf8");
+    const raw = content.toString("utf8");
     const downloadUrl = `/api/capabilities/artifact?id=${encodeURIComponent(artifact.id)}`;
     const html = `<!doctype html>
 <html lang="zh-CN">
@@ -2136,15 +2189,61 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
   }
 
   private removeArtifactFile(file: string): void {
-    const root = resolve(this.artifactDir);
-    const target = resolve(file);
-    const child = relative(root, target);
-    if (!child || child === ".." || child.startsWith("../") || child.startsWith("..\\") || isAbsolute(child)) return;
+    const target = this.safeArtifactPath(file);
+    if (!target) return;
     // rmSync 在这台 Windows 上删除部分中文文件名会让进程直接中止；unlinkSync 没有这个问题。
     try {
       unlinkSync(target);
     } catch {
       // 文件不存在或暂不可删时按 force 语义忽略
+    }
+  }
+
+  /** Resolve both lexical and real filesystem containment before any artifact file access. */
+  private safeArtifactPath(file: string): string | null {
+    try {
+      const root = realpathSync(this.artifactDir);
+      const lexicalTarget = resolve(file);
+      const lexicalChild = relative(resolve(this.artifactDir), lexicalTarget);
+      if (!lexicalChild || lexicalChild === ".." || lexicalChild.startsWith("../") || lexicalChild.startsWith("..\\") || isAbsolute(lexicalChild)) return null;
+      const target = realpathSync(lexicalTarget);
+      const child = relative(root, target);
+      if (!child || child === ".." || child.startsWith("../") || child.startsWith("..\\") || isAbsolute(child)) return null;
+      if (!statSync(target).isFile()) return null;
+      return target;
+    } catch {
+      return null;
+    }
+  }
+
+  /** A saved proof is a read-time integrity condition; old artifacts without proof remain readable. */
+  private readArtifactContent(artifact: CapabilityArtifact, file: string): Buffer | null {
+    const target = this.safeArtifactPath(file);
+    if (!target) return null;
+    try {
+      const content = readFileSync(target);
+      const proof = artifact.proof;
+      if (proof !== undefined && (!proof || proof.version !== 1 || proof.algorithm !== "sha256" ||
+        !/^[a-f0-9]{64}$/i.test(proof.contentHash) || proof.byteLength !== content.byteLength ||
+        createHash("sha256").update(content).digest("hex") !== proof.contentHash.toLowerCase())) return null;
+      return content;
+    } catch {
+      return null;
+    }
+  }
+
+  private readArtifactSearchText(artifact: CapabilityArtifact): string {
+    const file = artifact.previewFile || artifact.file;
+    const target = this.safeArtifactPath(file);
+    if (!target) return "";
+    try {
+      if (statSync(target).size > 5 * 1024 * 1024) return "";
+      const content = artifact.previewFile
+        ? readFileSync(target)
+        : this.readArtifactContent(artifact, artifact.file);
+      return content?.toString("utf8").slice(0, 50_000) || "";
+    } catch {
+      return "";
     }
   }
 
@@ -2629,6 +2728,17 @@ ${task.instruction}`,
       });
       const file = fileBase + "." + extension(task.format);
       writeFileSync(file, exported.data);
+      if (exported.validation && createHash("sha256").update(readFileSync(file)).digest("hex") !== exported.validation.sha256) {
+        throw new Error("办公文件落盘后内容与结构检查结果不一致。");
+      }
+      const validationChecks: CapabilityArtifactValidationCheck[] = exported.validation?.checks.map((check, index) => ({
+        id: `office-structure-${index}`,
+        label: check.name,
+        status: check.passed ? "passed" : "failed",
+        phase: "validation",
+        ...(check.detail ? { detail: check.detail } : {}),
+      })) ?? [];
+      if (format === "docx") validationChecks.push({ id: "docx-layout-review", label: "DOCX 实际版面复核", status: "not-run", phase: "verification", detail: "导出器未渲染并逐页检查 DOCX" });
       return {
         id,
         taskId: task.id,
@@ -2639,7 +2749,7 @@ ${task.instruction}`,
         file,
         createdAt,
         summary: summarize(raw),
-        metadata: { contextFile },
+        metadata: { contextFile, officeValidation: exported.validation, validationChecks },
         verification: verification?.relevant ? verification : undefined,
       };
     }
@@ -2736,15 +2846,17 @@ ${task.instruction}`,
  * HTML 页面嵌在回复里、下面有预览和下载按钮：只放模型写的说明和自测结论，不加"已经完成「用户原话」"开头，
  * 也不贴本机路径。其他格式不嵌入，保留说明、格式和保存位置。
  */
-export function deliveryText(personaName: string, taskTitle: string, artifact: Pick<CapabilityArtifact, "format" | "file" | "summary" | "metadata">, raw: string): string {
+export function deliveryText(personaName: string, taskTitle: string, artifact: Pick<CapabilityArtifact, "format" | "file" | "summary" | "metadata"> & Partial<Pick<CapabilityArtifact, "proof">>, raw: string): string {
   const html = artifact.format === "html" ? splitHtmlDeliverable(raw) : null;
   const visible = artifact.metadata?.native ? artifact.summary : html ? (html.prose || artifact.summary) : deliveryExcerpt(raw);
   const installed = artifact.metadata?.generatedAbilityId ? "\n\n新能力已通过检查并加入本机能力库。" : "";
   const selfCheck = artifact.metadata?.validationChecks?.find((item) => item.id === "browser-self-check");
   // 自测单独成段：紧跟在列表后面时 Markdown 会把它并进最后一项。
   const checked = selfCheck ? `\n\n自测：${selfCheck.detail}` : "";
-  if (html) return `${visible}${installed}${checked}`.trim();
-  return `${personaName}已经完成「${taskTitle}」。\n\n${visible}${installed}${checked}\n\n---\n产物格式：${formatLabel(artifact.format)}\n保存位置：${artifact.file}`;
+  const proof = artifact.proof;
+  const state = proof?.level === "approved" ? "已通过检查并获人工确认" : proof?.level === "verified" ? "已通过来源核验" : proof?.level === "validated" ? "已生成并通过格式检查，内容待核验" : "已生成，检查未通过或尚未完成";
+  if (html) return `${state}。\n\n${visible}${installed}${checked}`.trim();
+  return `${personaName}已为「${taskTitle}」生成成果：${state}。\n\n${visible}${installed}${checked}\n\n---\n产物格式：${formatLabel(artifact.format)}\n保存位置：${artifact.file}`;
 }
 
 /** 成果摘要（总览"最近的成果"、任务记录用）：HTML 只取说明文字，不能把页面代码的开头当摘要。 */
@@ -2753,7 +2865,25 @@ export function deliverableSummary(raw: string, format: ArtifactFormat): string 
   return summarize(html ? html.prose : raw);
 }
 
-function withArtifactProof(artifact: CapabilityArtifact): CapabilityArtifact {
+function taskSkillContract(task: Pick<CapabilityTask, "capabilityId" | "instruction" | "format">, ability: Capability): SkillContractSnapshot | undefined {
+  if (!ability.contract || !["md", "html", "txt"].includes(task.format)) return undefined;
+  return snapshotSkillContract(ability.id, ability.contract, task.format as "md" | "html" | "txt", task.instruction);
+}
+
+function applyTaskSkillChecks(task: CapabilityTask, ability: Capability, artifact: CapabilityArtifact): void {
+  if (!["md", "html", "txt"].includes(artifact.format)) return;
+  const contract = task.contract ?? taskSkillContract(task, ability);
+  const checks: CapabilityArtifactValidationCheck[] = contract
+    ? checkSkillOutput(contract, readFileSync(artifact.file, "utf8"), artifact.format)
+    : [{ id: "skill-contract", label: "契约定义", status: "failed", phase: "validation", detail: "这项能力尚无可执行的验收契约" }];
+  artifact.metadata = {
+    ...artifact.metadata,
+    ...(contract ? { skillContract: contract } : {}),
+    validationChecks: [...(artifact.metadata?.validationChecks ?? []).filter((item) => !checks.some((check) => check.id === item.id)), ...checks],
+  };
+}
+
+export function withArtifactProof(artifact: CapabilityArtifact): CapabilityArtifact {
   const content = readFileSync(artifact.file);
   const validationChecks = artifact.metadata?.validationChecks ?? [];
   const checks: CapabilityArtifactValidationCheck[] = [{
@@ -2765,13 +2895,13 @@ function withArtifactProof(artifact: CapabilityArtifact): CapabilityArtifact {
   const professionalLevel = artifact.metadata?.professionalReceipt?.level;
   // `not-run` 表示检查器本身不可用（例如本机没有 Chromium 浏览器，无法做真实渲染复核），
   // 与 `failed` 不同：它不该把等级压回 produced，但也不能充当 verified 的依据。
-  const verificationChecks = validationChecks.filter((item) => item.phase === "verification" && item.status === "passed");
-  const blockingChecks = validationChecks.filter((item) => item.status !== "not-run");
-  const allChecksPassed = blockingChecks.length > 0 && blockingChecks.every((item) => item.status === "passed");
-  const level = professionalLevel && professionalLevel !== "failed"
+  const blockingChecks = validationChecks.filter((item) => item.phase !== "verification" && item.status !== "not-run");
+  const allChecksPassed = content.byteLength > 0 && blockingChecks.length > 0 && blockingChecks.every((item) => item.status === "passed");
+  const factualVerificationPassed = validationChecks.some((item) => item.id === "skill-facts" && item.phase === "verification" && item.status === "passed");
+  const level = content.byteLength > 0 && !validationChecks.some((item) => item.status === "failed") && professionalLevel && professionalLevel !== "failed"
     ? professionalLevel
     : allChecksPassed
-      ? verificationChecks.length > 0 ? "verified" : "validated"
+      ? factualVerificationPassed ? "verified" : "validated"
       : "produced";
   artifact.proof = {
     version: 1,
@@ -3578,16 +3708,6 @@ function previewText(input: string, tokens: string[]): string {
   const hit = tokens.map((token) => lower.indexOf(token.toLowerCase())).filter((idx) => idx >= 0).sort((a, b) => a - b)[0] ?? 0;
   const start = Math.max(0, hit - 80);
   return cleaned.slice(start, start + 260);
-}
-
-function safeReadArtifactText(file: string): string {
-  try {
-    const stat = statSync(file);
-    if (!stat.isFile() || stat.size > 1024 * 1024 * 5) return "";
-    return readFileSync(file, "utf8").slice(0, 50000);
-  } catch {
-    return "";
-  }
 }
 
 function uniqueId(prefix: string): string {

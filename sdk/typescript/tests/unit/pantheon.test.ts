@@ -5,7 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   PantheonService,
+  PANTHEON_OUTPUT_BUDGET,
   classifyPantheonIntent,
+  pantheonReasoningEffort,
   type PantheonCompletionRequest,
 } from "../../examples/companion/pantheon.js";
 import { ThoughtLibraryStore } from "../../examples/companion/thought-library.js";
@@ -28,11 +30,38 @@ test("自动选择一到三种思维方法并留下可审计理由，用户可�
   assert.equal(session.plan.intent, "decision");
   assert.equal(session.plan.seats.length, 3);
   assert.ok(session.plan.seats.every((seat) => seat.selectionReason && seat.matchedSignals.length > 0));
-  assert.deepEqual(session.limits, { maxRounds: 2, maxSeats: 3, maxConcurrentCalls: 2, maxReservedTokens: 7200 });
+  assert.deepEqual(session.limits, { maxRounds: 2, maxSeats: 3, maxConcurrentCalls: 2, maxReservedTokens: PANTHEON_OUTPUT_BUDGET.session });
   const available = service.catalog().slice(0, 2).map((unit) => unit.id);
   const adjusted = service.adjustSeats(session.id, available);
   assert.deepEqual(adjusted.plan.seats.map((seat) => seat.modelId), available);
   assert.equal(adjusted.audit.at(-1)?.event, "seats_adjusted");
+});
+
+test("辩论输出预算覆盖两轮与收束，思考参数只在型号支持时发送", async () => {
+  assert.equal(pantheonReasoningEffort({ provider: "openai", protocol: "openai-compatible" }, "gpt-5.5"), undefined);
+  assert.equal(pantheonReasoningEffort({ provider: "openai", protocol: "openai-compatible" }, "gpt-6-astra"), "low");
+  assert.equal(pantheonReasoningEffort({ provider: "openai", protocol: "openai-compatible" }, "gpt-6-astra", "medium"), "medium");
+  assert.equal(pantheonReasoningEffort({ provider: "zhipu", protocol: "openai-compatible" }, "glm-5.3", "medium"), "low");
+  const calls: PantheonCompletionRequest[] = [];
+  const service = new PantheonService({ completion: async (request) => { calls.push(request); return deterministicCompletion(request); }, idFactory: () => "two-round-budget" });
+  let session = service.createSession({ issue: "探索一个需要三种视角的合成议题", modelIds: service.catalog().slice(0, 3).map((item) => item.id) });
+  for (let phase = 0; phase < 4; phase++) session = await service.advance(session.id);
+  session = await service.advance(session.id, "continue");
+  for (let phase = 0; phase < 3; phase++) session = await service.advance(session.id);
+  session = await service.advance(session.id, "converge");
+  assert.equal(session.phase, "complete");
+  assert.equal(session.usage.reservedTokens, PANTHEON_OUTPUT_BUDGET.session);
+  assert.equal(calls.filter((call) => call.seatId).length, 18);
+  assert.ok(calls.filter((call) => call.seatId).every((call) => call.maxTokens === PANTHEON_OUTPUT_BUDGET.seat));
+  assert.ok(calls.filter((call) => !call.seatId).every((call) => call.maxTokens === PANTHEON_OUTPUT_BUDGET.moderator));
+});
+
+test("席位推理耗尽给出本阶段可行动提示，不留下半成品", async () => {
+  const service = new PantheonService({ completion: async () => { throw new Error("模型的输出上限被推理过程用完，没有返回正文；请把思考强度调低后重试。"); }, idFactory: () => "exhausted-budget" });
+  const session = service.createSession({ issue: "用合成案例讨论一个设想" });
+  await assert.rejects(() => service.advance(session.id), /模型设置.*较低思考强度.*重试本阶段/);
+  assert.equal(service.getSession(session.id)?.transcript.length, 0);
+  assert.equal(service.getSession(session.id)?.phase, "positions");
 });
 
 // 入席理由直接展示给用户（README 配图里也有），不能露出 decision、意图:xxx 这类内部代码。

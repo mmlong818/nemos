@@ -42,7 +42,7 @@ const pageCopy = {
   tasks: ["流程管理", "流程管理", "管理此流程的配置与操作；日常进度、处理过程和成果统一在任务工作区查看。"],
   spaces: ["多个任务，一件事情", "项目", "把相关任务、结果和决定放在一起；工作变复杂时再创建。"],
   automations: ["按计划完成", "自动化", "把固定频率的工作交给小丑鱼；随时暂停，也可以立即运行。"],
-  collaboration: ["流程设置", "流程协作设置", "保留原有组织协作操作；处理过程与成果统一在对应任务详情中查看。"],
+  collaboration: ["流程设置", "流程协作设置", "先预览两项技能分工，再按编号查看各自的原始成果与检查回执。"],
   resources: ["任务所需的上下文", "参考资料", "保存本地笔记、文本和链接，并在执行任务时明确选择。"],
   artifacts: ["文件", "文件", "资料、成果与编辑副本，在这里找回并继续使用。"],
   runs: ["高级排错", "运行日志", "查看后台工作、失败原因和中断后可恢复的执行。"],
@@ -653,9 +653,13 @@ async function setSpaceStatus(id, status) {
 }
 
 async function runTask(id) {
-  await api("/api/agent/job", { method: "POST", body: JSON.stringify({ kind: "capability-task", taskId: id, idempotencyKey: crypto.randomUUID() }) });
-  toast("任务已放到后台运行");
-  await load();
+  try {
+    await api("/api/agent/job", { method: "POST", body: JSON.stringify({ kind: "capability-task", taskId: id, idempotencyKey: crypto.randomUUID() }) });
+    toast("任务已放到后台运行");
+    await load();
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "任务未能开始；请查看运行记录", true);
+  }
 }
 
 function artifactDisplayTitle(item) {
@@ -715,19 +719,33 @@ function renderCollaboration() {
   const rows = tasks.map((task) => {
     const job = collaborationJob(task.id);
     const working = job && ["queued", "running"].includes(job.status);
-    return `<article class="compact-row"><div><h3>${escapeHtml(task.title)}</h3><p>${job ? `最近协作：${escapeHtml(jobStatusLabel(job.status))} · ${date(job.updatedAt || job.createdAt)}` : `${escapeHtml(abilityName(task.capabilityId))} · 尚未组织专家协作`}</p></div><div class="actions">${working ? '<span class="pill warn">小丑鱼正在组织</span>' : `<button class="primary" data-collaborate="${task.id}">组织协作</button>`}<button data-open-collaboration-story="${task.id}">查看脉络</button></div></article>`;
+    return `<article class="compact-row"><div><h3>${escapeHtml(task.title)}</h3><p>${job ? `最近协作：${escapeHtml(jobStatusLabel(job.status))} · ${date(job.updatedAt || job.createdAt)}` : `${escapeHtml(abilityName(task.capabilityId))} · 尚未组织专家协作`}</p><div class="collaboration-plan-preview" data-plan-slot="${escapeHtml(task.id)}"></div></div><div class="actions">${working ? '<span class="pill warn">小丑鱼正在组织</span>' : `<button data-preview-collaboration="${escapeHtml(task.id)}">预览分工${job?.status==='failed'?'并续办':''}</button>`}<button data-open-collaboration-story="${escapeHtml(task.id)}">查看脉络</button></div></article>`;
   }).join("");
-  $("#content").innerHTML = `<details class="work-secondary-details"><summary>流程协作的使用范围</summary><div><h2>只在任务需要时调用专家</h2><p>你只需要说明目标。小丑鱼会为每次任务重新挑选专家并行检查，再把意见合并为一个可用结果；专家不会取代小丑鱼成为新的操作入口。</p></div><a class="button" href="/tasks">查看全部任务</a></details><section class="platform-panel"><header><div><h2>可组织的任务</h2><p>简单任务直接运行；涉及多专业判断、开发或重要决策时再使用协作。</p></div></header><div class="compact-list">${rows || '<div class="resource-empty">当前没有需要推进的任务。</div>'}</div></section>`;
+  $("#content").innerHTML = `<details class="work-secondary-details"><summary>流程协作的使用范围</summary><div><h2>只在任务需要时调用专家</h2><p>先预览研究核查与方案比较的分工。每一步独立保存原始文件；若有失败、缺证据或中断，任务会保留已完成成果并提示核对。</p></div><a class="button" href="/tasks">查看全部任务</a></details><section class="platform-panel"><header><div><h2>可组织的任务</h2><p>简单任务直接运行；需要证据核查与方案比较时再使用协作。</p></div></header><div class="compact-list">${rows || '<div class="resource-empty">当前没有需要推进的任务。</div>'}</div></section>`;
   $("#content").onclick = async (event) => {
+    const preview = event.target.closest("[data-preview-collaboration]");
     const start = event.target.closest("[data-collaborate]");
     const story = event.target.closest("[data-open-collaboration-story]");
     if (story) return openStoryline(tasks.find((item) => item.id === story.dataset.openCollaborationStory));
+    if (preview) {
+      const taskId = preview.dataset.previewCollaboration;
+      const slot = $$('[data-plan-slot]').find((item) => item.dataset.planSlot === taskId);
+      try {
+        const { plan } = await api(`/api/capabilities/task/collaboration-plan?id=${encodeURIComponent(taskId)}`);
+        const previous = collaborationJob(taskId);
+        const retryOf = previous && ['failed','uncertain'].includes(previous.status) ? previous.id : '';
+        slot.innerHTML = `<p>本次分工 · ${escapeHtml(plan.reason)} · 仅使用本任务明确材料</p><ol>${plan.steps.map((step) => `<li><strong>${escapeHtml(step.title)}</strong> · ${escapeHtml(abilityName(step.capabilityId))} · ${escapeHtml(step.format.toUpperCase())}<details><summary>材料边界与输出要求</summary><p>${escapeHtml(step.materialBoundary)}</p><p>${escapeHtml(step.outputRequirement)}</p><small>契约 ${escapeHtml(step.contract.digest.slice(0,12))}</small></details></li>`).join('')}</ol><button class="primary" data-collaborate="${escapeHtml(taskId)}" data-plan-hash="${escapeHtml(plan.planHash)}" data-retry-of="${escapeHtml(retryOf)}">${retryOf?'续办未完成步骤':'按此分工开始'}</button>`;
+      } catch (error) { toast(error.message, true); }
+      return;
+    }
     if (!start) return;
     try {
-      await api("/api/capabilities/task/collaborate", { method: "POST", body: JSON.stringify({ id: start.dataset.collaborate }) });
+      start.disabled = true;
+      start.dataset.requestId ||= crypto.randomUUID();
+      await api("/api/capabilities/task/collaborate", { method: "POST", body: JSON.stringify({ id: start.dataset.collaborate, planHash: start.dataset.planHash, requestId: start.dataset.requestId, ...(start.dataset.retryOf?{retryOf:start.dataset.retryOf}:{}) }) });
       toast("小丑鱼已开始组织协作");
       await load();
-    } catch (error) { toast(error.message, true); }
+    } catch (error) { start.disabled = false; toast(error.message, true); }
   };
 }
 
@@ -875,14 +893,14 @@ function renderAttentionInbox(detailed) {
   const rows = groups.map((group) => `<div data-review-group="${escapeHtml(group.id)}">${group.items.map((item) => {
     const approval = state.approvals.find((entry) => entry.id === item.sourceId && item.kind === "approval");
     const action = detailed && approval
-      ? `<details><summary>查看具体操作并决定</summary><pre>${escapeHtml(JSON.stringify(approval.call, null, 2))}</pre><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="once">允许这次操作</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="session">本次会话内都允许「${escapeHtml(approval.tool?.name || approval.call?.name || "这个操作")}」</button><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="false" data-scope="once">拒绝</button></details>`
+      ? `<details><summary>查看具体操作并决定</summary><p>动作：${escapeHtml(approval.action || approval.call?.name || "未知")} · 对象：${escapeHtml(approval.resource || "待确认")}</p><pre>${escapeHtml(JSON.stringify(approval.call, null, 2))}</pre><button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="once">允许这次操作</button>${approval.sessionEligible ? `<button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="true" data-scope="session">本会话允许同一动作与对象</button>` : ""}<button type="button" data-review-approval="${escapeHtml(approval.id)}" data-allowed="false" data-scope="once">拒绝</button></details>`
       : `<a class="button" href="${detailed ? `#record-${encodeURIComponent(item.kind === "delivery" ? "job" : item.kind)}-${encodeURIComponent(item.sourceId)}` : `/runs#review-${encodeURIComponent(item.id)}`}">查看${detailed ? "记录" : "详情"}</a>`;
     return `<article class="compact-row" id="review-${escapeHtml(item.id)}"><div><span class="resource-kind">${itemLabel(item) || "待处理"}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.nextAction)}</p></div><div class="actions">${action}</div></article>`;
   }).join("")}</div>`).join("");
   // 会话级放行是还在生效的授权，不是待办；但它必须和待办一起被看见，
   // 否则就成了看不见也收不回的放行。
   const grants = detailed && state.sessionGrants?.length
-    ? `<section class="platform-panel" aria-label="本会话内已放行的操作"><header><div><h2>已放行的操作</h2><p>这些操作在本会话内不再逐次询问，到期或撤销后恢复询问。</p></div></header><div class="compact-list">${(state.sessionGrants || []).map((grant) => `<article class="compact-row"><div><span class="resource-kind">会话内放行</span><h3>${escapeHtml(grant.tool)}</h3><p>${escapeHtml(date(grant.grantedAt))} 起 · ${escapeHtml(date(grant.expiresAt))} 到期</p></div><div class="actions"><button type="button" data-revoke-grant="${escapeHtml(grant.sessionId)}" data-revoke-tool="${escapeHtml(grant.tool)}">撤销</button></div></article>`).join("")}</div></section>`
+    ? `<section class="platform-panel" aria-label="本会话内已放行的操作"><header><div><h2>已放行的操作</h2><p>仅限列出的动作、对象和参数；到期或撤销后重新询问。</p></div></header><div class="compact-list">${(state.sessionGrants || []).map((grant) => `<article class="compact-row"><div><span class="resource-kind">会话内放行</span><h3>${escapeHtml(grant.action || grant.tool)} · ${escapeHtml(grant.resource || "对象待确认")}</h3><p>${escapeHtml(date(grant.grantedAt))} 起 · ${escapeHtml(date(grant.expiresAt))} 到期</p></div><div class="actions"><button type="button" data-revoke-grant="${escapeHtml(grant.sessionId)}" data-revoke-tool="${escapeHtml(grant.tool)}">撤销</button></div></article>`).join("")}</div></section>`
     : "";
   const warning = state.relationshipMemory?.state === "unavailable" ? '<p role="alert">关系记忆读取异常：已保护原文件并停止相关读写。请恢复 counterparts.json 后重启应用。</p>' : "";
   return `<section class="platform-panel review-queue" aria-label="待你处理"><header><div><h2>待你处理</h2><p>集中查看待确认、异常和未送达的结果；不会自动重试或替你批准。</p></div><a class="button" href="/runs">${state.reviewGroups.length} 件事 · ${state.reviewQueue.length} 项</a></header>${warning}<div class="compact-list">${rows || '<div class="resource-empty">当前没有需要你处理的事项。</div>'}</div>${!detailed && state.reviewGroups.length > 5 ? '<a href="/runs">查看全部待处理事项</a>' : ""}</section>` + grants;
@@ -918,7 +936,7 @@ function renderRuns() {
           const result = await api("/api/agent/approval/decision", { method: "POST", body: JSON.stringify({ id: decision.dataset.reviewApproval, allowed: decision.dataset.allowed === "true", scope }) });
           if (result.resumeReason) toast(result.resumeReason, true);
           else if (decision.dataset.allowed !== "true") toast("已拒绝");
-          else toast(scope === "session" ? "已允许；本次会话内同类操作不再询问" : "已允许这次操作");
+          else toast(scope === "session" ? "已允许；本会话内仅对同一动作和对象生效" : "已允许这次操作");
           await load();
         } finally { decision.disabled = false; }
         return;
@@ -1012,9 +1030,12 @@ function renderMemory() {
       return;
     }
     const button = event.target.closest("[data-forget]");
-    if (!button || !confirm("忘记这条整理后的记忆？聊天记录不会改变。")) return;
-    await api("/api/memory/forget", { method: "POST", body: JSON.stringify({ id: button.dataset.forget }) });
-    toast("已忘记这条内容");
+    if (!button) return;
+    const { preview } = await api("/api/memory/forget/preview", { method: "POST", body: JSON.stringify({ id: button.dataset.forget }) });
+    if (!preview.canConfirm) return toast("关联后台抽取正在运行，请稍后重新预览", true);
+    if (!confirm(`将清理 ${preview.auto.memories.length} 条分类记忆、停用 ${preview.auto.queue.length} 个后台抽取；${preview.manual.length} 项需人工复核。原始聊天保留。确认执行？`)) return;
+    const { receipt } = await api("/api/memory/forget", { method: "POST", body: JSON.stringify({ token: preview.token, confirmed: true }) });
+    toast(receipt.status === "complete" ? "可自动清理项已完成" : "部分完成，请查看遗忘回执", receipt.status !== "complete");
     await load();
   };
 }

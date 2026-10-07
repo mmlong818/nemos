@@ -389,6 +389,7 @@ export async function runAssistantTeam(
   // A damaged authoritative store must stop the task before planning or any
   // model call. Checkpoint projections can never bypass this health gate.
   options.receiptStore?.assertHealthy();
+  const budgetIdentity = job.metadata?.budgetIdentity ?? randomUUID();
   const plan = job.payload.teamPlan as TeamPlan;
   if (!plan || plan.version !== 1 || plan.sharing !== "task-only" || plan.tools !== "off") throw new AssistantTeamError("不支持的协作任务版本");
   if (plan.executionMode !== undefined && !['fixed-v1', 'planned-text-v1'].includes(plan.executionMode)) throw new AssistantTeamError("不支持的任务执行模式");
@@ -560,6 +561,8 @@ export async function runAssistantTeam(
       const output = rawOutput = await Promise.race([
         chat(system, input, request.model || undefined, 5000, {
           runId: `team/${job.id}/${stage.id}/${randomUUID()}`, sessionId: `team/${job.id}/${stage.id}`,
+          budgetIdentity,
+          budgetOwnerKey: job.idempotencyKey,
           userId: job.metadata?.userId || "me", personaId: stage.bot.id, instruction: request.objective,
           scope: `team:${job.id}`, memoryScopes: [], mode: "task", surface: "task", toolMode: "off", signal: abort.signal,
           llmPurpose: stage.kind === "work" ? "team_worker" : stage.kind === "review" ? "team_review" : "team_final",

@@ -50,6 +50,52 @@ test("persists queued jobs and executes them through a registered worker handler
   }
 });
 
+test("same frozen collaboration request resolves to one durable job and keeps service audit linkage", () => {
+  const fixture = temporaryQueue();
+  try {
+    const key = "collaboration:task-synthetic:plan-synthetic:request-synthetic";
+    const queued = fixture.queue.enqueue({
+      type: "orchestration",
+      payload: { taskId: "task-synthetic", planHash: "plan-synthetic" },
+      metadata: { rootRequestId: "request-synthetic", actionRunId: "collaboration-action:server-issued" },
+      idempotencyKey: key,
+      sideEffectRisk: true,
+    });
+    const repeated = fixture.queue.enqueue({
+      type: "orchestration",
+      payload: { taskId: "task-synthetic", planHash: "plan-synthetic" },
+      metadata: { rootRequestId: "request-synthetic", actionRunId: "must-not-replace-existing-audit-id" },
+      idempotencyKey: key,
+      sideEffectRisk: true,
+    });
+    assert.equal(repeated.id, queued.id);
+    assert.equal(repeated.metadata?.rootRequestId, "request-synthetic");
+    assert.equal(repeated.metadata?.actionRunId, "collaboration-action:server-issued");
+    const reopened = new FileAgentJobQueue(fixture.file);
+    assert.equal(reopened.get(queued.id)?.metadata?.rootRequestId, "request-synthetic");
+    assert.equal(reopened.get(queued.id)?.metadata?.actionRunId, "collaboration-action:server-issued");
+
+    const distinctRequest = fixture.queue.enqueue({
+      type: "orchestration",
+      payload: { taskId: "task-synthetic", planHash: "plan-synthetic" },
+      metadata: { rootRequestId: "request-synthetic-02", actionRunId: "collaboration-action:server-issued-02" },
+      idempotencyKey: "collaboration:task-synthetic:plan-synthetic:request-synthetic-02",
+      sideEffectRisk: true,
+    });
+    const changedPlan = fixture.queue.enqueue({
+      type: "orchestration",
+      payload: { taskId: "task-synthetic", planHash: "plan-changed" },
+      metadata: { rootRequestId: "request-synthetic", actionRunId: "collaboration-action:server-issued-03" },
+      idempotencyKey: "collaboration:task-synthetic:plan-changed:request-synthetic",
+      sideEffectRisk: true,
+    });
+    assert.notEqual(distinctRequest.id, queued.id);
+    assert.notEqual(changedPlan.id, queued.id);
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
 test("retries read-only failures but does not automatically replay side-effecting jobs", async () => {
   const fixture = temporaryQueue({ retryBaseDelayMs: 1 });
   try {

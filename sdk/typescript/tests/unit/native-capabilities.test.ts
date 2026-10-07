@@ -118,7 +118,7 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
       if (format === "pptx") {
         const visualReview = result.artifact.metadata?.presentationVisualReview;
         const visualCheck = result.artifact.proof?.checks.find((check) => check.id === "key-slide-visual-review");
-        const expectedLevel = visualReview?.passed ? "verified" : visualCheck?.status === "not-run" ? "validated" : "produced";
+        const expectedLevel = visualReview?.passed || visualCheck?.status === "not-run" ? "validated" : "produced";
         assert.equal(result.artifact.proof?.level, expectedLevel);
         assert.ok(result.artifact.proof?.checks.filter((check) => check.id !== "key-slide-visual-review").every((check) => check.status === "passed"));
         assert.equal(readFileSync(result.artifact.file).subarray(0, 2).toString(), "PK");
@@ -145,11 +145,12 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
         assert.equal(approved.status, "done");
         assert.equal(
           runtime.snapshot().artifacts.find((item) => item.id === result.artifact.id)?.proof?.level,
-          expectedLevel === "verified" ? "approved" : expectedLevel,
+          expectedLevel,
         );
       } else {
         assert.equal(result.artifact.proof?.level, "validated");
-        assert.ok(result.artifact.proof?.checks.every((check) => check.status === "passed"));
+        assert.ok(result.artifact.proof?.checks.filter((check) => check.phase !== "verification").every((check) => check.status === "passed"));
+        assert.equal(result.artifact.proof?.checks.find((check) => check.id === "skill-facts")?.status, "not-run");
         const html = readFileSync(result.artifact.file, "utf8");
         assert.match(html, /小丑鱼能力结果/);
         assert.doesNotMatch(html, /github\.com|source_url|upstream_repository/i);
@@ -201,7 +202,7 @@ test("原生能力流式执行不会把内部 JSON 暴露到聊天气泡", async
       format: "html",
     }, { onStatus: () => undefined, onToken: (token) => tokens.push(token) });
     assert.deepEqual(tokens, []);
-    assert.match(result.text, /小丑鱼已经完成/);
+    assert.match(result.text, /小丑鱼已为「梳理问题」生成成果/);
     assert.doesNotMatch(result.text, /\"kind\":\"thinking-workbench\"/);
   } finally {
     rmSync(dir, { recursive: true, force: true });

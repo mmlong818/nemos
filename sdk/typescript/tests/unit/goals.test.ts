@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PersonalWorkStore, PersonalWorkError } from "../../examples/companion/personal-work.js";
-import { GOAL_CATEGORIES, GOAL_LIMITS, goalCoachingAddendum } from "../../examples/companion/goals.js";
+import { GOAL_CATEGORIES, GOAL_LIMITS, goalCoachingAddendum, resolveGoalOperation } from "../../examples/companion/goals.js";
 import type { Nemos } from "../../src/index.js";
 import type { CapabilityRuntime } from "../../examples/companion/capabilities.js";
 import { createCompanionAgentToolProvider } from "../../examples/companion/companion-agent-tools.js";
@@ -21,6 +21,36 @@ function fixture(t: TestContext) {
 }
 const reading = { title: "今年读完 12 本书", category: "interests", why: "想把刷手机的时间换回来", measure: "读完 12 本，每本写三句话笔记", plan: "每晚睡前读 20 分钟",
   milestones: [{ title: "选好第一季度的 3 本" }, { title: "读完第一本" }] };
+
+test("多候选续办需明确选目标，重启后按 id 续办不重复创建", async (t) => {
+  const f = fixture(t);
+  const first = f.store.saveGoal("me", reading, "user");
+  f.store.saveGoal("me", { ...reading, title: "每周运动三次", category: "health" }, "user");
+  const choice = resolveGoalOperation("继续上次的目标", undefined, f.store.listGoals("me"));
+  assert.equal(choice.kind, "choose");
+  assert.equal(choice.candidates?.length, 2);
+  const provider = createCompanionAgentToolProvider({ memory: () => ({} as Nemos), capabilities: () => ({} as CapabilityRuntime), personalWork: () => f.store });
+  const tool = (await provider("继续上次的目标", { ...chat, sessionId: "ordinary" })).find((item) => item.definition.name === "goal_save")!;
+  const ctx = { signal: new AbortController().signal, runId: "choice", sessionId: "ordinary" };
+  const ambiguous = await tool.execute({ title: "今年读完 12 本书", plan: "每晚读 30 分钟" }, ctx);
+  assert.equal(ambiguous.isError, true);
+  assert.equal(JSON.parse(ambiguous.content).state, "choose_goal");
+  assert.equal(f.store.listGoals("me").length, 2);
+  const guessedSave = await tool.execute({ id: first.id, plan: "每晚读 30 分钟" }, ctx);
+  assert.equal(guessedSave.isError, true, "模型参数猜出候选 id 也不能替用户选择");
+  const progressTool = (await provider("继续上次的目标", { ...chat, sessionId: "ordinary" })).find((item) => item.definition.name === "goal_log_progress")!;
+  const guessedProgress = await progressTool.execute({ id: first.id, note: "已经读完一本" }, ctx);
+  assert.equal(guessedProgress.isError, true, "记录进展也不能用模型猜出的 id 绕过选择");
+  assert.equal(f.store.getGoal("me", first.id).plan, reading.plan);
+  assert.equal(f.store.getGoal("me", first.id).timeline.filter((item) => item.kind === "progress").length, 0);
+  const selectedTool = (await provider("继续今年读完 12 本书这个目标", { ...chat, sessionId: "ordinary" })).find((item) => item.definition.name === "goal_save")!;
+  const continued = await selectedTool.execute({ id: first.id, plan: "每晚读 30 分钟" }, ctx);
+  assert.equal(continued.isError, undefined);
+  assert.equal(JSON.parse(continued.content).operation, "continue");
+  f.restart();
+  assert.equal(f.store.listGoals("me").length, 2);
+  assert.equal(f.store.getGoal("me", first.id).plan, "每晚读 30 分钟");
+});
 
 test("目标类别与界面一致：七类，顺序固定", () => {
   assert.deepEqual(GOAL_CATEGORIES.map((c) => c.label), ["健康", "人际关系", "财务", "职业", "兴趣", "效率提升", "其他"]);
@@ -80,8 +110,8 @@ const names = (tools: ReadonlyArray<{ definition: { name: string } }>) => tools.
 
 test("目标对话里说'好'也能拿到目标工具；普通闲聊拿不到；工具都能通过界面过滤", async (t) => {
   const f = fixture(t);
-  const sessions = new Map([["conversation-goal", { category: "interests" }]]);
-  const provider = createCompanionAgentToolProvider({ memory: () => ({} as Nemos), capabilities: () => ({} as CapabilityRuntime), personalWork: () => f.store, goalSession: (id) => sessions.get(id) });
+  const sessions = new Map<string, { category: string; goalId?: string }>([["conversation-goal", { category: "interests" }]]);
+  const provider = createCompanionAgentToolProvider({ memory: () => ({} as Nemos), capabilities: () => ({} as CapabilityRuntime), personalWork: () => f.store, goalSession: (id) => sessions.get(id), bindGoalSession: (id, goalId) => sessions.set(id, { ...sessions.get(id)!, goalId }) });
   const inGoalChat = await provider("好，就这样", chat);
   assert.deepEqual(names(inGoalChat), ["goal_list", "goal_save", "goal_log_progress"]);
   assert.deepEqual(names(await provider("好，就这样", { ...chat, sessionId: "conversation-other" })), []);
@@ -96,7 +126,8 @@ test("目标对话里说'好'也能拿到目标工具；普通闲聊拿不到；
   const saved = JSON.parse((await save.execute({ ...reading }, { signal, runId: "r1", sessionId: "conversation-goal" })).content);
   assert.equal(saved.category, "兴趣");
   assert.equal(f.store.getGoal("me", saved.id).timeline[0].by, "assistant");
-  const log = inGoalChat.find((tool) => tool.definition.name === "goal_log_progress")!;
+  const nextTurn = await provider("这周读了两章", { ...chat, instruction: "这周读了两章" });
+  const log = nextTurn.find((tool) => tool.definition.name === "goal_log_progress")!;
   await log.execute({ id: saved.id, note: "这周读了两章" }, { signal, runId: "r2", sessionId: "conversation-goal" });
   const listed = JSON.parse((await inGoalChat[0].execute({}, { signal, runId: "r3", sessionId: "conversation-goal" })).content);
   assert.equal(listed.goals[0].recent.at(-1).text, "这周读了两章");

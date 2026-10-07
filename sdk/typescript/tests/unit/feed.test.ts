@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 
-import { DEFAULT_FEED_PROMPT, FEED_LIMITS, FeedStore, feedWritePrompt, parseFeedPlan, parseFeedPosts, parseJsonObject } from "../../examples/companion/feed.js";
+import { DEFAULT_FEED_PROMPT, FEED_LIMITS, FeedError, FeedStore, feedFailureNote, feedReasoningEffort, feedWritePrompt, parseFeedPlan, parseFeedPosts, parseJsonObject } from "../../examples/companion/feed.js";
+import { resolveLLM } from "../../examples/companion/llm.js";
+import { supportedReasoningEfforts } from "../../examples/companion/model-reasoning.js";
+import { UserFacingError } from "../../examples/companion/office-errors.js";
+import type { CompanionModelConnection } from "../../examples/companion/model-connection.js";
 
 const page = require("../../examples/companion/web/assets/feed.js");
 
@@ -17,6 +21,42 @@ const sources = [
   { title: "冰岛气象局发布大风预警", url: "https://en.vedur.is/weather/warnings/", content: "南部阵风 25 m/s" },
   { title: "没有链接的条目", url: "javascript:alert(1)", content: "x" },
 ];
+
+test("资讯生成对未列出思考强度的 openai/gpt-5.5 使用假模型并保存到隔离数据", async (t) => {
+  const connection: CompanionModelConnection = { provider: "openai", protocol: "openai-compatible", model: "gpt-5.5", baseUrl: "http://127.0.0.1:1/v1", apiKey: "fixture-only" };
+  assert.deepEqual(supportedReasoningEfforts(connection, connection.model), []);
+  assert.equal(feedReasoningEffort(connection, connection.model), undefined);
+  assert.equal(feedReasoningEffort({ ...connection, provider: "zhipu" }, "glm-5.3"), "low");
+  const original = globalThis.fetch;
+  const requests: unknown[] = [];
+  globalThis.fetch = async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ posts: [{ kind: "tip", title: "合成建议", body: "合成正文" }] }) } }] }), { headers: { "content-type": "application/json" } });
+  };
+  try {
+    const llm = resolveLLM(connection);
+    const result = await llm.chat("合成系统提示", "合成用户提示", connection.model, 100, {
+      sessionId: "feed-fixture", userId: "fixture", personaId: "fixture", instruction: "生成个人动态", scope: "feed-write", memoryScopes: [], mode: "task", toolMode: "off",
+      reasoningEffort: feedReasoningEffort(connection, connection.model),
+    });
+    const posts = parseFeedPosts(result, [], [], "fixture-batch");
+    const file = tempFile(t);
+    const store = new FeedStore(file);
+    store.addBatch({ id: "fixture-batch", at: "2026-09-29T00:00:00.000Z", queries: [], status: "posted", note: "隔离假模型验收" }, posts);
+    assert.equal(new FeedStore(file).snapshot().posts[0]?.title, "合成建议");
+    assert.equal(requests.length, 1, "必须真正走到假模型请求");
+    assert.equal((requests[0] as { model: string }).model, "gpt-5.5");
+    assert.equal((requests[0] as { reasoning_effort?: string }).reasoning_effort, undefined);
+  } finally { globalThis.fetch = original; }
+});
+
+test("资讯失败提示对普通异常有安全兜底", () => {
+  const note = feedFailureNote(new Error("secret-key and C:\\private\\user-data"));
+  assert.match(note, /^这次没生成出来：生成时遇到问题/);
+  assert.doesNotMatch(note, /undefined|secret-key|private|user-data/);
+  assert.equal(feedFailureNote(new UserFacingError("请先检查模型连接")), "这次没生成出来：请先检查模型连接");
+  assert.equal(feedFailureNote(new FeedError("还没有连接模型，没法生成动态")), "这次没生成出来：还没有连接模型，没法生成动态");
+});
 
 test("模型输出里取 JSON：前后有说明文字、代码块也能取到；取不到返回 null", () => {
   assert.deepEqual(parseJsonObject("好的：\n```json\n{\"queries\": [\"a\"]}\n```"), { queries: ["a"] });

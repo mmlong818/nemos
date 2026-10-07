@@ -4,8 +4,13 @@ export function validateToolInput(
   schema: JsonSchema,
   input: Record<string, unknown>,
 ): string[] {
+  return validateToolOutput(schema, input);
+}
+
+/** Validate a tool's runtime output with the same supported JSON Schema subset as its input. */
+export function validateToolOutput(schema: JsonSchema, output: unknown): string[] {
   const errors: string[] = [];
-  validateValue(schema, input, "$", errors);
+  validateValue(schema, output, "$", errors);
   return errors;
 }
 
@@ -40,7 +45,7 @@ function validateObject(
     ? schema.required.filter((item): item is string => typeof item === "string")
     : [];
   for (const key of required) {
-    if (!(key in value)) errors.push(`${path}.${key} is required`);
+    if (!Object.hasOwn(value, key)) errors.push(`${path}.${key} is required`);
   }
   for (const [key, child] of Object.entries(value)) {
     const childSchema = properties[key];

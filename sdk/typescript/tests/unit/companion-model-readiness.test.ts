@@ -81,7 +81,7 @@ test("malformed function arguments are not counted as working tools", async () =
     const check = await checkCompanionModel(connection);
     assert.equal(check.chat, "passed"); assert.equal(check.tools, "failed");
     const model = makeConnectionAgentModel({ connection: { ...connection, modelChecks: { chosen: check } }, model: "chosen", stream: false, temperature: 0, maxTokens: 30 });
-    assert.throws(() => model.complete({ messages: [], tools: [{ name: "actual_tool", description: "", inputSchema: {} }], signal: new AbortController().signal }), /工具调用检查未通过/);
+    await assert.rejects(model.complete({ messages: [], tools: [{ name: "actual_tool", description: "", inputSchema: {} }], signal: new AbortController().signal }), /工具调用检查未通过/);
   });
 });
 
@@ -216,13 +216,13 @@ test("only an explicit single-model check invokes its probe and binds the curren
   assert.equal(probes, 1); assert.equal(result.connectionRevision, connection.connectionRevision);
 });
 
-test("a revision-bound model rejects unverified chat and tools before any provider request", () => {
+test("a revision-bound model rejects unverified chat and tools before any provider request", async () => {
   const unverified = ensureConnectionRevision(normalizeCompanionModelConnection({ provider: "custom", baseUrl: "http://127.0.0.1:1234/v1", model: "pending" }));
   const model = makeConnectionAgentModel({ connection: unverified, model: "pending", stream: false, temperature: 0, maxTokens: 30 });
-  // The assertion is intentionally synchronous: authorization fails before the
-  // scheduler/adaptor can issue HTTP, not because a mocked provider says no.
-  assert.throws(() => model.complete({ messages: [{ role: "user", content: "hello" }], tools: [], signal: new AbortController().signal }), /尚未通过此连接的文字回复检查/);
-  assert.throws(() => model.complete({ messages: [{ role: "user", content: "hello" }], tools: [{ name: "read", description: "", inputSchema: {} }], signal: new AbortController().signal }), /尚未通过此连接的文字回复检查/);
+  // Authorization rejects before the scheduler/adaptor can issue HTTP, not
+  // because a mocked provider says no.
+  await assert.rejects(model.complete({ messages: [{ role: "user", content: "hello" }], tools: [], signal: new AbortController().signal }), /尚未通过此连接的文字回复检查/);
+  await assert.rejects(model.complete({ messages: [{ role: "user", content: "hello" }], tools: [{ name: "read", description: "", inputSchema: {} }], signal: new AbortController().signal }), /尚未通过此连接的文字回复检查/);
 });
 
 test("endpoint normalization accepts pasted completions and IPv6 loopback without sending an empty bearer", async () => {

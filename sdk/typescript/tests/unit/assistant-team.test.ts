@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { AssistantBotStore, normalizeTeamRequest, runAssistantTeam, validateTeamDelivery, teamRequestHash } from "../../examples/companion/assistant-team.js";
 import type { AgentJobRecord, AgentJobHandlerContext } from "../../src/agent/job-queue.js";
 import type { ChatFn } from "../../examples/companion/engine.js";
@@ -42,7 +43,7 @@ test("移入市场保留规则和冻结任务，添加回团队保留身份及�
 const final = JSON.stringify({ summary: "本地合成结果", fields: [{ label: "日期", value: "10月6日", sources: ["S1"] }] });
 function fixture() {
   const store = new AssistantBotStore(":memory:"); store.seed("qa");
-  const job = { id: "qa-job", payload: { teamPlan: store.plan("qa", request) }, checkpoints: [], metadata: { userId: "qa" } } as unknown as AgentJobRecord;
+  const job = { id: "qa-job", payload: { teamPlan: store.plan("qa", request) }, checkpoints: [], metadata: { userId: "qa", budgetIdentity: randomUUID() } } as unknown as AgentJobRecord;
   const abort = new AbortController();
   const context: AgentJobHandlerContext = { signal: abort.signal, checkpoint: (status, progress, data) => { job.checkpoints.push({ at: new Date().toISOString(), status, progress, data }); } };
   return { store, job, abort, context };
@@ -92,6 +93,7 @@ test("真实回执齐备后自动汇总；工具和所有记忆 scope 在运行�
     assert.equal(JSON.parse(calls[2][1]).receipts.length, 2);
     assert.equal(f.job.checkpoints.filter((c) => (c.data as any)?.teamReceipt?.state === "returned").length, 3);
     assert.notEqual(calls[0][4]?.sessionId, calls[1][4]?.sessionId);
+    assert.deepEqual([...new Set(calls.map((call) => call[4]?.budgetIdentity))], [f.job.metadata?.budgetIdentity]);
   } finally { f.store.close(); }
 });
 

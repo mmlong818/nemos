@@ -150,8 +150,8 @@ function sessionInput(args: Record<string, unknown>, runId: string, sessionId = 
   return {
     runId,
     sessionId,
-    call: { id: "write-" + runId, name: "save_file", arguments: args },
-    tool: { name: "save_file", description: "Save a report", inputSchema: { type: "object" }, effect: "write" },
+    call: { id: "write-" + runId, name: "goal_save", arguments: { id: args.path, title: "目标" } },
+    tool: { name: "goal_save", description: "Update a local goal", inputSchema: { type: "object" }, effect: "write" },
     signal: new AbortController().signal,
   };
 }
@@ -168,7 +168,7 @@ async function settledWithin<T>(promise: Promise<T>, ms: number): Promise<T | "p
   }
 }
 
-test("会话级批准后，同一会话内同名工具换参数不再询问", async () => {
+test("会话级批准仅对同一动作、对象和参数生效", async () => {
   const dir = mkdtempSync(join(tmpdir(), "nemos-approval-session-"));
   try {
     const store = new FileAgentApprovalStore(join(dir, "approvals.json"));
@@ -177,16 +177,16 @@ test("会话级批准后，同一会话内同名工具换参数不再询问", as
     store.decide(id, true, "本次会话都允许", "session");
     assert.equal((await first).allowed, true);
 
-    // 换参数、换 runId——指纹完全不同，靠会话授权放行。
-    const second = await settledWithin(store.authorize(sessionInput({ path: "b.md" }, "run-2")), 1_000);
-    assert.notEqual(second, "pending", "会话授权应立刻放行，不再产生审批卡");
+    const second = await settledWithin(store.authorize(sessionInput({ path: "a.md" }, "run-2")), 1_000);
+    assert.notEqual(second, "pending", "同一受限操作应立刻放行");
     assert.equal(second !== "pending" && second.allowed, true);
     assert.match(String(second !== "pending" && second.reason), /session/);
     assert.equal(store.list({ status: "pending" }).length, 0);
 
     const grants = store.listSessionGrants("approval-session");
     assert.equal(grants.length, 1);
-    assert.equal(grants[0]?.tool, "save_file");
+    assert.equal(grants[0]?.tool, "goal_save");
+    assert.equal(grants[0]?.resource, "a.md");
     assert.equal(grants[0]?.approvalId, id, "授权要能溯源到那次批准");
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -229,7 +229,7 @@ test("会话级批准跨重启仍生效，且文件格式保持 version 1 兼容
     assert.equal(saved.sessionGrants?.length, 1);
 
     const reopened = new FileAgentApprovalStore(file);
-    const afterRestart = await settledWithin(reopened.authorize(sessionInput({ path: "c.md" }, "run-3")), 1_000);
+    const afterRestart = await settledWithin(reopened.authorize(sessionInput({ path: "a.md" }, "run-3")), 1_000);
     assert.notEqual(afterRestart, "pending", "重启后不该重新询问");
     assert.equal(afterRestart !== "pending" && afterRestart.allowed, true);
   } finally {
@@ -306,7 +306,7 @@ test("会话级授权可以撤销，撤销后恢复逐次询问", async () => {
     assert.equal(store.listSessionGrants().length, 1);
 
     assert.equal(store.revokeSessionGrant("approval-session", "nope"), false, "撤不存在的返回 false");
-    assert.equal(store.revokeSessionGrant("approval-session", "save_file"), true);
+    assert.equal(store.revokeSessionGrant("approval-session", "goal_save"), true);
     assert.deepEqual(store.listSessionGrants(), []);
 
     const again = store.authorize(sessionInput({ path: "b.md" }, "run-2"));
@@ -327,9 +327,8 @@ test("可以一次撤销某个会话的全部授权", async () => {
   const dir = mkdtempSync(join(tmpdir(), "nemos-approval-revoke-all-"));
   try {
     const store = new FileAgentApprovalStore(join(dir, "approvals.json"));
-    for (const [runId, tool] of [["run-1", "save_file"], ["run-2", "send_mail"]] as const) {
-      const input = { ...sessionInput({ path: "a.md" }, runId), call: { id: runId, name: tool, arguments: {} } };
-      input.tool = { ...input.tool, name: tool };
+    for (const [runId, goalId] of [["run-1", "a.md"], ["run-2", "b.md"]] as const) {
+      const input = { ...sessionInput({ path: goalId }, runId), call: { id: runId, name: "goal_save", arguments: { id: goalId, title: "目标" } } };
       const pendingRun = store.authorize(input);
       const id = await waitForPending(store);
       store.decide(id, true, undefined, "session");
@@ -339,6 +338,44 @@ test("可以一次撤销某个会话的全部授权", async () => {
     assert.equal(store.revokeSessionGrants("approval-session"), 2);
     assert.deepEqual(store.listSessionGrants(), []);
     assert.equal(store.revokeSessionGrants("approval-session"), 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("会话授权不跨对象、方法或参数，旧 grant 不扩权", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "nemos-approval-scope-"));
+  try {
+    const file = join(dir, "approvals.json");
+    const store = new FileAgentApprovalStore(file);
+    const first = store.authorize(sessionInput({ path: "goal-a" }, "run-a"));
+    const id = await waitForPending(store);
+    store.decide(id, true, undefined, "session");
+    await first;
+    const variants = [
+      sessionInput({ path: "goal-b" }, "run-b"),
+      { ...sessionInput({ path: "goal-a" }, "run-c"), call: { id: "run-c", name: "goal_save", arguments: { id: "goal-a", title: "目标", method: "archive" } } },
+      { ...sessionInput({ path: "goal-a" }, "run-d"), call: { id: "run-d", name: "goal_save", arguments: { id: "goal-a", title: "另一个标题" } } },
+    ];
+    for (const input of variants) {
+      const pendingRun = store.authorize(input);
+      assert.equal(await settledWithin(pendingRun, 50), "pending");
+      const pending = store.list({ status: "pending" })[0];
+      assert.ok(pending);
+      store.decide(pending.id, false, "拒绝");
+      assert.equal((await pendingRun).allowed, false);
+    }
+    const saved = JSON.parse(readFileSync(file, "utf8")) as { sessionGrants: Array<Record<string, unknown>> };
+    saved.sessionGrants.push({ sessionId: "approval-session", tool: "save_file", approvalId: "old", grantedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    writeFileSync(file, JSON.stringify(saved));
+    const reopened = new FileAgentApprovalStore(file);
+    assert.equal(reopened.listSessionGrants().length, 1);
+    const oldCall = reopened.authorize(writeInput(new AbortController().signal, "legacy-run"));
+    assert.equal(await settledWithin(oldCall, 50), "pending");
+    const pending = reopened.list({ status: "pending" })[0];
+    assert.ok(pending);
+    reopened.decide(pending.id, false);
+    await oldCall;
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }

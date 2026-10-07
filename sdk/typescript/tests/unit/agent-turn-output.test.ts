@@ -34,3 +34,7 @@ test("blocked and cancelled dispositions never surface partial text as a complet
   assert.throws(() => completedAgentOutput(run("half", { state: "cancelled", reason: "user" } as AgentRunResult["disposition"]), 10_000), AgentTurnDispositionError);
   assert.equal(completedAgentOutput(run("  done  ", { state: "completed", evidence: [] } as AgentRunResult["disposition"]), 10), "done");
 });
+
+test("a completed turn without body or artifact is not reported as success", () => {
+  assert.throws(() => completedAgentOutput(run("   ", { state: "completed", evidence: [] }), 10), /没有给出可见的回答/);
+});

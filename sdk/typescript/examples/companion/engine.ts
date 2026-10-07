@@ -52,6 +52,10 @@ export interface Persona {
 export type Verbosity = "terse" | "normal" | "talkative";
 
 export interface ChatAgentContext {
+  /** Opaque task incarnation, shared only by steps of the same budgeted task. */
+  budgetIdentity?: string;
+  /** Immutable owner key shared by all stages of one queued job. */
+  budgetOwnerKey?: string;
   onModelAdmission?: (state: import("./model-scheduler.js").ModelAdmissionState) => void;
   reasoningEffort?: import("./model-reasoning.js").ReasoningEffort;
   runId?: string;

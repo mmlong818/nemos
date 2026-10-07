@@ -64,6 +64,21 @@ export class GoalError extends Error {
 
 export const GOAL_LIMITS = { goals: 200, milestones: 20, timeline: 300 } as const;
 
+/** A missing id is never interpreted as a new goal during a continuation request. */
+export function resolveGoalOperation(
+  instruction: string,
+  selectedId: string | undefined,
+  goals: readonly Pick<PersonalGoal, "id" | "title" | "status">[],
+  fromNewGoalPage = false,
+): { kind: "create" | "continue" | "choose"; goalId?: string; candidates?: Array<{ id: string; title: string }> } {
+  if (selectedId) return { kind: "continue", goalId: selectedId };
+  const active = goals.filter((goal) => goal.status === "active").map(({ id, title }) => ({ id, title }));
+  if (fromNewGoalPage || /(?:新建|创建|定一个新|再定一个|另设一个).{0,8}(?:目标|计划)|(?:目标|计划).{0,8}(?:新建|创建)/i.test(instruction)) {
+    return { kind: "create" };
+  }
+  return { kind: "choose", candidates: active };
+}
+
 export function goalCategoryLabel(id: string): string {
   return GOAL_CATEGORIES.find((item) => item.id === id)?.label ?? "其他";
 }

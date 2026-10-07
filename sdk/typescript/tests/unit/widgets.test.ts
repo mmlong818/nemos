@@ -120,7 +120,7 @@ test("HTML 交付拆分：页面只要代码块，说明文字留给回复；没
   assert.equal(splitHtmlDeliverable("没有页面的回答"), null);
 });
 
-// 真实使用发现：构件回复开头是"X已经完成「用户原话」"、结尾贴本机路径，自测结论挤进上面的列表里，
+// 真实使用发现：构件回复会误报任务完成或贴出本机路径，自测结论挤进上面的列表里，
 // 摘要（总览"最近的成果"用）还夹着 <!DOCTYPE html>。
 test("HTML 交付的回复与摘要：不带模板开头和本机路径，自测单独成段，摘要只取说明文字", async () => {
   const { deliveryText, deliverableSummary } = await import("../../examples/companion/capabilities.js");
@@ -128,7 +128,7 @@ test("HTML 交付的回复与摘要：不带模板开头和本机路径，自测
   const html = { format: "html" as const, file: "C:/data/artifacts/做一个清单-art-1.html", summary: "", metadata: { validationChecks: [{ id: "browser-self-check", label: "自测", status: "passed" as const, detail: "点了 3 个控件，没有脚本报错" }] } };
   const text = deliveryText("小丑鱼", "做一个能勾选的清单", html, raw);
   assert.doesNotMatch(text, /已经完成「|保存位置|产物格式|<html|```/);
-  assert.match(text, /^清单做好了，直接勾。/);
+  assert.match(text, /^已生成，检查未通过或尚未完成。\n\n清单做好了，直接勾。/);
   assert.match(text, /- 数据只存本机\n\n自测：点了 3 个控件，没有脚本报错$/);
   const summary = deliverableSummary(raw, "html");
   assert.doesNotMatch(summary, /<|```/);
@@ -136,7 +136,7 @@ test("HTML 交付的回复与摘要：不带模板开头和本机路径，自测
   // 其他格式的交付不在聊天里嵌入，保留原来的说明和保存位置。
   const doc = { format: "md" as const, file: "C:/data/artifacts/报告.md", summary: "", metadata: {} };
   const report = deliveryText("小丑鱼", "写一份周报", doc, "# 周报\n本周完成三件事");
-  assert.match(report, /^小丑鱼已经完成「写一份周报」。/);
+  assert.match(report, /^小丑鱼已为「写一份周报」生成成果：已生成，检查未通过或尚未完成。/);
   assert.match(report, /保存位置：C:\/data\/artifacts\/报告\.md$/);
   assert.equal(deliverableSummary("# 周报\n本周完成三件事", "md"), "周报\n本周完成三件事");
 });

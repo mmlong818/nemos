@@ -64,6 +64,10 @@ export class OfficeFileSessionStore {
     const safeName = `${id}.${extension}`;
     const file = join(this.directory, safeName);
     writeAtomic(file, data);
+    const savedData = readFileSync(file);
+    if (savedData.byteLength !== data.byteLength || hash(savedData) !== hash(data)) {
+      throw new UserFacingError("文件工作副本落盘后内容指纹不一致");
+    }
     const now = new Date().toISOString();
     const session: OfficeFileSession = {
       id,
@@ -102,7 +106,11 @@ export class OfficeFileSessionStore {
 
   read(id: string): { session: OfficeFileSession; data: Buffer } {
     const session = this.inspect(id);
-    return { session, data: readFileSync(session.file) };
+    const data = readFileSync(session.file);
+    if (data.byteLength !== session.byteLength || hash(data) !== session.contentHash) {
+      throw new UserFacingError("文件在读取期间发生变化，请重新载入后再继续");
+    }
+    return { session, data };
   }
 
   openDesktop(id: string): OfficeFileSession {
@@ -144,6 +152,10 @@ export class OfficeFileSessionStore {
     if (!version || !this.isManagedHistoryFile(version.file)) throw new UserFacingError("文件版本不存在或已经清理");
     const data = readFileSync(version.file);
     writeAtomic(session.file, data);
+    const savedData = readFileSync(session.file);
+    if (savedData.byteLength !== data.byteLength || hash(savedData) !== hash(data)) {
+      throw new UserFacingError("恢复的文件落盘后内容指纹不一致");
+    }
     session.byteLength = data.byteLength;
     session.contentHash = hash(data);
     session.updatedAt = new Date().toISOString();

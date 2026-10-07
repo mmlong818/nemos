@@ -7,7 +7,7 @@ import type {
   AgentToolProvenance,
   AgentToolResult,
 } from "./types.js";
-import { validateToolInput } from "./input-validation.js";
+import { validateToolInput, validateToolOutput } from "./input-validation.js";
 
 interface SchedulerOptions {
   runId: string;
@@ -107,7 +107,16 @@ export class ToolScheduler {
         return result;
       }
     }
-    const result = await this.runWithTimeout(tool, call);
+    const executionResult = await this.runWithTimeout(tool, call);
+    let outputErrors: string[];
+    try {
+      outputErrors = validateAgentToolResult(executionResult, tool.definition.outputSchema);
+    } catch (error) {
+      outputErrors = [`output validator failed: ${errorMessage(error)}`];
+    }
+    const result = outputErrors.length > 0
+      ? errorResult(`tool output validation failed: ${outputErrors.join("; ")}`)
+      : executionResult;
     const bounded = {
       ...result,
       content: boundText(result.content, this.options.maxResultChars),
@@ -174,6 +183,22 @@ export class ToolScheduler {
   private effectOf(call: AgentToolCall): "read" | "write" {
     return this.byName.get(call.name)?.definition.effect ?? "write";
   }
+}
+
+function validateAgentToolResult(result: unknown, outputSchema?: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return ["$ must be an object"];
+  }
+  const value = result as Record<string, unknown>;
+  if (!Object.hasOwn(value, "content") || typeof value.content !== "string") errors.push("$.content must be an own string property");
+  if (value.isError !== undefined && typeof value.isError !== "boolean") errors.push("$.isError must be boolean");
+  if (value.artifactRefs !== undefined && (!Array.isArray(value.artifactRefs) || value.artifactRefs.some((item) => typeof item !== "string"))) {
+    errors.push("$.artifactRefs must be an array of strings");
+  }
+  if (value.writeAttempted !== undefined && typeof value.writeAttempted !== "boolean") errors.push("$.writeAttempted must be boolean");
+  if (outputSchema) errors.push(...validateToolOutput(outputSchema, value));
+  return errors;
 }
 
 function abortPromise(signal: AbortSignal): Promise<AgentToolResult> {

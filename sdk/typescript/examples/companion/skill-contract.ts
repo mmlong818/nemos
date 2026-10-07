@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * 技能契约：每项面向用户的执行能力都要说清三件事——吃什么输入、交什么输出、守什么约束。
  *
@@ -14,6 +16,49 @@ export interface SkillContract {
   output: string;
   /** 硬约束：长度上限、禁用说法、不得编造的字段、必须标注的状态。 */
   constraints: string;
+}
+
+export interface SkillContractSnapshot {
+  id: string;
+  version: 1;
+  digest: string;
+  expectedFormat: "md" | "html" | "txt";
+  inputState: "ready" | "missing";
+  requiredInputs: string[];
+  acceptanceChecks: string[];
+}
+
+export interface SkillContractCheck {
+  id: string;
+  label: string;
+  status: "passed" | "failed" | "not-run";
+  phase: "validation" | "verification";
+  detail?: string;
+}
+
+export function snapshotSkillContract(id: string, contract: SkillContract, format: "md" | "html" | "txt", instruction: string): SkillContractSnapshot {
+  const digest = createHash("sha256").update(JSON.stringify([id, contract.input, contract.output, contract.constraints])).digest("hex");
+  return {
+    id,
+    version: 1,
+    digest,
+    expectedFormat: format,
+    inputState: instruction.trim() && instruction.trim() !== "按能力要求完成一次任务。" ? "ready" : "missing",
+    requiredInputs: ["任务要求"],
+    acceptanceChecks: ["契约定义", "文件非空", "输出格式", "内容事实核验"],
+  };
+}
+
+/** Mechanical checks only. Model claims and user feedback never pass factual verification. */
+export function checkSkillOutput(snapshot: SkillContractSnapshot, output: string, actualFormat: string): SkillContractCheck[] {
+  const present = output.trim().length > 0;
+  const correctFormat = actualFormat === snapshot.expectedFormat && (actualFormat !== "html" || /<!doctype\s+html|<html\b/i.test(output));
+  return [
+    { id: "skill-contract", label: "契约定义", status: snapshot.inputState === "ready" ? "passed" : "failed", phase: "validation", detail: `${snapshot.id}@${snapshot.digest.slice(0, 12)}` },
+    { id: "skill-content", label: "成果正文非空", status: present ? "passed" : "failed", phase: "validation" },
+    { id: "skill-format", label: "输出格式", status: correctFormat ? "passed" : "failed", phase: "validation", detail: `${actualFormat} / ${snapshot.expectedFormat}` },
+    { id: "skill-facts", label: "内容事实核验", status: "not-run", phase: "verification", detail: "需要来源或人工核验；模型自述不能充当证明" },
+  ];
 }
 
 export function renderSkillContract(contract: SkillContract): string {

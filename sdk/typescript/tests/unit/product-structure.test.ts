@@ -45,6 +45,21 @@ test('file rows escape imported metadata and encode identifiers',()=>{
   assert.match(html,/未记录时间/);
 });
 
+test('file rows show persisted DOCX and PNG checks without claiming visual review',()=>{
+  const files=api('file-library','ClownfishFileLibrary');
+  for(const format of ['doc','png']){
+    const row=files.entries([{id:format,title:'合成成果',format,createdAt:'2026-09-29',proof:{level:'validated',contentHash:'abc123',checks:[
+      {id:'format',label:'格式可以打开',status:'passed'},
+      {id:'visual',label:'实际版面或画面复核',status:'not-run',detail:'尚未复核'}
+    ]}}],[],[])[0];
+    const html=files.row(row);
+    assert.match(html,/格式检查通过 · 内容待核验/);
+    assert.match(html,/格式可以打开：通过/);
+    assert.match(html,/实际版面或画面复核：未检查/);
+    assert.match(html,/SHA-256 abc123/);
+  }
+});
+
 test('assistant summary uses existing work only, is bounded and excludes finished jobs',()=>{
   const digest=api('assistant-digest','ClownfishAssistantDigest');
   assert.equal(digest.summary().length,0);

@@ -6,7 +6,7 @@ import type { AgentToolProvider } from "./llm.js";
 import { expertAssignmentPrompt, expertContract, finalDeliveryPrompt } from "./expert-contracts.js";
 import { isCurrentUserMemory, userMemoryEvidence, userMemoryPrompt } from "./memory-evidence.js";
 import type { PersonalWorkStore, PersonalMatter } from "./personal-work.js";
-import { GOAL_CATEGORIES, goalBrief, type GoalInput } from "./goals.js";
+import { GOAL_CATEGORIES, goalBrief, resolveGoalOperation, type GoalInput } from "./goals.js";
 import { WATCH_LIMITS, WatchError, type WatchStore } from "./watch.js";
 import { createHash } from "node:crypto";
 import type { AssistantBot } from "./assistant-team.js";
@@ -85,7 +85,7 @@ export function createCompanionAgentToolProvider(
     const goalSession = context.sessionId ? dependencies.goalSession?.(context.sessionId) : undefined;
     if (dependencies.personalWork && context.personaId === "clownfish" && !["capability", "office"].includes(context.surface || "")
       && (goalSession || GOAL_CUE.test(instruction))) {
-      tools.push(...goalTools(dependencies.personalWork(), context, goalSession?.goalId, goalSession ? dependencies.bindGoalSession : undefined));
+      tools.push(...goalTools(dependencies.personalWork(), context, instruction, goalSession?.goalId, goalSession ? dependencies.bindGoalSession : undefined, Boolean(goalSession && !goalSession.goalId)));
     }
     if (
       MEMORY_CUE.test(instruction)
@@ -151,11 +151,12 @@ const GOAL_CATEGORY_IDS = GOAL_CATEGORIES.map((item) => item.id);
 const MOMENTUM_SCHEMA = { description: "Only when progress can be judged against the deadline and plan: on_track / at_risk / behind, with a one-sentence reason. Omit when unsure.",
   type: "object", properties: { status: { type: "string", enum: ["on_track", "at_risk", "behind"] }, note: { type: "string", description: "<= 160 chars, the basis" } }, required: ["status", "note"], additionalProperties: false };
 
-function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionGoalId?: string, bind?: (sessionId: string, goalId: string) => void): AgentTool[] {
+function goalTools(store: PersonalWorkStore, context: ChatAgentContext, instruction: string, sessionGoalId?: string, bind?: (sessionId: string, goalId: string) => void, fromNewGoalPage = false): AgentTool[] {
   // 从目标卡片开的对话已知是哪个目标：id 缺省用它；小丑鱼的更新按字段合并，版本号缺省取当前值。
   const withRevision = (input: GoalInput): GoalInput => {
-    const id = String(input.id || "");
-    return id && input.revision === undefined ? { ...input, revision: store.getGoal(context.userId, id).revision } : input;
+    const id = String(input.id || sessionGoalId || "");
+    const selected = id ? { ...input, id } : input;
+    return id && input.revision === undefined ? { ...selected, revision: store.getGoal(context.userId, id).revision } : selected;
   };
   return [{
     definition: { name: "goal_list", description: "Read the user's goals: title, category, how it counts as done, plan, milestones and the latest timeline entries. Use before updating a goal to get its id and revision.",
@@ -186,21 +187,54 @@ function goalTools(store: PersonalWorkStore, context: ChatAgentContext, sessionG
       }, additionalProperties: false }, effect: "write" },
     execute: async (input, execution) => {
       ensureActive(execution.signal);
+      if (sessionGoalId && input.id && String(input.id) !== sessionGoalId) return { content: "当前会话已绑定另一个目标，请用户从目标卡片选择要续办的目标。", isError: true };
+      const goals = store.listGoals(context.userId);
+      const requestedId = String(input.id || "").trim();
+      const explicitId = sessionGoalId || explicitlySelectedGoalId(instruction, requestedId, goals);
+      if (requestedId && !explicitId) return { content: JSON.stringify({ state: "choose_goal", message: "请用户先选定要续办的目标；未创建或修改目标。", candidates: goals.filter((goal) => goal.status === "active").map(({ id, title }) => ({ id, title })) }), isError: true };
+      const operation = resolveGoalOperation(instruction, explicitId, goals, fromNewGoalPage);
+      if (operation.kind === "choose") return { content: JSON.stringify({ state: "choose_goal", message: "请用户先选定要续办的目标；未创建或修改目标。", candidates: operation.candidates }), isError: true };
+      const proposedTitle = String(input.title || "").trim().toLocaleLowerCase();
+      if (operation.kind === "create" && proposedTitle) {
+        const duplicate = store.listGoals(context.userId).find((goal) => goal.status === "active" && goal.title.toLocaleLowerCase() === proposedTitle);
+        if (duplicate) return { content: JSON.stringify({ state: "choose_goal", message: "已有同名目标，请先选择续办还是另建。", candidates: [{ id: duplicate.id, title: duplicate.title }] }), isError: true };
+      }
       const saved = store.saveGoal(context.userId, withRevision(input as GoalInput), "assistant");
-      if (!input.id && context.sessionId) {
+      if (operation.kind === "create" && context.sessionId) {
         bind?.(context.sessionId, saved.id);
         store.bindGoalSession(context.userId, saved.id, context.sessionId);
       }
-      return { content: JSON.stringify(goalBrief(saved)) };
+      return { content: JSON.stringify({ ...goalBrief(saved), operation: operation.kind }) };
     },
   }, {
     definition: { name: "goal_log_progress", description: "With approval, add one progress entry to a goal's timeline. Only record what the user reported in this conversation, close to their words. Never infer, estimate or invent progress.",
       inputSchema: { type: "object", properties: { id: { type: "string" }, note: { type: "string", description: "<= 500 chars" }, momentum: MOMENTUM_SCHEMA }, required: ["note"], additionalProperties: false }, effect: "write" },
     execute: async (input, execution) => {
       ensureActive(execution.signal);
-      return { content: JSON.stringify(goalBrief(store.logGoalProgress(context.userId, String(input.id || sessionGoalId || ""), input.note, "assistant", input.momentum))) };
+      if (sessionGoalId && input.id && String(input.id) !== sessionGoalId) return { content: "当前会话已绑定另一个目标，请用户从目标卡片选择要续办的目标。", isError: true };
+      const goals = store.listGoals(context.userId);
+      const requestedId = String(input.id || "").trim();
+      const goalId = sessionGoalId || explicitlySelectedGoalId(instruction, requestedId, goals) || "";
+      if (requestedId && !goalId) return { content: JSON.stringify({ state: "choose_goal", message: "请用户先选定要记录进展的目标；未修改目标。", candidates: goals.filter((goal) => goal.status === "active").map(({ id, title }) => ({ id, title })) }), isError: true };
+      if (!goalId) return { content: JSON.stringify({ state: "choose_goal", message: "请用户先选择目标，再记录进展。", candidates: store.listGoals(context.userId).filter((goal) => goal.status === "active").map((goal) => ({ id: goal.id, title: goal.title })) }), isError: true };
+      return { content: JSON.stringify(goalBrief(store.logGoalProgress(context.userId, goalId, input.note, "assistant", input.momentum))) };
     },
   }];
+}
+
+function explicitlySelectedGoalId(instruction: string, requestedId: string, goals: readonly { id: string; title: string }[]): string | undefined {
+  if (!requestedId) return undefined;
+  const goal = goals.find((item) => item.id === requestedId);
+  if (!goal) return undefined;
+  const normalizedInstruction = instruction.toLocaleLowerCase().replace(/\s+/g, "");
+  if (instruction.includes(goal.id)) return goal.id;
+  const mentioned = goals
+    .map((item) => ({ id: item.id, title: item.title.toLocaleLowerCase().replace(/\s+/g, "") }))
+    .filter((item) => item.title && normalizedInstruction.includes(item.title))
+    .sort((a, b) => b.title.length - a.title.length);
+  if (!mentioned.length || mentioned[0]!.id !== requestedId) return undefined;
+  if (mentioned[1]?.title.length === mentioned[0]!.title.length) return undefined;
+  return goal.id;
 }
 
 /**
@@ -379,7 +413,7 @@ function taskListTool(
 
 function taskCreateTool(
   dependencies: CompanionAgentToolDependencies,
-  _context: ChatAgentContext,
+  context: ChatAgentContext,
 ): AgentTool {
   const abilities = dependencies.capabilities().snapshot().abilities
     // 开发项目有独立的工作区授权与提案流程，不能从通用重复任务入口
@@ -400,6 +434,7 @@ function taskCreateTool(
             type: "string",
             description: "Reuse an existing capability id when suitable. Available: " + abilities.map((item) => item.id + "=" + item.name).join(", "),
           },
+          goalId: { type: "string", description: "Existing goal id explicitly chosen by the user; omit if this task is unrelated to a goal" },
           createRecurringTask: { type: "boolean", description: "Whether to create a runnable task in addition to the capability" },
           format: { type: "string", enum: ["md", "html", "txt", "json", "doc"] },
           scheduleMode: { type: "string", enum: ["manual", "daily", "turns"] },
@@ -419,6 +454,12 @@ function taskCreateTool(
       if (!title || !instruction) return { content: "title and instruction are required", isError: true };
 
       const runtime = dependencies.capabilities();
+      const goalId = String(input.goalId || (context.sessionId ? dependencies.goalSession?.(context.sessionId)?.goalId : "") || "").trim();
+      if (goalId) {
+        if (!dependencies.personalWork) return { content: "Goal store unavailable; task not created", isError: true };
+        try { dependencies.personalWork().getGoal(context.userId, goalId); }
+        catch { return { content: "Selected goal not found; task not created", isError: true }; }
+      }
       const requestedCapabilityId = String(input.capabilityId ?? "").trim();
       const existing = abilities.find((ability) => ability.id === requestedCapabilityId);
       const format = capabilityFormat(input.format);
@@ -438,6 +479,7 @@ function taskCreateTool(
           personaId: "clownfish",
           capabilityId: ability.id,
           instruction,
+          goalId: goalId || undefined,
           format,
           enabled: true,
           schedule: capabilitySchedule(input),
@@ -452,7 +494,7 @@ function taskCreateTool(
       return {
         content: JSON.stringify({
           capability: { id: ability.id, name: ability.name },
-          task: task ? { id: task.id, title: task.title, schedule: task.schedule } : null,
+          task: task ? { id: task.id, title: task.title, schedule: task.schedule, goalId: task.goalId } : null,
           ...(schedule ? { notice: fallback + scheduleNotice(schedule) } : {}),
         }, null, 2),
         data: { capabilityId: ability.id, taskId: task?.id ?? null },

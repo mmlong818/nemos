@@ -14,11 +14,14 @@
   }
   function row(item){
     let actions='';
+    const proof=item.kind==='artifact'&&['doc','png'].includes(item.raw.format)?item.raw.proof:null;
+    const proofLabel=proof?.level==='validated'?'格式检查通过 · 内容待核验':proof?.level==='verified'?'已通过来源核验':proof?.level==='approved'?'已获人工确认':proof?'格式检查未通过或未完成':'';
+    const proofDetails=proof?`<details class="file-row-more"><summary>检查回执</summary><ul>${(proof.checks||[]).map(check=>`<li>${esc(check.label)}：${esc(check.status==='passed'?'通过':check.status==='failed'?'未通过':'未检查')}${check.detail?` · ${esc(check.detail)}`:''}</li>`).join('')}</ul><p>SHA-256 ${esc(proof.contentHash||'未记录')}</p></details>`:'';
     if(item.kind==='artifact')actions=`<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.id)}" target="_blank" rel="noopener">预览</a><a href="/office?artifact=${encodeURIComponent(item.id)}">编辑副本</a><a href="/api/capabilities/artifact?id=${encodeURIComponent(item.id)}" download>下载</a>${item.taskId?`<a href="/bots?task=${encodeURIComponent(item.taskId)}">来源任务</a>`:''}<details class="file-row-more"><summary>更多</summary><button data-feedback-useful="${esc(item.id)}">有帮助</button><button data-feedback-improve="${esc(item.id)}">需改进</button>${item.raw.metadata?.lineage?.previousArtifactId?`<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.raw.metadata.lineage.previousArtifactId)}" target="_blank" rel="noopener">上一版</a>`:''}</details>`;
     else if(item.kind==='document')actions=`<a href="/office?document=${encodeURIComponent(item.id)}">打开编辑</a>${item.raw.originArtifactId?`<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.raw.originArtifactId)}" target="_blank" rel="noopener">原始成果</a>`:''}`;
     else actions=`<button data-preview-resource="${esc(item.id)}">查看资料</button><a href="/resources">管理资料</a>`;
     const timestamp=item.date&&Number.isFinite(Date.parse(item.date))?new Date(item.date).toLocaleDateString('zh-CN'):'未记录时间';
-    return `<article class="file-library-row"><div class="file-row-icon" aria-hidden="true">▧</div><div class="file-row-copy"><h2>${esc(item.title)}</h2><p>${esc(item.label)} · ${esc(item.format)} · ${esc(timestamp)}</p>${item.summary?`<p class="file-row-summary">${esc(item.summary)}</p>`:''}</div><div class="file-row-actions">${actions}</div></article>`;
+    return `<article class="file-library-row"><div class="file-row-icon" aria-hidden="true">▧</div><div class="file-row-copy"><h2>${esc(item.title)}</h2><p>${esc(item.label)} · ${esc(item.format)} · ${esc(timestamp)}</p>${item.summary?`<p class="file-row-summary">${esc(item.summary)}</p>`:''}${proofLabel?`<p class="file-row-summary">${esc(proofLabel)}</p>${proofDetails}`:''}</div><div class="file-row-actions">${actions}</div></article>`;
   }
   function mount({root,artifacts=[],documents=[],knowledge=[],warnings=[],onPreview}){
     const all=entries(artifacts,documents,knowledge), params=new URLSearchParams(location.search);

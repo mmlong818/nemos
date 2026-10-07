@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { resolveLLM } from "../../examples/companion/llm.js";
 
-test("live task chat forwards the requested long-output token budget", async () => {
+test("live task chat caps a requested long output at the shared per-call budget", async () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.ZHIPU_API_KEY;
   const requestBodies: Record<string, unknown>[] = [];
@@ -33,7 +33,7 @@ test("live task chat forwards the requested long-output token budget", async () 
     });
 
     assert.equal(reply, "done");
-    assert.equal(requestBodies[0]?.max_tokens, 6000);
+    assert.equal(requestBodies[0]?.max_tokens, 4096);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.ZHIPU_API_KEY;

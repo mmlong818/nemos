@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
 /** chat：聊天回复；feed / watch / ideas：动态、帮我盯着、点子的后台调用。/状态 要分开讲。 */
-export const LLM_CALL_PURPOSES = ["chat", "task_turn", "team_plan", "team_worker", "team_review", "team_final", "memory_extract", "completion_verify", "feed", "watch", "ideas", "other"] as const;
+export const LLM_CALL_PURPOSES = ["chat", "task_turn", "team_plan", "team_worker", "team_review", "team_final", "memory_extract", "completion_verify", "feed", "watch", "ideas", "tool_text", "other"] as const;
 export type LlmCallPurpose = (typeof LLM_CALL_PURPOSES)[number];
 export type LlmCallStatus = "in_progress" | "completed" | "failed" | "cancelled" | "interrupted";
 export interface LlmCallUsage {

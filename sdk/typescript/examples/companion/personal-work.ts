@@ -184,6 +184,22 @@ export class PersonalWorkStore {
     this.db.prepare("DELETE FROM personal_records WHERE user_id=? AND kind='goal' AND id=?").run(user, id);
   }
   proposals(user: string) { return this.records<LearningProposal>(user, "learning").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); }
+  /** A forgotten memory must not remain an apparently active confirmed learning. */
+  revokeForgottenMemory(user: string, memoryId: string): string[] {
+    return this.db.transaction(() => {
+      const affected: string[] = [];
+      for (const proposal of this.proposals(user)) {
+        if (proposal.memoryId !== memoryId || !["confirmed", "revoking"].includes(proposal.state)) continue;
+        const redacted: LearningProposal = {
+          ...proposal, state: "revoked", content: "", source: { ...proposal.source, excerpt: "" },
+          revision: proposal.revision + 1, updatedAt: new Date().toISOString(),
+        };
+        this.put(user, "learning", redacted);
+        affected.push(proposal.id);
+      }
+      return affected;
+    })();
+  }
   propose(user: string, input: { kind?: unknown; content?: unknown; source?: Partial<LearningProposal["source"]> }): LearningProposal {
     if (!["preference", "decision", "constraint"].includes(String(input.kind))) throw new PersonalWorkError("请选择偏好、决定或约束");
     const content = text(input.content, "待确认内容", 1000, true);

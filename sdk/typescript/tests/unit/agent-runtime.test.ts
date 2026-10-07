@@ -413,6 +413,119 @@ test("fails closed when tool input validation throws", async () => {
   assert.equal(authorizations, 0);
   assert.match(toolMessage?.content ?? "", /validation failed: validator unavailable/);
 });
+
+test("rejects tool output that violates its output schema and records no success receipt", async () => {
+  const events: Array<{ type: string; result?: { content: string; isError?: boolean } }> = [];
+  let executions = 0;
+  let authorizations = 0;
+  const writeTool: AgentTool = {
+    definition: {
+      name: "save_record",
+      description: "Save one record",
+      inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false },
+      outputSchema: {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+          data: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false },
+        },
+        required: ["content", "data"],
+        additionalProperties: false,
+      },
+      effect: "write",
+    },
+    execute: async () => {
+      executions++;
+      return { content: "saved", data: {} };
+    },
+  };
+  const runtime = new AgentRuntime(modelFrom([
+    { text: "", toolCalls: [{ id: "save-1", name: "save_record", arguments: { id: "record-1" } }] },
+    { text: "The record was not confirmed." },
+  ]), [writeTool], {
+    authorizeTool: async () => { authorizations++; return { allowed: true }; },
+  });
+
+  const result = await runtime.run({
+    sessionId: "output-schema-reject",
+    systemPrompt: "system",
+    prompt: "save record",
+    onEvent: (event) => events.push(event as { type: string; result?: { content: string; isError?: boolean } }),
+  });
+  const toolEnd = events.find((event) => event.type === "tool_end");
+  const toolMessage = result.messages.find((message) => message.role === "tool" && message.name === "save_record");
+
+  assert.equal(authorizations, 1, "valid input is authorized before the tool runs");
+  assert.equal(executions, 1, "the fake tool returns a structurally invalid result");
+  assert.equal(toolEnd?.result?.isError, true);
+  assert.match(toolEnd?.result?.content ?? "", /tool output validation failed: \$\.data\.id is required/);
+  assert.match(toolMessage?.content ?? "", /tool output validation failed/);
+  assert.equal(result.disposition.state === "completed" && result.disposition.evidence.some((item) => item.kind === "tool_receipt"), false);
+});
+
+test("does not accept inherited fields as a valid tool output contract", async () => {
+  const prototype = { content: "saved", data: { id: "record-1" } };
+  const malformed = Object.create(prototype) as { content: string; data: { id: string } };
+  const tool: AgentTool = {
+    definition: {
+      name: "read_record",
+      description: "Read one record",
+      inputSchema: { type: "object", additionalProperties: false },
+      outputSchema: {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+          data: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false },
+        },
+        required: ["content", "data"],
+        additionalProperties: false,
+      },
+      effect: "read",
+    },
+    execute: async () => malformed,
+  };
+  const events: Array<{ type: string; result?: { content: string; isError?: boolean } }> = [];
+  const result = await new AgentRuntime(modelFrom([
+    { text: "", toolCalls: [{ id: "read-1", name: "read_record", arguments: {} }] },
+    { text: "The record was not confirmed." },
+  ]), [tool]).run({
+    sessionId: "inherited-output-fields",
+    systemPrompt: "system",
+    prompt: "read record",
+    onEvent: (event) => events.push(event as { type: string; result?: { content: string; isError?: boolean } }),
+  });
+  const toolEnd = events.find((event) => event.type === "tool_end");
+  assert.equal(toolEnd?.result?.isError, true);
+  assert.match(toolEnd?.result?.content ?? "", /tool output validation failed/);
+  assert.equal(result.disposition.state === "completed" && result.disposition.evidence.some((item) => item.kind === "artifact"), false);
+});
+
+test("enforces the base result envelope even when no output schema is declared", async () => {
+  const tool: AgentTool = {
+    definition: {
+      name: "read_record",
+      description: "Read one record",
+      inputSchema: { type: "object", additionalProperties: false },
+      effect: "read",
+    },
+    execute: async () => ({ content: 42 } as unknown as { content: string }),
+  };
+  const events: Array<{ type: string; result?: { content: string; isError?: boolean } }> = [];
+  const result = await new AgentRuntime(modelFrom([
+    { text: "", toolCalls: [{ id: "read-2", name: "read_record", arguments: {} }] },
+    { text: "The record was not confirmed." },
+  ]), [tool]).run({
+    sessionId: "base-output-envelope",
+    systemPrompt: "system",
+    prompt: "read record",
+    onEvent: (event) => events.push(event as { type: string; result?: { content: string; isError?: boolean } }),
+  });
+  const toolEnd = events.find((event) => event.type === "tool_end");
+  const toolMessage = result.messages.find((message) => message.role === "tool" && message.name === "read_record");
+  assert.equal(toolEnd?.result?.isError, true);
+  assert.match(toolMessage?.content ?? "", /tool output validation failed/);
+  assert.equal(result.disposition.state === "completed" && result.disposition.evidence.some((item) => item.kind === "tool_receipt"), false);
+});
 test("denies write tools unless an authorization handler explicitly allows them", async () => {
   let executions = 0;
   const events: string[] = [];

@@ -60,7 +60,9 @@ import { LONG_FORM_EXPERT_IDS } from "./experts.js";
 import {
   dependencyArtifactBlock,
 } from "./expert-contracts.js";
-import { resolveLLM, searchWeb, turnDispositionUserMessage, type ResolvedLLM } from "./llm.js";
+import { configurePersistentModelBudgetStore, resolveLLM, searchWeb, turnDispositionUserMessage, type ResolvedLLM } from "./llm.js";
+import { ModelBudgetStore } from "./model-budget-store.js";
+import { resolveToolZhipuKey, zhipuToolChat, zhipuToolChatOrSource } from "./tool-text-model.js";
 import { FileLlmCallLedger } from "./llm-call-ledger.js";
 import { checkCompanionChatModel, checkSingleCompanionModel } from "./model-readiness.js";
 import { supportedReasoningEfforts, resolveReasoningPreference, type ReasoningEffort } from "./model-reasoning.js";
@@ -132,6 +134,7 @@ import { openAIImage, openAISpeech, openAITranscribe, openAIVision, speechProbeW
 import { PROVIDER_CATALOG, officialProviderEndpoint, providerCatalogEntry, type ProviderId } from "./provider-catalog.js";
 import { discoverOfficialProviderCatalog, resolveOfficialProviderBaseUrl } from "./provider-catalog-discovery.js";
 import { COMPANION_MEMORY_FEATURES } from "./memory-config.js";
+import { MemoryForgetCoordinator } from "./memory-forget.js";
 import {
   aggregateCompanionCosts,
   estimateCompanionModelCost,
@@ -210,7 +213,7 @@ import { onboardingMessages } from "./onboarding.js";
 import { ProactiveError, ProactiveStore, feedDue, inQuietHours } from "./proactive.js";
 import { IdeaError, IdeaStore, ideaPrompt, parseIdeas, type IdeaCard } from "./ideas.js";
 import { WatchError, WatchStore, parseWatchCheck, watchCheckPrompt } from "./watch.js";
-import { FeedError, FeedStore, feedPlanPrompt, feedWritePrompt, parseFeedPlan, parseFeedPosts, type FeedBatch, type FeedCandidateSource, type FeedContext, type FeedPost } from "./feed.js";
+import { FeedError, FeedStore, feedFailureNote, feedPlanPrompt, feedReasoningEffort, feedWritePrompt, parseFeedPlan, parseFeedPosts, type FeedBatch, type FeedCandidateSource, type FeedContext, type FeedPost } from "./feed.js";
 import { AssistantBotStore, AssistantTeamError, normalizeTeamRequest, teamRequestHash, runAssistantTeam, formatTeamDeliveryText, validateTeamDelivery, type TeamReceipt } from "./assistant-team.js";
 import { FileStepReceiptStore } from "./structured-handoff.js";
 import { listBotMarket } from "./bot-market.js";
@@ -233,10 +236,11 @@ import { createToolRoutes } from "./routes/tools.js";
 import { createSystemRoutes } from "./routes/system.js";
 import { createSourceRoutes } from "./routes/sources.js";
 import { createCapabilityRoutes } from "./routes/capabilities.js";
+import { CollaborationLedger, currentCollaborationPlanMatches, executeCollaboration, type CollaborationPlan } from "./collaboration-ledger.js";
 import { createPantheonRoutes } from "./routes/pantheon.js";
 import { createUpdateRoutes } from "./routes/update.js";
 import { AppUpdateChecker } from "./app-update.js";
-import { PantheonService } from "./pantheon.js";
+import { PantheonService, pantheonReasoningEffort } from "./pantheon.js";
 import { ThoughtLibraryStore } from "./thought-library.js";
 
 const REQUESTED_PORT = Number(process.env.PORT ?? 8787);
@@ -253,6 +257,15 @@ mkdirSync(DATA_DIR, { recursive: true });
 const pendingSyncRestore = applyPendingDataRestore(DATA_DIR);
 recoverAgentJobStorage(DATA_DIR, DATA_DIR === defaultDataDir ? legacyDataDir : undefined);
 migrateStoredPersonaIdentities(DATA_DIR);
+const modelBudgetStore = new ModelBudgetStore(join(DATA_DIR, "model-call-policy.db"));
+configurePersistentModelBudgetStore(modelBudgetStore);
+// Only closed detail rows expire. Owner tombstones remain to prevent reissuing a replayed task.
+const collectModelBudgetDetails = () => {
+  try { modelBudgetStore.collectClosed(Date.now() - 24 * 60 * 60_000); }
+  catch (error) { console.warn(`[model-budget] detail collection failed: ${String(error)}`); }
+};
+collectModelBudgetDetails();
+setInterval(collectModelBudgetDetails, 60 * 60_000).unref();
 const MANIFEST_FILE = resolveManifestPath();
 const APP_MANIFEST = readManifest();
 const MEMORY_CORE_INFO = readMemoryCoreInfo();
@@ -320,7 +333,6 @@ const UNSANDBOXED_NOTICE_FILE = runtimePath("COMPANION_UNSANDBOXED_NOTICE", "uns
 /** 投递用尽重试的编号；从注册表取，避免编号在两处各写一遍。 */
 const DELIVERY_EXHAUSTED_CODE = failureShapeByName("deliveryAttemptsExhausted")!.code;
 let X_OAUTH_REDIRECT = `http://127.0.0.1:${PORT}/api/sources/x/oauth/callback`;
-const TOOL_ZHIPU_CHAT_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const agentEventClients = new Set<ServerResponse>();
 
 function broadcastAgentSse(name: "job" | "run" | "approval", event: unknown): void {
@@ -471,6 +483,7 @@ let llm = resolveLLM(runtimeModelConnection(modelConnection));
 // 显式检查通过后要就地同步到它（见 saveModelVaultRecord），否则聊天层拦到重启。
 let runtimeConnection = llm.connection;
 let mem = makeMem();
+const memoryForget = new MemoryForgetCoordinator(join(DATA_DIR, "memory-forget-receipts.json"), DB, () => mem, personalWork, USER);
 let engine = makeEngine();
 
 function resolveChatInvocation(scene: ModelScene, requestModel?: string, requestEffort?: ReasoningEffort | "auto"): { model?: string; reasoningEffort?: ReasoningEffort } {
@@ -529,6 +542,7 @@ const pantheon = new PantheonService({
   scopeId: `${USER}:${CLIENT_SESSION || "local"}`,
   completion: (request) => {
     const policy = resolveChatInvocation("pantheon");
+    const reasoningEffort = pantheonReasoningEffort(modelConnection, policy.model, policy.reasoningEffort);
     return llm.chat(
     request.system,
     request.user,
@@ -545,13 +559,25 @@ const pantheon = new PantheonService({
       sessionId: request.sessionId,
       runId: request.runId,
       toolMode: "off",
-      reasoningEffort: policy.reasoningEffort,
-      runtimeLimits: { maxRounds: 1, maxToolRounds: 0, maxTotalTokens: request.maxTokens, maxOutputChars: 4_000 },
+      reasoningEffort,
+      runtimeLimits: { maxRounds: 1, maxToolRounds: 0, maxTotalTokens: Math.min(16_000, request.maxTokens * 3), maxOutputChars: 4_000 },
       llmPurpose: "other",
     },
   ); },
 });
 const agentRunStore = new FileAgentRunStore(AGENT_RUNS_FILE);
+function closeCompletedAgentBudget(runId: string): void {
+  const stored = agentRunStore.get(runId);
+  // A team stage uses an owner key distinct from its run ID. Only a complete
+  // owner run can terminate the budget shared by its own attempts.
+  if (stored?.status !== "completed" || stored.disposition?.state !== "completed"
+    || stored.metadata?.budgetPolicyVersion !== "3" || !stored.metadata.budgetIdentity
+    || stored.metadata.budgetOwnerKey !== runId) return;
+  try { modelBudgetStore.closeOwner("companion", runId, stored.metadata.budgetIdentity); }
+  catch (error) { console.warn(`[model-budget] Agent close failed: ${String(error)}`); }
+}
+// Repair a crash after the run log's terminal write but before budget close.
+for (const run of agentRunStore.list({ limit: 500, status: "completed" })) closeCompletedAgentBudget(run.runId);
 const llmCallLedger = new FileLlmCallLedger(LLM_CALL_LEDGER_FILE);
 const agentApprovalStore = new FileAgentApprovalStore(AGENT_APPROVALS_FILE, { onChange: broadcastApprovalEvent });
 const workGuidelineStore = new WorkGuidelineStore(WORK_GUIDELINES_FILE);
@@ -665,6 +691,7 @@ const agentRunObserver: AgentRunObserver = {
   },
   onComplete: (runId, result) => {
     agentRunStore.onComplete(runId, result);
+    closeCompletedAgentBudget(runId);
     broadcastAgentSse("run", { action: "completed", runId, sessionId: result.sessionId, reason: result.reason });
   },
   onError: (runId, error) => {
@@ -767,6 +794,22 @@ const capabilities = new CapabilityRuntime({
 });
 const scheduledTaskHandoffs = new FileScheduledTaskHandoffStore(SCHEDULED_TASK_HANDOFFS_FILE);
 const agentJobQueue = new FileAgentJobQueue(AGENT_JOBS_FILE, { onChange: broadcastAgentEvent });
+function closeCompletedTeamBudget(jobId: string): void {
+  const job = agentJobQueue.get(jobId);
+  if (job?.type !== "assistant-team" || job.status !== "succeeded"
+    || job.disposition?.state !== "completed" || !job.idempotencyKey
+    || job.metadata?.budgetPolicyVersion !== "3" || !job.metadata.budgetIdentity) return;
+  try { modelBudgetStore.closeOwner("companion", job.idempotencyKey, job.metadata.budgetIdentity); }
+  catch (error) { console.warn(`[model-budget] team close failed: ${String(error)}`); }
+}
+agentJobQueue.subscribe((event) => {
+  if (event.action === "completed") closeCompletedTeamBudget(event.job.id);
+});
+// Repair the small crash window between the durable job completion and budget close.
+for (const job of agentJobQueue.list({ limit: 5000 })) {
+  if (job.type === "assistant-team" && job.status === "succeeded") closeCompletedTeamBudget(job.id);
+}
+const collaborationLedger = new CollaborationLedger(join(DATA_DIR, "collaboration-receipts-v1"));
 const assistantTeamStepReceipts = new FileStepReceiptStore(ASSISTANT_TEAM_STEP_RECEIPTS_FILE);
 const runningTaskSteering = new RunningTaskSteeringStore(RUNNING_TASK_STEERING_FILE);
 attachScheduledTaskHandoffProjection(agentJobQueue, scheduledTaskHandoffs, {
@@ -802,7 +845,7 @@ function enqueueAssistantTeam(raw: Record<string, unknown>) {
   const teamPlan = assistantBots.plan(USER, { ...request, model: request.model || modelConnection.model }, {planning: request.planningConsent === true});
   return agentJobQueue.enqueue({ type: "assistant-team",
     payload: { title: request.objective.slice(0, 100), teamPlan, requestHash: teamRequestHash(request), connectionFingerprint: teamConnectionFingerprint() },
-    metadata: { userId: USER, requestedBy: APP_PERSONA_ID }, idempotencyKey,
+    metadata: { userId: USER, requestedBy: APP_PERSONA_ID, budgetIdentity: randomUUID(), budgetPolicyVersion: "3" }, idempotencyKey,
     sideEffectRisk: false, deliveryRequired: false, maxAttempts: 1, timeoutMs: 9 * 60_000 });
 }
 
@@ -1062,6 +1105,7 @@ const agentOrchestrator = new AgentOrchestrator(async (input) => {
 }, { maxSubtasks: 8, maxParallel: 3 });
 const agentJobWorker = new AgentJobWorker(agentJobQueue, {
   "assistant-team": async (job, context) => {
+    if (!job.metadata?.budgetIdentity || job.metadata.budgetPolicyVersion !== "3" || !job.idempotencyKey) throw new AssistantTeamError("旧协作任务缺少持久预算身份，请新建任务", 409);
     if (!llm.live || !modelConnection || job.payload.connectionFingerprint !== teamConnectionFingerprint()) {
       throw new AssistantTeamError("模型连接已改变或不可用；不会把共享材料发送到另一服务，请新建任务", 409);
     }
@@ -1214,6 +1258,46 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
     if (!llm.live || !modelConnection || job.payload.connectionFingerprint !== teamConnectionFingerprint()) {
       throw new Error("模型连接已改变或不可用；不会把排队协作发送到另一服务，请重新确认后新建任务。");
     }
+    if (job.payload.collaborationPlan) {
+      const plan = job.payload.collaborationPlan as CollaborationPlan;
+      const task = capabilities.snapshot().tasks.find((item) => item.id === plan.taskId);
+      if (!task || !currentCollaborationPlanMatches(plan, task)) throw new Error("任务要求、技能契约或冻结计划已经变化，请重新预览");
+      const findArtifact = (id: string) => capabilities.artifactHandoff(id)?.artifact;
+      const steps = await executeCollaboration({
+        plan, jobId: job.id, rootRequestId: job.metadata?.rootRequestId, actionRunId: job.metadata?.actionRunId,
+        ledger: collaborationLedger, findArtifact, signal: context.signal,
+        artifactBelongsToStep: (artifact, step, receipt) => {
+          const sourceTask = capabilities.snapshot().tasks.find((item) => item.id === artifact.taskId);
+          return !!sourceTask?.oneOff && sourceTask.origin?.kind === "orchestration" &&
+            sourceTask.origin.parentJobId === receipt.jobId && sourceTask.origin.conversationId === receipt.jobId &&
+            sourceTask.origin.collaborationStepId === step.stepId && sourceTask.capabilityId === step.capabilityId &&
+            (!receipt.rootRequestId || sourceTask.origin.rootRequestId === receipt.rootRequestId) &&
+            (!receipt.actionRunId || sourceTask.origin.actionRunId === receipt.actionRunId) &&
+            (!receipt.invocationId || sourceTask.origin.invocationId === receipt.invocationId) &&
+            sourceTask.personaId === step.personaId && sourceTask.instruction === step.instruction;
+        },
+        runStep: async (step) => {
+          const invocationId = `collaboration-${job.id}-${step.stepId}`;
+          return (await capabilities.runAdHocTask({
+            title: `${task.title} · ${step.title}`,
+            personaId: step.personaId, capabilityId: step.capabilityId,
+            instruction: step.instruction, format: step.format, memoryMode: "off",
+            trigger: invocationId,
+            runId: invocationId,
+            origin: { kind: "orchestration", parentJobId: job.id, conversationId: job.id, collaborationStepId: step.stepId,
+              rootRequestId: job.metadata?.rootRequestId, actionRunId: job.metadata?.actionRunId, invocationId },
+          }, context.signal)).artifact;
+        },
+        onStep: (step) => context.checkpoint(`步骤 ${step.stepId}：${step.status}`, undefined,
+          { stepId: step.stepId, status: step.status, receipt: step.receipt }),
+      });
+      const succeeded = steps.filter((step) => step.status === "succeeded");
+      const pending = steps.filter((step) => step.status !== "succeeded");
+      const summary = `${succeeded.length}/${steps.length} 项技能成果已保存${pending.length ? `；${pending.map((step) => `${step.stepId} ${step.status}`).join("、")}，需处理` : "，按编号提供原始文件"}`;
+      if (pending.length) throw new Error(summary);
+      return { summary, artifactRefs: succeeded.map((step) => `artifact:${step.receipt!.artifactId}`),
+        data: { collaboration: { planHash: plan.planHash, steps: succeeded.map((step) => ({ stepId: step.stepId, artifactId: step.receipt?.artifactId })) } } };
+    }
     const objective = String(job.payload.objective || "").trim();
     const taskId = String(job.payload.taskId || "").trim();
     const tasks = Array.isArray(job.payload.tasks) ? job.payload.tasks : [];
@@ -1250,6 +1334,7 @@ const agentJobWorker = new AgentJobWorker(agentJobQueue, {
       },
     });
     context.checkpoint("子任务汇总完成", 100);
+    if (result.status !== "succeeded") throw new Error(`协作未完成：${result.status}；${result.tasks.filter((item) => item.status !== "succeeded").map((item) => `${item.id} ${item.status}`).join("、")}`);
     if (taskId) capabilities.recordTaskStorylineEvent({
       id: taskId,
       type: "result",
@@ -1605,7 +1690,9 @@ function wireAgentTools(target: ResolvedLLM): void {
     input,
     (next) => agentApprovalStore.authorize(next),
     (reason) => ({ allowed: false, reason }),
-    (reason) => ({ allowed: true, reason }),
+    (reason) => ["goal_save", "goal_log_progress", "personal_work_save", "capability_task_create"].includes(input.call.name)
+      ? agentApprovalStore.authorize(input)
+      : { allowed: true, reason },
   ));
 }
 
@@ -2483,12 +2570,10 @@ function toolZhipuKey(): { key: string | null; source: "tool" | "env" | "llm" | 
   try {
     if (saved.provider === "windows-dpapi" && saved.zhipuCipher) {
       const key = unprotectSecret(saved.zhipuCipher).trim();
-      if (key) return { key, source: "tool" };
+      if (key) return resolveToolZhipuKey(key, process.env.TOOL_ZHIPU_API_KEY, process.env.ZHIPU_API_KEY);
     }
   } catch { /* ignore broken saved key */ }
-  if (process.env.TOOL_ZHIPU_API_KEY) return { key: process.env.TOOL_ZHIPU_API_KEY, source: "env" };
-  if (process.env.ZHIPU_API_KEY) return { key: process.env.ZHIPU_API_KEY, source: "llm" };
-  return { key: null, source: "none" };
+  return resolveToolZhipuKey(null, process.env.TOOL_ZHIPU_API_KEY, process.env.ZHIPU_API_KEY);
 }
 
 function toolSettingsSummary(): {
@@ -2592,28 +2677,6 @@ function toolTranslateLangPair(source: string, mode: ToolSettings["translateMode
   return /[\u3400-\u9fff]/.test(source) ? "zh-CN|en" : "en|zh-CN";
 }
 
-async function zhipuToolChat(apiKey: string, model: string, system: string, user: string, maxTokens = 1200): Promise<string> {
-  const resp = await fetch(TOOL_ZHIPU_CHAT_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      temperature: 0.2,
-      max_tokens: maxTokens,
-      thinking: { type: "disabled" },
-    }),
-  });
-  if (!resp.ok) {
-    throw new Error(`[tool] zhipu chat HTTP ${resp.status}: ${(await resp.text()).slice(0, 180)}`);
-  }
-  const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content?.trim() || "";
-}
-
 async function runToolTranslateText(text: string): Promise<{ text: string; provider: string }> {
   const settings = loadToolSettings();
   const source = text.trim();
@@ -2628,6 +2691,7 @@ async function runToolTranslateText(text: string): Promise<{ text: string; provi
       `你是翻译工具。任务：${direction}。只输出译文，不解释，不加标题。`,
       source,
       Math.min(2400, Math.max(800, source.length * 3)),
+      llmCallLedger,
     );
     return { text: result, provider: `zhipu:${settings.translateModel}` };
   }
@@ -2675,6 +2739,7 @@ async function runToolPolishText(text: string): Promise<{ text: string; provider
       `你是文字润色工具。任务：${styleText}。不要改变事实，不要扩写新信息，只输出润色后的正文。`,
       source,
       Math.min(2400, Math.max(800, source.length * 2)),
+      llmCallLedger,
     );
     return { text: result, provider: `zhipu:${settings.polishModel}` };
   }
@@ -2687,7 +2752,7 @@ async function runToolAsrCorrectText(text: string): Promise<{ text: string; prov
   if (!source) throw new Error("missing text");
   const key = toolZhipuKey();
   if (settings.asrLiveCorrection && key.key && settings.polishProvider === "zhipu") {
-    const result = await zhipuToolChat(
+    const result = await zhipuToolChatOrSource(
       key.key,
       settings.polishModel,
       [
@@ -2698,8 +2763,9 @@ async function runToolAsrCorrectText(text: string): Promise<{ text: string; prov
       ].join("\n"),
       source,
       Math.min(2600, Math.max(900, source.length * 2)),
+      llmCallLedger,
     );
-    return { text: result || source, provider: `zhipu:${settings.polishModel}` };
+    return { text: result, provider: `zhipu:${settings.polishModel}` };
   }
   return { text: localToolPolishText(source, settings.polishStyle), provider: "local" };
 }
@@ -3696,21 +3762,24 @@ async function feedContext(): Promise<FeedContext> {
   };
 }
 
-function feedModelContext(scope: string, maxOutputChars: number) {
+function feedModelContext(scope: string, maxOutputChars: number, model: string | undefined, budgetIdentity = randomUUID()) {
   // 账本里按用途分开记，/状态 才讲得清今天的调用花在哪。
   const llmPurpose = scope.startsWith("feed") ? "feed" as const : scope === "watch" ? "watch" as const : scope === "ideas" ? "ideas" as const : "other" as const;
   return {
     llmPurpose,
+    budgetIdentity,
+    budgetOwnerKey: budgetIdentity,
     sessionId: `feed-${randomBytes(6).toString("hex")}`, userId: USER, personaId: APP_PERSONA_ID,
     instruction: "生成个人动态", scope, memoryScopes: [], mode: "task" as const, toolMode: "off" as const,
-    // 低推理强度：思考模型会把 max_tokens 吃在推理上，正文反而是空的（实测过）。
-    reasoningEffort: "low" as const,
+    // 仅在当前型号明确支持时限为 low；未知型号由模型适配器使用默认设置。
+    reasoningEffort: feedReasoningEffort(modelConnection, model),
     runtimeLimits: { maxRounds: 1, maxToolRounds: 0, maxTotalTokens: 16_000, maxOutputChars },
   };
 }
 
 async function generateFeedNow(): Promise<{ batch: FeedBatch; posts: FeedPost[] }> {
   const batchId = randomUUID();
+  const budgetIdentity = randomUUID();
   let queries: string[] = [];
   try {
     if (!llm.live) throw new FeedError("还没有连接模型，没法生成动态", 409);
@@ -3721,7 +3790,7 @@ async function generateFeedNow(): Promise<{ batch: FeedBatch; posts: FeedPost[] 
     let searchNote: string;
     if (key) {
       const plan = feedPlanPrompt(ctx);
-      queries = parseFeedPlan(await llm.chat(plan.system, plan.user, model, 600, feedModelContext("feed-plan", 2_000)));
+      queries = parseFeedPlan(await llm.chat(plan.system, plan.user, model, 600, feedModelContext("feed-plan", 2_000, model, budgetIdentity)));
       const results = await Promise.allSettled(queries.map((query) => searchWeb(key, query)));
       const seen = new Set<string>();
       for (const result of results) {
@@ -3743,7 +3812,7 @@ async function generateFeedNow(): Promise<{ batch: FeedBatch; posts: FeedPost[] 
       searchNote = "联网搜索没有配置，这次只根据你的目标和事项写，没有新消息";
     }
     const write = feedWritePrompt(ctx, sources, searchNote);
-    const reply = await llm.chat(write.system, write.user, model, 2_400, feedModelContext("feed-write", 8_000));
+    const reply = await llm.chat(write.system, write.user, model, 2_400, feedModelContext("feed-write", 8_000, model, budgetIdentity));
     const posts = parseFeedPosts(reply, sources, ctx.recentTitles, batchId);
     const batch: FeedBatch = {
       id: batchId, at: new Date().toISOString(), queries,
@@ -3754,7 +3823,7 @@ async function generateFeedNow(): Promise<{ batch: FeedBatch; posts: FeedPost[] 
     return { batch, posts };
   } catch (error) {
     // 失败也记一批：用户能看到"那次没成"和原因，而不是按钮转一圈什么都没有。
-    const batch: FeedBatch = { id: batchId, at: new Date().toISOString(), queries, status: "failed", note: `这次没生成出来：${userFacingMessage(error)}` };
+    const batch: FeedBatch = { id: batchId, at: new Date().toISOString(), queries, status: "failed", note: feedFailureNote(error) };
     feedStore.addBatch(batch, []);
     return { batch, posts: [] };
   }
@@ -3782,7 +3851,7 @@ async function runWatchNow(): Promise<{ checked: number; alerts: number }> {
       const results = await searchWeb(key, item.text);
       const sources = results.filter((x) => x.url).slice(0, 6).map((x) => ({ title: x.title, url: x.url, content: x.content }));
       const prompt = watchCheckPrompt(item, sources, today);
-      const judged = parseWatchCheck(await llm.chat(prompt.system, prompt.user, model, 800, feedModelContext("watch", 2_000)), sources);
+      const judged = parseWatchCheck(await llm.chat(prompt.system, prompt.user, model, 800, feedModelContext("watch", 2_000, model)), sources);
       const alert = watchStore.record(item.id, judged.notify
         ? { status: "alerted", summary: judged.summary, alert: { message: judged.message, sources: judged.sources } }
         : { status: "quiet", summary: judged.summary });
@@ -3811,7 +3880,7 @@ async function generateIdeasNow(): Promise<{ ideas: IdeaCard[]; note: string }> 
   const activeGoals = personalWork.listGoals(USER).filter((g) => g.status === "active").slice(0, 8).map((g) => ({ id: g.id, title: g.title }));
   const prompt = ideaPrompt({ today: ctx.today, goals: ctx.goals, goalTitles: activeGoals.map((g) => g.title), matters: ctx.matters, preferences: ctx.preferences, feedTopic: ctx.prompt, topics: ctx.topics, taste });
   const model = modelConnection ? dailyChatModelForConnection(modelConnection) : undefined;
-  const reply = await llm.chat(prompt.system, prompt.user, model, 2_400, feedModelContext("ideas", 8_000));
+  const reply = await llm.chat(prompt.system, prompt.user, model, 2_400, feedModelContext("ideas", 8_000, model));
   const ideas = parseIdeas(reply, taste.recent, new Date(), activeGoals);
   ideaStore.add(ideas);
   const basis = [ctx.goals.length ? `${ctx.goals.length} 个目标` : "", ctx.matters.length ? `${ctx.matters.length} 件事项` : "", ctx.preferences.length ? "记住的偏好" : ""].filter(Boolean).join("、");
@@ -4761,7 +4830,7 @@ function buildApiRoutes(): RouteTable {
   officeWorkbenchState,
   agentUserActions,
 }))
-  .add(...createCapabilityRoutes({ USER, WEB_DIR, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, readBody, send, teamConnectionFingerprint }))
+  .add(...createCapabilityRoutes({ USER, WEB_DIR, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, collaborationLedger, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, readBody, send, teamConnectionFingerprint }))
   .add(...createSourceRoutes({ DATA_DIR, X_OAUTH_REDIRECT, agentUserActions, clearSavedXToken, completeXOAuth, consumePendingXOAuthState, knowledgeLibrary, marketData, modelConnectionUserMessage, readBody, saveSavedXToken, savedXTokenExists, send, startXOAuth, xOAuthCallbackHtml }))
   .add(...createSystemRoutes({ APP_MANIFEST, MANIFEST_FILE, MEMORY_CORE_INFO, UNSANDBOXED_NOTICE_FILE, USER, agentApprovalStore, agentExtensions, agentJobQueue, agentUserActions, capabilities, createExtensionProvider, currentPlatformConnectors, jobWithDelivery, knowledgeLibrary, listAgentRuns, llmCallLedger, memoryConsolidationStatus, modelConnectionStatus, pendingSyncRestore, personalWork, productReviewRuns, readBody, readDataSyncSettings, relationships, saveDataSyncSettings, send, unsandboxedNotice }))
   .add(...createToolRoutes({ agentUserActions, loadToolSettings, personaToolBindings, readBody, runToolAsrCorrectText, runToolPolishText, runToolTranslateText, saveToolSettings, send, toolSettingsSummary }))
@@ -5027,7 +5096,10 @@ const server = createServer(async (req, res) => {
       // 并且点名它只适用于这一个工具，不会顺手放开其它动作。
       let guideline: ReturnType<typeof userGuideline> | undefined;
       let guidelineError: string | undefined;
-      if (body.always === true && before) {
+      // A tool-name guideline would outlive and exceed the reviewed action/object scope.
+      if (body.always === true && body.allowed === true) {
+        guidelineError = "按动作与对象授权后，不支持对整个工具永久放行。";
+      } else if (body.always === true && before) {
         try {
           guideline = workGuidelineStore.add(userGuideline({
             text: `自动允许「${before.tool.name}」，无需每次询问。`,
@@ -5277,6 +5349,20 @@ const server = createServer(async (req, res) => {
       if (body.kind === "capability-task" && !body.taskId) {
         send(res, 400, { error: "missing taskId" });
         return;
+      }
+      if (body.kind === "capability-task") {
+        const prior = agentJobQueue.list({ limit: 5000 })
+          .filter((job) => job.type === "capability-task" && job.payload.taskId === body.taskId)
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+        if (prior && ["queued", "running", "failed", "uncertain"].includes(prior.status)) {
+          send(res, 409, {
+            error: prior.status === "uncertain" ? "上次执行结果待核对，请先在运行记录中核对，避免重复写入。"
+              : prior.status === "failed" ? "上次执行失败，请从运行记录审阅回执并确认重试。"
+              : "这项任务已在等待或执行中。",
+            priorJobId: prior.id,
+          });
+          return;
+        }
       }
       if (body.kind === "capability-adhoc" && (!body.capabilityId || !body.instruction)) {
         send(res, 400, { error: "missing capabilityId or instruction" });
@@ -6894,30 +6980,31 @@ const server = createServer(async (req, res) => {
       send(res, 200, { ok: true, operationId: action.value.id, auditRunId: action.runId });
       return;
     }
-    if (req.method === "POST" && url === "/api/memory/forget") {
+    if (req.method === "POST" && url === "/api/memory/forget/preview") {
       const body = (await readBody(req)) as { id?: string };
       const id = String(body.id || "").trim();
-      if (!id) {
-        send(res, 400, { error: "缺少记忆编号" });
-        return;
-      }
-      const store = mem.forUser(USER);
-      const archival = await store.listByLayer("archival", { limit: 100000 });
-      if (archival.some((item) => item.id === id)) {
-        send(res, 400, { error: "原始归档受保护，不能从这里删除" });
-        return;
-      }
-      const action = await agentUserActions.execute({
-        name: "memory_item_forget",
-        description: "删除用户在记忆页面选中的一条分类记忆",
-        arguments: { memoryId: id, archivalPreserved: true },
-        execute: async () => {
-          await store.forget(id);
-          return { id };
-        },
-        summarizeResult: (value) => ({ ok: true, memoryId: value.id }),
-      });
-      send(res, 200, { ok: true, auditRunId: action.runId });
+      if (!id) { send(res, 400, { error: "缺少记忆编号" }); return; }
+      try { send(res, 200, { ok: true, preview: await memoryForget.preview(id) }); }
+      catch (error) { send(res, (error as { status?: number }).status ?? 500, { error: (error as Error).message }); }
+      return;
+    }
+    if (req.method === "GET" && url === "/api/memory/forget/latest") {
+      send(res, 200, { receipt: memoryForget.latest() });
+      return;
+    }
+    if (req.method === "POST" && url === "/api/memory/forget") {
+      const body = (await readBody(req)) as { token?: string; confirmed?: boolean };
+      if (!body.token || body.confirmed !== true) { send(res, 409, { error: "请先查看影响预览，并在页面明确确认" }); return; }
+      try {
+        const action = await agentUserActions.execute({
+          name: "memory_item_forget",
+          description: "执行用户确认过影响范围的记忆遗忘",
+          arguments: { confirmationTokenHash: createHash("sha256").update(body.token).digest("hex"), archivalPreserved: true },
+          execute: () => memoryForget.confirm(body.token!, true),
+          summarizeResult: (receipt) => ({ ok: receipt.status === "complete", receiptId: receipt.id, status: receipt.status }),
+        });
+        send(res, 200, { ok: true, receipt: action.value, auditRunId: action.runId });
+      } catch (error) { send(res, (error as { status?: number }).status ?? 500, { error: (error as Error).message }); }
       return;
     }
     if (req.method === "POST" && url === "/api/clear") {

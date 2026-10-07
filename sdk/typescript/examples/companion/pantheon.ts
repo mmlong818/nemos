@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ThoughtLibraryStore, ThoughtUnit } from "./thought-library.js";
+import { supportedReasoningEfforts, type ReasoningEffort } from "./model-reasoning.js";
+import type { CompanionModelConnection } from "./model-connection.js";
 
 export type PantheonIntent = "explore" | "challenge" | "decision" | "answer";
 /** 与页面“讨论方式”下拉框的文字一致；入席理由里只用这些名字，不露出内部代码。 */
@@ -11,6 +13,19 @@ export const PANTHEON_INTENT_LABELS: Readonly<Record<PantheonIntent, string>> = 
 };
 export type PantheonPhase = "planned" | "positions" | "questions" | "responses" | "summary" | "paused" | "complete";
 export type PantheonAdvanceAction = "next" | "continue" | "converge";
+
+/** Two rounds, up to three seats, three seat phases, two summaries and one conclusion. */
+export const PANTHEON_OUTPUT_BUDGET = {
+  seat: 2_048,
+  moderator: 3_072,
+  session: 2 * 3 * 3 * 2_048 + 3 * 3_072,
+} as const;
+
+export function pantheonReasoningEffort(connection: Pick<CompanionModelConnection, "provider" | "protocol"> | undefined, model: string | undefined, preferred?: ReasoningEffort): ReasoningEffort | undefined {
+  const supported = model ? supportedReasoningEfforts(connection, model) : [];
+  if (preferred && supported.includes(preferred)) return preferred;
+  return supported.includes("low") ? "low" : supported.find((value) => value !== "none");
+}
 
 export interface ThinkingModel {
   id: string;
@@ -81,7 +96,7 @@ export interface PantheonSession {
     maxRounds: 2;
     maxSeats: 3;
     maxConcurrentCalls: 2;
-    maxReservedTokens: 7200;
+    maxReservedTokens: number;
   };
   usage: { calls: number; reservedTokens: number };
   createdAt: string;
@@ -275,7 +290,7 @@ export class PantheonService {
         reason: input.intent ? "采用用户明确设置的讨论方式并自动配席。" : "依据议题措辞识别意图并自动配席。",
         detail: { intent, wantsConclusion, seatIds: selected.map(({ model }) => model.id) },
       }],
-      limits: { maxRounds: 2, maxSeats: 3, maxConcurrentCalls: 2, maxReservedTokens: 7200 },
+      limits: { maxRounds: 2, maxSeats: 3, maxConcurrentCalls: 2, maxReservedTokens: PANTHEON_OUTPUT_BUDGET.session },
       usage: { calls: 0, reservedTokens: 0 },
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -360,7 +375,7 @@ export class PantheonService {
   private async runPositions(session: PantheonSession): Promise<void> {
     const models = this.modelsForSeats(session);
     const results = await this.mapLimited(models, 2, async ({ seat, model }) => {
-      const request = this.request(session, "position", seat, undefined, 320,
+      const request = this.request(session, "position", seat, undefined, PANTHEON_OUTPUT_BUDGET.seat,
         "请基于本席位的结构化方法独立立论。不要参考其他席位尚未发表的内容；明确假设、依据、边界，不冒充人物。",
         this.commonUserContext(session, model));
       return { seat, text: await this.call(session, request) };
@@ -374,7 +389,7 @@ export class PantheonService {
     const models = this.modelsForSeats(session);
     const results = await this.mapLimited(models, 2, async ({ seat, model }, index) => {
       const target = seats[(index + 1) % seats.length] ?? seat;
-      const request = this.request(session, "question", seat, target, 320,
+      const request = this.request(session, "question", seat, target, PANTHEON_OUTPUT_BUDGET.seat,
         "向指定席位提出一条定向质询。引用它已发表立论中的具体假设或边界，问题必须可回应，不要泛泛批评。",
         this.commonUserContext(session, model, this.latestText(session, "position", target.seatId)));
       return { seat, target, text: await this.call(session, request) };
@@ -388,7 +403,7 @@ export class PantheonService {
     const results = await this.mapLimited(models, 2, async ({ seat, model }) => {
       const question = [...session.transcript].reverse().find((entry) => entry.kind === "question" && entry.targetSeatId === seat.seatId);
       const asker = session.plan.seats.find((candidate) => candidate.seatId === question?.seatId);
-      const request = this.request(session, "response", seat, asker, 320,
+      const request = this.request(session, "response", seat, asker, PANTHEON_OUTPUT_BUDGET.seat,
         "回应指向本席位的具体质询。可以修正原判断，必须说明哪些证据或条件会改变结论，不得回避问题。",
         this.commonUserContext(session, model, question?.text));
       return { seat, asker, text: await this.call(session, request) };
@@ -401,7 +416,7 @@ export class PantheonService {
     const system = conclusion
       ? "你是万神殿主持人。用户已显式要求答案或收束：综合分歧、证据、未知与可逆性，给出清晰结论；只有决策型意图才列行动步骤。不要假装共识。"
       : "你是万神殿主持人。只做阶段性总结：标出共识、关键分歧、缺失证据和下一轮最值得追问的问题。不得给出最终决策或行动建议。";
-    const request = this.request(session, conclusion ? "conclusion" : "summary", undefined, undefined, 480, system,
+    const request = this.request(session, conclusion ? "conclusion" : "summary", undefined, undefined, PANTHEON_OUTPUT_BUDGET.moderator, system,
       `议题：${session.issue}\n讨论记录：\n${session.transcript.map((entry) => `${entry.seatName ?? "用户"}：${entry.text}`).join("\n")}`);
     const text = await this.call(session, request);
     session.transcript.push({
@@ -436,7 +451,15 @@ export class PantheonService {
       throw new Error("本次讨论已达到模型预算上限，请收束或新建议题");
     session.usage.calls += 1;
     session.usage.reservedTokens += request.maxTokens;
-    const text = compact(await this.completion(request), 4_000);
+    let response: string;
+    try { response = await this.completion(request); }
+    catch (error) {
+      if (error instanceof Error && error.message.includes("输出上限被推理过程用完")) {
+        throw new Error("模型在本阶段把输出额度用在推理上，没有返回正文。请在模型设置中选择支持较低思考强度的型号，或换用其他已验证的文字模型，再重试本阶段。");
+      }
+      throw error;
+    }
+    const text = compact(response, 4_000);
     if (!text) throw new Error("思维席位没有返回可展示内容");
     return text;
   }

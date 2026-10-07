@@ -3,11 +3,9 @@
 import { Type } from "typebox";
 import { type CapabilityNotification, type ArtifactFormat, type CapabilityTaskDecision, type CapabilityTaskExpertAssignment, type CapabilityTaskStorylineStatus } from "../capabilities.js";
 import { routeCapability } from "../capability-router.js";
+import { CollaborationLedger, makeCollaborationPlan } from "../collaboration-ledger.js";
 import { buildCapabilitySystemRegistry, companionRuntimeToolSummaries } from "../capability-system-registry.js";
-import { expertAssignmentPrompt, finalDeliveryPrompt, planExpertTeam } from "../expert-contracts.js";
-import { LONG_FORM_EXPERT_IDS } from "../experts.js";
 import { APP_PERSONA_ID } from "../identity.js";
-import { appendCurrentUiEvidence } from "../ui-evidence.js";
 import { AgentUserActionGateway, FileAgentJobQueue } from "../../../src/index.js";
 import { BackgroundScheduler } from "../background-scheduler.js";
 import { CapabilityRuntime } from "../capabilities.js";
@@ -15,6 +13,7 @@ import { type CapabilityExtensionSummary, type CapabilityProviderSummary } from 
 import { createDefaultCapabilityToolRegistry, type CapabilityToolSummary } from "../capability-tools.js";
 import { FileDeliveryOutbox } from "../delivery-outbox.js";
 import { type IncomingMessage, type ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 // TSC_IMPORTS
 import { route, type RouteEntry } from "./table.js";
@@ -27,6 +26,7 @@ export interface CapabilityDeps {
   readonly autoLearnFromWork: (personaId: string, text: string, capabilityId: string, format: ArtifactFormat) => void;
   readonly backgroundScheduler: BackgroundScheduler;
   readonly capabilities: CapabilityRuntime;
+  readonly collaborationLedger: CollaborationLedger;
   readonly capabilityExtensionSummaries: () => CapabilityExtensionSummary[];
   readonly capabilityProviderSummaries: () => CapabilityProviderSummary[];
   readonly capabilityReply: (item: CapabilityNotification) => {
@@ -47,9 +47,19 @@ export interface CapabilityDeps {
 }
 
 export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
-  const { USER, WEB_DIR, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, readBody, send, teamConnectionFingerprint } = deps;
+  const { USER, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, collaborationLedger, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, readBody, send, teamConnectionFingerprint } = deps;
   // TSC_DESTRUCTURE
   void deps;
+  const collaborationArtifactBelongsToStep = (artifact: import("../capabilities.js").CapabilityArtifact, step: import("../collaboration-ledger.js").CollaborationStep, receipt: import("../collaboration-ledger.js").CollaborationReceipt): boolean => {
+    const sourceTask = capabilities.snapshot().tasks.find((item) => item.id === artifact.taskId);
+    return !!sourceTask?.oneOff && sourceTask.origin?.kind === "orchestration" &&
+      sourceTask.origin.parentJobId === receipt.jobId && sourceTask.origin.conversationId === receipt.jobId &&
+      sourceTask.origin.collaborationStepId === step.stepId && sourceTask.capabilityId === step.capabilityId &&
+      (!receipt.rootRequestId || sourceTask.origin.rootRequestId === receipt.rootRequestId) &&
+      (!receipt.actionRunId || sourceTask.origin.actionRunId === receipt.actionRunId) &&
+      (!receipt.invocationId || sourceTask.origin.invocationId === receipt.invocationId) &&
+      sourceTask.personaId === step.personaId && sourceTask.instruction === step.instruction;
+  };
   return [
     route("POST", "/api/capability-conversations/archive",
       Type.Object({ taskId: Type.Optional(Type.String()) }, { additionalProperties: false }),
@@ -680,77 +690,78 @@ export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
       send(res, 200, { ok: true, auditRunId: action.runId, snapshot: capabilities.snapshot() });
       return;
     }),
+    route("GET", "/api/capabilities/task/collaboration-plan", ({ res, query }) => {
+      const task = capabilities.snapshot().tasks.find((item) => item.id === query.get("id"));
+      if (!task) { send(res, 404, { error: "未找到这个任务" }); return; }
+      try { send(res, 200, { plan: makeCollaborationPlan(task) }); }
+      catch (error) { send(res, 409, { error: error instanceof Error ? error.message : String(error) }); }
+    }),
+    route("GET", "/api/capabilities/task/collaboration-receipts", ({ res, query }) => {
+      const job = agentJobQueue.get(String(query.get("jobId") || ""));
+      const plan = job?.payload.collaborationPlan;
+      if (!job || job.type !== "orchestration" || !plan || typeof plan !== "object") { send(res, 404, { error: "未找到协作回执" }); return; }
+      try {
+        const frozen = plan as ReturnType<typeof makeCollaborationPlan>;
+        send(res, 200, { plan: frozen, steps: collaborationLedger.view(frozen, (id) => capabilities.artifactHandoff(id)?.artifact, collaborationArtifactBelongsToStep) });
+      } catch { send(res, 409, { error: "协作回执损坏，需要人工核对" }); }
+    }),
     route("POST", "/api/capabilities/task/collaborate", async ({ req, res }) => {
-      const b = (await readBody(req)) as { id?: string };
-      if (!b.id) { send(res, 400, { error: "缺少任务编号" }); return; }
+      const b = (await readBody(req)) as { id?: string; planHash?: string; requestId?: string; retryOf?: string };
+      if (!b.id || !b.planHash || !b.requestId || !/^[a-zA-Z0-9_-]{8,100}$/.test(b.requestId)) {
+        send(res, 400, { error: "需要任务编号、计划指纹和请求编号" }); return;
+      }
+      const rootRequestId = b.requestId;
       const task = capabilities.snapshot().tasks.find((item) => item.id === b.id);
       if (!task) { send(res, 404, { error: "未找到这个任务" }); return; }
-      const teamPlan = planExpertTeam({ capabilityId: task.capabilityId, instruction: task.instruction });
-      const collaborationObjective = appendCurrentUiEvidence(task.instruction, WEB_DIR);
-      const assignments = teamPlan.assignments
-        .filter((assignment) => LONG_FORM_EXPERT_IDS.has(assignment.personaId));
-      capabilities.updateTaskStoryline({
-        id: task.id,
-        summary: teamPlan.reason,
-        nextAction: "等待专家意见汇总后，由小丑鱼完成最终交付。",
-        experts: assignments.map(({ personaId, responsibility }) => ({ personaId, responsibility })),
-      });
-      const expertTasks = assignments.map((assignment, index) => ({
-        id: `expert-${index + 1}`,
-        title: assignment.responsibility,
-        instruction: expertAssignmentPrompt(assignment, collaborationObjective),
-        dependsOn: [] as string[],
-        metadata: {
-          personaId: assignment.personaId,
-          capabilityId: assignment.capabilityId,
-          format: assignment.format as ArtifactFormat,
-          memoryMode: assignment.memoryMode,
-          expertContractId: assignment.personaId,
-        },
-      }));
-      const finalTask = {
-        id: "clownfish-final",
-        title: `复核并完成：${task.title}`,
-        instruction: finalDeliveryPrompt({ objective: collaborationObjective, reviewChecks: teamPlan.finalReviewChecks }),
-        dependsOn: expertTasks.map((item) => item.id),
-        metadata: {
-          personaId: APP_PERSONA_ID,
-          capabilityId: task.capabilityId,
-          format: task.format,
-          memoryMode: teamPlan.finalMemoryMode,
-        },
-      };
+      let plan: ReturnType<typeof makeCollaborationPlan>;
+      try { plan = makeCollaborationPlan(task); }
+      catch (error) { send(res, 409, { error: error instanceof Error ? error.message : String(error) }); return; }
+      if (plan.planHash !== b.planHash) { send(res, 409, { error: "任务要求或分工已变化，请重新预览" }); return; }
+      const key = `collaboration:${task.id}:${plan.planHash}:${rootRequestId}`;
+      const jobs = agentJobQueue.list({ limit: 5000 });
+      const duplicate = jobs.find((job) => job.idempotencyKey === key);
+      if (duplicate) {
+        const storedRootRequestId = typeof duplicate.metadata?.rootRequestId === "string" ? duplicate.metadata.rootRequestId : undefined;
+        const storedActionRunId = typeof duplicate.metadata?.actionRunId === "string" ? duplicate.metadata.actionRunId : undefined;
+        send(res, 202, { ok: true, job: duplicate, repeated: true,
+          ...(storedRootRequestId ? { rootRequestId: storedRootRequestId } : {}),
+          ...(storedActionRunId ? { auditRunId: storedActionRunId } : {}) });
+        return;
+      }
+      const related = jobs.filter((job) => job.type === "orchestration" && job.payload.collaborationPlan && job.payload.taskId === task.id && (job.payload.collaborationPlan as { planHash?: string }).planHash === plan.planHash);
+      if (!related.length && collaborationLedger.read(plan).length) { send(res, 409, { error: "旧协作记录已超出任务索引，需要先人工核对回执" }); return; }
+      if (related.some((job) => ["queued", "running", "succeeded"].includes(job.status))) { send(res, 409, { error: "这份计划已有协作任务，请查看回执" }); return; }
+      if (related.length && (!b.retryOf || !related.some((job) => job.id === b.retryOf && ["failed", "uncertain"].includes(job.status)))) {
+        send(res, 409, { error: "请从失败任务的安全续办入口重试" }); return;
+      }
+      if (related.length) {
+        const view = collaborationLedger.view(plan, (id) => capabilities.artifactHandoff(id)?.artifact, collaborationArtifactBelongsToStep);
+        if (view.some((step) => ["uncertain", "invalid", "unresolved"].includes(step.status))) { send(res, 409, { error: "有中断、未决或文件变化的步骤，需人工核对后才能续办" }); return; }
+      }
+      const actionRunId = `collaboration-action:${randomUUID()}`;
       const action = await agentUserActions.execute({
         name: "capability_task_collaborate",
-        description: "由小丑鱼按任务需要自动组织专家检查并完成最终交付",
-        arguments: { taskId: task.id, capabilityId: task.capabilityId, expertCount: assignments.length },
+        description: "按已预览的两项技能分工生成各自成果",
+        arguments: { taskId: task.id, planHash: plan.planHash, requestId: rootRequestId, retryOf: b.retryOf },
+        runId: actionRunId,
         execute: () => agentJobQueue.enqueue({
           type: "orchestration",
-          payload: { objective: collaborationObjective, tasks: [...expertTasks, finalTask], taskId: task.id, connectionFingerprint: teamConnectionFingerprint() },
-          metadata: {
-            userId: USER,
-            workTaskId: task.id,
-            requestedBy: APP_PERSONA_ID,
-            expertTeamId: teamPlan.id,
-            expertTeamReason: teamPlan.reason,
-          },
-          deliveryRequired: true,
-          sideEffectRisk: true,
-          maxAttempts: 1,
-          timeoutMs: 45 * 60_000,
-          idempotencyKey: `collaboration:${task.id}:${Date.now()}`,
+          payload: { collaborationPlan: plan, taskId: task.id, connectionFingerprint: teamConnectionFingerprint() },
+          metadata: { userId: USER, workTaskId: task.id, requestedBy: APP_PERSONA_ID,
+            rootRequestId, actionRunId },
+          deliveryRequired: true, sideEffectRisk: true, maxAttempts: 1, timeoutMs: 45 * 60_000,
+          idempotencyKey: key,
         }),
         summarizeResult: (job) => ({ ok: true, jobId: job.id, status: job.status }),
       });
-      capabilities.projectTaskExecution({
-        taskId: task.id,
-        jobId: action.value.id,
-        status: action.value.status,
-        label: "小丑鱼正在组织协作",
-        updatedAt: action.value.updatedAt,
+      capabilities.projectTaskExecution({ taskId: task.id, jobId: action.value.id, status: action.value.status,
+        label: "小丑鱼正在组织协作", updatedAt: action.value.updatedAt });
+      capabilities.updateTaskStoryline({ id: task.id,
+        summary: "已建立两项技能分工，执行状态请以逐步回执为准。",
+        nextAction: "到任务详情核对研究核查与方案比较的结果。",
+        experts: plan.steps.map((step) => ({ personaId: step.personaId, responsibility: step.title })),
       });
-      send(res, 202, { ok: true, job: action.value, auditRunId: action.runId, snapshot: capabilities.snapshot() });
-      return;
+      send(res, 202, { ok: true, job: action.value, auditRunId: action.runId, rootRequestId, snapshot: capabilities.snapshot() });
     }),
     route("POST", "/api/capabilities/task/run", async ({ req, res }) => {
       const b = (await readBody(req)) as { id?: string };

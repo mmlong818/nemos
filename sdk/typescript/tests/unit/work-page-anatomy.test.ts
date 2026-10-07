@@ -73,7 +73,7 @@ test('审批卡提供三档决定：只此一次、本会话内、拒绝',()=>{
   const state:any={
     reviewQueue:[{}],
     reviewGroups:[{id:'g1',items:[{id:'i1',kind:'approval',sourceId:'ap-1',title:'写入报告',nextAction:'需要你确认'}]}],
-    approvals:[{id:'ap-1',call:{name:'save_file',arguments:{path:'a.md'}},tool:{name:'save_file'}}],
+    approvals:[{id:'ap-1',call:{name:'save_file',arguments:{path:'a.md'}},tool:{name:'save_file'},sessionEligible:true}],
     relationshipMemory:null,
   };
   const html=runInNewContext(render+'\nrenderAttentionInbox(true);',{state,escapeHtml:(v:unknown)=>String(v),encodeURIComponent});
@@ -81,7 +81,7 @@ test('审批卡提供三档决定：只此一次、本会话内、拒绝',()=>{
   assert.match(html,/data-review-approval="ap-1" data-allowed="true" data-scope="session"/);
   assert.match(html,/data-review-approval="ap-1" data-allowed="false" data-scope="once"/);
   // 会话档要点名是哪个工具，不能是"全都允许"这种没边界的说法。
-  assert.match(html,/本次会话内都允许「save_file」/);
+  assert.match(html,/本会话允许同一动作与对象/);
 });
 
 test('提交审批决定时把 scope 一起发出，未识别取值退回只此一次',()=>{

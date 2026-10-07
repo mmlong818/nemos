@@ -5,6 +5,22 @@ import {runInNewContext} from 'node:vm';
 const window:any={};
 for(const file of ['task-detail','unified-task-history'])runInNewContext(readFileSync(`examples/companion/web/assets/${file}.js`,'utf8'),{window});
 const detail=window.ClownfishTaskDetail;
+
+test('流程详情区分待补、检查与事实核验，旧任务可读',()=>{
+  const task:any={id:'task-synthetic',title:'合成任务',enabled:false,updatedAt:'2026-09-29T00:00:00Z',schedule:{mode:'manual'},instruction:'合成输入',storyline:{status:'waiting',events:[]},contract:{id:'meeting-minutes',digest:'abc123',inputState:'missing',expectedFormat:'md'}};
+  const artifact:any={id:'artifact-synthetic',taskId:task.id,title:'合成文件',summary:'合成摘要',proof:{level:'validated',contentHash:'hash123',byteLength:12,checks:[{id:'skill-facts',label:'内容事实核验',status:'not-run'}]}};
+  const failed:any={id:'job-synthetic',status:'failed',payload:{taskId:task.id},updatedAt:'2026-09-29T01:00:00Z',error:'合成失败'};
+  const html=window.ClownfishUnifiedHistory.flowDetail(task,{tasks:[task],artifacts:[artifact]},[failed]);
+  assert.match(html,/待补齐输入/);
+  assert.match(html,/合成失败/);
+  assert.match(html,/内容事实核验：待核验/);
+  assert.match(html,/hash123/);
+  const old=window.ClownfishUnifiedHistory.flowDetail({...task,contract:undefined},{tasks:[task],artifacts:[]},[]);
+  assert.match(old,/旧任务或能力尚无结构化契约/);
+});
+test('成功状态只表示任务完成，不暗示聊天已送达',()=>{
+  assert.equal(window.ClownfishUnifiedHistory.statusLabel({status:'succeeded'}),'已完成');
+});
 test('列表摘要与完整详情共用排队标签，序列化刷新后保持一致',()=>{
   for(const state of ['waiting','active','released','invalid']){
     const full={status:'running',checkpoints:[{data:{modelAdmission:{state}}}]};
@@ -101,6 +117,22 @@ test('流程保留历史成果，但最新失败原因位于成果之前',()=>{
   assert.match(html,/已有成果 · 请结合本次状态核对/);
   assert.ok(html.indexOf('aria-label="交付成果"')<html.indexOf('原始要求'));
   for(const value of ['data-flow-process','data-task-disclosure="context"','管理此流程','流程协作设置','old-result'])assert.ok(html.includes(value));
+});
+
+test('协作详情按冻结编号直连原始成果，空回执不伪称步骤已中断',()=>{
+  const task:any={id:'task-collaboration',title:'合成协作',instruction:'合成输入',schedule:{mode:'manual'},storyline:{events:[]}};
+  const plan:any={planHash:'hash-plan',steps:[
+    {stepId:'expert-1',title:'研究核查',capabilityId:'research-brief',format:'md',contract:{digest:'digest-one'}},
+    {stepId:'expert-2',title:'方案比较',capabilityId:'decision-brief',format:'md',contract:{digest:'digest-two'}},
+  ]};
+  const job:any={id:'job-collaboration',type:'orchestration',status:'failed',payload:{taskId:task.id,collaborationPlan:plan},
+    checkpoints:[{data:{stepId:'expert-1',status:'succeeded',receipt:{artifactId:'artifact-raw',artifactContentHash:'sha-raw'}}}],error:'第二步权限拒绝'};
+  const html=window.ClownfishUnifiedHistory.flowDetail(task,{tasks:[task],artifacts:[]},[job]);
+  assert.ok(html.indexOf('1. 研究核查')<html.indexOf('2. 方案比较'));
+  assert.match(html,/artifact-raw/);assert.match(html,/下载原始成果/);
+  assert.match(html,/2\. 方案比较[^]*未开始/);
+  assert.match(html,/collaboration\?legacy=1/);
+  assert.doesNotMatch(html,/2\. 方案比较[^]*中断待核对/);
 });
 
 test('详情由共用挂载维护折叠状态，旧结果处理事件仍使用原始任务',()=>{

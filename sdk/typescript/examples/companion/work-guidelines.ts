@@ -268,7 +268,7 @@ export async function authorizeWithGuidelines<Input extends { call: { name: stri
   input: Input,
   fallback: (input: Input) => Promise<Result>,
   deny: (reason: string) => Result,
-  allow: (reason: string) => Result,
+  allow: (reason: string) => Result | Promise<Result>,
 ): Promise<Result> {
   const decision = store.decide({ toolName: input.call.name });
   if (decision.behavior === "never") {
