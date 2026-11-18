@@ -79,6 +79,18 @@ interface JobFile {
   jobs: AgentJobRecord[];
 }
 
+type TaskRunCursor = Pick<AgentJobRecord, "createdAt" | "id">;
+
+function compareTaskRuns(a: TaskRunCursor, b: TaskRunCursor): number {
+  return b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+}
+
+export function agentJobTaskId(job: AgentJobRecord): string | undefined {
+  const artifact = job.result?.data as { artifact?: { taskId?: unknown } } | undefined;
+  const id = job.payload.taskId || job.metadata?.workTaskId || artifact?.artifact?.taskId;
+  return typeof id === "string" && id ? id : undefined;
+}
+
 const DEFAULTS: Required<Omit<FileAgentJobQueueOptions, "onChange">> = {
   leaseMs: 5 * 60_000,
   maxJobs: 1_000,
@@ -387,6 +399,34 @@ export class FileAgentJobQueue {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, limit)
       .map((job) => structuredClone(job));
+  }
+
+  /** Select by persisted task before limiting the result; updatedAt would reorder old runs. */
+  listTaskRuns(taskId: string, options: { before?: TaskRunCursor; limit: number; userId?: string }): AgentJobRecord[] {
+    const { before, limit, userId } = options;
+    return [...this.jobs.values()]
+      .filter((job) => (!userId || !job.metadata?.userId || job.metadata.userId === userId)
+        && agentJobTaskId(job) === taskId && (!before || compareTaskRuns(job, before) > 0))
+      .sort(compareTaskRuns)
+      .slice(0, limit)
+      .map((job) => structuredClone(job));
+  }
+
+  latestTaskRuns({ taskId: selectedTask, userId }: { taskId?: string; userId?: string } = {}): AgentJobRecord[] {
+    const latest = new Map<string, AgentJobRecord>();
+    const active = new Map<string, AgentJobRecord>();
+    for (const job of this.jobs.values()) {
+      const taskId = agentJobTaskId(job);
+      if (!taskId || (selectedTask && taskId !== selectedTask)
+        || (userId && job.metadata?.userId && job.metadata.userId !== userId)) continue;
+      const current = latest.get(taskId);
+      if (!current || compareTaskRuns(job, current) < 0) latest.set(taskId, job);
+      if (job.status !== "queued" && job.status !== "running") continue;
+      const currentActive = active.get(taskId);
+      if (!currentActive || compareTaskRuns(job, currentActive) < 0) active.set(taskId, job);
+    }
+    const olderActive = [...active].flatMap(([taskId, job]) => job.id !== latest.get(taskId)?.id ? [job] : []);
+    return [...latest.values(), ...olderActive].map((job) => structuredClone(job));
   }
 
   /** Subscribe to in-process durable queue changes. The returned function is idempotent. */

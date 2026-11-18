@@ -137,7 +137,16 @@ async function load() {
       const [jobs, runs, reviewQueue, productReviews, approvals] = await Promise.all([api("/api/agent/jobs?limit=1000"), api("/api/agent/runs?limit=500"), api("/api/review-queue"), api("/api/product-reviews"), api("/api/agent/approvals?status=pending&limit=500")]);
       result = { jobs: jobs.jobs || [], runs: runs.runs || [], reviewQueue: reviewQueue.items || [], review: reviewQueue, approvals: approvals.approvals || [], sessionGrants: approvals.sessionGrants || [], productReviews: productReviews.runs || [], productReviewSummary: productReviews.summary || null };
     }
-    if (requestedView === "memory") result = (await api("/api/memory?who=me")).facts || [];
+    if (requestedView === "memory") {
+      const id = new URLSearchParams(location.search).get("memoryId");
+      const [list, linked] = await Promise.all([
+        api("/api/memory?who=me"),
+        id ? api("/api/memory/item?id=" + encodeURIComponent(id)).catch(() => ({ status: "error" })) : null,
+      ]);
+      const facts = (list.facts || []).filter((item) => id !== item.id);
+      if (linked?.status === "active" && linked.fact?.id === id) facts.unshift(linked.fact);
+      result = { facts, linked };
+    }
     if (sequence !== loadSequence || requestedView !== view) return;
     if (requestedView === "tasks") {
       state.snapshot = result.snapshot;
@@ -172,7 +181,10 @@ async function load() {
       state.productReviews = result.productReviews;
       state.productReviewSummary = result.productReviewSummary;
     }
-    if (requestedView === "memory") state.memories = result;
+    if (requestedView === "memory") {
+      state.memories = result.facts;
+      state.linkedMemory = result.linked;
+    }
     loadedViews.add(requestedView);
     render();
     if(requestedView==='resources'&&new URLSearchParams(location.search).get('create')==='1'){
@@ -1002,7 +1014,7 @@ function openMemoryDetail(item) {
 
 function renderMemory() {
   if (document.body.dataset.ui === "workbench" && window.ClownfishWorkbenchMemory) {
-    return window.ClownfishWorkbenchMemory.render({ items: state.memories, layers: { ...layerNames, archival: "原始对话片段" }, openDetail: openMemoryDetail, api, reload: load });
+    return window.ClownfishWorkbenchMemory.render({ items: state.memories, linkedMemory: state.linkedMemory, layers: { ...layerNames, archival: "原始对话片段" }, openDetail: openMemoryDetail, api, reload: load });
   }
   const groups = Object.entries(layerNames).map(([layer, name]) => {
     const items = state.memories.filter((item) => item.layer === layer);

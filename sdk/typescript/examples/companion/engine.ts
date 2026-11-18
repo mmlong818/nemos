@@ -238,6 +238,7 @@ export interface RecallResult {
   userFacts: string;
   /** 供模型使用的来源与不确定性；userFacts 只保留兼容的界面摘要。 */
   memoryEvidence?: UserMemoryEvidence[];
+  memoryMode?: "default" | "preferences" | "off";
   /** 块2：人格自己的近况（独立 namespace 的最近自述）。 */
   selfState: string;
 }
@@ -631,7 +632,7 @@ export class CompanionEngine {
 
     const replies: CompanionReply[] = [];
     for (const p of responders) {
-      const context = await this.recall(userId, p.id, text);
+      const context = await this.recall(userId, p.id, opts.memoryText ?? text, opts.memoryMode, opts.sessionId);
       const participation = groupParticipationFor(p.id, opts.groupRoute);
       const raw = await this.chat(
         this.buildSystem(p, context, this.relSetting.get(this.rkey(userId, p.id)), this.turnsOf(userId, p.id), detectCrisis(text), text),
@@ -701,7 +702,7 @@ export class CompanionEngine {
       ...selfSnapshots.flatMap((snapshot) => snapshot.said.map((m) => `（我曾说过）${m.content.trim().slice(0, 140)}`)),
     ].filter(Boolean);
     const selfState = this.normalizePersonaReferences([...new Set(selfLines)].join("\n"));
-    return { userFacts, selfState, memoryEvidence };
+    return { userFacts, selfState, memoryEvidence, memoryMode };
   }
 
   private async recallUserFacts(userId: string, personaId: string, query: string): Promise<UserMemoryEvidence[]> {

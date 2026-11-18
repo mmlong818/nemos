@@ -5,8 +5,8 @@ import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 
 import { Nemos, type AgentStoredRun } from "../../src/index.js";
-import { CompanionEngine, convScope, type ChatAgentContext } from "../../examples/companion/engine.js";
-import { isCurrentUserMemory, userMemoryEvidence, userMemoryPrompt, userMemoryText, type UserMemoryEvidence } from "../../examples/companion/memory-evidence.js";
+import { CompanionEngine, convScope, groupScope, type ChatAgentContext } from "../../examples/companion/engine.js";
+import { memoryTurnReceipt, isCurrentUserMemory, userMemoryEvidence, userMemoryPrompt, userMemoryText, type UserMemoryEvidence } from "../../examples/companion/memory-evidence.js";
 import { makeMockLLMConfig } from "../helpers.js";
 import { createCompanionAgentToolProvider } from "../../examples/companion/companion-agent-tools.js";
 import type { CapabilityRuntime } from "../../examples/companion/capabilities.js";
@@ -62,6 +62,8 @@ test("真实 SQLite 召回保留来源、主体和抽取置信度，并进入聊
   assert.match(result.context.userFacts, /杭州/);
   assert.doesNotMatch(result.context.userFacts, /source_message_id|original-session/);
   assert.deepEqual(promptRecords(system), JSON.parse(JSON.stringify(result.context.memoryEvidence)));
+  assert.deepEqual(memoryTurnReceipt(result.context)!.records.map(x => x.id), promptRecords(system).map(x => x.id));
+  assert.doesNotMatch(JSON.stringify(memoryTurnReceipt(result.context)), /杭州|original-message/);
   assert.match(system, /high 不等于用户已确认/);
   assert.doesNotMatch(system, /可放心引用|关于对方的真相/);
 });
@@ -85,6 +87,7 @@ test("纠正通过真实核心落库：重启后只召回新事实，保留纠�
   assert.ok(updated.provenance.archivalRef);
   assert.ok(updated.provenance.sourceEventIds.length > 0);
   assert.ok(!promptRecords(system).some((item) => item.id === original.id));
+  assert.ok(!memoryTurnReceipt(result.context)!.records.some(item => item.id === original.id));
 });
 
 test("手动失效后重启不会把旧事实恢复到模型上下文", async (t) => {
@@ -162,6 +165,51 @@ test("流式聊天同样收到证据；关闭记忆时摘要与证据都为空",
   assert.equal(off.context.selfState, "");
   assert.deepEqual(off.context.memoryEvidence, []);
   assert.doesNotMatch(systems[1], /杭州|original-message/);
+});
+
+test("群聊逐角色的初始记忆与工具采用同一模式，且仅读取可见范围", async (t) => {
+  const { memory } = fixture(t);
+  const second = { id: "team-mate", name: "另一位角色", persona: "协助。" };
+  const groupId = "memory-review";
+  const groupMemory = groupScope(groupId);
+  const store = memory.forUser("me");
+  const source = { authoritative: false, origin: "clownfish-memory-ui" };
+  const preference = await store.write({ layer: "procedural", scope: groupMemory, source, content: "用户偏好简洁标题和三列表格" });
+  const place = await store.write({
+    layer: "personal_semantic", scope: groupMemory, content: "用户目前住在杭州",
+    subject: "user:self", predicate: "residence.current", object: "杭州", utteranceMode: "literal",
+    source: { authoritative: false, origin: "llm-extract", confidence: "high" },
+  });
+  await store.write({ layer: "procedural", scope: "conv:private-persona", source, content: "用户偏好不共享的格式 FOREIGN" });
+  const calls: Array<{ system: string; context: ChatAgentContext | undefined }> = [];
+  const engine = new CompanionEngine(memory, [persona, second], async (system, _user, _model, _max, context) => {
+    calls.push({ system, context });
+    return "完成";
+  });
+  engine.createGroup(groupId, [persona.id, second.id]);
+  for (const mode of ["off", "preferences", "default"] as const) {
+    calls.length = 0;
+    const replies = await engine.sendToGroup("me", groupId, "礼貌回复即可", {
+      memoryText: "我现在住在哪里？交付请使用简洁标题和三列表格。",
+      memoryMode: mode, memoryWriteMode: "off", sessionId: `session-${mode}`,
+    });
+    assert.equal(calls.length, 2);
+    for (const [index, { system, context }] of calls.entries()) {
+      const records = promptRecords(system);
+      assert.equal(context?.sessionId, `session-${mode}`);
+      assert.equal(memoryTurnReceipt(replies[index].context)?.mode, mode);
+      assert.doesNotMatch(system, /FOREIGN/);
+      if (mode === "off") assert.deepEqual(records, []);
+      if (mode === "preferences") assert.ok(records.some(({ id }) => id === preference.id), "preferences includes visible preference");
+      if (mode !== "default") {
+        assert.deepEqual(context?.memoryScopes, []);
+        assert.ok(records.every(({ id }) => id === preference.id), "eligible preference is the only evidence");
+      } else {
+        assert.ok(context?.memoryScopes.includes(groupMemory));
+        assert.ok(records.some(({ id }) => id === place.id), "default includes non-preference group memory");
+      }
+    }
+  }
 });
 
 test("投影不把 authoritative 或缺少置信度伪装为用户确认，保留候选/冲突状态", async (t) => {

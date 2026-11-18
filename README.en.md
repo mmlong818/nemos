@@ -127,6 +127,10 @@ Long-term memory separates user facts, assistant self-memory, task threads, and 
 
 _Remembered items and pending proposals are separate; each item retains its subject, provenance, and correction or forgetting controls._
 
+Chat replies expose an expandable record of the personal memories provided to the model for that turn, with links to current provenance, correction, and forgetting controls. Receipts retain references rather than another copy of memory text, persist with existing local chat history, and explicitly identify historical messages without a receipt. They describe model input, not proof that the model relied on it.
+
+Task details and individual workflow runs expose a read-only receipt separating trigger, execution, result, and notification. Completion does not imply delivery. Missing delivery evidence or next-run timestamps remain unknown or unrecorded; opening a receipt never starts or retries work.
+
 Automations schedule recurring work locally and support pause, edit, and run-now actions while retaining related tasks and artifacts. Live external results still depend on the relevant tool, connection, and permissions being operational.
 
 ## One-time OpenAI and Zhipu setup

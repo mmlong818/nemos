@@ -1068,6 +1068,15 @@
   #contactaddstatus { flex:1; color:#8d8498; font-size:12px; }
   #contactaddok:disabled { opacity:.45; cursor:default; box-shadow:none; }
   #memlist { overflow-y:auto; padding:10px 20px 18px; }
+  .chat-memory-evidence { margin-top:12px; padding-top:8px; border-top:1px solid var(--line, #ddd); font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+  .chat-memory-evidence summary { cursor:pointer; }
+  .chat-memory-evidence p { margin:8px 0; }
+  .chat-memory-evidence summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .chat-memory-item { border-top:1px solid var(--line, #ddd); }
+  .chat-memory-item > summary { padding:8px 0; }
+  .chat-memory-item-body { padding:0 0 10px 14px; }
+  .chat-memory-item-body blockquote { margin:8px 0; padding-inline-start:8px; border-inline-start:2px solid var(--line, #ddd); white-space:pre-wrap; }
+  .chat-memory-item-body a { text-decoration:underline; }
   .memitem { padding:10px 0; border-bottom:1px solid rgba(212,225,225,.78); font-size:13.5px; line-height:1.55; }
   .memitem .tag { display:inline-block; font-size:10.5px; color:#fff; border-radius:6px; padding:2px 7px; margin-right:7px; vertical-align:middle; }
   .memitem .tag.ps { background:var(--accent); } .memitem .tag.se { background:#5aa6e0; } .memitem .tag.ep { background:#f0a84b; }
@@ -3235,6 +3244,7 @@
 <link rel="stylesheet" href="/assets/activity-rail.css">
 <script src="/assets/activity-rail.js"></script>
 <script src="/assets/quick-replies.js"></script>
+<script src="/assets/chat-memory-evidence.js"></script>
 <script src="/assets/slash-commands.js"></script>
 <script src="/assets/widget-host.js"></script>
 <script>
@@ -4446,12 +4456,12 @@ function renderLog() {
       addExpertLongform(e.longform, messageId);
     } else if (e.longform && Array.isArray(e.longform.sections)) {
       for (const section of e.longform.sections) {
-        addRow("other", section.name || null, section.text || "", { pid: section.personaId || e.pid });
+        addRow("other", section.name || null, section.text || "", { pid: section.personaId || e.pid, memoryReceipt: section.memoryReceipt });
       }
     } else if (e.side === "other" && !e.who && !e.artifact && !e.goalCheckIn) {
       const run = [e];
       let nextIndex = messageIndex + 1;
-      while (nextIndex < log.length) {
+      while (nextIndex < log.length && !run[run.length - 1].memoryReceipt) {
         const next = log[nextIndex];
         if (!next || next.side !== "other" || next.who || next.artifact || next.longform || next.goalCheckIn || next.pid !== e.pid) break;
         run.push(next);
@@ -4460,24 +4470,24 @@ function renderLog() {
       const combined = run.map((entry) => String(entry.text || "").trim()).filter(Boolean).join("\n\n");
       if (run.length > 1 && isSubstantialAssistantLongform(combined)) {
         const last = run[run.length - 1];
-        addRow("other", null, combined, { mem: last.mem, pid: e.pid, messageId });
+        addRow("other", null, combined, { memoryReceipt: last.memoryReceipt, pid: e.pid, messageId });
         messageIndex = nextIndex - 1;
       } else if (run.length > 1) {
         // 和实时回复时一样：同一轮的几条短消息叠在一个头像下，不各自再带一个头像。
-        addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, messageId });
+        addRow(e.side, e.who, e.text, { voice: e.voice, memoryReceipt: e.memoryReceipt, pid: e.pid, messageId });
         const inner = m.lastElementChild && m.lastElementChild.querySelector(".msg-body");
         for (const entry of run.slice(1)) {
           const bub = document.createElement("div");
           bub.className = "bub";
-          renderBubbleContent(bub, entry.text, { mem: entry.mem, pid: entry.pid, render: true });
+          renderBubbleContent(bub, entry.text, { memoryReceipt: entry.memoryReceipt, pid: entry.pid, render: true });
           if (inner) inner.appendChild(bub);
         }
         messageIndex = nextIndex - 1;
       } else {
-        addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, messageId });
+        addRow(e.side, e.who, e.text, { voice: e.voice, memoryReceipt: e.memoryReceipt, pid: e.pid, artifact: e.artifact, messageId });
       }
     } else {
-      addRow(e.side, e.who, e.text, { voice: e.voice, mem: e.mem, pid: e.pid, artifact: e.artifact, goalCheckIn: e.goalCheckIn, messageId });
+      addRow(e.side, e.who, e.text, { voice: e.voice, memoryReceipt: e.memoryReceipt, pid: e.pid, artifact: e.artifact, goalCheckIn: e.goalCheckIn, messageId });
     }
   }
   const composerAfter = $("#composer"); if (composerAfter) composerAfter.classList.remove("hero-mode");
@@ -4817,6 +4827,7 @@ function renderBubbleContent(bub, text, opts = {}) {
     bub.classList.remove("rendered");
     bub.textContent = (opts.voice ? "[语音] " : "") + raw;
     appendQuickReplies(bub, quick.options);
+    if (opts.render !== false) window.ClownfishChatMemoryEvidence?.append(bub, opts.memoryReceipt);
     return;
   }
   bub.classList.add("rendered");
@@ -4844,6 +4855,7 @@ function renderBubbleContent(bub, text, opts = {}) {
   }
   if (opts.artifact) bindArtifactActions(bub, opts.artifact);
   appendQuickReplies(bub, quick.options);
+  if (opts.render !== false) window.ClownfishChatMemoryEvidence?.append(bub, opts.memoryReceipt);
 }
 function artifactActionsHtml(artifact) {
   if (!artifact || !artifact.id) return "";
@@ -4968,6 +4980,7 @@ function addExpertLongform(brief, messageId = "") {
     const body = document.createElement("div");
     body.innerHTML = isLikelyHtml(section.text) ? sanitizeHtml(section.text) : markdownToHtml(section.text);
     block.appendChild(body);
+    window.ClownfishChatMemoryEvidence?.append(block, section.memoryReceipt);
     content.appendChild(block);
   }
   article.appendChild(content);
@@ -5007,7 +5020,7 @@ function collapseStreamLongform(inner, text, artifact) {
   inner.innerHTML = "";
   const node = document.createElement("div");
   node.className = "bub";
-  renderBubbleContent(node, text, { artifact });
+  renderBubbleContent(node, text, { artifact, memoryReceipt: null });
   inner.appendChild(node);
 }
 function syncStreamBubbles(inner, text, visibleCount, opts = {}) {
@@ -5022,7 +5035,7 @@ function syncStreamBubbles(inner, text, visibleCount, opts = {}) {
   while (nodes.length > parts.length) nodes.pop().remove();
   nodes.forEach((node, index) => {
     node.className = "bub";
-    if (opts.final) renderBubbleContent(node, parts[index], { artifact: index === parts.length - 1 ? opts.artifact : null });
+    if (opts.final) renderBubbleContent(node, parts[index], { artifact: index === parts.length - 1 ? opts.artifact : null, memoryReceipt: null });
     else node.textContent = parts[index].replace(/\n?【选项】[^\n]*$/, "");
   });
   return parts;
@@ -5045,7 +5058,7 @@ function effectiveConversationTarget() {
 async function streamPersona(key, text, voice, image, attachment, messageId, requestTarget = effectiveConversationTarget()) {
   const { inner, bub } = addTyping();
   const pid = requestTarget.anonymous ? APP_PERSONA_ID : requestTarget.id;
-  let acc = "", started = false, facts = null, artifact = null;
+  let acc = "", started = false, finished = false, artifact = null, memoryReceipt;
   let visibleCount = 1, scheduledCount = 1;
   let revealChain = Promise.resolve();
   function scheduleNewMessages() {
@@ -5086,12 +5099,12 @@ async function streamPersona(key, text, voice, image, attachment, messageId, req
           scheduleNewMessages();
           scheduleScrollToBottom($("#msgs"));
         }
-        else if (ev.type === "done") { facts = ev.facts; artifact = ev.artifact || artifact; if (typeof ev.replaceText === "string" && ev.replaceText) acc = ev.replaceText; }
+        else if (ev.type === "done") { finished = true; memoryReceipt = ev.memoryReceipt; artifact = ev.artifact || artifact; if (typeof ev.replaceText === "string" && ev.replaceText) acc = ev.replaceText; }
         else if (ev.type === "tasks") { await pushCapabilityNotifications(ev.notifications || []); }
         else if (ev.type === "error") { started = true; acc = "出错了：" + ev.text; visibleCount = 1; scheduledCount = 1; syncStreamBubbles(inner, acc, 1); }
       }
     }
-    const finalText = acc || (facts ? "任务已处理。" : "这次没有收到可显示的结果。");
+    const finalText = acc || (finished ? "任务已处理。" : "这次没有收到可显示的结果。");
     acc = finalText;
     scheduleNewMessages();
     await revealChain;
@@ -5100,11 +5113,12 @@ async function streamPersona(key, text, voice, image, attachment, messageId, req
     const finalMessages = renderAsLongform ? [finalText] : splitFinalMessages;
     if (renderAsLongform) collapseStreamLongform(inner, finalText, artifact);
     else syncStreamBubbles(inner, finalText, finalMessages.length, { final: true, artifact });
+    window.ClownfishChatMemoryEvidence?.append(inner.querySelector(".bub:last-child"), memoryReceipt);
     finalMessages.forEach((message, index) => record(key, {
       side: "other",
       who: null,
       text: message,
-      mem: index === finalMessages.length - 1 ? facts : null,
+      memoryReceipt: index === finalMessages.length - 1 ? memoryReceipt : null,
       pid,
       artifact: index === finalMessages.length - 1 ? artifact : null,
     }));
@@ -5120,6 +5134,7 @@ function expertLongformSections(replies) {
     return {
       name: reply.name || "专家",
       personaId: reply.personaId,
+      memoryReceipt: reply.memoryReceipt,
       text: messages.filter(Boolean).join("\n\n"),
     };
   }).filter((section) => section.text);
@@ -5157,6 +5172,7 @@ async function sendRegular(key, text, voice, image, attachment, messageId, reque
       const sections = replies.map((reply, index) => ({
         name: index === replies.length - 1 ? "综合结论" : (index === 0 ? "关键判断" : "补充分析 " + index),
         personaId: APP_PERSONA_ID,
+        memoryReceipt: reply.memoryReceipt,
         text: ((reply.messages && reply.messages.length) ? reply.messages : [reply.reply]).filter(Boolean).join("\n\n"),
       })).filter((section) => section.text);
       const brief = { title: expertLongformTitle(text), label: "任务完成", showContributors: false, sections };
@@ -5175,11 +5191,11 @@ async function sendRegular(key, text, voice, image, attachment, messageId, reque
         for (let i = 0; i < msgs.length; i++) {
           const last = i === msgs.length - 1;
           const who = isGroup && !requestTarget.anonymous ? (avatarOf("persona", r.personaId).e + " " + r.name).trim() : null;
-          const mem = last ? r.facts : null;
+          const memoryReceipt = last ? r.memoryReceipt : null;
           const artifact = last ? r.artifact : null;
           const visiblePersonaId = requestTarget.anonymous ? APP_PERSONA_ID : r.personaId;
-          addRow("other", who, msgs[i], { mem, pid: visiblePersonaId, artifact });
-          record(key, { side: "other", who, text: msgs[i], mem, pid: visiblePersonaId, artifact });
+          addRow("other", who, msgs[i], { memoryReceipt, pid: visiblePersonaId, artifact });
+          record(key, { side: "other", who, text: msgs[i], memoryReceipt, pid: visiblePersonaId, artifact });
         }
       }
     }
@@ -6249,9 +6265,8 @@ async function pushAppReminder(r) {
   openAppIfNeeded();
   for (let i = 0; i < msgs.length; i++) {
     if (i > 0) await sleep(Math.min(1300, 450 + msgs[i].length * 28));
-    const mem = i === msgs.length - 1 ? (data.facts || []) : null;
-    addRow("other", null, msgs[i], { mem, pid: APP_PERSONA_ID });
-    record(key, { side: "other", who: null, text: msgs[i], mem, pid: APP_PERSONA_ID });
+    addRow("other", null, msgs[i], { pid: APP_PERSONA_ID });
+    record(key, { side: "other", who: null, text: msgs[i], pid: APP_PERSONA_ID });
   }
 }
 function hkRowHtml(r) {

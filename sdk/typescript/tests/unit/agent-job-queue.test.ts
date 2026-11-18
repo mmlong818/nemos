@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,6 +14,31 @@ function temporaryQueue(options: ConstructorParameters<typeof FileAgentJobQueue>
     queue: new FileAgentJobQueue(join(dir, "jobs.json"), options),
   };
 }
+
+test("task history uses a stable creation cursor and excludes explicitly foreign jobs before pagination", () => {
+  const fixture = temporaryQueue();
+  try {
+    const sameTime = "2026-11-18T10:01:00.000Z";
+    const job = (id: string, taskId: string, userId?: string) => ({
+      id, type: "capability-task", status: "succeeded", payload: { taskId },
+      metadata: userId ? { userId } : undefined, createdAt: sameTime, updatedAt: sameTime,
+      availableAt: sameTime, attempts: 1, checkpoints: [],
+    });
+    writeFileSync(fixture.file, JSON.stringify({ version: 1, jobs: [
+      job("beta", "task", "me"), job("gamma", "task", "me"), job("delta", "task", "other"),
+      job("omega", "another-task", "me"),
+      { ...job("alpha", "task"), status: "queued", createdAt: "2026-11-18T10:00:00.000Z", updatedAt: "2026-11-18T10:05:00.000Z" },
+    ] }));
+    const queue = new FileAgentJobQueue(fixture.file);
+    const first = queue.listTaskRuns("task", { limit: 1, userId: "me" });
+    assert.deepEqual(first.map((item) => item.id), ["gamma"]);
+    const before = { id: first[0]!.id, createdAt: first[0]!.createdAt };
+    assert.deepEqual(queue.listTaskRuns("task", { before, limit: 2, userId: "me" }).map((item) => item.id), ["beta", "alpha"]);
+    assert.deepEqual(queue.latestTaskRuns({ taskId: "task", userId: "me" }).map((item) => item.id), ["gamma", "alpha"]);
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
 
 test("persists queued jobs and executes them through a registered worker handler", async () => {
   const events: AgentJobQueueEvent[] = [];
