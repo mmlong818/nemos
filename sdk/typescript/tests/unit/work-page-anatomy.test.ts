@@ -133,3 +133,57 @@ test('自动化卡片显示上次运行的真实结果，失败不再伪装成"�
   assert.match(content.innerHTML,/周报[\s\S]*上次 2026-09-20/);
   assert.match(content.innerHTML,/新任务[\s\S]*尚未运行/);
 });
+
+test('项目详情只读取所选项目摘要，并忽略切换后的旧响应', async () => {
+  const location = { search: '?space=slow-project' };
+  const calls: string[] = [];
+  const rendered: string[] = [];
+  let finishSlow: (value: { space: { id: string } }) => void = () => {};
+  const slow = new Promise<{ space: { id: string } }>(resolve => { finishSlow = resolve; });
+  const content = { setAttribute() {}, removeAttribute() {} };
+  const ctx = runInNewContext(`let loadSequence = 0; let view = "spaces";
+    ${source.slice(source.indexOf('function projectIdFromLocation('), source.indexOf('function hydrateIcons('))}
+    ${source.slice(source.indexOf('async function load('), source.indexOf('function render()'))}
+    ({ load });`, {
+    location, URLSearchParams, $: () => content,
+    api: (url: string) => {
+      calls.push(url);
+      return url.endsWith('slow-project') ? slow : Promise.resolve({ space: { id: 'current' } });
+    },
+    renderProjectOverview: (result: { space: { id: string } }) => rendered.push(result.space.id),
+  });
+  const first = ctx.load();
+  location.search = '?space=current%26project';
+  await ctx.load();
+  finishSlow({ space: { id: 'obsolete' } });
+  await first;
+  assert.deepEqual(calls, ['/api/capabilities/space?id=slow-project', '/api/capabilities/space?id=current%26project']);
+  assert.deepEqual(rendered, ['current']);
+});
+
+test('项目聚合使用原有详情地址，并转义标题、下一步和资料编号', () => {
+  const nodes: Record<string, { innerHTML?: string; textContent?: string }> = {};
+  const project = {
+    space: { id: 'p?1', title: '<项目>', description: '项目目标', status: 'active' },
+    tasks: [{ id: 't&1', title: '<任务>', status: 'active' }],
+    materials: [{ id: 'm"1', title: '<资料>', kind: 'note' }],
+    artifacts: [{ id: 'a&1', taskId: 't&1', title: '<成果>', format: 'doc', createdAt: '2026-11-18T00:00:00.000Z' }],
+    nextAction: { taskId: 't&1', taskTitle: '<任务>', text: '<下一步>' },
+    counts: { tasks: 7, materials: 1, artifacts: 1 },
+  };
+  runInNewContext(`${source.slice(source.indexOf('function escapeHtml('), source.indexOf('async function api('))}
+    ${source.slice(source.indexOf('function projectSection('), source.indexOf('async function continueOneOffTask('))}
+    renderProjectOverview(project);`, {
+    project, document: {}, $: (key: string) => nodes[key] ||= {},
+    storylineStatusLabel: () => '推进中', resourceKindLabel: () => '文字笔记',
+  });
+  assert.equal(nodes['#pageTitle']?.textContent, '<项目>');
+  const html = nodes['#content']?.innerHTML || '';
+  assert.match(html, /&lt;下一步&gt;/);
+  assert.match(html, /\/tasks\?space=p%3F1&amp;task=t%261/);
+  assert.match(html, /data-preview-resource="m&quot;1"/);
+  assert.match(html, /\/api\/capabilities\/artifact\/preview\?id=a%261/);
+  assert.match(html, /\/bots\?task=t%261/);
+  assert.match(html, /显示 1 \/ 7/);
+  assert.doesNotMatch(html, /<任务>|<资料>|<成果>/);
+});
