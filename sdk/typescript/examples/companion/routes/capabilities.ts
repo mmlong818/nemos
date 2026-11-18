@@ -12,6 +12,7 @@ import { CapabilityRuntime } from "../capabilities.js";
 import { type CapabilityExtensionSummary, type CapabilityProviderSummary } from "../capability-system-registry.js";
 import { createDefaultCapabilityToolRegistry, type CapabilityToolSummary } from "../capability-tools.js";
 import { FileDeliveryOutbox } from "../delivery-outbox.js";
+import type { KnowledgeLibrary } from "../knowledge-library.js";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -40,6 +41,7 @@ export interface CapabilityDeps {
   readonly deliveryOutbox: FileDeliveryOutbox;
   readonly extensionToolSummaries: () => CapabilityToolSummary[];
   readonly fetchSkillMarkdownFromUrl: (url: string, signal?: AbortSignal) => Promise<string>;
+  readonly knowledgeLibrary: Pick<KnowledgeLibrary, "list">;
   readonly readBody: (req: IncomingMessage, maxBytes?: number) => Promise<unknown>;
   readonly send: (res: ServerResponse, code: number, body: unknown, type?: string) => void;
   readonly teamConnectionFingerprint: () => string;
@@ -47,7 +49,7 @@ export interface CapabilityDeps {
 }
 
 export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
-  const { USER, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, collaborationLedger, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, readBody, send, teamConnectionFingerprint } = deps;
+  const { USER, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, collaborationLedger, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, knowledgeLibrary, readBody, send, teamConnectionFingerprint } = deps;
   // TSC_DESTRUCTURE
   void deps;
   const collaborationArtifactBelongsToStep = (artifact: import("../capabilities.js").CapabilityArtifact, step: import("../collaboration-ledger.js").CollaborationStep, receipt: import("../collaboration-ledger.js").CollaborationReceipt): boolean => {
@@ -568,6 +570,22 @@ export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
     route("GET", "/api/capabilities/tasks/awaiting-resume", ({ res }) => {
       send(res, 200, { ok: true, tasks: capabilities.tasksAwaitingResumeDecision() });
       return;
+    }),
+    route("GET", "/api/capabilities/space", ({ query, res }) => {
+      const id = query.get("id")?.trim();
+      if (!id) { send(res, 400, { error: "请提供项目编号" }); return; }
+      const overview = capabilities.spaceOverview(id);
+      if (!overview) { send(res, 404, { error: "未找到该项目" }); return; }
+      const materials = knowledgeLibrary.list().filter((material) => material.spaceId === id)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+      send(res, 200, {
+        ok: true,
+        ...overview,
+        materials: materials.slice(0, 5).map(({ id, title, kind, excerpt, updatedAt }) => ({
+          id, title, kind, excerpt, updatedAt,
+        })),
+        counts: { ...overview.counts, materials: materials.length },
+      });
     }),
     route("POST", "/api/capabilities/space", async ({ req, res }) => {
       const b = (await readBody(req)) as {

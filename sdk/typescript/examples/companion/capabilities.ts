@@ -1035,6 +1035,39 @@ export class CapabilityRuntime {
     return space;
   }
 
+  spaceOverview(id: string) {
+    const space = this.spaces.find((item) => item.id === id);
+    if (!space) return undefined;
+
+    const tasks = this.tasks.filter((task) => task.spaceId === id);
+    const taskIds = new Set(tasks.map((task) => task.id));
+    const rank = { waiting: 0, active: 1, paused: 2, completed: 3 };
+    const taskRank = (task: CapabilityTask) => task.archivedAt ? 4 : rank[task.storyline.status];
+    tasks.sort((a, b) => taskRank(a) - taskRank(b)
+      || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+    const nextTask = space.status === "active"
+      ? tasks.find((task) => taskRank(task) <= rank.active && task.storyline.nextAction.trim())
+      : undefined;
+    const artifacts = this.artifacts.filter((artifact) => taskIds.has(artifact.taskId));
+    artifacts.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+
+    return {
+      space: { id: space.id, title: space.title, description: space.description, status: space.status,
+        createdAt: space.createdAt, updatedAt: space.updatedAt },
+      tasks: tasks.slice(0, 5).map(({ id, title, storyline, updatedAt, archivedAt }) => ({
+        id, title, status: storyline.status, updatedAt, archivedAt,
+      })),
+      artifacts: artifacts.slice(0, 6).map(({ id, taskId, title, format, createdAt }) => ({
+        id, taskId, title, format, createdAt,
+      })),
+      counts: { tasks: tasks.length, artifacts: artifacts.length },
+      nextAction: nextTask ? {
+        taskId: nextTask.id, taskTitle: nextTask.title,
+        status: nextTask.storyline.status, text: nextTask.storyline.nextAction.trim(),
+      } : null,
+    };
+  }
+
   createTask(input: {
     title: string;
     personaId: string;

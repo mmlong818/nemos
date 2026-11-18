@@ -7,6 +7,16 @@ const state = { snapshot: null, jobs: [], runs: [], memories: [], knowledge: [],
 const loadedViews = new Set();
 let loadSequence = 0;
 let activeStoryTaskId = "";
+let resourcePreview;
+let agentEventSource;
+
+function projectIdFromLocation() {
+  return view === "spaces" ? new URLSearchParams(location.search).get("space") : null;
+}
+
+function projectHref(id) {
+  return `/spaces?space=${encodeURIComponent(id)}`;
+}
 
 function hydrateIcons() {
   window.ClownfishIcons.hydrate({ root: document });
@@ -24,7 +34,7 @@ function date(value) {
 async function api(url, options) {
   const response = await fetch(url, { headers: { "Content-Type": "application/json", ...(options?.headers || {}) }, ...options });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || `请求失败（${response.status}）`);
+  if (!response.ok) throw Object.assign(new Error(payload.error || `请求失败（${response.status}）`), { status: response.status });
   return payload;
 }
 
@@ -50,7 +60,9 @@ const pageCopy = {
 };
 
 function setPage() {
-  const copy = pageCopy[view] || pageCopy.automations;
+  const projectDetail = projectIdFromLocation() !== null;
+  const copy = projectDetail ? ["", "项目概览", ""] : (pageCopy[view] || pageCopy.automations);
+  document.body.classList.toggle("is-project-overview", projectDetail);
   $("#pageEyebrow").textContent = copy[0];
   const pageTitle = $("#pageTitle");
   if (pageTitle) pageTitle.textContent = copy[1];
@@ -62,18 +74,20 @@ function setPage() {
     else link.removeAttribute("aria-current");
   });
   document.title = `${copy[1]} · 小丑鱼`;
-  const createLabel={spaces:"新建项目",automations:"新建自动化",resources:"添加资料"}[view];
+  const createLabel=projectDetail ? undefined : {spaces:"新建项目",automations:"新建自动化",resources:"添加资料"}[view];
   const createButton=$("#newTaskSide");createButton.hidden=!createLabel;
   createButton.querySelector('span:last-child').textContent=createLabel || '新建';
   createButton.setAttribute('aria-label',createLabel || '新建');createButton.title=createLabel || '新建';
   $("#workStartTask").hidden=view!=="tasks";
-  $("#workSearchToggle").hidden=view==="memory"||view==="artifacts";
+  $("#workBackToProjects").hidden=!projectDetail;
+  $("#workSearchToggle").hidden=projectDetail||view==="memory"||view==="artifacts";
   window.ClownfishNavigation.sync();
   $("#workSearchEyebrow").textContent = copy[1];
   $("#workSearchTitle").textContent = `搜索${copy[1]}`;
   $("#workSearch").placeholder = `输入${copy[1]}名称或内容`;
   $("#workSearchToggle .app-search-label").textContent = `搜索${copy[1]}`;
   updatePrimaryWorkNavigation();
+  syncWorkEvents();
 }
 
 function updatePrimaryWorkNavigation() {
@@ -111,10 +125,17 @@ function showLoading() {
 
 async function load() {
   const requestedView = view;
+  const projectId = projectIdFromLocation();
   const sequence = ++loadSequence;
   const content = $("#content");
+  const current = () => sequence === loadSequence && requestedView === view && projectId === projectIdFromLocation();
   content.setAttribute("aria-busy", "true");
   try {
+    if (projectId !== null) {
+      const project = await api(`/api/capabilities/space?id=${encodeURIComponent(projectId)}`);
+      if (current()) renderProjectOverview(project);
+      return;
+    }
     let result;
     if (requestedView === "tasks") {
       const [snapshot, jobs, knowledge] = await Promise.all([api("/api/capabilities"), api("/api/agent/jobs?limit=100"), api("/api/knowledge")]);
@@ -147,7 +168,7 @@ async function load() {
       if (linked?.status === "active" && linked.fact?.id === id) facts.unshift(linked.fact);
       result = { facts, linked };
     }
-    if (sequence !== loadSequence || requestedView !== view) return;
+    if (!current()) return;
     if (requestedView === "tasks") {
       state.snapshot = result.snapshot;
       state.jobs = result.jobs;
@@ -195,11 +216,15 @@ async function load() {
     }
     if (activeStoryTaskId && $("#storyDialog")?.open) refreshOpenStoryline();
   } catch (error) {
-    if (sequence !== loadSequence || requestedView !== view) return;
+    if (!current()) return;
+    if (projectId !== null) {
+      renderProjectError(error.status);
+      return;
+    }
     if (loadedViews.has(requestedView)) toast(error.message || "读取失败", true);
     else content.innerHTML = `<div class="empty">${escapeHtml(error.message || "读取失败")}</div>`;
   } finally {
-    if (sequence === loadSequence && requestedView === view) content.removeAttribute("aria-busy");
+    if (current()) content.removeAttribute("aria-busy");
   }
 }
 
@@ -216,6 +241,7 @@ function render() {
 
 function activateView(nextView, historyMode = "none") {
   if (!workViews.has(nextView)) return;
+  closeResourcePreview({ restoreFocus: false });
   view = nextView;
   if (historyMode === "push") history.pushState({ workView: view }, "", `/${view}`);
   setPage();
@@ -406,7 +432,7 @@ function renderSpaceRow(space) {
   const resultCount = artifacts.filter((artifact) => tasks.some((task) => task.id === artifact.taskId)).length;
   const nextTask = tasks.find((task) => storylineOf(task).status === "active") || tasks[0];
   return `<article class="space-row">
-    <a class="space-main" href="/tasks?space=${encodeURIComponent(space.id)}">
+    <a class="space-main" href="${projectHref(space.id)}">
       <div class="space-mark" aria-hidden="true"></div>
       <div><h2>${escapeHtml(space.title)}</h2><p>${escapeHtml(space.description || "尚未填写目标说明")}</p></div>
     </a>
@@ -421,7 +447,7 @@ function renderSpaces() {
   const archived = spaces.filter((space) => space.status === "archived");
   $("#content").innerHTML = `<p class="work-list-summary">${active.length} 个项目</p>
     <div class="space-list" id="spaceList">${active.length ? active.map(renderSpaceRow).join("") : `<div class="space-empty"><h2>还没有项目</h2><p>点击“新建项目”，把同一件事的任务和成果放在一起。单个任务不必建项目。</p></div>`}</div>
-    ${archived.length ? `<details class="archived-spaces"><summary>${archived.length} 个已归档项目</summary><div>${archived.map((space) => `<div class="archived-space"><span><strong>${escapeHtml(space.title)}</strong><small>${escapeHtml(space.description || "无说明")}</small></span><button data-restore-space="${space.id}">恢复</button></div>`).join("")}</div></details>` : ""}`;
+    ${archived.length ? `<details class="archived-spaces"><summary>${archived.length} 个已归档项目</summary><div>${archived.map((space) => `<div class="archived-space"><a class="archived-space-link" href="${projectHref(space.id)}"><strong>${escapeHtml(space.title)}</strong><small>${escapeHtml(space.description || "无说明")}</small></a><button data-restore-space="${escapeHtml(space.id)}">恢复</button></div>`).join("")}</div></details>` : ""}`;
   $("#content").onclick = async (event) => {
     const edit = event.target.closest("[data-edit-space]");
     const archive = event.target.closest("[data-archive-space]");
@@ -429,6 +455,86 @@ function renderSpaces() {
     if (edit) return openSpaceDialog(spaceById(edit.dataset.editSpace));
     if (archive && confirm("归档这个项目？其中的任务和结果会保留。")) return setSpaceStatus(archive.dataset.archiveSpace, "archived");
     if (restore) return setSpaceStatus(restore.dataset.restoreSpace, "active");
+  };
+}
+
+function projectSection({ id, title, count, rows, empty, action = "" }) {
+  return `<section class="project-section" aria-labelledby="${id}">
+    <header><h2 id="${id}">${title}</h2><span class="project-count">${rows.length < count ? `显示 ${rows.length} / ` : ""}${count}</span>${action}</header>
+    ${rows.length ? `<ul class="project-rows">${rows.join("")}</ul>` : `<p class="project-empty">${empty}</p>`}
+  </section>`;
+}
+
+function renderProjectOverview({ space, tasks, materials, artifacts, nextAction, counts }) {
+  const archived = space.status === "archived";
+  const tasksHref = `/tasks?space=${encodeURIComponent(space.id)}`;
+  const taskHref = (id) => `${tasksHref}&amp;task=${encodeURIComponent(id)}`;
+  const title = space.title || "未命名项目";
+  $("#pageEyebrow").textContent = archived ? "已归档" : "";
+  $("#pageTitle").textContent = title;
+  $("#pageDescription").textContent = space.description || "尚未填写目标说明";
+  document.title = `${title} · 小丑鱼`;
+
+  const taskSection = projectSection({
+    id: "project-tasks", title: "任务", count: counts.tasks,
+    empty: "这个项目还没有任务。",
+    action: counts.tasks ? `<a class="project-link" href="${tasksHref}">查看全部任务</a>` : "",
+    rows: tasks.map(task => `<li class="project-row">
+      <a class="project-row-title" href="${taskHref(task.id)}">${escapeHtml(task.title)}</a>
+      <span class="pill${task.status === "completed" ? " ok" : ""}">${escapeHtml(task.archivedAt ? "已归档" : storylineStatusLabel(task.status))}</span>
+    </li>`),
+  });
+  const materialSection = projectSection({
+    id: "project-materials", title: "资料", count: counts.materials, empty: "这个项目还没有资料。",
+    rows: materials.map(item => `<li class="project-row">
+      <div class="project-row-copy"><strong class="project-row-title">${escapeHtml(item.title)}</strong><small>${escapeHtml(resourceKindLabel(item.kind))}</small></div>
+      <button type="button" class="project-link" data-preview-resource="${escapeHtml(item.id)}" aria-label="查看资料：${escapeHtml(item.title)}" aria-controls="workResourcePreview">查看</button>
+    </li>`),
+  });
+  const artifactSection = projectSection({
+    id: "project-artifacts", title: "最近成果", count: counts.artifacts, empty: "这个项目还没有生成成果。",
+    rows: artifacts.map(item => {
+      const id = encodeURIComponent(item.id);
+      return `<li class="project-row project-artifact-row">
+        <div class="project-row-copy"><strong class="project-row-title">${escapeHtml(item.title)}</strong><small>${escapeHtml(String(item.format || "").toUpperCase())} · ${escapeHtml(date(item.createdAt))}</small></div>
+        <div class="project-artifact-actions">
+          <a class="project-link" href="/api/capabilities/artifact/preview?id=${id}" target="_blank" rel="noopener" aria-label="预览：${escapeHtml(item.title)}">预览</a>
+          <a class="project-link" href="/api/capabilities/artifact?id=${id}" download aria-label="下载：${escapeHtml(item.title)}">下载</a>
+          ${item.taskId ? `<a class="project-link" href="/bots?task=${encodeURIComponent(item.taskId)}">来源任务</a>` : ""}
+        </div>
+      </li>`;
+    }),
+  });
+  const next = !archived && nextAction
+    ? `<div class="project-next-copy"><p>${escapeHtml(nextAction.text)}</p><a class="project-link" href="${taskHref(nextAction.taskId)}">${escapeHtml(nextAction.taskTitle)}</a></div>`
+    : `<p class="project-empty">${archived ? "已归档项目的记录仍可查看。" : counts.tasks ? "目前没有记录可推进的下一步。" : "添加任务后，这里会显示记录中的下一步。"}</p>`;
+  const content = $("#content");
+  content.innerHTML = `<div class="project-overview">
+    <section class="project-next" aria-labelledby="project-next"><h2 id="project-next">下一步</h2>${next}</section>
+    <div class="project-overview-columns">${taskSection}<div class="project-side">${materialSection}${artifactSection}</div></div>
+  </div>`;
+  content.onclick = (event) => {
+    const trigger = event.target.closest("[data-preview-resource]");
+    if (trigger) void openResourcePreview(trigger.dataset.previewResource, trigger);
+  };
+}
+
+function renderProjectError(status) {
+  const unavailable = status === 404 || status === 400;
+  const content = $("#content");
+  $("#pageEyebrow").textContent = "";
+  $("#pageTitle").textContent = "项目概览";
+  $("#pageDescription").textContent = "";
+  document.title = "项目概览 · 小丑鱼";
+  closeResourcePreview({ restoreFocus: false });
+  content.innerHTML = unavailable
+    ? '<div class="space-empty"><h2>找不到这个项目</h2><p>项目可能已不存在，或地址不完整。</p></div>'
+    : '<div class="space-empty"><h2>项目暂时无法读取</h2><p>可以重试，或返回项目列表。</p><button type="button" data-retry-project>重试</button></div>';
+  content.onclick = (event) => {
+    if (event.target.closest("[data-retry-project]")) {
+      showLoading();
+      void load();
+    }
   };
 }
 
@@ -799,12 +905,7 @@ function renderResources() {
     const preview = event.target.closest("[data-preview-resource]");
     const archive = event.target.closest("[data-archive-resource]");
     const restore = event.target.closest("[data-restore-resource]");
-    if (preview) {
-      const result = await api(`/api/knowledge?id=${encodeURIComponent(preview.dataset.previewResource)}`);
-      $("#workResourceTitle").textContent=result.item.title;
-      $("#workResourceBody").textContent=result.item.content || result.item.sourceUrl || "";
-      $("#workResourcePreview").hidden=false;$("#closeResourcePreview").focus();
-    }
+    if (preview) return openResourcePreview(preview.dataset.previewResource, preview);
     if (archive && confirm("归档这份资料？已有任务中的引用会暂时失效，但资料可以恢复。")) {
       await api("/api/knowledge/archive", { method: "POST", body: JSON.stringify({ id: archive.dataset.archiveResource }) });
       await load();
@@ -814,6 +915,53 @@ function renderResources() {
       await load();
     }
   };
+}
+
+async function openResourcePreview(id, trigger) {
+  resourcePreview?.controller.abort();
+  const controller = new AbortController();
+  const request = { id, trigger, controller };
+  resourcePreview = request;
+  const panel = $("#workResourcePreview");
+  const status = $("#workResourceStatus");
+  const retry = $("#retryResourcePreview");
+  const body = $("#workResourceBody");
+  panel.hidden = false;
+  panel.setAttribute("aria-busy", "true");
+  $("#workResourceTitle").textContent = "参考资料";
+  body.textContent = "";
+  status.textContent = "正在读取资料…";
+  retry.hidden = true;
+  $("#closeResourcePreview").focus();
+  try {
+    const { item } = await api(`/api/knowledge?id=${encodeURIComponent(id)}`, { signal: controller.signal });
+    if (resourcePreview !== request) return;
+    $("#workResourceTitle").textContent = item.title;
+    body.textContent = item.content || item.sourceUrl || "";
+    status.textContent = "";
+  } catch (error) {
+    if (resourcePreview !== request) return;
+    status.textContent = error.status === 404 ? "这份资料已无法查看。" : "暂时无法读取资料。";
+    retry.hidden = error.status === 404;
+  } finally {
+    if (resourcePreview === request) panel.removeAttribute("aria-busy");
+  }
+}
+
+function closeResourcePreview({ restoreFocus = true } = {}) {
+  const request = resourcePreview;
+  if (!request) return;
+  resourcePreview = undefined;
+  request.controller.abort();
+  const panel = $("#workResourcePreview");
+  panel.hidden = true;
+  panel.removeAttribute("aria-busy");
+  $("#workResourceBody").textContent = "";
+  if (restoreFocus) {
+    const target = request.trigger?.isConnected ? request.trigger
+      : $$('[data-preview-resource]').find(button => button.dataset.previewResource === request.id);
+    (target || $("#workBackToProjects"))?.focus();
+  }
 }
 
 function openKnowledgeDialog() {
@@ -840,8 +988,9 @@ function renderArtifactCard(item) {
 function renderArtifacts() {
   const artifacts = state.snapshot?.artifacts || [];
   $("#content").innerHTML = '<div id="artifactList"></div>';
-  window.ClownfishFileLibrary.mount({root:$("#artifactList"),artifacts,documents:state.documents||[],knowledge:state.knowledge,warnings:state.fileWarnings||[],onPreview:async id=>{
-    try{const result=await api('/api/knowledge?id='+encodeURIComponent(id));$("#workResourceTitle").textContent=result.item.title;$("#workResourceBody").textContent=result.item.content||result.item.sourceUrl||'';$("#workResourcePreview").hidden=false;$("#closeResourcePreview").focus();}catch(error){toast(error.message,true);}
+  window.ClownfishFileLibrary.mount({root:$("#artifactList"),artifacts,documents:state.documents||[],knowledge:state.knowledge,warnings:state.fileWarnings||[],onPreview:id=>{
+    const trigger = $$('[data-preview-resource]').find(button => button.dataset.previewResource === id);
+    return openResourcePreview(id, trigger);
   }});
   $("#artifactList").onclick = async (event) => {
     const useful = event.target.closest("[data-feedback-useful]");
@@ -1152,19 +1301,35 @@ $("#knowledgeForm").addEventListener("submit", async (event) => {
 $$('[data-close-dialog]').forEach((button) => button.onclick = () => closeWorkEditor('taskDialog'));
 $('[data-close-space]').onclick = () => closeWorkEditor('spaceDialog');
 $('[data-close-knowledge]').onclick = () => closeWorkEditor('knowledgeDialog');
-$('#closeResourcePreview').onclick=()=>{$('#workResourcePreview').hidden=true;};
+$("#closeResourcePreview").onclick = () => closeResourcePreview();
+$("#retryResourcePreview").onclick = () => {
+  if (resourcePreview) void openResourcePreview(resourcePreview.id, resourcePreview.trigger);
+};
+$("#workResourcePreview").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeResourcePreview();
+});
 $("[data-close-story]").onclick = () => $("#storyDialog").close();
 $("#storyDialog").addEventListener("close", () => { activeStoryTaskId = ""; });
 
-const agentEventSource = window.ClownfishAgentEvents?.connect({
-  onSync: () => view === "memory" ? undefined : load(),
-  onStatus: (status) => {
-    const node = $("#eventConnectionStatus");
-    node.hidden = status === "connected";
-    node.textContent = status === "closed" ? "实时连接已停止，请重新连接。" : status === "reconnecting" ? "连接中断，正在重连；恢复后会补读任务状态。" : "";
-    $("#retryEventConnection").hidden = status !== "closed";
-  },
-});
+function syncWorkEvents() {
+  if (projectIdFromLocation() !== null) {
+    agentEventSource?.close();
+    agentEventSource = undefined;
+    $("#eventConnectionStatus").hidden = true;
+    $("#retryEventConnection").hidden = true;
+    return;
+  }
+  if (agentEventSource) return;
+  agentEventSource = window.ClownfishAgentEvents?.connect({
+    onSync: () => view === "memory" ? undefined : load(),
+    onStatus: (status) => {
+      const node = $("#eventConnectionStatus");
+      node.hidden = status === "connected";
+      node.textContent = status === "closed" ? "实时连接已停止，请重新连接。" : status === "reconnecting" ? "连接中断，正在重连；恢复后会补读任务状态。" : "";
+      $("#retryEventConnection").hidden = status !== "closed";
+    },
+  });
+}
 $("#retryEventConnection").onclick = () => agentEventSource?.retry();
 $("#newTaskSide").onclick = () => {
   if(!state.snapshot)return toast("正在读取本机数据，请稍后重试");
@@ -1193,7 +1358,7 @@ $("#workSearchResults").onclick = async (event) => {
   if (kind === "task") {
     const task = (state.snapshot?.tasks || []).find((item) => item.id === id);
     if (task) openStoryline(task);
-  } else if (kind === "space") location.href = `/tasks?space=${encodeURIComponent(id)}`;
+  } else if (kind === "space") location.href = projectHref(id);
   else if (kind === "artifact") window.open(`/api/capabilities/artifact/preview?id=${encodeURIComponent(id)}`, "_blank", "noopener");
   else if (kind === "resource") document.querySelector(`[data-preview-resource="${CSS.escape(id)}"]`)?.click();
   else if (kind === "memory") document.querySelector(`[data-memory-detail="${CSS.escape(id)}"]`)?.click();
@@ -1201,6 +1366,7 @@ $("#workSearchResults").onclick = async (event) => {
 if (window.ClownfishNavigation) {
   view = viewFromLocation();
   setPage();
+  searchOverlay();
   showLoading();
   void load();
 }

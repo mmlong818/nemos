@@ -53,9 +53,9 @@
             <p id="eventConnectionStatus" role="status" hidden></p>
             <button id="retryEventConnection" type="button" hidden>重新连接</button>
           </header>
-          <div id="workLocalActions" class="work-local-actions" aria-label="当前页面操作"><a id="workStartTask" class="wb-primary-link" href="/bots?view=tasks" hidden>发起任务</a></div>
+          <div id="workLocalActions" class="work-local-actions" aria-label="当前页面操作"><a id="workStartTask" class="wb-primary-link" href="/bots?view=tasks" hidden>发起任务</a><a id="workBackToProjects" class="project-link" href="/spaces" hidden>返回项目</a></div>
           <section id="workInlineEditor" class="work-inline-editor" aria-label="编辑工作内容" hidden></section>
-          <section id="workResourcePreview" class="work-resource-preview" aria-labelledby="workResourceTitle" hidden><header><h2 id="workResourceTitle"></h2><button id="closeResourcePreview" type="button">收起预览</button></header><pre id="workResourceBody"></pre></section>
+          <section id="workResourcePreview" class="work-resource-preview" aria-labelledby="workResourceTitle" hidden><header><h2 id="workResourceTitle"></h2><button id="closeResourcePreview" type="button">收起预览</button></header><p id="workResourceStatus" role="status"></p><button id="retryResourcePreview" type="button" hidden>重试预览</button><pre id="workResourceBody"></pre></section>
           <section class="content" id="content" aria-live="polite">
             <div class="loading" role="status" aria-label="正在读取本机数据"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span><span class="cf-skeleton is-short"></span></div>
           </section>
