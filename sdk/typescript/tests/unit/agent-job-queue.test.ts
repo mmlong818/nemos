@@ -445,12 +445,44 @@ test("event-driven worker honors retry backoff without waiting for its fallback 
 // 足以说明问题，而 1 秒扛不住 CI runner 抖动——2026-09-10 的 main 就因此挂过一次
 // （ubuntu 失败、windows 同 commit 通过，失败耗时恰好 1001ms，是没等到而不是断言不符）。
 async function waitUntil(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("condition was not reached");
+    if (performance.now() >= deadline) throw new Error("condition was not reached");
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
+
+test("worker wakes again when a retry becomes available just after an empty claim", async (t) => {
+  const fixture = temporaryQueue({ retryBaseDelayMs: 10 });
+  const queued = fixture.queue.enqueue({ type: "read", payload: {}, maxAttempts: 2 });
+  fixture.queue.claimNext("seeder");
+  const failed = fixture.queue.fail(queued.id, "seeder", new Error("temporary"));
+  const availableAt = Date.parse(failed.availableAt);
+  let now = availableAt - 1;
+  let missedAvailability = false;
+  const claim = fixture.queue.claimNext.bind(fixture.queue);
+  t.mock.method(Date, "now", () => now);
+  t.mock.method(fixture.queue, "claimNext", (workerId: string) => {
+    const job = claim(workerId, new Date(now));
+    if (now < availableAt) {
+      missedAvailability = job === null;
+      now = availableAt;
+    }
+    return job;
+  });
+  const worker = new AgentJobWorker(fixture.queue, {
+    read: async () => ({ summary: "recovered" }),
+  }, { pollIntervalMs: 60_000 });
+  try {
+    worker.start();
+    await waitUntil(() => fixture.queue.get(queued.id)?.status === "succeeded");
+    assert.equal(missedAvailability, true);
+    assert.equal(fixture.queue.get(queued.id)?.attempts, 2);
+  } finally {
+    worker.stop();
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
 
 test("空转那一跳按最早可领时刻重排，而不是落到兜底轮询", async () => {
   // 真实竞态：重试唤醒按 availableAt - now 排，定时器偶尔早触发一丝，这一跳 claimNext
