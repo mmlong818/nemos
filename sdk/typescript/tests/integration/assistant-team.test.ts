@@ -113,7 +113,8 @@ test("进程中断后自动接续：复用已保存整理回执，不重做已�
       await new Promise((r) => setTimeout(r, 30));
     }
     assert.ok(interrupted); h.state.delayMs = 0;
-    await h.restart();
+    // Simulate an abrupt interruption. SIGTERM drains and closes provider routes on Unix.
+    await h.crashAndRestart();
     let result: any;
     for (let i = 0; i < 200; i++) {
       result = await read(record.id); if (["succeeded", "failed"].includes(result.status)) break;

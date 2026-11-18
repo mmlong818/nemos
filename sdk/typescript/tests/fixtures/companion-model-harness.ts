@@ -74,9 +74,9 @@ export async function startModelHarness() {
   await new Promise<void>((done) => reservation.close(() => done()));
   const base = `http://127.0.0.1:${port}`;
   const modelBase = `http://127.0.0.1:${modelPort}`;
-  const stopApp = async () => {
+  const stopApp = async (signal: NodeJS.Signals = "SIGTERM") => {
     if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    const exited = once(child, "exit"); child.kill(); await exited;
+    const exited = once(child, "exit"); child.kill(signal); await exited;
   };
   const startApp = async () => {
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^COMPANION_|^CLOWNFISH_HOME$|^NEMOS_COMPANION_HOME$|^ZHIPU_API_KEY$|^NODE_USE_ENV_PROXY$/.test(key)));
@@ -101,6 +101,7 @@ export async function startModelHarness() {
   };
   try { await startApp(); } catch (error) { await stopHarness(); throw error; }
   return { dir, base, modelBase, requests, state, stop: stopHarness,
+    crashAndRestart: async () => { await stopApp("SIGKILL"); await startApp(); },
     restart: async (whileStopped?: () => void | Promise<void>) => { await stopApp(); await whileStopped?.(); await startApp(); } };
 }
 

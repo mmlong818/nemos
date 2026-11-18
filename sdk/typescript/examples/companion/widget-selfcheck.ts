@@ -60,11 +60,14 @@ export async function selfCheckWidget(file: string, options: { timeoutMs?: numbe
     const endpoint = await new Promise<string>((resolve, reject) => {
       let buffer = "";
       child.stderr!.on("data", (chunk) => {
-        buffer += String(chunk);
+        buffer = (buffer + String(chunk)).slice(-8_192);
         const match = /DevTools listening on (ws:\/\/\S+)/.exec(buffer);
         if (match) resolve(match[1]);
       });
-      child.once("exit", (code) => reject(new Error(`浏览器提前退出（${code}）`)));
+      child.once("exit", (code, signal) => {
+        const sandbox = /no usable sandbox|failed to move to new namespace/i.test(buffer) ? "；Chromium 系统沙箱无法启动" : "";
+        reject(new Error(`浏览器提前退出（${signal ?? code ?? "原因未知"}）${sandbox}`));
+      });
       child.once("error", reject);
     });
     socket = new WebSocket(endpoint);

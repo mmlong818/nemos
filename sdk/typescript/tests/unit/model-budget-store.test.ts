@@ -192,9 +192,13 @@ test("concurrent first connections serialize fresh database migration", async (t
       if (message !== "open") return;
       try {
         const store = new ModelBudgetStore(workerData.path);
-        const task = store.bindOwner("companion", "shared-owner", "shared-uuid", 20);
+        let task;
+        try {
+          task = store.bindOwner("companion", "shared-owner", "shared-uuid", 20);
+        } finally {
+          store.close();
+        }
         parentPort.postMessage({ ok: true, taskInstanceId: task.taskInstanceId });
-        store.close();
         parentPort.close();
       } catch (error) { parentPort.postMessage({ ok: false, error: String(error) }); parentPort.close(); }
     });
@@ -205,18 +209,22 @@ test("concurrent first connections serialize fresh database migration", async (t
     execArgv: ["--import", "tsx"],
     workerData: { modulePath, path: f.path },
   }));
-  t.after(async () => { await Promise.all(workers.map((worker) => worker.terminate())); });
-  await Promise.all(workers.map((worker) => new Promise<void>((resolve, reject) => {
-    worker.once("message", (message) => message?.ready ? resolve() : reject(new Error("Worker 未就绪")));
-    worker.once("error", reject);
-  })));
-  const results = await Promise.all(workers.map((worker) => new Promise<{ ok: boolean; taskInstanceId?: string; error?: string }>((resolve, reject) => {
-    worker.once("message", resolve);
-    worker.once("error", reject);
-    worker.postMessage("open");
-  })));
-  assert.equal(results.every((result) => result.ok), true, JSON.stringify(results));
-  assert.equal(results[0]?.taskInstanceId, results[1]?.taskInstanceId);
+  try {
+    await Promise.all(workers.map((worker) => new Promise<void>((resolve, reject) => {
+      worker.once("message", (message) => message?.ready ? resolve() : reject(new Error("Worker 未就绪")));
+      worker.once("error", reject);
+    })));
+    const results = await Promise.all(workers.map((worker) => new Promise<{ ok: boolean; taskInstanceId?: string; error?: string }>((resolve, reject) => {
+      worker.once("message", resolve);
+      worker.once("error", reject);
+      worker.postMessage("open");
+    })));
+    assert.equal(results.every((result) => result.ok), true, JSON.stringify(results));
+    assert.equal(results[0]?.taskInstanceId, results[1]?.taskInstanceId);
+  } finally {
+    // Wait for the SQLite handles to close before the fixture's teardown removes the database.
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
 });
 
 test("version 1 migration preserves prior identities and starts monotonic issuance", (t) => {

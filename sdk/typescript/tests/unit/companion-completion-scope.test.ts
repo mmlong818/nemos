@@ -16,6 +16,7 @@ test("工作分区恢复各自入口，自动化、项目、资料、成果和�
   const stability = readFileSync(join(root, "assets", "work-stability.css"), "utf8");
   const chat = readAppHtml("index.html");
   const server = readServerRouteSurface();
+  const memoryView = readFileSync(join(root, "..", "memory-record-view.ts"), "utf8");
   const capabilityHtml = readAppHtml("capabilities.html");
   const capabilityScript = readFileSync(join(root, "assets", "capability-center.js"), "utf8");
 
@@ -44,7 +45,9 @@ test("工作分区恢复各自入口，自动化、项目、资料、成果和�
   assert.match(script, /data-memory-detail/);
   assert.match(html, /memoryDetailDialog/);
   assert.match(server, /\/api\/memory\/correct/);
-  assert.match(server, /sourceMessageId[\s\S]*archivalId[\s\S]*excerpt/);
+  assert.match(server, /pathname === "\/api\/memory"[^]*?listMemoryRecords\(/);
+  assert.match(server, /pathname === "\/api\/memory\/item"[^]*?readMemoryRecord\(/);
+  assert.match(memoryView, /source:\s*\{[^]*?sourceMessageId:[^]*?archivalId:[^]*?excerpt:/);
   assert.match(script, /\/api\/capabilities\/artifact\/feedback/);
   assert.match(script, /history\.pushState/);
   assert.match(script, /window\.addEventListener\("popstate"/);

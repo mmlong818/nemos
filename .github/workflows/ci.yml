@@ -45,6 +45,18 @@ jobs:
         shell: bash
       - run: npm run build
       - run: npm run typecheck
+      - name: 准备锁定的 Windows WebView2 SDK
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./examples/companion/client/Build-Clownfish.ps1 -PrepareWebView2Sdk
+      # Use the runner's packaged Chrome for Linux widget checks while keeping
+      # Chromium's sandbox enabled.
+      - name: Select packaged Chrome for Linux browser checks
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test -x /usr/bin/google-chrome
+          echo "NEMOS_BROWSER_PATH=/usr/bin/google-chrome" >> "$GITHUB_ENV"
       - run: npm test
       # 文档核验此前只靠人工执行，红了一段时间没人发现，因此纳入 CI。
       # 它只做内容与链接检查，与操作系统无关，跑一次即可。

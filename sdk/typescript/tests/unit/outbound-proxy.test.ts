@@ -25,13 +25,22 @@ test("Windows 默认自动检测；显式直连时不读环境变量", () => {
 
 test("system/auto 只使用固定 Windows 代理；PAC 拒绝且 auto 无代理时直连", () => {
   const fixed = { source: "internet-settings" as const, bypass: ["example.com"], httpProxy: "http://127.0.0.1:7897", httpsProxy: "http://127.0.0.1:7897" };
-  const resolved = resolveOutboundProxy(normalizeOutboundProxySettings({ mode: "system" }), {}, [], fixed);
+  const system = normalizeOutboundProxySettings({ mode: "system" });
+  const automatic = normalizeOutboundProxySettings({ mode: "auto" });
+  const resolved = resolveOutboundProxy(system, {}, [], fixed);
   assert.equal(resolved?.httpsProxy, "http://127.0.0.1:7897");
   assert.ok(bypassOf(resolved).has("example.com"));
-  assert.equal(resolveOutboundProxy(normalizeOutboundProxySettings({ mode: "auto" }), {}, [], { source: "none", bypass: [] }), undefined);
-  assert.throws(() => resolveOutboundProxy(normalizeOutboundProxySettings({ mode: "system" }), {}, [], { source: "none", bypass: [] }), /没有可用的固定系统代理/);
-  assert.throws(() => resolveOutboundProxy(normalizeOutboundProxySettings({ mode: "auto" }), {}, [], { source: "internet-settings", bypass: [], pacUrl: "configured" }), /PAC\/WPAD/);
-  assert.throws(() => resolveOutboundProxy(normalizeOutboundProxySettings({ mode: "auto" }), {}, [], { source: "internet-settings", bypass: [], autoDetect: true }), /PAC\/WPAD/);
+  assert.equal(resolveOutboundProxy(automatic, {}, [], { source: "none", bypass: [] }), undefined);
+  assert.throws(() => resolveOutboundProxy(system, {}, [], { source: "none", bypass: [] }), /没有可用的固定系统代理/);
+  for (const dynamic of [{ pacUrl: "configured" }, { autoDetect: true }]) {
+    const snapshot = { source: "internet-settings" as const, bypass: [], ...dynamic };
+    assert.throws(() => resolveOutboundProxy(system, {}, [], snapshot), /PAC\/WPAD/);
+    if (process.platform === "win32") {
+      assert.throws(() => resolveOutboundProxy(automatic, {}, [], snapshot), /PAC\/WPAD/);
+    } else {
+      assert.equal(resolveOutboundProxy(automatic, {}, [], snapshot), undefined, "非 Windows 自动模式不读取 Windows 快照");
+    }
+  }
 });
 
 test("transport fingerprint 区分 direct、blocked、代理身份与 generation", () => {

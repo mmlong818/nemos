@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -84,7 +84,8 @@ test("reports never fabricate runtime measurements or present the synthetic orac
 });
 
 test("CLI writes JSON and Markdown only to an explicit disposable output directory", () => {
-  const parent = mkdtempSync(join(tmpdir(), "structured-handoff-eval-"));
+  // A hosted Windows runner may spell TEMP with an 8.3 short name.
+  const parent = mkdtempSync(join(realpathSync.native(tmpdir()), "structured-handoff-eval-"));
   const dir = join(parent, "new-report");
   try {
     const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/structured-handoff-eval.ts", "--out-dir", dir], { cwd: process.cwd(), encoding: "utf8" });
@@ -118,7 +119,7 @@ test("CLI rejects missing, relative, repository, file, and existing-directory ta
   } else {
     t.diagnostic("UNC/device path rejection is Windows-specific");
   }
-  const parent = mkdtempSync(join(tmpdir(), "structured-handoff-eval-reject-"));
+  const parent = mkdtempSync(join(realpathSync.native(tmpdir()), "structured-handoff-eval-reject-"));
   try {
     const existingDir = join(parent, "existing");
     mkdirSync(existingDir);
