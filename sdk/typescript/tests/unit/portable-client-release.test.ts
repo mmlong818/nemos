@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 import Database from "better-sqlite3";
 
@@ -166,7 +166,8 @@ test("Windows host compiles in release/development modes and rotated logs stay r
   const winFormsDll = join(sdkDir, "Microsoft.Web.WebView2.WinForms.dll");
   const source = join(clientRoot, "src", "ClownfishClient.cs");
   const harness = join(sdkRoot, "tests", "helpers", "portable-client-log-harness.cs");
-  const root = mkdtempSync(join(tmpdir(), "clownfish-client-host-test-"));
+  // The .NET host expands short Windows path names. Use the same spelling for the fixture's path assertions.
+  const root = mkdtempSync(join(realpathSync.native(tmpdir()), "clownfish-client-host-test-"));
   try {
     copyFileSync(coreDll, join(root, "Microsoft.Web.WebView2.Core.dll"));
     copyFileSync(winFormsDll, join(root, "Microsoft.Web.WebView2.WinForms.dll"));
@@ -180,11 +181,14 @@ test("Windows host compiles in release/development modes and rotated logs stay r
         "/reference:System.Security.dll", "/reference:System.Windows.Forms.dll",
         `/reference:${coreDll}`, `/reference:${winFormsDll}`, source, harness,
       ], { stdio: "pipe" });
-      const output = execFileSync(executable, [String(mode === "development"), join(root, `${mode}-logs`)], {
+      const result = spawnSync(executable, [String(mode === "development"), join(root, `${mode}-logs`)], {
         encoding: "utf8",
         env: { ...process.env, CLOWNFISH_HOME: join(root, `${mode}-data`) },
       });
-      assert.match(output, new RegExp(`PASS build=${mode} files=5`));
+      assert.ifError(result.error);
+      assert.equal(result.status, 0,
+        `${mode} harness: exit status ${result.status}, signal ${result.signal ?? "none"}\n${result.stderr.trim()}`);
+      assert.match(result.stdout, new RegExp(`PASS build=${mode} files=5`));
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
