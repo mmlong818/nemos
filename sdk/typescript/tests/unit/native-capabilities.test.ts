@@ -118,8 +118,11 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
       if (format === "pptx") {
         const visualReview = result.artifact.metadata?.presentationVisualReview;
         const visualCheck = result.artifact.proof?.checks.find((check) => check.id === "key-slide-visual-review");
-        const expectedLevel = visualReview?.passed || visualCheck?.status === "not-run" ? "validated" : "produced";
-        assert.equal(result.artifact.proof?.level, expectedLevel);
+        assert.ok(visualReview, "真实关键页复核必须保留结果或不可用原因");
+        assert.equal(visualCheck?.phase, "verification");
+        assert.equal(visualCheck?.status, visualReview.unavailableReason ? "not-run" : visualReview.passed ? "passed" : "failed");
+        // 格式和密度通过可证明产物已验证结构。视觉复核结果单独记录，不能改变结构结论。
+        assert.equal(result.artifact.proof?.level, "validated");
         assert.ok(result.artifact.proof?.checks.filter((check) => check.id !== "key-slide-visual-review").every((check) => check.status === "passed"));
         assert.equal(readFileSync(result.artifact.file).subarray(0, 2).toString(), "PK");
         assert.ok(result.artifact.previewFile && existsSync(result.artifact.previewFile));
@@ -130,11 +133,8 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
         assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-density")?.status, "passed");
         assert.equal(result.artifact.proof?.checks.find((check) => check.id === "slide-layout-variety")?.status, "passed");
         assert.equal(result.artifact.proof?.checks.find((check) => check.id === "speaker-notes")?.status, "passed");
-        if (visualReview?.passed) {
-          assert.equal(visualCheck?.status, "passed");
+        if (visualReview.passed) {
           assert.ok(visualReview.pages.every((page) => existsSync(page.screenshot)));
-        } else {
-          assert.notEqual(visualCheck?.status, "passed");
         }
         const approved = runtime.updateArtifactWorkspace({
           id: result.artifact.id,
@@ -145,7 +145,7 @@ test("七项原生能力都生成真实产物，演示文稿可导出 PPTX，生
         assert.equal(approved.status, "done");
         assert.equal(
           runtime.snapshot().artifacts.find((item) => item.id === result.artifact.id)?.proof?.level,
-          expectedLevel,
+          "validated",
         );
       } else {
         assert.equal(result.artifact.proof?.level, "validated");

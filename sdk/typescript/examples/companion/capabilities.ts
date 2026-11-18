@@ -1385,10 +1385,12 @@ export class CapabilityRuntime {
     if (task.schedule.mode !== "daily") return undefined;
     const targetMinute = timeToMinute(task.schedule.time || "09:00");
     const days = task.schedule.days || DEFAULT_DAYS;
+    const timezone = task.schedule.timezone || "Asia/Shanghai";
+    const formatter = timezoneFormatter(timezone);
     const start = Math.floor(after.getTime() / 60_000) * 60_000;
     for (let offset = 1; offset <= 8 * 24 * 60; offset++) {
       const candidate = new Date(start + offset * 60_000);
-      const local = nowInTimezone(task.schedule.timezone || "Asia/Shanghai", candidate);
+      const local = nowInTimezone(timezone, candidate, formatter);
       if (days.includes(local.weekday) && local.minuteOfDay === targetMinute) return candidate.toISOString();
     }
     return undefined;
@@ -3899,8 +3901,8 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function nowInTimezone(timezone: string, at = new Date()): { dateKey: string; weekday: number; minuteOfDay: number } {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+function timezoneFormatter(timezone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
@@ -3909,7 +3911,11 @@ function nowInTimezone(timezone: string, at = new Date()): { dateKey: string; we
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).formatToParts(at).map((p) => [p.type, p.value]));
+  });
+}
+
+function nowInTimezone(timezone: string, at = new Date(), formatter = timezoneFormatter(timezone)): { dateKey: string; weekday: number; minuteOfDay: number } {
+  const parts = Object.fromEntries(formatter.formatToParts(at).map((p) => [p.type, p.value]));
   const weekdays: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
   return {
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,

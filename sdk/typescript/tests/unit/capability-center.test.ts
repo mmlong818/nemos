@@ -621,7 +621,16 @@ test("任务页与能力页暂时保持运行记录隔离", () => {
   assert.match(serverSource, /removeCrossSurfaceChatDeliveries/);
   assert.match(serverSource, /removeDetachedChatDeliveries/);
   assert.match(chatHtml, /purgeDetachedAgentDeliveries/);
-  assert.match(serverSource, /storedJobSurface\(targetJob\) !== "chat"/);
+  const deliveryEligibility = serverSource.match(/function canDeliverJobToChat\([^]*?\n\}/)?.[0] || "";
+  assert.match(deliveryEligibility, /storedJobSurface\(job\) === "chat"/);
+  const deliveryResolution = serverSource.match(/function resolveChatJobDelivery\([^]*?\n\}/)?.[0] || "";
+  assert.match(deliveryResolution, /if \(!canDeliverJobToChat\(job\)\)/);
+  for (const action of ["ack", "fail"]) {
+    const start = serverSource.indexOf(`url === "/api/agent/delivery/${action}"`);
+    assert.ok(start >= 0, `delivery ${action} route exists`);
+    const handler = serverSource.slice(start, serverSource.indexOf("\n    }", start));
+    assert.match(handler, /resolveChatJobDelivery\(body\?\.id, body\?\.deliveryId\)/);
+  }
   assert.match(serverSource, /runVisibleOnSurface/);
   assert.match(llmSource, /surface: isStoredAgentSurface\(metadata\.surface\)/);
   assert.match(llmSource, /context\.surface \? \{ surface: context\.surface \}/);

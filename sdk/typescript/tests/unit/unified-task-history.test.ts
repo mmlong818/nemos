@@ -65,6 +65,8 @@ test('旧记录地址重定向到统一任务，保留任务和项目，管理�
   assert.deepEqual(writes,['/bots?view=tasks&task=a%26b&space=p']);
   const target=win.ClownfishTaskNavigation.target;
   assert.equal(target('/tasks','?legacy=1&task=t'),'');
+  assert.equal(target('/tasks','?job=old%26job&space=p'),'/bots?view=tasks&job=old%26job&space=p');
+  assert.equal(target('/tasks','?task=t&job=j'),'/bots?view=tasks&task=t');
   assert.equal(target('/collaboration','?legacy=1&task=t'),'');
   assert.equal(target('/runs'),'');
   assert.equal(target('/work'),'/bots?view=tasks');
@@ -72,7 +74,7 @@ test('旧记录地址重定向到统一任务，保留任务和项目，管理�
 
 test('流程读取失败保留缓存、显示提示并限速重试，恢复后清除提示', async () => {
   const source=read('assistant-team.js');
-  const fn=source.slice(source.indexOf('  async function loadFlows('),source.indexOf('  function renderHistory('));
+  const fn=source.slice(source.indexOf('  async function loadFlows('),source.indexOf('  function selectTask('));
   let requests=0, success=false;
   const context: any={flowLoadedAt:0,flowSnapshot:{tasks:[{id:'saved'}]},flowJobs:[{id:'saved-job'}],flowWarning:'', Date, Promise,
     fetch:async()=>{requests++;return {ok:success,json:async()=>({tasks:[{id:'fresh'}],jobs:[]})};}};

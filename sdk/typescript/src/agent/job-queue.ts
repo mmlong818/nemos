@@ -79,6 +79,18 @@ interface JobFile {
   jobs: AgentJobRecord[];
 }
 
+type TaskRunCursor = Pick<AgentJobRecord, "createdAt" | "id">;
+
+function compareTaskRuns(a: TaskRunCursor, b: TaskRunCursor): number {
+  return b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+}
+
+export function agentJobTaskId(job: AgentJobRecord): string | undefined {
+  const artifact = job.result?.data as { artifact?: { taskId?: unknown } } | undefined;
+  const id = job.payload.taskId || job.metadata?.workTaskId || artifact?.artifact?.taskId;
+  return typeof id === "string" && id ? id : undefined;
+}
+
 const DEFAULTS: Required<Omit<FileAgentJobQueueOptions, "onChange">> = {
   leaseMs: 5 * 60_000,
   maxJobs: 1_000,
@@ -389,6 +401,34 @@ export class FileAgentJobQueue {
       .map((job) => structuredClone(job));
   }
 
+  /** Select by persisted task before limiting the result; updatedAt would reorder old runs. */
+  listTaskRuns(taskId: string, options: { before?: TaskRunCursor; limit: number; userId?: string }): AgentJobRecord[] {
+    const { before, limit, userId } = options;
+    return [...this.jobs.values()]
+      .filter((job) => (!userId || !job.metadata?.userId || job.metadata.userId === userId)
+        && agentJobTaskId(job) === taskId && (!before || compareTaskRuns(job, before) > 0))
+      .sort(compareTaskRuns)
+      .slice(0, limit)
+      .map((job) => structuredClone(job));
+  }
+
+  latestTaskRuns({ taskId: selectedTask, userId }: { taskId?: string; userId?: string } = {}): AgentJobRecord[] {
+    const latest = new Map<string, AgentJobRecord>();
+    const active = new Map<string, AgentJobRecord>();
+    for (const job of this.jobs.values()) {
+      const taskId = agentJobTaskId(job);
+      if (!taskId || (selectedTask && taskId !== selectedTask)
+        || (userId && job.metadata?.userId && job.metadata.userId !== userId)) continue;
+      const current = latest.get(taskId);
+      if (!current || compareTaskRuns(job, current) < 0) latest.set(taskId, job);
+      if (job.status !== "queued" && job.status !== "running") continue;
+      const currentActive = active.get(taskId);
+      if (!currentActive || compareTaskRuns(job, currentActive) < 0) active.set(taskId, job);
+    }
+    const olderActive = [...active].flatMap(([taskId, job]) => job.id !== latest.get(taskId)?.id ? [job] : []);
+    return [...latest.values(), ...olderActive].map((job) => structuredClone(job));
+  }
+
   /** Subscribe to in-process durable queue changes. The returned function is idempotent. */
   subscribe(listener: (event: AgentJobQueueEvent) => void): () => void {
     this.listeners.add(listener);
@@ -587,12 +627,13 @@ export class AgentJobWorker {
     this.timer = setTimeout(async () => {
       this.timer = undefined;
       this.executing = true;
+      const claimStartedAt = Date.now();
       try {
         const job = await this.runOnce();
         const retryDelay = job?.status === "queued"
           ? Math.max(0, Date.parse(job.availableAt) - Date.now())
           : 0;
-        const nextDelay = this.wakeRequested ? 0 : job ? retryDelay : this.idleDelay();
+        const nextDelay = this.wakeRequested ? 0 : job ? retryDelay : this.idleDelay(claimStartedAt);
         this.wakeRequested = false;
         this.executing = false;
         this.schedule(nextDelay);
@@ -607,21 +648,14 @@ export class AgentJobWorker {
   }
 
   /**
-   * 这一跳什么都没领到时，下一跳排在哪。
-   *
-   * 原先一律排兜底轮询，于是出现这条竞态：任务失败后 queue.fail 按退避排重试并发出
-   * retried 事件；该事件在 executing 期间把 wakeRequested 置真，于是下一跳按 0 立刻醒来，
-   * 此时退避还没到、领不到任何东西，接着就被排到整个轮询周期之后——10 毫秒的退避实际要等
-   * 几十秒。Linux 上 setTimeout(0) 亚毫秒触发必然踩中，Windows 定时器粒度粗反而常常躲过去。
-   *
-   * 已经到点却没领到，说明它被别的条件挡着（比如刚被另一个 worker 抢走），
-   * 立刻重试只会空转，那种情况仍然交给兜底轮询。
+   * 领取没有结果时，按排队任务的退避时刻唤醒。
+   * 如果退避恰好在领取检查与重新排程之间结束，应该立即再试。
+   * 只有本轮开始时已经到期但仍未领到，才用兜底轮询避免空转。
    */
-  private idleDelay(): number {
+  private idleDelay(claimStartedAt = Date.now()): number {
     const next = this.queue.nextAvailableAt();
-    if (next === null) return this.pollIntervalMs;
-    const delay = next - Date.now();
-    return delay > 0 ? Math.min(this.pollIntervalMs, delay) : this.pollIntervalMs;
+    if (next === null || next <= claimStartedAt) return this.pollIntervalMs;
+    return Math.min(this.pollIntervalMs, Math.max(0, next - Date.now()));
   }
 }
 

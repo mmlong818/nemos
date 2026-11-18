@@ -16,6 +16,38 @@
     return state==='waiting'||state==='active'?state:undefined;
   }
   function modelLabel(job){const state=modelState(job);return state==='waiting'?'等待模型':state==='active'?'模型执行中':undefined;}
+  const time=value=>value&&Number.isFinite(Date.parse(value))?new Date(value).toLocaleString('zh-CN'):'未记录时间';
+  const triggerLabel=job=>({manual:'手动触发',workspace:'工作区触发',chat:'聊天触发',turn:'对话轮次触发',time:'定时触发'}[job.payload?.trigger]
+    ||(job.metadata?.scheduled==='true'?'自动触发（类型未记录）':'触发方式未记录'));
+  function runStates(job){
+    const attempts=Number.isInteger(job.attempts)&&job.attempts>=0?job.attempts:null,retry=job.status==='queued'&&attempts>0;
+    const execution=retry?'等待重试':job.status==='succeeded'?'已完成':labels[job.status]||'状态未知';
+    const delivery=job.status==='succeeded'&&job.delivery?.sourceType==='agent-job'&&job.delivery?.sourceId===job.id&&job.delivery.channel==='chat'
+      &&(!job.completedAt||(Number.isFinite(Date.parse(job.delivery.createdAt))&&Date.parse(job.delivery.createdAt)>=Date.parse(job.completedAt)))?job.delivery:null;
+    const confirmedAt=job.status==='succeeded'&&Number.isFinite(Date.parse(job.deliveredAt))&&(!job.completedAt||Date.parse(job.deliveredAt)>=Date.parse(job.completedAt))?job.deliveredAt:null;
+    let deliveryState='送达状态未知（无关联回执）';
+    if(delivery)deliveryState={pending:'等待送达',leased:'送达中，等待确认',delivered:'已确认送达',failed:'送达失败'}[delivery.status]||'送达状态未知';
+    else if(confirmedAt&&!job.delivery)deliveryState='已确认送达（旧版记录）';
+    else if(job.deliveryRequired===false)deliveryState='此任务不要求聊天通知';
+    else if(job.deliveryRequired===true&&['queued','running'].includes(job.status))deliveryState='等待任务完成';
+    else if(job.deliveryRequired===true&&['failed','cancelled','uncertain'].includes(job.status))deliveryState='未进入送达流程';
+    return {attempts,retry,execution,delivery,confirmedAt,deliveryState};
+  }
+  function runSummary(job,{empty='尚无执行记录。'}={}){
+    const entry=job&&runStates(job);
+    return `<section class="task-latest" aria-label="最近一次运行"><h3>最近一次运行</h3>${entry?`<p><strong>执行 · ${esc(entry.execution)}</strong><span class="${entry.delivery?.status==='failed'?'task-latest-failed':''}">通知 · ${esc(entry.deliveryState)}</span></p><time>${esc(time(job.createdAt||job.startedAt))}</time>`:`<p>${esc(empty)}</p>`}</section>`;
+  }
+  // Pure projection of persisted records; never starts work or calculates a schedule.
+  function runReceipt(job,{embedded=false}={}){
+    const payload=job.payload||{},meta=job.metadata||{},taskId=payload.taskId||meta.workTaskId;
+    const {attempts,retry,execution,delivery,confirmedAt,deliveryState}=runStates(job);
+    const nextCheck=payload.nextCheckAt||meta.nextCheckAt;
+    const next=nextCheck&&Number.isFinite(Date.parse(nextCheck))?`当时预计的下次检查：${time(nextCheck)}`:'';
+    const artifactIds=[...new Set([...(job.result?.artifactRefs||[]).filter(ref=>typeof ref==='string'&&ref.startsWith('artifact:')).map(ref=>ref.slice(9)),job.result?.data?.artifact?.id].filter(Boolean))];
+    const result=job.result?`<p>${esc(job.result.summary||'已保存结构化结果')}</p>${artifactIds.map(id=>`<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(id)}" target="_blank" rel="noopener">预览成果 ${esc(id)}</a>`).join(' · ')}`:'<p>尚无本次结果记录；项目中的历史成果不代表本次运行的结果。</p>';
+    const body=`<dl class="task-run-identifiers">${taskId?`<dt>任务 ID</dt><dd>${esc(taskId)}</dd>`:''}<dt>作业 ID</dt><dd>${esc(job.id||'未记录')}</dd></dl><ol class="team-ledger" aria-label="运行收据时间线"><li><header><strong>触发 · ${esc(triggerLabel(job))}</strong><time>${esc(time(job.createdAt))}</time></header>${next?`<p>${esc(next)}</p>`:''}</li><li><header><strong>执行 · ${esc(execution)}</strong><time>${esc(time(job.completedAt||job.startedAt))}</time></header><p>${attempts===null?'尝试次数未记录':`当前重试周期已尝试 ${attempts} 次`}${retry?` · 可重试时间：${esc(time(job.availableAt))}`:''}</p>${job.error?`<p class="task-detail-error">${esc(job.error)}</p>`:''}</li><li><strong>结果 · ${job.result?'已有结果记录':'尚无结果记录'}</strong>${result}</li><li><header><strong>通知 · ${esc(deliveryState)}</strong><time>${esc(time(delivery?.deliveredAt||delivery?.failedAt||delivery?.updatedAt||confirmedAt))}</time></header>${delivery?`<p>通知尝试 ${esc(delivery.attempts??'未记录')} 次${delivery.receiptId?` · 回执 ${esc(delivery.receiptId)}`:''}${delivery.status==='pending'&&delivery.nextAttemptAt?` · 下次送达尝试：${esc(time(delivery.nextAttemptAt))}`:''}</p>${delivery.lastError?`<p class="task-detail-error">${esc(delivery.lastError)}</p>`:''}`:''}</li></ol><a href="/runs#record-job-${encodeURIComponent(job.id||'')}">查看本次运行日志</a>`;
+    return embedded?`<div class="task-run-receipt">${body}</div>`:`<details class="task-run-receipt task-detail-disclosure" data-task-disclosure="run-receipt:${esc(job.id)}"><summary>运行收据</summary>${body}</details>`;
+  }
   function botDetail(job){
     const admission=modelState(job);
     const resourceLabel=admission==='waiting'?'等待模型':admission==='active'?'模型执行中':undefined;
@@ -42,12 +74,14 @@
     const merge=job.result?.data?.structuredMerge;
     const stepHistory=stepReceipts.length?`<section class="team-result" aria-label="结构化步骤成果"><h3>步骤成果历史</h3><p class="hint">这里保留每次尝试的原始成果。来源关联仅表示运行时观察到了对应材料或上游结果；结构核验不代表内容事实正确。</p><ol class="team-ledger">${stepReceipts.map(receipt=>{const r=receipt.result||{};const evidence=(r.evidenceRefs||[]).map(item=>item.ref);const claims=(r.claims||[]).map(claim=>`<li><strong>${esc(claim.key)}</strong>：${esc(claim.value)} <small>${claim.evidenceState==='source-linked'?`来源关联：${esc((claim.sourceRefs||[]).join('、'))}`:'来源状态：unknown（待核实）'}</small></li>`).join('');return `<li class="${esc(receipt.state)}"><header><strong>${esc(receipt.stepId)} · 第 ${esc(receipt.attempt)} 次 · ${receipt.state==='succeeded'?'已保存':'未完成'}</strong><time>${esc(time(r.completedAt))}</time></header>${r.summary?`<p>${esc(r.summary)}</p>`:''}<p class="hint">运行时观察来源：${evidence.length?esc(evidence.join('、')):'无 · unknown'} · 输入 ${esc(r.inputHash||'未记录')} ${r.outputHash?`· 输出 ${esc(r.outputHash)}`:''}</p>${claims?`<details data-task-disclosure="claims:${esc(receipt.receiptId)}"><summary>结构化 claims · ${(r.claims||[]).length}</summary><ul>${claims}</ul></details>`:''}${(r.unresolvedItems||[]).length?`<div class="task-detail-error">未决：${esc(r.unresolvedItems.join('；'))}</div>`:''}${r.rawOutput?`<details data-task-disclosure="step-result:${esc(receipt.receiptId)}"><summary>查看本次原始成果</summary><p class="team-text">${esc(r.rawOutput)}</p></details>`:''}</li>`;}).join('')}</ol>${merge?`<div class="team-model"><strong>程序汇合：${merge.status==='complete'?'结构完整':'仍有未决项'}</strong><br>按执行计划稳定顺序归集 ${(merge.orderedResults||[]).length} 份成功成果；不由模型改写原始记录。${(merge.unresolvedItems||[]).length?`<br>未决：${esc(merge.unresolvedItems.join('；'))}`:''}</div>`:''}</section>`:'';
     return `<header class="team-detail-head"><h2>${esc(plan.objective||job.title||'任务详情')}</h2><span class="personal-state">${esc(resourceLabel||labels[job.status]||job.status)}</span></header>
+      ${runSummary(job)}
       <p class="task-status-note" role="status">${esc(dispositionText||(admission==='waiting'?'当前模型连接繁忙，任务正在排队；无需重复提交，可取消等待。':notice(job.status,!!delivery)))}</p>
       ${needsNewTask?'<p class="hint">这个原任务已终止，当前追加入口不能恢复它；请根据上述问题新建任务。</p>':''}
       ${plan.routing?`<p class="team-model">自动分派 · ${esc((plan.routing.matches||[]).map(item=>item.name).join(' → ')||'小丑鱼独立完成')}<br>${esc(plan.routing.reason)}</p>`:''}
       ${llmLine}
       ${job.error?`<p role="alert" class="task-detail-error">${esc(job.error)}</p>`:''}
       <div class="team-detail-actions task-next-actions">${!needsNewTask&&['failed','cancelled'].includes(job.status)?'<button class="primary" data-action="retry">从已保存回执继续</button>':''}${['queued','running'].includes(job.status)?'<button data-action="cancel">取消本次任务</button>':''}${['failed','uncertain'].includes(job.status)?`<a href="/runs#record-job-${encodeURIComponent(job.id)}">查看运行日志</a>`:''}</div>
+      ${runReceipt(job)}
       ${steeringBox}${steeringHistory}
       ${arrangement}
       ${result}
@@ -67,5 +101,5 @@
       if(focusKey===node.dataset.taskDisclosure)node.querySelector('summary')?.focus({preventScroll:true});
     }
   }
-  window.ClownfishTaskDetail=Object.freeze({botDetail,notice,mount,modelState,modelLabel});
+  window.ClownfishTaskDetail=Object.freeze({botDetail,notice,mount,modelState,modelLabel,runReceipt,runStates,runSummary,triggerLabel});
 })();

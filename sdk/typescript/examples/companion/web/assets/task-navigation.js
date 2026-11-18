@@ -4,6 +4,7 @@
     if(!['/tasks','/collaboration','/work'].includes(path)||params.get('legacy')==='1')return '';
     const next=new URLSearchParams({view:'tasks'});
     if(params.get('task'))next.set('task',params.get('task'));
+    else if(params.get('job'))next.set('job',params.get('job'));
     if(params.get('space'))next.set('space',params.get('space'));
     return '/bots?'+next.toString();
   }

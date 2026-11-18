@@ -26,18 +26,20 @@ function fixture() {
   const submit={disabled:false}, field={disabled:false}, error={textContent:""};
   const form:any={ querySelector:(selector:string)=>selector===".form-error"?error:submit,
     querySelectorAll:()=>[field,submit], reset:()=>{formResets++;} };
-  const nodes:Record<string,any>={"#taskForm":form,"#taskGuide":{},"#taskTitle":{},"#taskExtraOptions":{},"#manualBotAssignment":{}};
+  const nodes:Record<string,any>={"#taskForm":form,"#taskGuide":{},"#taskTitle":{},"#taskExtraOptions":{},"#manualBotAssignment":{},"#jobDetail":{}};
   const bodies:any[]=[];
   const context:any={
-    $:(key:string)=>nodes[key], submitting:false, selected:"", detailKey:"", taskOptionsKey:"loaded",
+    $:(key:string)=>nodes[key], submitting:false, selected:"", detailKey:"", detailLoadedAt:0, detailVersion:0,
+    flowHistory:undefined, currentJob:undefined, taskOptionsKey:"loaded",
     requestId:"",requestBody:"", activeTemplate:{}, crypto:{randomUUID:()=>"request-1"},
     materialUploads:{version:()=>generation,prepare:async()=>({materials:"合成附件内容",token:++generation}),reset:()=>{resets++;generation++;}},
     FormData:class { get(key:string){return ({objective:"合成目标",requiredFields:"总额\n来源",model:"test-model",reviewerId:""} as any)[key];} getAll(){return [];} },
     api:async(_path:string,body:any)=>{calls++;bodies.push(body);return new Promise((a,b)=>{resolve=a;reject=b;});},
     tabs:()=>{},toast:()=>{},load:async()=>{},syncTaskOptions:()=>{submit.disabled=false;},
   };
+  const selectTask=script.slice(script.indexOf("function selectTask("),script.indexOf("const flowIsCurrent"));
   const handler=script.slice(script.indexOf("$('#taskForm').onsubmit="),script.indexOf("$('#botForm').onsubmit="));
-  runInNewContext(handler,context);
+  runInNewContext(selectTask+handler,context);
   return {context,field,submit,error,bodies,send:()=>form.onsubmit({target:form,preventDefault(){}}),
     complete:()=>resolve({record:{id:"new-job"}}),fail:()=>reject(new Error("网络不可用")),
     counts:()=>({calls,resets,formResets})};

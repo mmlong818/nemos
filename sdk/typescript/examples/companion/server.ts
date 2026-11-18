@@ -7,6 +7,8 @@
 //
 // 无 key 也能开（离线兜底，仍演示拓扑）。记忆持久化到 COMPANION_DB，跨次保留。
 
+import { memoryTurnReceipt } from "./memory-evidence.js";
+import { listMemoryRecords, memoryDisplayContent, readMemoryRecord } from "./memory-record-view.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createReadStream, readFileSync, writeFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync, renameSync } from "node:fs";
@@ -35,7 +37,6 @@ import {
   FileAgentJobQueue,
   FileAgentRunStore,
   Nemos,
-  determinePromotion,
   type AgentApprovalStatus,
   type AgentApprovalStoreEvent,
   type AgentExtensionManifest,
@@ -45,6 +46,7 @@ import {
   type AgentTokenUsage,
 } from "../../src/index.js";
 import { FileDeliveryOutbox, type DeliveryRecord } from "./delivery-outbox.js";
+import { agentJobTaskId } from "../../src/agent/job-queue.js";
 import {
   WorkGuidelineStore,
   authorizeWithGuidelines,
@@ -145,6 +147,7 @@ import {
   type CapabilityArtifact,
   type CapabilityNotification,
   type CapabilityStreamCb,
+  type CapabilityTask,
 } from "./capabilities.js";
 import {
   createCapabilityHandoffEnvelope,
@@ -940,9 +943,16 @@ function removeDetachedChatDeliveries(): string[] {
   return jobIds;
 }
 
+type StoredAgentJob = NonNullable<ReturnType<FileAgentJobQueue["get"]>>;
+
+function canDeliverJobToChat(job: StoredAgentJob): boolean {
+  return job.deliveryRequired === true && job.status === "succeeded" && Boolean(job.result?.data)
+    && storedJobSurface(job) === "chat"
+    && (job.type !== "capability-adhoc" || validChatConversationKey(job.payload.conversationKey));
+}
+
 function ensureJobDelivery(job: ReturnType<FileAgentJobQueue["get"]>): DeliveryRecord | null {
-  if (!job?.deliveryRequired || storedJobSurface(job) !== "chat" || job.status !== "succeeded" || !job.result?.data || job.deliveredAt) return null;
-  if (job.type === "capability-adhoc" && !validChatConversationKey(job.payload.conversationKey)) return null;
+  if (!job || job.deliveredAt || !canDeliverJobToChat(job)) return null;
   return deliveryOutbox.enqueue({
     dedupeKey: `agent-job:${job.id}`,
     sourceType: "agent-job",
@@ -956,11 +966,53 @@ function ensureJobDelivery(job: ReturnType<FileAgentJobQueue["get"]>): DeliveryR
 function jobWithDelivery(job: NonNullable<ReturnType<FileAgentJobQueue["get"]>>): typeof job & { delivery: DeliveryRecord | null; llmCallLedgerAssociated: false; stepReceipts: ReturnType<FileStepReceiptStore["list"]> } {
   return {
     ...job,
-    delivery: deliveryOutbox.getBySource("agent-job", job.id),
+    delivery: deliveryOutbox.getBySource("agent-job", job.id, "chat"),
     stepReceipts: job.type === "assistant-team" ? assistantTeamStepReceipts.list(job.id) : [],
     // Do not infer that a generic queue job owns an LLM call. Explicit surfaces add a true association.
     llmCallLedgerAssociated: false,
   };
+}
+
+function taskRunSummary(job: StoredAgentJob) {
+  const record = deliveryOutbox.getBySource("agent-job", job.id, "chat");
+  return {
+    id: job.id,
+    type: job.type,
+    status: job.status,
+    attempts: job.attempts,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
+    availableAt: job.availableAt,
+    deliveryRequired: job.deliveryRequired,
+    deliveredAt: job.deliveredAt,
+    delivery: record && {
+      sourceType: record.sourceType,
+      sourceId: record.sourceId,
+      channel: record.channel,
+      status: record.status,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      deliveredAt: record.deliveredAt,
+      failedAt: record.failedAt,
+    },
+    payload: {
+      taskId: agentJobTaskId(job),
+      trigger: job.payload.trigger,
+      nextCheckAt: job.payload.nextCheckAt ?? job.metadata?.nextCheckAt,
+    },
+    metadata: { scheduled: job.metadata?.scheduled },
+  };
+}
+
+function currentTaskNextCheck(task: CapabilityTask | undefined): string | undefined {
+  if (!task?.enabled || task.schedule.mode !== "daily") return undefined;
+  try { return capabilities.nextScheduledCheckAt(task.id); }
+  catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    return undefined;
+  }
 }
 
 function projectDeliveredJob(jobId: string, delivery: DeliveryRecord): void {
@@ -983,9 +1035,38 @@ function projectDeliveredJob(jobId: string, delivery: DeliveryRecord): void {
   });
 }
 
+function resolveChatJobDelivery(id: unknown, deliveryId: unknown):
+  { job: StoredAgentJob; record: DeliveryRecord } | { status: number; error: string } {
+  if (typeof id !== "string" || !id) return { status: 400, error: "missing job id" };
+  if (deliveryId !== undefined && typeof deliveryId !== "string") {
+    return { status: 400, error: "invalid delivery id" };
+  }
+  const job = agentJobQueue.get(id);
+  if (!job) return { status: 404, error: "agent job not found" };
+  if (!canDeliverJobToChat(job)) return { status: 409, error: "此作业没有可投递到会话的结果" };
+  const record = deliveryId
+    ? deliveryOutbox.get(deliveryId)
+    : deliveryOutbox.getBySource("agent-job", job.id, "chat");
+  if (!record) return { status: 404, error: "delivery not found" };
+  if (record.sourceType !== "agent-job" || record.sourceId !== job.id || record.channel !== "chat") {
+    return { status: 409, error: "通知回执与此作业不匹配" };
+  }
+  return { job, record };
+}
+
 removeCrossSurfaceChatDeliveries();
 removeDetachedChatDeliveries();
-for (const legacyJob of agentJobQueue.listPendingDeliveries({ limit: 500 })) ensureJobDelivery(legacyJob);
+for (const job of agentJobQueue.listPendingDeliveries({ limit: 500 })) {
+  if (!canDeliverJobToChat(job)) continue;
+  const delivery = deliveryOutbox.getBySource("agent-job", job.id, "chat");
+  if (delivery?.status === "delivered") {
+    // A restart may find a committed receipt whose queue marker had not yet been written.
+    agentJobQueue.acknowledgeDelivery(job.id);
+    projectDeliveredJob(job.id, delivery);
+  } else if (!delivery) {
+    ensureJobDelivery(job);
+  }
+}
 /**
  * 目标对话登记：会话编号 -> 类别与目标。前端在这段对话的每次请求里都带上 goal，
  * 所以只放内存、重启后第一句话就会重新登记。上限防止无限增长。
@@ -3297,13 +3378,6 @@ function groupReplyRoute(groupId: string, text: string) {
   return route;
 }
 
-function memoryDisplayContent(content: string): string {
-  return content
-    .replace(/^用户:self\s*/i, "")
-    .replace(/^用户(?:偏好|喜欢)\s*/i, "偏好")
-    .replace(/^用户(?:想要|想|希望)\s*/i, "希望")
-    .trim();
-}
 async function maybeUpdatePersonaNicknameFromText(target: ChatBody["target"], text: string): Promise<void> {
   if (!target || target.kind !== "persona") return;
   if (!userProfile.displayName) return;
@@ -3704,6 +3778,7 @@ interface ChatBody {
   reasoning?: "fast" | "balanced" | "deep";
   reasoningEffort?: ReasoningEffort | "auto";
   toolMode?: "auto" | "read-only" | "off";
+  memoryMode?: "default" | "preferences" | "off";
   workMode?: "chat" | "task" | "study";
   /** 从目标页开出来的对话：类别，以及已有目标的编号（聊进展时）。 */
   goal?: { category?: string; goalId?: string };
@@ -3927,6 +4002,7 @@ function conversationSendOptions(body: ChatBody): {
   sourceMessageId?: string;
   model?: string;
   toolMode: "auto" | "read-only" | "off";
+  memoryMode: "default" | "preferences" | "off";
   memoryWriteMode: "default" | "archive-only" | "off";
   taskAttachments?: Array<{ name: string; truncated?: boolean }>;
   systemAddendum?: string;
@@ -3960,6 +4036,7 @@ function conversationSendOptions(body: ChatBody): {
     sourceMessageId: body.messageId && /^[a-z0-9:_-]{1,160}$/i.test(body.messageId) ? body.messageId : undefined,
     model: policy.model,
     toolMode,
+    memoryMode: body.memoryMode === "off" || body.memoryMode === "preferences" ? body.memoryMode : "default",
     memoryWriteMode: conversationMemoryWriteMode(body),
     taskAttachments: body.attachment?.name
       ? [{ name: String(body.attachment.name).slice(0, 180), ...(body.attachment.truncated ? { truncated: true } : {}) }]
@@ -5254,6 +5331,41 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/jobs") {
       const query = new URLSearchParams(url.split("?")[1] || "");
+      if (query.get("view") === "task-summaries") {
+        const taskId = query.get("taskId") || undefined;
+        const task = taskId ? capabilities.snapshot().tasks.find((item) => item.id === taskId) : undefined;
+        if (taskId && !task) { send(res, 404, { error: "流程任务不存在" }); return; }
+        send(res, 200, {
+          ok: true,
+          jobs: agentJobQueue.latestTaskRuns({ taskId, userId: USER }).map(taskRunSummary),
+          nextCheckAt: currentTaskNextCheck(task),
+        });
+        return;
+      }
+      if (query.get("view") === "task-history") {
+        const beforeToken = query.get("before");
+        const cursor = beforeToken?.split("/");
+        if (beforeToken && (!cursor || cursor.length !== 2 || !Number.isFinite(Date.parse(cursor[0]!)) || !cursor[1])) {
+          send(res, 400, { error: "无效的历史分页位置" });
+          return;
+        }
+        const before = cursor && { createdAt: cursor[0]!, id: cursor[1]! };
+        const requested = Number(query.get("limit") || 8);
+        const limit = Number.isFinite(requested) ? Math.max(1, Math.min(30, Math.floor(requested))) : 8;
+        const taskId = query.get("taskId");
+        const task = capabilities.snapshot().tasks.find((item) => item.id === taskId);
+        if (!task) { send(res, 404, { error: "流程任务不存在" }); return; }
+        const runs = agentJobQueue.listTaskRuns(task.id, { before, limit: limit + 1, userId: USER });
+        const page = runs.slice(0, limit);
+        const last = page.at(-1);
+        send(res, 200, {
+          ok: true,
+          jobs: page.map(taskRunSummary),
+          nextCursor: runs.length > limit && last ? `${last.createdAt}/${last.id}` : null,
+          nextCheckAt: before ? undefined : currentTaskNextCheck(task),
+        });
+        return;
+      }
       const status = query.get("status") || undefined;
       const allowed = status === "queued" || status === "running" || status === "succeeded" || status === "failed" || status === "cancelled"
         ? status
@@ -5285,45 +5397,39 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url === "/api/agent/delivery/ack") {
       const body = (await readBody(req)) as { id?: string; deliveryId?: string; receiptId?: string };
-      if (!body.id) { send(res, 400, { error: "missing job id" }); return; }
-      const targetJob = agentJobQueue.get(body.id);
-      if (targetJob && storedJobSurface(targetJob) !== "chat") {
-        deliveryOutbox.deleteBySources("agent-job", [targetJob.id]);
-        send(res, 409, { error: "独立工作区结果不能投递到任务页" });
+      const target = resolveChatJobDelivery(body?.id, body?.deliveryId);
+      if ("error" in target) { send(res, target.status, { error: target.error }); return; }
+      const { job: targetJob, record } = target;
+      const owner = `browser:${USER}`;
+      if (record.status !== "delivered" && (record.status !== "leased" || record.leaseOwner !== owner)) {
+        send(res, 409, { error: "投递未由当前接收方领取" });
         return;
       }
-      const record = body.deliveryId
-        ? deliveryOutbox.get(body.deliveryId)
-        : deliveryOutbox.getBySource("agent-job", body.id);
-      if (!record) { send(res, 404, { error: "delivery not found" }); return; }
-      const delivery = deliveryOutbox.acknowledge(record.id, `browser:${USER}`, body.receiptId);
-      const job = agentJobQueue.acknowledgeDelivery(body.id);
-      projectDeliveredJob(body.id, delivery);
+      const delivery = deliveryOutbox.acknowledge(record.id, owner, body.receiptId);
+      const job = agentJobQueue.acknowledgeDelivery(targetJob.id);
+      projectDeliveredJob(targetJob.id, delivery);
       send(res, 200, { ok: true, job: jobWithDelivery(job), delivery });
       return;
     }
     if (req.method === "POST" && url === "/api/agent/delivery/fail") {
       const body = (await readBody(req)) as { id?: string; deliveryId?: string; error?: string };
-      if (!body.id) { send(res, 400, { error: "missing job id" }); return; }
-      const targetJob = agentJobQueue.get(body.id);
-      if (targetJob && storedJobSurface(targetJob) !== "chat") {
-        deliveryOutbox.deleteBySources("agent-job", [targetJob.id]);
-        send(res, 409, { error: "独立工作区结果不能投递到任务页" });
+      const target = resolveChatJobDelivery(body?.id, body?.deliveryId);
+      if ("error" in target) { send(res, target.status, { error: target.error }); return; }
+      const { job, record } = target;
+      const owner = `browser:${USER}`;
+      if (job.deliveredAt || record.status !== "leased" || record.leaseOwner !== owner) {
+        send(res, 409, { error: "投递未由当前接收方领取或已确认收到" });
         return;
       }
-      const record = body.deliveryId
-        ? deliveryOutbox.get(body.deliveryId)
-        : deliveryOutbox.getBySource("agent-job", body.id);
-      if (!record) { send(res, 404, { error: "delivery not found" }); return; }
-      const delivery = deliveryOutbox.fail(record.id, `browser:${USER}`, body.error || "客户端未能展示任务结果");
-      projectDeliveredJob(body.id, delivery);
+      const delivery = deliveryOutbox.fail(record.id, owner, body.error || "客户端未能展示任务结果");
+      projectDeliveredJob(job.id, delivery);
       send(res, 200, { ok: true, delivery });
       return;
     }
     if (req.method === "GET" && url.split("?")[0] === "/api/agent/job") {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id") || "";
       const job = id ? agentJobQueue.get(id) : null;
-      if (!job) send(res, 404, { error: "agent job not found" });
+      if (!job || (job.metadata?.userId && job.metadata.userId !== USER)) send(res, 404, { error: "agent job not found" });
       else send(res, 200, { ok: true, job: jobWithDelivery(job) });
       return;
     }
@@ -6567,6 +6673,10 @@ const server = createServer(async (req, res) => {
     if (pathname === "/api/assistant-team" || pathname.startsWith("/api/assistant-team/")) {
       try {
         const ownJobs = () => agentJobQueue.list({ limit: 5000 }).filter((job) => job.type === "assistant-team" && job.metadata?.userId === USER);
+        const ownJob = (id: unknown) => {
+          const job = typeof id === "string" && agentJobQueue.get(id);
+          return job && job.type === "assistant-team" && job.metadata?.userId === USER ? job : undefined;
+        };
         if (req.method === "GET" && pathname === "/api/assistant-team/market") {
           send(res, 200, { templates: [], status: "not-launched" }); return;
         }
@@ -6615,7 +6725,7 @@ const server = createServer(async (req, res) => {
         }
           if (req.method === "GET" && pathname === "/api/assistant-team/export") {
             const id = new URLSearchParams(url.split("?")[1]).get("id");
-            const job = ownJobs().find((j) => j.id === id);
+            const job = ownJob(id);
             if (!job) throw new AssistantTeamError("协作任务不存在", 404);
             const resultData = job.result?.data as { delivery?: unknown } | undefined;
             if (job.status !== "succeeded" || !resultData?.delivery) throw new AssistantTeamError("本次任务尚无可导出的最终交付", 409);
@@ -6628,13 +6738,14 @@ const server = createServer(async (req, res) => {
           }
           if (req.method === "GET" && pathname === "/api/assistant-team/job") {
           const id = new URLSearchParams(url.split("?")[1]).get("id");
-          const job = ownJobs().find((j) => j.id === id);
+          const job = ownJob(id);
           if (!job) throw new AssistantTeamError("协作任务不存在", 404);
           const { connectionFingerprint: _fingerprint, ...payload } = job.payload;
           send(res, 200, {
             job: {
               ...job,
               payload,
+              delivery: deliveryOutbox.getBySource("agent-job", job.id, "chat"),
               steering: runningTaskSteering.snapshot(job.id, USER),
               stepReceipts: assistantTeamStepReceipts.list(job.id),
               // Team calls carry a real team/<job-id>/… run id. Other job kinds are not inferred.
@@ -6665,7 +6776,7 @@ const server = createServer(async (req, res) => {
               createTask: (input) => capabilities.createTask(input),
             });
             if (pathname.endsWith("/start")) return enqueueAssistantTeam(body);
-            const job = ownJobs().find((j) => j.id === body.id);
+            const job = ownJob(body.id);
             if (!job) throw new AssistantTeamError("协作任务不存在", 404);
             if (pathname.endsWith("/message")) {
               const latest = job.checkpoints.map((item) => (item.data as { teamReceipt?: TeamReceipt } | undefined)?.teamReceipt).filter(Boolean).at(-1);
@@ -6862,73 +6973,26 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
-    if (req.method === "GET" && url.split("?")[0] === "/api/memory") {
-      // who=me（用户真相库，默认）或 persona:<id>（某角色自己的记忆库）
-      const qWho = new URLSearchParams(url.split("?")[1] || "").get("who") || USER;
-      const who = qWho === USER || PERSONAS.some((p) => personaNamespace(p.id) === qWho) ? qWho : USER;
-      const store = mem.forUser(who);
-      const archivalItems = await store.listByLayer("archival", { limit: 500 });
-      const archivalById = new Map(archivalItems.map((item) => [item.id, item]));
-      const learningByMemory = new Map((who === USER ? personalWork.proposals(USER) : [])
-        .filter((proposal) => proposal.memoryId && proposal.state === "confirmed")
-        .map((proposal) => [proposal.memoryId, proposal]));
-      const facts: Array<{
-        id: string;
-        layer: string;
-        who: string;
-        content: string;
-        created: string;
-        correctable: boolean;
-        source: {
-          origin: string;
-          sourceMessageId?: string;
-          speakerId?: string;
-          subjectId?: string;
-          conversationId?: string;
-          archivalId?: string;
-          excerpt?: string;
-          kind?: "confirmed-learning";
-          proposalId?: string;
-        };
-      }> = [];
-      // archival=原文/归档；其余为分类后的记忆层
-      for (const layer of ["personal_semantic", "semantic", "episodic", "procedural", "archival"]) {
-        const items = layer === "archival" ? archivalItems : await store.listByLayer(layer as never, { limit: 500 });
-        for (const m of items) {
-          if (layer !== "archival" && (m.promotion_state ?? determinePromotion(m).state) !== "promoted") continue;
-          if (who.startsWith("persona:")
-            && layer !== "archival"
-            && !["persona-bio", "persona-self"].includes(m.source.origin)) continue;
-          const ownerPersona = who.startsWith("persona:")
-            ? PERSONAS.find((p) => personaNamespace(p.id) === who)
-            : undefined;
-          const speaker = who === USER
-            ? (userProfile.displayName || "我")
-            : (ownerPersona?.name ?? "角色");
-          const archival = m.layer === "archival" ? m : (m.archival_ref ? archivalById.get(m.archival_ref) : undefined);
-          const learning = learningByMemory.get(m.id);
-          facts.push({
-            id: m.id,
-            layer,
-            who: speaker,
-            content: memoryDisplayContent(m.content),
-            created: m.created_at,
-            correctable: layer !== "archival" && !!m.claim_key && !!m.predicate && !!m.subject_id,
-            source: {
-              origin: m.source.origin,
-              sourceMessageId: learning ? undefined : archival?.source.source_message_id || m.source.source_message_id,
-              speakerId: archival?.source.speaker_id || m.source.speaker_id,
-              subjectId: archival?.source.subject_id || m.source.subject_id,
-              conversationId: archival?.source.conversation_id || m.source.conversation_id,
-              archivalId: archival?.id,
-              excerpt: learning ? (learning.source.excerpt || learning.content).slice(0, 1500) : archival?.content.slice(0, 500),
-              ...(learning ? { kind: "confirmed-learning" as const, proposalId: learning.id } : {}),
-            },
-          });
-        }
-      }
-      facts.sort((a, b) => b.created.localeCompare(a.created));
-      send(res, 200, { facts, owner: who });
+    if (req.method === "GET" && pathname === "/api/memory/item") {
+      const id = parsedUrl.searchParams.get("id") || "";
+      res.setHeader("Cache-Control", "no-store");
+      send(res, 200, readMemoryRecord({
+        memory: mem, owner: USER, speaker: userProfile.displayName || "我",
+        learnings: personalWork.proposals(USER),
+      }, id));
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/memory") {
+      // 未命中的角色名和其他用户都无法切换到另一个用户的记忆库。
+      const requestedOwner = parsedUrl.searchParams.get("who");
+      const persona = PERSONAS.find((entry) => personaNamespace(entry.id) === requestedOwner);
+      const owner = persona ? personaNamespace(persona.id) : USER;
+      const facts = await listMemoryRecords({
+        memory: mem, owner, speaker: persona?.name ?? (userProfile.displayName || "我"),
+        personaId: persona?.id, learnings: persona ? [] : personalWork.proposals(USER),
+      });
+      res.setHeader("Cache-Control", "no-store");
+      send(res, 200, { facts, owner });
       return;
     }
     if (req.method === "POST" && url === "/api/memory/preference") {
@@ -7282,7 +7346,7 @@ const server = createServer(async (req, res) => {
           for (const r of out) {
             capabilities.recordPersonaTurn(r.personaId);
             const name = PERSONAS.find((p) => p.id === r.personaId)?.name ?? r.personaId;
-            ev({ type: "reply", personaId: r.personaId, name, messages: splitBubbles(r.reply), facts: bullets(r.context.userFacts) });
+            ev({ type: "reply", personaId: r.personaId, name, messages: splitBubbles(r.reply), facts: bullets(r.context.userFacts), memoryReceipt: memoryTurnReceipt(r.context, llm.live ? undefined : "local") });
           }
         } else {
           const turnArtifacts: CapabilityArtifact[] = [];
@@ -7291,7 +7355,7 @@ const server = createServer(async (req, res) => {
             onToken: (t) => ev({ type: "token", text: t }),
           }));
           capabilities.recordPersonaTurn(r.personaId);
-          ev({ type: "done", facts: bullets(r.context.userFacts), ...(turnArtifacts.length ? { artifact: turnArtifacts.at(-1) } : {}) });
+          ev({ type: "done", facts: bullets(r.context.userFacts), memoryReceipt: memoryTurnReceipt(r.context, llm.live ? undefined : "local"), ...(turnArtifacts.length ? { artifact: turnArtifacts.at(-1) } : {}) });
         }
         const scheduledJobs = enqueueDueCapabilityTasks("turn");
         if (b.target.kind === "group") ev({ type: "done", facts: [] });
@@ -7371,7 +7435,7 @@ const server = createServer(async (req, res) => {
           name: PERSONAS.find((p) => p.id === r.personaId)?.name ?? r.personaId,
           reply: r.reply,
           messages: splitBubbles(r.reply), // 微信式：拆成多条气泡
-          facts: bullets(r.context.userFacts),
+          facts: bullets(r.context.userFacts), memoryReceipt: memoryTurnReceipt(r.context, llm.live ? undefined : "local"),
           ...(turnArtifacts.length ? { artifact: turnArtifacts.at(-1) } : {}),
         })),
         taskReplies: [],

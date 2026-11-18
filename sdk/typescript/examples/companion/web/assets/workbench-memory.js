@@ -1,7 +1,8 @@
 /* Uses only existing memory APIs; no synthetic permissions or client-only deletion. */
 (() => {
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let selected='',query='',category='';
+  const requestedMemory=new URLSearchParams(location.search).get('memoryId')||'';
+  let selected=requestedMemory,query='',category='';
   const learningView=()=>new URLSearchParams(location.search).get('view')==='learning';
   const kindName={preference:'稳定偏好',decision:'已确认决定',constraint:'长期约束'};
   const stateName={pending:'待你确认',accepting:'确认待恢复',confirmed:'已记住',rejected:'不学习',revoking:'撤回待恢复',revoked:'已撤回'};
@@ -37,7 +38,7 @@
     if(learningView())return renderLearning(options);
     return renderMemories(options);
   }
-  function renderMemories({items,layers,openDetail,api,reload}){
+  function renderMemories({items,linkedMemory,layers,openDetail,api,reload}){
     const root=document.getElementById('content');
     root.innerHTML=`<div class="wb-memory-toolbar"><label>搜索记忆<input id="wbMemorySearch" type="search" placeholder="搜索内容或所属助理…" value="${esc(query)}"></label><label>分类<select id="wbMemoryType"><option value="">全部记忆</option>${Object.entries(layers).map(([key,name])=>`<option value="${key}"${category===key?' selected':''}>${name}</option>`).join('')}</select></label></div><p class="wb-muted wb-memory-about">这里是小丑鱼长期记住的内容：一部分从对话里整理出来，一部分来自你确认的「提议记住」。它反映小丑鱼当前的理解，可能不完整或已经过时。每条都能查看来源，能修正的可以直接修正；忘记一条不会删除聊天记录。</p><p id="wbMemoryStatus" role="status"></p><div class="wb-memory-layout"><section aria-label="记忆列表" id="wbMemoryRows"></section><aside aria-label="记忆详情" id="wbMemoryDetail"></aside></div><details class="wb-memory-add"><summary>＋ 记住一项习惯</summary><form id="memoryForm"><label for="memoryPreference">希望小丑鱼记住什么</label><textarea id="memoryPreference" required maxlength="500" placeholder="例如：正式文档先给结论，再展开依据。"></textarea><p>保存到真实记忆库；不要填写临时测试材料或密钥。</p><button class="primary" type="submit">记住这项习惯</button></form></details><section class="wb-memory-receipt" id="wbMemoryReceipt" aria-live="polite"></section><p class="wb-memory-note">忘记前会先显示可清理范围和需人工复核项。原始聊天与归档仍保留。</p>`;
     const add=root.querySelector('.wb-memory-add'),layout=root.querySelector('.wb-memory-layout');layout.before(add);add.open=items.length===0;layout.hidden=items.length===0;
@@ -47,8 +48,11 @@
     api('/api/memory/forget/latest').then(result=>showReceipt(result.receipt)).catch(()=>{});
     function draw(){
       const list=items.filter(m=>(!category||m.layer===category)&&(m.content+' '+m.who).toLowerCase().includes(query.toLowerCase()));
-      if(!list.some(m=>m.id===selected))selected=list[0]?.id||'';
-      status.textContent=`${list.length} 条记忆 · 共 ${items.length} 条`;
+      if(!list.some(m=>m.id===selected))selected=requestedMemory&&!items.some(m=>m.id===requestedMemory)?'':list[0]?.id||'';
+      const linkedStatus = linkedMemory?.status === 'inactive' ? '这条关联记忆已失效。'
+        : linkedMemory?.status === 'error' ? '暂时无法读取关联记忆，请刷新重试。'
+        : '这条关联记忆当前不可查看。';
+      status.textContent=`${list.length} 条记忆 · 共 ${items.length} 条`+(requestedMemory&&!items.some(m=>m.id===requestedMemory)?' · '+linkedStatus:'');
       rows.innerHTML=list.length?list.map(m=>`<button class="wb-memory-row" data-memory-select="${esc(m.id)}" aria-pressed="${selected===m.id}"><strong>${esc(m.content)}</strong><small>${esc(layers[m.layer]||m.layer)} · ${esc(m.who||'主助理')}</small></button>`).join(''):`<div class="wb-memory-empty"><h2>${items.length?'没有匹配的记忆':'小丑鱼还没有记住这些事'}</h2><p>${items.length?'换个关键词，或清空筛选。':'从对话开始，或在下方明确记录一项习惯。'}</p>${items.length?'<button id="wbClearMemory">清空筛选</button>':'<a href="/">回到助理工作区 →</a>'}</div>`;
       const m=list.find(m=>m.id===selected);
       detail.innerHTML=m?`<span class="wb-muted">${esc(layers[m.layer]||m.layer)}</span><h2>${esc(m.content)}</h2><dl><dt>所属助理</dt><dd>${esc(m.who||'未提供')}</dd><dt>来源摘录</dt><dd>${esc(m.source?.excerpt||'没有找到对应的消息片段；不能据此认定来源已核验。')}</dd><dt>来源类型</dt><dd>${m.source?.kind==='confirmed-learning'?'用户确认的学习，摘录由用户填写或确认':m.source?.sourceMessageId?'关联原始消息':'未提供可定位的消息标识'}</dd><dt>记录时间</dt><dd>${esc(m.created?new Date(m.created).toLocaleString('zh-CN'):'未提供')}</dd></dl><div class="wb-memory-actions"><button data-memory-detail="${esc(m.id)}">${m.correctable?'查看与修正':'查看来源详情'}</button><button class="danger" data-memory-forget="${esc(m.id)}">忘记</button></div><p>不会把这条记忆自动共享给 Bot 团队。</p>`:'<p class="wb-muted">选择一条记忆，查看来源和可用操作。</p>';

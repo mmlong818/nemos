@@ -17,6 +17,7 @@
     historyView=historyView||window.ClownfishUnifiedHistory;
   }
   let flowSnapshot={tasks:[],artifacts:[]},flowJobs=[],flowLoadedAt=0,flowWarning='';
+  let flowHistory, detailVersion=0, detailLoadedAt=0;
   let historySpace=new URLSearchParams(location.search).get('space')||'';
   let botFilter='all', libraryKey='';
   function workflowCard(t) {
@@ -126,10 +127,119 @@
     if(Date.now()-flowLoadedAt<15000)return;
     flowLoadedAt=Date.now();
     try{
-      const results=await Promise.all(['/api/capabilities','/api/agent/jobs?limit=5000'].map(async url=>{const response=await fetch(url);if(!response.ok)throw new Error('流程记录暂时无法读取');return response.json();}));
+      const results=await Promise.all(['/api/capabilities','/api/agent/jobs?view=task-summaries'].map(async url=>{const response=await fetch(url);if(!response.ok)throw new Error('流程记录暂时无法读取');return response.json();}));
       flowSnapshot=results[0];flowJobs=results[1].jobs||[];flowLoadedAt=Date.now();flowWarning='';
     }catch(error){flowWarning='流程记录读取失败，已显示可用记录；保留上次读取结果，稍后重试。';}
   }
+  function selectTask(id){
+    selected=id;currentJob=undefined;detailKey='';detailLoadedAt=0;detailVersion++;
+    flowHistory=id.startsWith('flow:')?{id,taskId:id.slice(5),jobs:[],summaries:[],summaryAt:0,nextCursor:null,pending:false,loadedAt:0,details:new Map()}:undefined;
+    $('#jobDetail').textContent=id?'正在读取任务…':'';
+  }
+  const flowIsCurrent=state=>state===flowHistory&&selected===state.id;
+  function flowTask(state){return flowSnapshot.tasks?.find(task=>task.id===state.taskId);}
+  const taskForRun=job=>job.payload?.taskId||job.metadata?.workTaskId||job.result?.data?.artifact?.taskId;
+  async function readAgentJob(id){
+    const response=await fetch('/api/agent/job?id='+encodeURIComponent(id));
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok||result.job?.id!==id)throw new Error('任务记录暂时无法读取');
+    return result.job;
+  }
+  function paintRunDetail(state,id){
+    const row=[...$('#jobDetail').querySelectorAll('details[data-run-history-job][open]')].find(node=>node.dataset.runHistoryJob===id);
+    if(!row)return;
+    const panel=row.querySelector('[data-run-history-content]');
+    const record=state.details.get(id);
+    const task=flowTask(state);
+    let html='<p role="status">正在读取本次运行…</p>';
+    if(record?.error)html='<p role="status">本次运行暂时无法读取。</p><button type="button" data-run-history-retry>重试读取本次运行</button>';
+    else if(record?.job&&task)html=historyView.historyRunDetail(record.job,task,flowSnapshot);
+    if(panel.innerHTML!==html)panel.innerHTML=html;
+  }
+  async function loadFlowRun(state,id,retry=false){
+    if(!flowIsCurrent(state)||!state.jobs.some(job=>job.id===id))return;
+    const cached=state.details.get(id);
+    if(cached&&(!retry||cached.pending)){paintRunDetail(state,id);return;}
+    const record={pending:true};
+    state.details.set(id,record);paintRunDetail(state,id);
+    try{
+      const job=await readAgentJob(id);
+      if(taskForRun(job)!==state.taskId)throw new Error('作业与流程不匹配');
+      record.job=job;
+    }catch{record.error=true;}
+    finally{
+      record.pending=false;
+      if(flowIsCurrent(state)&&state.details.get(id)===record)paintRunDetail(state,id);
+    }
+  }
+  function renderFlow(state){
+    if(!flowIsCurrent(state))return;
+    const summarySource=state.summaryAt&&!state.summaryError
+      ? [...flowJobs.filter(job=>taskForRun(job)!==state.taskId),...state.summaries]:flowJobs;
+    const html=historyView.flowDetail(flowTask(state),flowSnapshot,summarySource,state);
+    if(html===detailKey)return;
+    const id=state.id;
+    const focusWasMore=document.activeElement?.hasAttribute('data-run-history-more');
+    const oldIds=new Set([...$('#jobDetail').querySelectorAll('[data-run-history-job]')].map(row=>row.dataset.runHistoryJob));
+    window.ClownfishTaskDetail.mount($('#jobDetail'),html,id);detailKey=html;
+    for(const row of $('#jobDetail').querySelectorAll('details[data-run-history-job][open]'))void loadFlowRun(state,row.dataset.runHistoryJob);
+    if(focusWasMore){
+      const firstNew=[...$('#jobDetail').querySelectorAll('[data-run-history-job]')].find(row=>!oldIds.has(row.dataset.runHistoryJob));
+      (firstNew?.querySelector('summary')||$('#jobDetail').querySelector('[data-run-history-more]'))?.focus({preventScroll:true});
+    }
+  }
+  async function loadFlowSummary(state){
+    if(!flowIsCurrent(state)||state.summaryPending)return;
+    state.summaryPending=true;
+    const query=new URLSearchParams({view:'task-summaries',taskId:state.taskId});
+    try{
+      const response=await fetch('/api/agent/jobs?'+query);
+      if(!response.ok)throw new Error('最近运行暂时无法读取');
+      const page=await response.json();
+      if(!flowIsCurrent(state))return;
+      state.summaries=(page.jobs||[]).filter(job=>taskForRun(job)===state.taskId);
+      state.nextCheckAt=page.nextCheckAt;
+      state.summaryError=false;
+    }catch{state.summaryError=true;state.nextCheckAt=undefined;}
+    finally{
+      state.summaryPending=false;state.summaryAt=Date.now();
+      if(flowIsCurrent(state))renderFlow(state);
+    }
+  }
+  async function loadFlowHistory(state,more=false){
+    if(!flowIsCurrent(state)||state.pending)return;
+    const before=more?state.nextCursor:null;
+    state.pending=true;state.error=false;
+    if(more||!state.loadedAt)renderFlow(state);
+    const query=new URLSearchParams({view:'task-history',taskId:state.taskId,limit:'8'});
+    if(before)query.set('before',before);
+    try{
+      const response=await fetch('/api/agent/jobs?'+query);
+      if(!response.ok)throw new Error('运行历史暂时无法读取');
+      const page=await response.json();
+      if(!flowIsCurrent(state))return;
+      const rows=(page.jobs||[]).filter(job=>taskForRun(job)===state.taskId);
+      for(const job of rows){
+        const old=state.jobs.find(previous=>previous.id===job.id);
+        if(old&&(old.updatedAt!==job.updatedAt||old.delivery?.updatedAt!==job.delivery?.updatedAt))state.details.delete(job.id);
+      }
+      if(before)state.jobs=[...new Map([...state.jobs,...rows].map(job=>[job.id,job])).values()];
+      else if(state.loadedOlder)state.jobs=[...new Map([...rows,...state.jobs.filter(job=>!rows.some(row=>row.id===job.id))].map(job=>[job.id,job])).values()];
+      else state.jobs=rows;
+      if(before||!state.loadedOlder)state.nextCursor=page.nextCursor||null;
+      if(before)state.loadedOlder=true;
+    }catch{state.error=true;state.failedMore=more;}
+    finally{
+      state.pending=false;state.loadedAt=Date.now();
+      if(flowIsCurrent(state))renderFlow(state);
+    }
+  }
+  $('#jobDetail').addEventListener('toggle',event=>{
+    const row=event.target;
+    if(!flowHistory||!row.open)return;
+    if(row.hasAttribute('data-run-history-job'))void loadFlowRun(flowHistory,row.dataset.runHistoryJob);
+    if(row.hasAttribute('data-run-history-section')&&!flowHistory.loadedAt)void loadFlowHistory(flowHistory);
+  },true);
   function renderHistory(){
     const items=historyView.filter(historyView.entries(data.jobs,flowSnapshot,flowJobs),{query:$('#taskHistorySearch').value,source:$('#taskHistorySource').value,space:historySpace});
     const groups=historyView.groups(items);
@@ -164,22 +274,28 @@
     const id=selected;
     if(id.startsWith('flow:')){
       currentJob=undefined;
-      const html=historyView.flowDetail(flowSnapshot.tasks?.find(task=>task.id===id.slice(5)),flowSnapshot,flowJobs);
-      if(html!==detailKey){window.ClownfishTaskDetail.mount($('#jobDetail'),html,id);detailKey=html;}return;
+      const state=flowHistory;
+      if(!state)return;
+      renderFlow(state);
+      if(flowTask(state)&&Date.now()-state.summaryAt>=15000)await loadFlowSummary(state);
+      if(flowIsCurrent(state)&&$('#jobDetail').querySelector('[data-run-history-section][open]')
+        && state.loadedAt&&!state.error&&Date.now()-state.loadedAt>=15000)await loadFlowHistory(state);
+      return;
     }
-    // ?job= 过去只认协作任务；能力任务、临时任务等其他队列作业走通用的 /api/agent/job 读取，
-    // 否则从运行日志或通知点进来只会看到"协作任务不存在"。
+    if(!id||detailKey&&currentJob&&!['queued','running'].includes(currentJob.status)&&Date.now()-detailLoadedAt<15000)return;
+    const version=++detailVersion;
     let job;
-    const teamJob=flowJobs.find(item=>item.id===id)||data.jobs?.find(item=>item.id===id);
-    if(teamJob&&teamJob.type!=='assistant-team'){
-      const response=await fetch('/api/agent/job?id='+encodeURIComponent(id));
-      const result=await response.json().catch(()=>({}));
-      if(!response.ok)throw new Error(result.userMessage||result.error||'任务记录暂时无法读取');
-      job=result.job;
-    } else {
-      ({job}=await api('/job?id='+encodeURIComponent(id)));
+    try{
+      const knownBot=data.jobs?.some(item=>item.id===id)||currentJob?.id===id&&currentJob.type==='assistant-team';
+      job=knownBot?(await api('/job?id='+encodeURIComponent(id))).job:await readAgentJob(id);
+      if(id!==selected||version!==detailVersion)return;
+      if(!knownBot&&job.type==='assistant-team')({job}=await api('/job?id='+encodeURIComponent(id)));
+    }catch{
+      if(id===selected&&version===detailVersion&&!currentJob)$('#jobDetail').innerHTML='<p role="status">任务记录暂时无法读取。</p><button type="button" data-job-detail-retry>重试读取任务</button>';
+      return;
     }
-    if(id!==selected) return;
+    if(id!==selected||version!==detailVersion||job.id!==id)return;
+    detailLoadedAt=Date.now();
     currentJob=job;const key=JSON.stringify(job); if(key===detailKey) return; detailKey=key;
     window.ClownfishTaskDetail.mount($('#jobDetail'),window.ClownfishTaskDetail.botDetail(job),id);
     if(steeringFeedback.jobId===id){const status=$('#jobDetail').querySelector('[data-steering-status]');if(status)status.textContent=steeringFeedback.text;}
@@ -206,7 +322,7 @@
     $('#botInfoDialog').close();
     const f=$('#taskForm');
     syncTaskOptions();
-    selected='';detailKey='';currentJob=undefined;historySpace='';
+    selectTask('');historySpace='';
     const chosen=botId?data.bots.find((b)=>b.id===botId):template&&installed(template);
     if(chosen){$('#manualBotAssignment').open=true;routingUi.manual();}
     if(chosen?.enabled){for(const c of f.querySelectorAll('[name=workerIds]'))c.checked=c.value===chosen.id;if(chosen.role==='reviewer')f.elements.reviewerId.value=chosen.id;}
@@ -251,7 +367,7 @@
         materialUploads.reset();f.reset();taskOptionsKey='';requestId='';requestBody='';activeTemplate=undefined;
         $('#taskGuide').hidden=true;$('#taskTitle').textContent='你想完成什么？';$('#taskExtraOptions').open=false;$('#manualBotAssignment').open=false;
       }
-      selected=result.record.id;detailKey='';tabs(false);toast('任务已入队，后台将自动交接与汇总');await load();
+      selectTask(result.record.id);tabs(false);toast('任务已入队，后台将自动交接与汇总');await load();
     } catch(error){if(ticket===materialUploads.version()&&error.name!=='AbortError')f.querySelector('.form-error').textContent=error.message;}
     finally{for(const control of lockedControls)control.disabled=false;submitting=false;syncTaskOptions();}
   };
@@ -316,14 +432,16 @@
       try{const draft=handoff.botDraft(currentJob);openBot();ruleEditorMode(false);const f=$('#botForm');f.elements.name.value=draft.name;f.elements.instructions.value=draft.instructions;$('#botTitle').textContent='审阅规则草稿';$('#botDraftNotice').hidden=false;}
       catch(error){toast(error.message);}return;
     }
-    if(b.dataset.job){selected=b.dataset.job;detailKey='';$('#jobDetail').textContent='正在读取任务…';$('#tasksPane').classList.remove('history-expanded');$('#toggleTaskHistory').setAttribute('aria-expanded','false');$('#toggleTaskHistory').textContent='查看任务记录';tabs('tasks');await load();}
+    if(b.hasAttribute('data-run-history-more')&&flowHistory){const state=flowHistory;await loadFlowHistory(state,state.error?state.failedMore:true);return;}
+    if(b.hasAttribute('data-run-history-retry')&&flowHistory){const id=b.closest('[data-run-history-job]')?.dataset.runHistoryJob;if(id)await loadFlowRun(flowHistory,id,true);return;}
+    if(b.hasAttribute('data-job-detail-retry')){await loadDetail();return;}
+    if(b.dataset.job){selectTask(b.dataset.job);$('#tasksPane').classList.remove('history-expanded');$('#toggleTaskHistory').setAttribute('aria-expanded','false');$('#toggleTaskHistory').textContent='查看任务记录';tabs('tasks');renderHistory();await loadDetail();return;}
     if(b.dataset.action){b.disabled=true;try{await api('/'+b.dataset.action,{id:selected});detailKey='';await load();}catch(error){toast(error.message);b.disabled=false;}}
   });
   setInterval(()=>{if(!document.hidden&&!document.querySelector('dialog[open]'))void load();},2000);
   window.ClownfishIcons.hydrate();
   function restoreLocation(historyMode='none'){
-    const params=new URLSearchParams(location.search);selected=params.get('task')?'flow:'+params.get('task'):params.get('job') || '';detailKey='';historySpace=params.get('space')||'';
-    currentJob=undefined;$('#jobDetail').textContent=selected?'正在读取任务…':'';
+    const params=new URLSearchParams(location.search);selectTask(params.get('task')?'flow:'+params.get('task'):params.get('job') || '');historySpace=params.get('space')||'';
     const view=params.get('view'),onSkills=String(location.pathname||'').replace(/\.html$/,'').replace(/\/$/,'')==='/skills';
     tabs(selected?'tasks':['bots','market','tasks'].includes(view)?view:onSkills?'bots':'tasks',historyMode);void load();
   }

@@ -163,8 +163,9 @@ export class FileDeliveryOutbox {
     return record ? structuredClone(record) : null;
   }
 
-  getBySource(sourceType: string, sourceId: string): DeliveryRecord | null {
-    const record = [...this.records.values()].find((item) => item.sourceType === sourceType && item.sourceId === sourceId);
+  getBySource(sourceType: string, sourceId: string, channel?: string): DeliveryRecord | null {
+    const record = [...this.records.values()].find((item) => item.sourceType === sourceType
+      && item.sourceId === sourceId && (channel === undefined || item.channel === channel));
     return record ? structuredClone(record) : null;
   }
 

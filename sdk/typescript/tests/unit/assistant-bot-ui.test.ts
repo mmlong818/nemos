@@ -20,10 +20,13 @@ test("任务优先默认路由仍尊重 Bot、市场和具体任务深链接", (
   assert.doesNotMatch(script, /#taskLaunch/);
   assert.match(source("assets/workbench-ui.js"), /botNav\.href='\/bots\?view=tasks'/);
   const fn = script.slice(script.indexOf("function restoreLocation("), script.indexOf("window.addEventListener('popstate'"));
-  for (const [search, expected] of [["","tasks"],["?view=invalid","tasks"],["?view=bots","bots"],["?view=market","market"],["?job=existing&view=bots","tasks"]]) {
+  const selectTask = script.slice(script.indexOf("function selectTask("), script.indexOf("const flowIsCurrent"));
+  for (const [search, expected, job = ""] of [["","tasks"],["?view=invalid","tasks"],["?view=bots","bots"],["?view=market","market"],["?job=existing&view=bots","tasks","existing"],["?task=workflow&view=bots","tasks","flow:workflow"]]) {
     const views: string[] = [];
-    runInNewContext(fn + "\nrestoreLocation();", { URLSearchParams, location:{search}, selected:"", detailKey:"", currentJob:undefined, emptyDetail:"", $:()=>({innerHTML:""}), tabs:(view:string)=>views.push(view), load:()=>{} });
+    const context = { URLSearchParams, location:{search}, selected:"", detailKey:"", detailLoadedAt:0, detailVersion:0, flowHistory:undefined, currentJob:undefined, historySpace:"", $:()=>({textContent:""}), tabs:(view:string)=>views.push(view), load:()=>{} };
+    runInNewContext(selectTask + fn + "\nrestoreLocation();", context);
     assert.deepEqual(views,[expected]);
+    assert.equal(context.selected, job);
   }
 });
 

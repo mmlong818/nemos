@@ -118,3 +118,27 @@ export function userMemoryPrompt(context: { userFacts: string; memoryEvidence?: 
     `<user_memory_evidence>${json}</user_memory_evidence>`,
   ].join("\n");
 }
+
+/** Bounded initial personal-memory context, before any model tool calls. */
+export interface MemoryTurnReceipt {
+  version: 1;
+  mode: "default" | "preferences" | "off";
+  processing?: "local";
+  recordedAt: string;
+  records: Array<Pick<UserMemoryEvidence, "id" | "layer" | "confidence" | "contentTruncated" | "contentIsExcerpt">>;
+}
+
+export function memoryTurnReceipt(
+  context: { memoryEvidence?: UserMemoryEvidence[]; memoryMode?: MemoryTurnReceipt["mode"] },
+  processing?: MemoryTurnReceipt["processing"],
+): MemoryTurnReceipt | undefined {
+  // Legacy/recovered replies have no evidence. Never re-run recall to invent it.
+  if (!context.memoryEvidence) return undefined;
+  return {
+    version: 1,
+    mode: context.memoryMode ?? "default",
+    ...(processing ? { processing } : {}),
+    recordedAt: new Date().toISOString(),
+    records: context.memoryEvidence.slice(0, 12).map(({ id, layer, confidence, contentTruncated, contentIsExcerpt }) => ({ id, layer, confidence, contentTruncated, contentIsExcerpt })),
+  };
+}

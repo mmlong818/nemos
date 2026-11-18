@@ -1,4 +1,6 @@
-﻿$ErrorActionPreference = "Stop"
+﻿param([switch]$PrepareWebView2Sdk)
+
+$ErrorActionPreference = "Stop"
 
 if ($env:CLOWNFISH_DEVELOPMENT_BUILD -notin @($null, "", "0", "1")) {
   throw "CLOWNFISH_DEVELOPMENT_BUILD must be 0, 1, or unset"
@@ -247,6 +249,8 @@ function Ensure-SandboxPythonRuntime {
 }
 
 Ensure-WebView2Sdk
+if ($PrepareWebView2Sdk) { return }
+
 $MainNodeExe = Ensure-NodeRuntime -RuntimeName "主服务" -RuntimeVersion $MainNodeVersion -ArchiveName $MainNodeArchive -ExpectedSha256 $MainNodeExpectedSha256 -ArchivePath $MainNodeArchivePath -PackagePath $MainNodePackageDir
 $SandboxNodeExe = Ensure-NodeRuntime -RuntimeName "MCP 沙箱" -RuntimeVersion $SandboxNodeVersion -ArchiveName $SandboxNodeArchive -ExpectedSha256 $SandboxNodeExpectedSha256 -ArchivePath $SandboxNodeArchivePath -PackagePath $SandboxNodePackageDir
 $SandboxPythonExe = Ensure-SandboxPythonRuntime
