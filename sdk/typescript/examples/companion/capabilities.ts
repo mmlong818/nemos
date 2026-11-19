@@ -40,6 +40,7 @@ import { exportOfficeDocument } from "./office-export.js";
 import type { ValidationReceipt } from "./office-validation.js";
 import { validateGeneratedPng, type PngValidationReceipt } from "./png-validation.js";
 import { ArtifactWorkspaceStore, type ArtifactWorkspaceState } from "./artifact-workspace.js";
+import { ArtifactReviewError, ArtifactReviewStore, samePdfIdentity, validPdfIdentity, type ReviewedPdfIdentity } from "./artifact-reviews.js";
 import type { ProfessionalArtifactReceipt } from "./professional-artifact-gate.js";
 import { admitGeneratedAbilitySpec, admitInstalledSkillContent, type CapabilityAdmissionReceipt } from "./capability-admission.js";
 
@@ -437,6 +438,7 @@ export class CapabilityRuntime {
   private readonly skillUsageFile: string;
   private readonly artifactFeedbackFile: string;
   private readonly artifactWorkspaceStore: ArtifactWorkspaceStore;
+  private readonly artifactReviewStore: ArtifactReviewStore;
   private generatedAbilities: Capability[] = [];
   private spaces: CapabilitySpace[] = [];
   private tasks: CapabilityTask[] = [];
@@ -459,6 +461,7 @@ export class CapabilityRuntime {
     this.artifactFeedbackFile = join(root, "artifact-feedback.json");
     this.widgetState = new WidgetStateStore(join(root, "widget-state.json"));
     this.artifactWorkspaceStore = new ArtifactWorkspaceStore(join(root, "artifact-workspaces.json"));
+    this.artifactReviewStore = new ArtifactReviewStore(join(root, "artifact-reviews.json"));
     mkdirSync(this.artifactDir, { recursive: true });
     mkdirSync(this.skillsDir, { recursive: true });
     this.load();
@@ -1057,8 +1060,9 @@ export class CapabilityRuntime {
       tasks: tasks.slice(0, 5).map(({ id, title, storyline, updatedAt, archivedAt }) => ({
         id, title, status: storyline.status, updatedAt, archivedAt,
       })),
-      artifacts: artifacts.slice(0, 6).map(({ id, taskId, title, format, createdAt }) => ({
-        id, taskId, title, format, createdAt,
+      artifacts: artifacts.slice(0, 6).map((artifact) => ({
+        id: artifact.id, taskId: artifact.taskId, title: artifact.title,
+        format: artifact.format, createdAt: artifact.createdAt, reviewable: reviewedPdfIdentity(artifact) !== null,
       })),
       counts: { tasks: tasks.length, artifacts: artifacts.length },
       nextAction: nextTask ? {
@@ -1988,6 +1992,56 @@ export class CapabilityRuntime {
     this.saveArtifacts();
     return state;
   }
+
+  artifactReview(id: string, reviewedBy: string) {
+    const { artifact, identity, filename } = this.readReviewablePdf(id);
+    return {
+      artifactId: artifact.id,
+      title: artifact.title,
+      createdAt: artifact.createdAt,
+      filename,
+      version: artifact.metadata?.lineage?.version,
+      format: "pdf" as const,
+      ...identity,
+      review: this.artifactReviewStore.findVersion(artifact.id, reviewedBy, identity),
+    };
+  }
+
+  confirmArtifactReview(id: string, reviewedBy: string, expected: ReviewedPdfIdentity) {
+    const { artifact, identity } = this.readReviewablePdf(id);
+    assertReviewedPdfIdentity(identity, expected);
+    return this.artifactReviewStore.confirm(artifact.id, reviewedBy, identity);
+  }
+
+  previewArtifactReview(res: ServerResponse, id: string, expected: ReviewedPdfIdentity): void {
+    const { identity, filename, data } = this.readReviewablePdf(id);
+    assertReviewedPdfIdentity(identity, expected);
+    sendReviewedPdf(res, filename, data, "inline");
+  }
+
+  exportReviewedArtifact(res: ServerResponse, reviewId: string, reviewedBy: string): void {
+    const review = this.artifactReviewStore.get(reviewId, reviewedBy);
+    if (!review) throw new ArtifactReviewError(404, "没有找到可导出的审阅记录。");
+    const { identity, filename, data } = this.readReviewablePdf(review.artifactId);
+    assertReviewedPdfIdentity(identity, review);
+    sendReviewedPdf(res, filename, data, "attachment");
+  }
+
+  private readReviewablePdf(id: string) {
+    const artifact = this.findVisibleArtifact(id);
+    if (!artifact) throw new ArtifactReviewError(404, "没有找到该成果。");
+    const identity = reviewedPdfIdentity(artifact);
+    if (!identity) throw new ArtifactReviewError(422, "这份成果没有可审阅的 PDF 文件及完整性记录。");
+    const data = this.readArtifactContent(artifact, artifact.file);
+    if (!data) throw new ArtifactReviewError(409, "PDF 文件已变化或无法读取，请重新核对成果。");
+    const filename = basename(artifact.file);
+    if (!filename.toLowerCase().endsWith(".pdf") || data.subarray(0, 5).toString("latin1") !== "%PDF-"
+        || !data.subarray(-2048).includes("%%EOF")) {
+      throw new ArtifactReviewError(422, "成果不是可审阅的 PDF 文件。");
+    }
+    return { artifact, identity, filename, data };
+  }
+
   sendArtifact(res: ServerResponse, id: string | null, disposition: "inline" | "attachment" = "inline"): boolean {
     const artifact = this.findVisibleArtifact(id);
     if (!artifact) return false;
@@ -3755,6 +3809,29 @@ function safeFileName(name: string): string {
 
 function asciiFileName(name: string): string {
   return name.replace(/[^\x20-\x7E]/g, "_").replace(/[\\/:*?"<>|]/g, "-") || "artifact";
+}
+
+function reviewedPdfIdentity(artifact: CapabilityArtifact): ReviewedPdfIdentity | null {
+  const proof = artifact.proof;
+  if (artifact.format !== "pdf" || !proof || proof.version !== 1 || proof.algorithm !== "sha256") return null;
+  const identity = { sha256: proof.contentHash, byteLength: proof.byteLength };
+  return validPdfIdentity(identity) ? { ...identity, sha256: identity.sha256.toLowerCase() } : null;
+}
+
+function assertReviewedPdfIdentity(actual: ReviewedPdfIdentity, expected: ReviewedPdfIdentity): void {
+  if (!validPdfIdentity(expected)) throw new ArtifactReviewError(400, "缺少有效的 PDF 内容指纹。");
+  if (!samePdfIdentity(actual, expected)) throw new ArtifactReviewError(409, "PDF 版本已变化，请重新审阅。");
+}
+
+function sendReviewedPdf(res: ServerResponse, filename: string, data: Buffer, disposition: "inline" | "attachment"): void {
+  res.writeHead(200, {
+    "Content-Type": "application/pdf",
+    "Content-Length": data.byteLength,
+    "Content-Disposition": `${disposition}; filename="${asciiFileName(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.end(data);
 }
 
 function extension(format: ArtifactFormat): string {

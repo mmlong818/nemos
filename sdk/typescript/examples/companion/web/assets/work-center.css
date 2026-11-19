@@ -36,3 +36,22 @@ a.project-link:hover, a.project-row-title:hover { text-decoration: underline; te
 @media (max-width: 820px) {
   .project-overview-columns { grid-template-columns: minmax(0, 1fr); gap: 24px; }
 }
+
+#artifactReviewDialog { width: min(880px, calc(100% - 24px)); max-height: calc(100dvh - 24px); }
+.artifact-review-card { gap: 10px; }
+.artifact-review-heading { min-width: 0; padding-inline-end: 30px; }
+.artifact-review-heading p, .artifact-review-note, #artifactReviewStatus { margin: 0; overflow-wrap: anywhere; }
+#artifactReviewTitle { margin-top: 6px; font-weight: 650; }
+#artifactReviewMeta, .artifact-review-note { color: var(--cf-ink-soft, var(--muted)); font-size: 13px; }
+.artifact-review-heading p:empty, #artifactReviewStatus:empty { display: none; }
+#artifactReviewPreview { min-width: 0; border: 1px solid var(--cf-line, var(--line)); overflow: hidden; }
+#artifactReviewPreview iframe { display: block; width: 100%; height: clamp(260px, 49dvh, 520px); border: 0; }
+#artifactReviewOpen { justify-self: start; color: var(--cf-coral, var(--accent2)); text-decoration: underline; text-underline-offset: 3px; }
+#artifactReviewStatus { font-size: 13px; }
+#artifactReviewStatus.is-error { color: var(--danger); }
+.artifact-review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.artifact-review-actions button:disabled { opacity: .5; cursor: default; }
+.project-artifact-actions button[data-review-artifact], .file-row-actions button[data-review-artifact] { min-height: 28px; }
+@media (max-width: 520px) {
+  .artifact-review-card { padding: 16px; }
+}

@@ -499,7 +499,8 @@ function renderProjectOverview({ space, tasks, materials, artifacts, nextAction,
         <div class="project-row-copy"><strong class="project-row-title">${escapeHtml(item.title)}</strong><small>${escapeHtml(String(item.format || "").toUpperCase())} · ${escapeHtml(date(item.createdAt))}</small></div>
         <div class="project-artifact-actions">
           <a class="project-link" href="/api/capabilities/artifact/preview?id=${id}" target="_blank" rel="noopener" aria-label="预览：${escapeHtml(item.title)}">预览</a>
-          <a class="project-link" href="/api/capabilities/artifact?id=${id}" download aria-label="下载：${escapeHtml(item.title)}">下载</a>
+          <a class="project-link" href="/api/capabilities/artifact?id=${id}" download aria-label="下载：${escapeHtml(item.title)}">${item.reviewable ? "下载原件" : "下载"}</a>
+          ${item.reviewable ? `<button type="button" class="quiet project-link" data-review-artifact="${escapeHtml(item.id)}" aria-haspopup="dialog" aria-label="审阅并导出：${escapeHtml(item.title)}">审阅并导出</button>` : ""}
           ${item.taskId ? `<a class="project-link" href="/bots?task=${encodeURIComponent(item.taskId)}">来源任务</a>` : ""}
         </div>
       </li>`;
