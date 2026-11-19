@@ -9,6 +9,7 @@ import { APP_PERSONA_ID } from "../identity.js";
 import { AgentUserActionGateway, FileAgentJobQueue } from "../../../src/index.js";
 import { BackgroundScheduler } from "../background-scheduler.js";
 import { CapabilityRuntime } from "../capabilities.js";
+import { ArtifactReviewError } from "../artifact-reviews.js";
 import { type CapabilityExtensionSummary, type CapabilityProviderSummary } from "../capability-system-registry.js";
 import { createDefaultCapabilityToolRegistry, type CapabilityToolSummary } from "../capability-tools.js";
 import { FileDeliveryOutbox } from "../delivery-outbox.js";
@@ -52,6 +53,10 @@ export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
   const { USER, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, collaborationLedger, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, knowledgeLibrary, readBody, send, teamConnectionFingerprint } = deps;
   // TSC_DESTRUCTURE
   void deps;
+  const sendArtifactReviewError = (res: ServerResponse, error: unknown): void => {
+    if (!(error instanceof ArtifactReviewError)) throw error;
+    send(res, error.status, { error: error.message, userMessage: error.message });
+  };
   const collaborationArtifactBelongsToStep = (artifact: import("../capabilities.js").CapabilityArtifact, step: import("../collaboration-ledger.js").CollaborationStep, receipt: import("../collaboration-ledger.js").CollaborationReceipt): boolean => {
     const sourceTask = capabilities.snapshot().tasks.find((item) => item.id === artifact.taskId);
     return !!sourceTask?.oneOff && sourceTask.origin?.kind === "orchestration" &&
@@ -392,6 +397,51 @@ export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id");
       if (!capabilities.previewArtifact(res, id)) send(res, 404, { error: "artifact not found" });
       return;
+    }),
+    route("GET", "/api/capabilities/artifact/review", ({ res, query }) => {
+      try {
+        const id = query.get("id");
+        if (!id) throw new ArtifactReviewError(400, "缺少成果编号。");
+        send(res, 200, { ok: true, ...capabilities.artifactReview(id, USER) });
+      } catch (error) {
+        sendArtifactReviewError(res, error);
+      }
+    }),
+    route("GET", "/api/capabilities/artifact/review/preview", ({ res, query }) => {
+      try {
+        const id = query.get("id");
+        if (!id) throw new ArtifactReviewError(400, "缺少成果编号。");
+        capabilities.previewArtifactReview(res, id, {
+          sha256: query.get("sha256") || "",
+          byteLength: Number(query.get("byteLength")),
+        });
+      } catch (error) {
+        sendArtifactReviewError(res, error);
+      }
+    }),
+    route("POST", "/api/capabilities/artifact/review",
+      Type.Object({
+        id: Type.String({ minLength: 1, maxLength: 180 }),
+        sha256: Type.String({ pattern: "^[a-fA-F0-9]{64}$" }),
+        byteLength: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+      }, { additionalProperties: false }),
+      ({ res }, body) => {
+        try {
+          const review = capabilities.confirmArtifactReview(body.id, USER, { sha256: body.sha256, byteLength: body.byteLength });
+          send(res, 200, { ok: true, review });
+        } catch (error) {
+          sendArtifactReviewError(res, error);
+        }
+      },
+    ),
+    route("GET", "/api/capabilities/artifact/review/export", ({ res, query }) => {
+      try {
+        const reviewId = query.get("reviewId");
+        if (!reviewId || query.size !== 1) throw new ArtifactReviewError(400, "导出需要一个审阅编号。");
+        capabilities.exportReviewedArtifact(res, reviewId, USER);
+      } catch (error) {
+        sendArtifactReviewError(res, error);
+      }
     }),
     route("GET", "/api/capabilities/widget/state", ({ res, url }) => {
       const id = new URLSearchParams(url.split("?")[1] || "").get("id") || "";
