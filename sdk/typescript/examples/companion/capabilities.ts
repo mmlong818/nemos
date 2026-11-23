@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ServerResponse } from "node:http";
 import { WIDGET_CONTRACT, WidgetStateStore, injectWidgetBridge } from "./widgets.js";
@@ -37,6 +37,7 @@ import {
 } from "./native-capability-contracts.js";
 import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
 import { exportOfficeDocument } from "./office-export.js";
+import type { OfficeReviewFormat, OfficeReviewSource } from "./office-version-review.js";
 import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
 import { validateGeneratedPng, type PngValidationReceipt } from "./png-validation.js";
 import { ArtifactWorkspaceStore, type ArtifactWorkspaceState } from "./artifact-workspace.js";
@@ -255,6 +256,7 @@ export interface CapabilityArtifact {
     contextFile?: string;
     validationChecks?: CapabilityArtifactValidationCheck[];
     officeValidation?: ValidationReceipt;
+    officeReviewSource?: { documentId: string; versionId: string; format: OfficeReviewFormat; sourceKey: string; inputSha256: string };
     imageValidation?: PngValidationReceipt;
     skillContract?: SkillContractSnapshot;
     workspace?: { status: "draft" | "review" | "done"; updatedAt: string; versionCount: number };
@@ -280,6 +282,15 @@ export interface CapabilityArtifactValidationCheck {
 export interface RetainedCapabilityArtifact extends CapabilityArtifact {
   retainedAt: string;
   originalTaskTitle?: string;
+}
+
+interface OfficeReviewCandidate {
+  artifactId: string;
+  filename: string;
+  sha256: string;
+  byteLength: number;
+  format: OfficeReviewFormat;
+  reused: boolean;
 }
 
 export interface CapabilityArtifactProof {
@@ -442,6 +453,7 @@ export class CapabilityRuntime {
   private readonly artifactWorkspaceStore: ArtifactWorkspaceStore;
   private readonly artifactReviewStore: ArtifactReviewStore;
   private readonly pptxReviewPreviewStore: PptxReviewPreviewStore;
+  private readonly pendingOfficeReviews = new Map<string, { inputSha256: string; result: Promise<OfficeReviewCandidate> }>();
   private generatedAbilities: Capability[] = [];
   private spaces: CapabilitySpace[] = [];
   private tasks: CapabilityTask[] = [];
@@ -507,6 +519,94 @@ export class CapabilityRuntime {
     this.artifacts.push(artifact);
     this.saveArtifacts();
     return artifact;
+  }
+
+  async prepareOfficeVersionReview(source: OfficeReviewSource, userId: string, assertStillSaved: () => void): Promise<OfficeReviewCandidate> {
+    const format = source.input.format;
+    const sourceKey = createHash("sha256")
+      .update(JSON.stringify([userId, source.documentId, source.versionId, format])).digest("hex");
+    const existing = [...this.artifacts, ...this.retainedArtifacts].find((artifact) => artifact.metadata?.officeReviewSource?.sourceKey === sourceKey);
+    if (existing) {
+      if (existing.metadata?.officeReviewSource?.inputSha256 !== source.inputSha256) {
+        throw new ArtifactReviewError(409, "同一版本的内容已变化，请先另存一个新的工作台版本。");
+      }
+      const identity = reviewedArtifactIdentity(existing);
+      if (!identity || identity.format !== format || !this.readArtifactContent(existing, existing.file)) {
+        throw new ArtifactReviewError(409, "上一次生成的审阅原件已变化或无法读取。");
+      }
+      return { ...identity, format, artifactId: existing.id, filename: basename(existing.file), reused: true };
+    }
+
+    const pending = this.pendingOfficeReviews.get(sourceKey);
+    if (pending) {
+      if (pending.inputSha256 !== source.inputSha256) throw new ArtifactReviewError(409, "同一版本的内容正在被其他操作处理。");
+      return { ...await pending.result, reused: true };
+    }
+    if (format === "pptx" && !this.pptxReviewPreviewStore.available()) {
+      throw new ArtifactReviewError(422, "当前电脑不支持生成 PPTX 的本机审阅预览。");
+    }
+    const directory = join(this.artifactDir, "office-source-" + sourceKey);
+    if (existsSync(directory)) throw new ArtifactReviewError(409, "原审阅文件已无法在成果库定位，请另存新版本后再生成。");
+    const artifactId = "office-version-" + randomUUID();
+    const result = this.writeOfficeReviewArtifact(artifactId, directory, sourceKey, source, assertStillSaved);
+    this.pendingOfficeReviews.set(sourceKey, { inputSha256: source.inputSha256, result });
+    try {
+      return await result;
+    } finally {
+      this.pendingOfficeReviews.delete(sourceKey);
+    }
+  }
+
+  private async writeOfficeReviewArtifact(artifactId: string, directory: string, sourceKey: string, source: OfficeReviewSource, assertStillSaved: () => void): Promise<OfficeReviewCandidate> {
+    const format = source.input.format;
+    const output = await exportOfficeDocument(source.input, { rejectTruncatedContent: true });
+    const { validation } = output;
+    if (!validation?.passed || validation.format !== format || validation.byteLength !== output.data.byteLength
+        || (format === "pptx" && output.data.byteLength > MAX_PPTX_REVIEW_BYTES)) {
+      throw new ArtifactReviewError(422, "生成的 Office 原件未通过完整性或大小检查。");
+    }
+    assertStillSaved();
+
+    const filename = basename(output.filename);
+    const file = join(directory, filename);
+    const temporary = join(directory, "staged-" + randomUUID() + ".tmp");
+    // The per-artifact directory must not exist. Never replace another candidate or an external file.
+    mkdirSync(directory);
+    try {
+      writeFileSync(temporary, output.data, { flag: "wx" });
+      renameSync(temporary, file);
+      const artifact = withArtifactProof({
+        id: artifactId, taskId: "", capabilityId: "office-workbench", personaId: "clownfish", title: source.input.name,
+        format: format === "docx" ? "doc" : "pptx", file, createdAt: new Date().toISOString(),
+        summary: "从已保存的办公工作台版本生成的审阅原件。",
+        metadata: {
+          officeValidation: validation,
+          validationChecks: validation.checks.map((check, index) => ({
+            id: "office-check-" + index, label: check.name,
+            status: check.passed ? "passed" : "failed", phase: "validation", detail: check.detail,
+          })),
+          officeReviewSource: { documentId: source.documentId, versionId: source.versionId, format, sourceKey, inputSha256: source.inputSha256 },
+        },
+      });
+      const identity = reviewedArtifactIdentity(artifact);
+      if (!identity || identity.sha256 !== validation.sha256 || identity.byteLength !== validation.byteLength) {
+        throw new ArtifactReviewError(409, "落盘后的 Office 文件与生成结果不一致。");
+      }
+      this.artifacts.push(artifact);
+      try {
+        this.saveArtifacts();
+      } catch (error) {
+        this.artifacts.pop();
+        throw error;
+      }
+      return { ...identity, format, artifactId, filename, reused: false };
+    } catch (error) {
+      for (const path of [temporary, file]) {
+        try { unlinkSync(path); } catch { /* Only clean files owned by this new candidate. */ }
+      }
+      try { rmdirSync(directory); } catch { /* Do not remove unexpected contents. */ }
+      throw error;
+    }
   }
 
   listAbilities(): Capability[] {
@@ -2298,7 +2398,14 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0;background:#fff;border:1
   }
 
   private saveArtifacts(): void {
-    writeJson(this.artifactsFile, this.artifacts.slice(-200));
+    const temporary = this.artifactsFile + "." + randomUUID() + ".tmp";
+    try {
+      writeFileSync(temporary, JSON.stringify(this.artifacts.slice(-200), null, 2), { encoding: "utf8", flag: "wx" });
+      renameSync(temporary, this.artifactsFile);
+    } catch (error) {
+      try { unlinkSync(temporary); } catch { /* The temporary file may not have been created. */ }
+      throw error;
+    }
   }
 
   private saveRetainedArtifacts(): void {

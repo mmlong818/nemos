@@ -8,8 +8,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Type } from "typebox";
 
 import type { AgentUserActionGateway } from "../../../src/index.js";
-import { userFacingMessage } from "../office-errors.js";
+import { ArtifactReviewError } from "../artifact-reviews.js";
+import type { CapabilityRuntime } from "../capabilities.js";
+import { UserFacingError, userFacingMessage } from "../office-errors.js";
 import { exportOfficeDocument, type OfficeExportFormat } from "../office-export.js";
+import { readOfficeReviewSource } from "../office-version-review.js";
 import { MAX_OFFICE_FILE_BYTES, officeExtractionFromMarkdown } from "../office-file-parser.js";
 import type { OfficeFileSessionStore } from "../office-file-sessions.js";
 import { convertOfficeToMarkdown } from "../office-to-markdown.js";
@@ -24,6 +27,8 @@ export interface FilesRouteDeps {
   readonly taskFiles: TaskFileRegistry;
   readonly officeFileSessions: OfficeFileSessionStore;
   readonly officeWorkbenchState: OfficeWorkbenchStateStore;
+  readonly capabilities: CapabilityRuntime;
+  readonly userId: string;
   readonly agentUserActions: AgentUserActionGateway;
 }
 
@@ -56,7 +61,7 @@ function officeSessionContentType(extension: string): string {
 }
 
 export function createFileRoutes(deps: FilesRouteDeps): RouteEntry[] {
-  const { send, readBody, taskFiles, officeFileSessions, officeWorkbenchState, agentUserActions } = deps;
+  const { send, readBody, taskFiles, officeFileSessions, officeWorkbenchState, capabilities, userId, agentUserActions } = deps;
   // 导出下载的短期暂存，只有本域用。
   const preparedOfficeExports = new Map<string, {
     data: Buffer;
@@ -181,6 +186,33 @@ export function createFileRoutes(deps: FilesRouteDeps): RouteEntry[] {
     route("GET", "/api/files/workbench", ({ res }) => {
       send(res, 200, { ok: true, state: officeWorkbenchState.read() });
       return;
+    }),
+    route("POST", "/api/files/workbench/review", Type.Object({
+      documentId: Type.String({ minLength: 1, maxLength: 180 }),
+      versionId: Type.String({ minLength: 1, maxLength: 180 }),
+      format: Type.Union([Type.Literal("docx"), Type.Literal("pptx")]),
+      expectedRevision: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+    }, { additionalProperties: false }), async ({ res }, body) => {
+      try {
+        const { documentId, versionId, format, expectedRevision } = body;
+        const source = readOfficeReviewSource(officeWorkbenchState.read(), documentId, versionId, format, expectedRevision);
+        const candidate = await capabilities.prepareOfficeVersionReview(source, userId, () => {
+          try {
+            const latest = readOfficeReviewSource(officeWorkbenchState.read(), documentId, versionId, format);
+            if (latest.inputSha256 === source.inputSha256) return;
+          } catch (error) {
+            if (!(error instanceof ArtifactReviewError)) throw error;
+          }
+          throw new ArtifactReviewError(409, "生成期间已保存版本发生变化，请重新选择版本。");
+        });
+        send(res, 200, { ok: true, ...candidate });
+      } catch (error) {
+        if (error instanceof ArtifactReviewError || error instanceof UserFacingError) {
+          send(res, error instanceof ArtifactReviewError ? error.status : 422, { error: error.message, userMessage: error.message });
+        } else {
+          send(res, 500, { error: "无法保存新的审阅原件，请检查本机存储。" });
+        }
+      }
     }),
     route("PUT", "/api/files/workbench", async ({ req, res }) => {
       const body = (await readBody(req, 7 * 1024 * 1024)) as { expectedRevision?: number; documents?: unknown[]; trash?: unknown[]; selectedId?: string | null };

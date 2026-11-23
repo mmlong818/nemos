@@ -348,6 +348,8 @@ function safeDocument(item) {
   const versions = Array.isArray(item?.versions) ? item.versions.slice(0, MAX_VERSIONS).map((version) => ({
     id: String(version?.id || uid("version")),
     name: String(version?.name || "保存的版本").slice(0, 80),
+    ...(typeof version?.documentName === "string" && version.documentName.trim()
+      ? { documentName: version.documentName.slice(0, 120) } : {}),
     createdAt: String(version?.createdAt || now()),
     blocks: Array.isArray(version?.blocks) ? version.blocks.slice(0, 300).map((block, index) => safeBlock(block, index, kind)) : [],
   })) : [];
@@ -544,12 +546,7 @@ function maybeCreateAutomaticCheckpoint() {
   if (!current) return;
   const previous = new Date(current.lastCheckpointAt || current.createdAt).getTime();
   if (Date.now() - previous < AUTO_CHECKPOINT_INTERVAL) return;
-  current.versions.unshift({
-    id: uid("version"),
-    name: "自动保存",
-    createdAt: now(),
-    blocks: current.blocks.map((block) => ({ ...block })),
-  });
+  current.versions.unshift(captureWorkbenchVersion(current, "自动保存"));
   current.versions = current.versions.slice(0, MAX_VERSIONS);
   current.lastCheckpointAt = now();
 }
@@ -1224,10 +1221,11 @@ function renderVersions(current) {
     return;
   }
   const workbenchRows = current.versions.map((version) => `
-    <div class="version-row">
+    <div class="version-row version-row-workbench">
       <span class="version-row-copy"><strong>${escapeHtml(version.name)}</strong><small>${displayDate(version.createdAt)}</small></span>
       <button type="button" data-compare-version="${escapeHtml(version.id)}">比较</button>
       <button type="button" data-restore-version="${escapeHtml(version.id)}">恢复</button>
+      <button type="button" data-generate-version="${escapeHtml(version.id)}" aria-haspopup="dialog">生成审阅稿</button>
     </div>`).join("");
   const reasonLabel = { imported: "导入原文件", "external-change": "桌面修改", "structured-edit": "页内文字替换（旧版本）", "text-edit": "段落修改", restored: "恢复的原文件" };
   const sourceRows = sourceVersions.map((version) => `
@@ -1772,16 +1770,20 @@ function addBlock() {
   textareas[textareas.length - 1]?.focus();
 }
 
+function captureWorkbenchVersion(current, name) {
+  return {
+    id: uid("version"),
+    name,
+    documentName: current.name || "未命名文稿",
+    createdAt: now(),
+    blocks: structuredClone(current.blocks),
+  };
+}
+
 function saveVersion() {
   const current = currentDocument();
   if (!current) return;
-  const createdAt = now();
-  current.versions.unshift({
-    id: uid("version"),
-    name: `版本 ${current.versions.length + 1}`,
-    createdAt,
-    blocks: current.blocks.map((block) => ({ ...block })),
-  });
+  current.versions.unshift(captureWorkbenchVersion(current, `版本 ${current.versions.length + 1}`));
   current.versions = current.versions.slice(0, MAX_VERSIONS);
   persistState("版本已保存");
   renderVersions(current);
@@ -2035,6 +2037,10 @@ function closeAssistantPanel() {
 }
 
 function bindEvents() {
+  const officeVersionReview = window.ClownfishOfficeVersionReview.bind({
+    api, currentDocument, saveQueue: () => state.saveQueue, revision: () => state.revision,
+    hasSaveConflict: () => state.saveConflict,
+  });
   document.querySelector("#newDocument").addEventListener("click", openNewDocumentDialog);
   document.querySelector("#newDocumentEmpty").addEventListener("click", openNewDocumentDialog);
   document.querySelectorAll("[data-new-document-kind]").forEach((button) => button.addEventListener("click", () => createBlankDocument(button.dataset.newDocumentKind)));
@@ -2163,9 +2169,11 @@ function bindEvents() {
     const compare = event.target.closest("[data-compare-version]");
     const restore = event.target.closest("[data-restore-version]");
     const restoreSource = event.target.closest("[data-restore-source-version]");
+    const generate = event.target.closest("[data-generate-version]");
     if (compare) compareVersion(compare.dataset.compareVersion);
     if (restore) restoreVersion(restore.dataset.restoreVersion);
     if (restoreSource) void restoreSourceVersion(restoreSource.dataset.restoreSourceVersion);
+    if (generate) officeVersionReview.open(generate.dataset.generateVersion, generate);
   });
   document.querySelector("#closeDiff").addEventListener("click", () => { document.querySelector("#diffPanel").hidden = true; });
   document.querySelector("#trashFiles").addEventListener("click", (event) => {
@@ -2207,6 +2215,7 @@ function bindEvents() {
   });
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (document.querySelector("#officeVersionReviewDialog").open) return;
       closeFilePanel();
       closeAssistantPanel();
     }

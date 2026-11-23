@@ -41,16 +41,35 @@ export interface OfficeExportResult {
   validation?: ValidationReceipt;
 }
 
-export async function exportOfficeDocument(input: OfficeExportInput): Promise<OfficeExportResult> {
+export async function exportOfficeDocument(input: OfficeExportInput, options?: { rejectTruncatedContent?: boolean }): Promise<OfficeExportResult> {
+  if (options?.rejectTruncatedContent) assertOfficeReviewFits(input);
   const name = safeName(input.name || "办公文稿");
   const blocks = normalizeBlocks(input.blocks);
   const warnings = validateLayout(blocks, input.format);
-  if (input.format === "docx") return checked(result(await createDocx(blocks), name, input.format, warnings), "docx");
+  if (input.format === "docx") return checked(result(await createDocx(blocks, !!options?.rejectTruncatedContent), name, input.format, warnings), "docx");
   if (input.format === "pptx") return checked(result(await createPptx(name, blocks), name, input.format, warnings), "pptx");
   if (input.format === "xlsx") return checked(result(await createXlsx(blocks), name, input.format, warnings), "xlsx");
   if (input.format === "pdf") return checked(result(await createPdf(name, blocks), name, input.format, warnings), "pdf");
   if (input.format === "html") return result(Buffer.from(createHtml(name, blocks), "utf8"), name, input.format, warnings);
   return checked(result(Buffer.from(createMarkdown(name, blocks), "utf8"), name, "md", warnings), "md");
+}
+
+function assertOfficeReviewFits(input: OfficeExportInput): void {
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(input.name)) throw new UserFacingError("此版本的标题包含无法导出的字符。");
+  const maxBlocks = input.format === "pptx" ? 50 : 200;
+  if (!input.blocks.length || input.blocks.length > maxBlocks) {
+    throw new UserFacingError(`此版本须包含 1 至 ${maxBlocks} 个部分，才能生成完整的审阅文件。`);
+  }
+  for (const [index, block] of input.blocks.entries()) {
+    const text = block.text.replace(/\r\n/g, "\n");
+    if (block.title.trim().length > 160 || text.length > 120_000 || (block.paragraphAlignments?.length ?? 0) > 1_000
+        || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(block.title + text)) {
+      throw new UserFacingError(`第 ${index + 1} 个部分包含超限或无法导出的内容，请拆分或修改后保存新版本。`);
+    }
+    if (input.format === "pptx" && text.split(/\n+/).filter((line) => line.trim()).length > 12) {
+      throw new UserFacingError(`第 ${index + 1} 张幻灯片超过 12 个非空行，请拆页后保存新版本。`);
+    }
+  }
 }
 
 /** 生成的文件先过结构检查再交出去；不合格就报错，不给用户一个打不开的文件。 */
@@ -89,14 +108,14 @@ function validateLayout(blocks: OfficeExportBlock[], format: OfficeExportFormat)
   return warnings;
 }
 
-async function createDocx(blocks: OfficeExportBlock[]): Promise<Buffer> {
+async function createDocx(blocks: OfficeExportBlock[], rejectTruncatedContent: boolean): Promise<Buffer> {
   const zip = new JSZip();
   zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`);
   zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
   zip.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`);
   zip.file("word/styles.xml", docxStyles());
   zip.file("word/numbering.xml", docxNumbering());
-  const body = blocks.map((block) => docxBlock(block, blocks.length)).join("");
+  const body = blocks.map((block) => docxBlock(block, blocks.length, rejectTruncatedContent)).join("");
   zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`);
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
@@ -105,12 +124,12 @@ type DocxElement =
   | { kind: "paragraph"; text: string; style?: string; list?: "bullet" | "ordered"; level?: number }
   | { kind: "table"; rows: string[][] };
 
-function docxBlock(block: OfficeExportBlock, blockCount: number): string {
+function docxBlock(block: OfficeExportBlock, blockCount: number, rejectTruncatedContent: boolean): string {
   const title = blockCount === 1 && /^(正文|Markdown)$/.test(block.title)
     ? ""
     : docxParagraph(block.title, { style: "Heading1", alignment: block.titleAlignment });
   let paragraphIndex = 0;
-  const content = parseDocxElements(block.text).map((element) => {
+  const content = parseDocxElements(block.text, rejectTruncatedContent).map((element) => {
     if (element.kind === "table") return docxTable(element.rows);
     const alignment = block.paragraphAlignments?.[paragraphIndex++];
     return docxParagraph(element.text, { ...element, alignment });
@@ -118,15 +137,15 @@ function docxBlock(block: OfficeExportBlock, blockCount: number): string {
   return title + content;
 }
 
-function parseDocxElements(value: string): DocxElement[] {
+function parseDocxElements(value: string, rejectTruncatedContent: boolean): DocxElement[] {
   const lines = value.replace(/\r/g, "").split("\n");
   const elements: DocxElement[] = [];
   for (let index = 0; index < lines.length;) {
     const line = lines[index] ?? "";
     if (isMarkdownTableStart(lines, index)) {
-      const rows: string[][] = [parseMarkdownTableRow(line)];
+      const rows: string[][] = [parseMarkdownTableRow(line, rejectTruncatedContent)];
       index += 2;
-      while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index] ?? "")) rows.push(parseMarkdownTableRow(lines[index++]!));
+      while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index] ?? "")) rows.push(parseMarkdownTableRow(lines[index++]!, rejectTruncatedContent));
       elements.push({ kind: "table", rows });
       continue;
     }
@@ -167,8 +186,10 @@ function isMarkdownTableStart(lines: string[], index: number): boolean {
     && /^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/.test(lines[index + 1] ?? "");
 }
 
-function parseMarkdownTableRow(line: string): string[] {
-  return line.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, "|").trim()).slice(0, 40);
+function parseMarkdownTableRow(line: string, rejectTruncatedContent: boolean): string[] {
+  const cells = line.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/);
+  if (rejectTruncatedContent && cells.length > 40) throw new UserFacingError("Word 表格超过 40 列，请拆分后保存新版本。");
+  return cells.slice(0, 40).map((cell) => cell.replace(/\\\|/g, "|").trim());
 }
 
 function docxParagraph(
