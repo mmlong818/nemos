@@ -37,10 +37,11 @@ import {
 } from "./native-capability-contracts.js";
 import { writeNativeCapabilityArtifact } from "./native-capability-renderer.js";
 import { exportOfficeDocument } from "./office-export.js";
-import type { ValidationReceipt } from "./office-validation.js";
+import { validateOfficeFile, type ValidationReceipt } from "./office-validation.js";
 import { validateGeneratedPng, type PngValidationReceipt } from "./png-validation.js";
 import { ArtifactWorkspaceStore, type ArtifactWorkspaceState } from "./artifact-workspace.js";
-import { ArtifactReviewError, ArtifactReviewStore, samePdfIdentity, validPdfIdentity, type ReviewedPdfIdentity } from "./artifact-reviews.js";
+import { ArtifactReviewError, ArtifactReviewStore, isReviewedArtifactFormat, sameArtifactIdentity, sameArtifactFingerprint, validArtifactFingerprint, type ExpectedArtifactIdentity, type ReviewedArtifactIdentity, type ReviewedArtifactFormat } from "./artifact-reviews.js";
+import { MAX_PPTX_REVIEW_BYTES, PptxReviewPreviewStore } from "./pptx-review-preview.js";
 import type { ProfessionalArtifactReceipt } from "./professional-artifact-gate.js";
 import { admitGeneratedAbilitySpec, admitInstalledSkillContent, type CapabilityAdmissionReceipt } from "./capability-admission.js";
 
@@ -312,6 +313,7 @@ export interface CapabilitySnapshot {
   tasks: CapabilityTask[];
   artifacts: CapabilityArtifact[];
   retainedArtifacts: RetainedCapabilityArtifact[];
+  pptxReviewAvailable: boolean;
   tools: CapabilityToolSummary[];
   sourceConnectors: SourceConnector[];
   roadmap: CapabilityRoadmap;
@@ -439,6 +441,7 @@ export class CapabilityRuntime {
   private readonly artifactFeedbackFile: string;
   private readonly artifactWorkspaceStore: ArtifactWorkspaceStore;
   private readonly artifactReviewStore: ArtifactReviewStore;
+  private readonly pptxReviewPreviewStore: PptxReviewPreviewStore;
   private generatedAbilities: Capability[] = [];
   private spaces: CapabilitySpace[] = [];
   private tasks: CapabilityTask[] = [];
@@ -462,6 +465,7 @@ export class CapabilityRuntime {
     this.widgetState = new WidgetStateStore(join(root, "widget-state.json"));
     this.artifactWorkspaceStore = new ArtifactWorkspaceStore(join(root, "artifact-workspaces.json"));
     this.artifactReviewStore = new ArtifactReviewStore(join(root, "artifact-reviews.json"));
+    this.pptxReviewPreviewStore = new PptxReviewPreviewStore(join(root, "artifact-review-previews"));
     mkdirSync(this.artifactDir, { recursive: true });
     mkdirSync(this.skillsDir, { recursive: true });
     this.load();
@@ -477,6 +481,7 @@ export class CapabilityRuntime {
       tasks: [...this.tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       artifacts: [...this.artifacts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 80),
       retainedArtifacts: [...this.retainedArtifacts].sort((a, b) => b.retainedAt.localeCompare(a.retainedAt)),
+      pptxReviewAvailable: this.pptxReviewPreviewStore.available(),
       tools: this.opts.toolRegistry?.list() ?? [],
       sourceConnectors: listSourceConnectors(),
       roadmap: buildCapabilityRoadmap(),
@@ -1060,10 +1065,14 @@ export class CapabilityRuntime {
       tasks: tasks.slice(0, 5).map(({ id, title, storyline, updatedAt, archivedAt }) => ({
         id, title, status: storyline.status, updatedAt, archivedAt,
       })),
-      artifacts: artifacts.slice(0, 6).map((artifact) => ({
-        id: artifact.id, taskId: artifact.taskId, title: artifact.title,
-        format: artifact.format, createdAt: artifact.createdAt, reviewable: reviewedPdfIdentity(artifact) !== null,
-      })),
+      artifacts: artifacts.slice(0, 6).map((artifact) => {
+        const identity = reviewedArtifactIdentity(artifact);
+        return {
+          id: artifact.id, taskId: artifact.taskId, title: artifact.title,
+          format: artifact.format, createdAt: artifact.createdAt,
+          reviewable: !!identity && (identity.format !== "pptx" || this.pptxReviewPreviewStore.available()),
+        };
+      }),
       counts: { tasks: tasks.length, artifacts: artifacts.length },
       nextAction: nextTask ? {
         taskId: nextTask.id, taskTitle: nextTask.title,
@@ -1296,6 +1305,7 @@ export class CapabilityRuntime {
       for (const artifact of removedArtifacts) {
         this.removeArtifactFile(artifact.file);
         if (artifact.previewFile) this.removeArtifactFile(artifact.previewFile);
+        this.removePptxReviewPreview(artifact);
       }
     }
     this.saveTasks();
@@ -1308,6 +1318,7 @@ export class CapabilityRuntime {
     if (!artifact) return false;
     this.removeArtifactFile(artifact.file);
     if (artifact.previewFile) this.removeArtifactFile(artifact.previewFile);
+    this.removePptxReviewPreview(artifact);
     this.retainedArtifacts = this.retainedArtifacts.filter((item) => item.id !== id);
     this.saveRetainedArtifacts();
     return true;
@@ -1993,51 +2004,96 @@ export class CapabilityRuntime {
     return state;
   }
 
-  artifactReview(id: string, reviewedBy: string) {
-    const { artifact, identity, filename } = this.readReviewablePdf(id);
+  async artifactReview(id: string, reviewedBy: string) {
+    const { artifact, identity, filename } = await this.readReviewableArtifact(id);
+    const preview = identity.format === "pptx" ? this.pptxReviewPreviewStore.read(artifact.id, identity)?.preview ?? null : undefined;
     return {
       artifactId: artifact.id,
       title: artifact.title,
       createdAt: artifact.createdAt,
       filename,
       version: artifact.metadata?.lineage?.version,
-      format: "pdf" as const,
       ...identity,
-      review: this.artifactReviewStore.findVersion(artifact.id, reviewedBy, identity),
+      ...(preview !== undefined ? { preview } : {}),
+      review: this.artifactReviewStore.findVersion(artifact.id, reviewedBy, identity, preview ?? undefined),
     };
   }
 
-  confirmArtifactReview(id: string, reviewedBy: string, expected: ReviewedPdfIdentity) {
-    const { artifact, identity } = this.readReviewablePdf(id);
-    assertReviewedPdfIdentity(identity, expected);
-    return this.artifactReviewStore.confirm(artifact.id, reviewedBy, identity);
+  async prepareArtifactReview(id: string, expected: ExpectedArtifactIdentity) {
+    const { artifact, identity, data } = await this.readReviewableArtifact(id);
+    assertReviewedArtifactIdentity(identity, expected);
+    if (identity.format !== "pptx") throw new ArtifactReviewError(422, "此格式不需要转换静态预览。");
+    const preview = await this.pptxReviewPreviewStore.prepare(artifact.id, identity, data);
+    const current = this.findVisibleArtifact(artifact.id);
+    const currentIdentity = current && reviewedArtifactIdentity(current);
+    if (!current || !currentIdentity || !sameArtifactIdentity(currentIdentity, identity)
+        || !this.readArtifactContent(current, current.file)) {
+      this.pptxReviewPreviewStore.remove(artifact.id, identity);
+      throw new ArtifactReviewError(409, "PPTX 原件已变化或移除，不能继续审阅。");
+    }
+    return preview;
   }
 
-  previewArtifactReview(res: ServerResponse, id: string, expected: ReviewedPdfIdentity): void {
-    const { identity, filename, data } = this.readReviewablePdf(id);
-    assertReviewedPdfIdentity(identity, expected);
-    sendReviewedPdf(res, filename, data, "inline");
+  async confirmArtifactReview(id: string, reviewedBy: string, expected: ExpectedArtifactIdentity) {
+    const { artifact, identity } = await this.readReviewableArtifact(id);
+    assertReviewedArtifactIdentity(identity, expected);
+    const preview = identity.format === "pptx" ? this.requirePptxPreview(artifact.id, identity, expected).preview : undefined;
+    return this.artifactReviewStore.confirm(artifact.id, reviewedBy, identity, preview);
   }
 
-  exportReviewedArtifact(res: ServerResponse, reviewId: string, reviewedBy: string): void {
+  async previewArtifactReview(res: ServerResponse, id: string, expected: ExpectedArtifactIdentity): Promise<void> {
+    const { artifact, identity, filename, data } = await this.readReviewableArtifact(id);
+    assertReviewedArtifactIdentity(identity, expected);
+    if (identity.format === "pptx") {
+      const preview = this.requirePptxPreview(artifact.id, identity, expected);
+      sendReviewedArtifact(res, "pdf", filename.replace(/\.pptx$/i, ".pdf"), preview.data, "inline");
+      return;
+    }
+    sendReviewedArtifact(res, identity.format, filename, data, "inline");
+  }
+
+  async exportReviewedArtifact(res: ServerResponse, reviewId: string, reviewedBy: string): Promise<void> {
     const review = this.artifactReviewStore.get(reviewId, reviewedBy);
     if (!review) throw new ArtifactReviewError(404, "没有找到可导出的审阅记录。");
-    const { identity, filename, data } = this.readReviewablePdf(review.artifactId);
-    assertReviewedPdfIdentity(identity, review);
-    sendReviewedPdf(res, filename, data, "attachment");
+    const { identity, filename, data } = await this.readReviewableArtifact(review.artifactId);
+    assertReviewedArtifactIdentity(identity, review);
+    if (identity.format === "pptx") {
+      const preview = this.requirePptxPreview(review.artifactId, identity, {
+        previewSha256: review.preview?.sha256, previewByteLength: review.preview?.byteLength,
+      });
+      if (preview.preview.pages !== review.preview?.pages) throw new ArtifactReviewError(409, "审阅预览与已确认记录不一致。");
+    }
+    sendReviewedArtifact(res, identity.format, filename, data, "attachment");
   }
 
-  private readReviewablePdf(id: string) {
+  private requirePptxPreview(artifactId: string, identity: ReviewedArtifactIdentity, expected: Pick<ExpectedArtifactIdentity, "previewSha256" | "previewByteLength">) {
+    const stored = this.pptxReviewPreviewStore.read(artifactId, identity);
+    const expectedPreview = { sha256: expected.previewSha256 ?? "", byteLength: expected.previewByteLength ?? 0 };
+    if (!stored || !validArtifactFingerprint(expectedPreview) || !sameArtifactFingerprint(stored.preview, expectedPreview)) {
+      throw new ArtifactReviewError(409, "没有可绑定此文件的审阅预览，或预览版本已变化。");
+    }
+    return stored;
+  }
+
+  private removePptxReviewPreview(artifact: CapabilityArtifact): void {
+    const identity = reviewedArtifactIdentity(artifact);
+    if (identity?.format === "pptx") this.pptxReviewPreviewStore.remove(artifact.id, identity);
+  }
+
+  private async readReviewableArtifact(id: string) {
     const artifact = this.findVisibleArtifact(id);
     if (!artifact) throw new ArtifactReviewError(404, "没有找到该成果。");
-    const identity = reviewedPdfIdentity(artifact);
-    if (!identity) throw new ArtifactReviewError(422, "这份成果没有可审阅的 PDF 文件及完整性记录。");
+    const identity = reviewedArtifactIdentity(artifact);
+    if (!identity) throw new ArtifactReviewError(422, "这份成果没有可审阅的原件及完整性记录。");
     const data = this.readArtifactContent(artifact, artifact.file);
-    if (!data) throw new ArtifactReviewError(409, "PDF 文件已变化或无法读取，请重新核对成果。");
+    if (!data) throw new ArtifactReviewError(409, "原件已变化或无法读取，请重新核对成果。");
     const filename = basename(artifact.file);
-    if (!filename.toLowerCase().endsWith(".pdf") || data.subarray(0, 5).toString("latin1") !== "%PDF-"
-        || !data.subarray(-2048).includes("%%EOF")) {
-      throw new ArtifactReviewError(422, "成果不是可审阅的 PDF 文件。");
+    if (identity.format === "pdf") {
+      if (data.subarray(0, 5).toString("latin1") !== "%PDF-" || !data.subarray(-2048).includes("%%EOF")) {
+        throw new ArtifactReviewError(422, "成果不是可审阅的 PDF 文件。");
+      }
+    } else if (!(await validateOfficeFile(identity.format, data)).passed) {
+      throw new ArtifactReviewError(422, `${identity.format.toUpperCase()} 原件未通过文件结构检查。`);
     }
     return { artifact, identity, filename, data };
   }
@@ -3811,21 +3867,32 @@ function asciiFileName(name: string): string {
   return name.replace(/[^\x20-\x7E]/g, "_").replace(/[\\/:*?"<>|]/g, "-") || "artifact";
 }
 
-function reviewedPdfIdentity(artifact: CapabilityArtifact): ReviewedPdfIdentity | null {
+function reviewedArtifactIdentity(artifact: CapabilityArtifact): ReviewedArtifactIdentity | null {
+  const format = artifact.format === "doc" ? "docx" : artifact.format;
   const proof = artifact.proof;
-  if (artifact.format !== "pdf" || !proof || proof.version !== 1 || proof.algorithm !== "sha256") return null;
+  if (!isReviewedArtifactFormat(format) || !artifact.file.toLowerCase().endsWith(`.${format}`)
+      || !proof || proof.version !== 1 || proof.algorithm !== "sha256") return null;
   const identity = { sha256: proof.contentHash, byteLength: proof.byteLength };
-  return validPdfIdentity(identity) ? { ...identity, sha256: identity.sha256.toLowerCase() } : null;
+  if (format === "pptx" && identity.byteLength > MAX_PPTX_REVIEW_BYTES) return null;
+  return validArtifactFingerprint(identity) ? { format, ...identity, sha256: identity.sha256.toLowerCase() } : null;
 }
 
-function assertReviewedPdfIdentity(actual: ReviewedPdfIdentity, expected: ReviewedPdfIdentity): void {
-  if (!validPdfIdentity(expected)) throw new ArtifactReviewError(400, "缺少有效的 PDF 内容指纹。");
-  if (!samePdfIdentity(actual, expected)) throw new ArtifactReviewError(409, "PDF 版本已变化，请重新审阅。");
+function assertReviewedArtifactIdentity(actual: ReviewedArtifactIdentity, expected: ExpectedArtifactIdentity): void {
+  const format = expected.format ?? "pdf";
+  if (!isReviewedArtifactFormat(format) || !validArtifactFingerprint(expected)) {
+    throw new ArtifactReviewError(400, "缺少有效的成果格式或文件指纹。");
+  }
+  if (!sameArtifactIdentity(actual, { ...expected, format })) throw new ArtifactReviewError(409, "成果版本已变化，请重新审阅。");
 }
 
-function sendReviewedPdf(res: ServerResponse, filename: string, data: Buffer, disposition: "inline" | "attachment"): void {
+function sendReviewedArtifact(res: ServerResponse, format: ReviewedArtifactFormat, filename: string, data: Buffer, disposition: "inline" | "attachment"): void {
+  const contentTypes = {
+    pdf: "application/pdf",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  };
   res.writeHead(200, {
-    "Content-Type": "application/pdf",
+    "Content-Type": contentTypes[format],
     "Content-Length": data.byteLength,
     "Content-Disposition": `${disposition}; filename="${asciiFileName(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     "Cache-Control": "no-store",

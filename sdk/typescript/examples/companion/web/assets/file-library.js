@@ -12,11 +12,13 @@
     const q=query.trim().toLocaleLowerCase();
     return items.filter(x=>(!kind||x.kind===kind)&&(!q||[x.title,x.summary,x.format].join(' ').toLocaleLowerCase().includes(q)));
   }
-  function row(item){
+  function row(item,pptxReviewAvailable=false){
     let actions='';
     const proof=item.kind==='artifact'&&['doc','png'].includes(item.raw.format)?item.raw.proof:null;
-    const pdfProof=item.kind==='artifact'&&item.format==='pdf'?item.raw.proof:null;
-    const reviewable=pdfProof?.version===1&&pdfProof.algorithm==='sha256'&&/^[a-f0-9]{64}$/.test(pdfProof.contentHash)&&Number.isSafeInteger(pdfProof.byteLength)&&pdfProof.byteLength>0;
+    const reviewFormat=item.format==='doc'?'docx':item.format;
+    const reviewFormatSupported=['pdf','docx'].includes(reviewFormat)||(reviewFormat==='pptx'&&pptxReviewAvailable===true);
+    const reviewProof=item.kind==='artifact'&&reviewFormatSupported&&String(item.raw.file||'').toLowerCase().endsWith('.'+reviewFormat)?item.raw.proof:null;
+    const reviewable=reviewProof?.version===1&&reviewProof.algorithm==='sha256'&&/^[a-f0-9]{64}$/i.test(reviewProof.contentHash)&&Number.isSafeInteger(reviewProof.byteLength)&&reviewProof.byteLength>0;
     const proofLabel=proof?.level==='validated'?'格式检查通过 · 内容待核验':proof?.level==='verified'?'已通过来源核验':proof?.level==='approved'?'已获人工确认':proof?'格式检查未通过或未完成':'';
     const proofDetails=proof?`<details class="file-row-more"><summary>检查回执</summary><ul>${(proof.checks||[]).map(check=>`<li>${esc(check.label)}：${esc(check.status==='passed'?'通过':check.status==='failed'?'未通过':'未检查')}${check.detail?` · ${esc(check.detail)}`:''}</li>`).join('')}</ul><p>SHA-256 ${esc(proof.contentHash||'未记录')}</p></details>`:'';
     if(item.kind==='artifact')actions=`<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.id)}" target="_blank" rel="noopener">预览</a><a href="/office?artifact=${encodeURIComponent(item.id)}">编辑副本</a><a href="/api/capabilities/artifact?id=${encodeURIComponent(item.id)}" download>${reviewable?'下载原件':'下载'}</a>${reviewable?`<button type="button" data-review-artifact="${esc(item.id)}" aria-haspopup="dialog" aria-label="审阅并导出：${esc(item.title)}">审阅并导出</button>`:''}${item.taskId?`<a href="/bots?task=${encodeURIComponent(item.taskId)}">来源任务</a>`:''}<details class="file-row-more"><summary>更多</summary><button data-feedback-useful="${esc(item.id)}">有帮助</button><button data-feedback-improve="${esc(item.id)}">需改进</button>${item.raw.metadata?.lineage?.previousArtifactId?`<a href="/api/capabilities/artifact/preview?id=${encodeURIComponent(item.raw.metadata.lineage.previousArtifactId)}" target="_blank" rel="noopener">上一版</a>`:''}</details>`;
@@ -25,12 +27,12 @@
     const timestamp=item.date&&Number.isFinite(Date.parse(item.date))?new Date(item.date).toLocaleDateString('zh-CN'):'未记录时间';
     return `<article class="file-library-row"><div class="file-row-icon" aria-hidden="true">▧</div><div class="file-row-copy"><h2>${esc(item.title)}</h2><p>${esc(item.label)} · ${esc(item.format)} · ${esc(timestamp)}</p>${item.summary?`<p class="file-row-summary">${esc(item.summary)}</p>`:''}${proofLabel?`<p class="file-row-summary">${esc(proofLabel)}</p>${proofDetails}`:''}</div><div class="file-row-actions">${actions}</div></article>`;
   }
-  function mount({root,artifacts=[],documents=[],knowledge=[],warnings=[],onPreview}){
+  function mount({root,artifacts=[],documents=[],knowledge=[],warnings=[],onPreview,pptxReviewAvailable=false}){
     const all=entries(artifacts,documents,knowledge), params=new URLSearchParams(location.search);
     let kind=['artifact','document','resource'].includes(params.get('kind'))?params.get('kind'):'',query=params.get('q')||'';
     root.innerHTML=`<div class="file-library-toolbar"><label class="file-library-search">搜索文件<input id="fileLibrarySearch" type="search" placeholder="文件名称或内容摘要…" value="${esc(query)}"></label><div class="file-library-create"><a href="/resources?create=1">添加资料</a><a href="/office">打开或新建文件</a><a class="wb-primary-link" href="/capabilities?bot=document">让助理制作文档</a></div></div><nav class="product-section-nav" aria-label="文件类型">${[['','全部'],['artifact','生成成果'],['document','本机文件'],['resource','参考资料']].map(([value,label])=>`<button data-file-kind="${value}" aria-pressed="${value===kind}">${label}</button>`).join('')}</nav><p class="form-error" role="status">${warnings.map(esc).join('；')}</p><div id="fileLibraryRows"></div><p class="hint">资料和成果保留各自来源；编辑副本不会被当作原始文件覆盖。</p>`;
     function render(updateUrl=false){
-      const rows=filter(all,{kind,query});root.querySelector('#fileLibraryRows').innerHTML=rows.map(row).join('')||`<section class="product-empty"><h2>${all.length?'没有匹配的文件':'从第一份资料或成果开始'}</h2><p>${all.length?'调整关键词或类型筛选。':'添加需要处理的资料，或让助理制作一份文档。已有原件和历史版本不会被删除。'}</p></section>`;
+      const rows=filter(all,{kind,query});root.querySelector('#fileLibraryRows').innerHTML=rows.map(item=>row(item,pptxReviewAvailable)).join('')||`<section class="product-empty"><h2>${all.length?'没有匹配的文件':'从第一份资料或成果开始'}</h2><p>${all.length?'调整关键词或类型筛选。':'添加需要处理的资料，或让助理制作一份文档。已有原件和历史版本不会被删除。'}</p></section>`;
       root.querySelectorAll('[data-file-kind]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.fileKind===kind)));
       if(updateUrl){const next=new URL(location.href);if(kind)next.searchParams.set('kind',kind);else next.searchParams.delete('kind');if(query)next.searchParams.set('q',query);else next.searchParams.delete('q');history.replaceState(null,'',next.pathname+next.search+next.hash);}
     }

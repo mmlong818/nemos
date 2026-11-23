@@ -398,47 +398,71 @@ export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
       if (!capabilities.previewArtifact(res, id)) send(res, 404, { error: "artifact not found" });
       return;
     }),
-    route("GET", "/api/capabilities/artifact/review", ({ res, query }) => {
+    route("GET", "/api/capabilities/artifact/review", async ({ res, query }) => {
       try {
         const id = query.get("id");
         if (!id) throw new ArtifactReviewError(400, "缺少成果编号。");
-        send(res, 200, { ok: true, ...capabilities.artifactReview(id, USER) });
+        send(res, 200, { ok: true, ...await capabilities.artifactReview(id, USER) });
       } catch (error) {
         sendArtifactReviewError(res, error);
       }
     }),
-    route("GET", "/api/capabilities/artifact/review/preview", ({ res, query }) => {
+    route("GET", "/api/capabilities/artifact/review/preview", async ({ res, query }) => {
       try {
         const id = query.get("id");
         if (!id) throw new ArtifactReviewError(400, "缺少成果编号。");
-        capabilities.previewArtifactReview(res, id, {
+        await capabilities.previewArtifactReview(res, id, {
           sha256: query.get("sha256") || "",
           byteLength: Number(query.get("byteLength")),
+          format: query.get("format") ?? undefined,
+          previewSha256: query.get("previewSha256") ?? undefined,
+          previewByteLength: query.has("previewByteLength") ? Number(query.get("previewByteLength")) : undefined,
         });
       } catch (error) {
         sendArtifactReviewError(res, error);
       }
     }),
+    route("POST", "/api/capabilities/artifact/review/prepare",
+      Type.Object({
+        id: Type.String({ minLength: 1, maxLength: 180 }),
+        sha256: Type.String({ pattern: "^[a-fA-F0-9]{64}$" }),
+        byteLength: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+        format: Type.Literal("pptx"),
+      }, { additionalProperties: false }),
+      async ({ res }, body) => {
+        try {
+          const { id, ...expected } = body;
+          const preview = await capabilities.prepareArtifactReview(id, expected);
+          send(res, 200, { ok: true, preview });
+        } catch (error) {
+          sendArtifactReviewError(res, error);
+        }
+      },
+    ),
     route("POST", "/api/capabilities/artifact/review",
       Type.Object({
         id: Type.String({ minLength: 1, maxLength: 180 }),
         sha256: Type.String({ pattern: "^[a-fA-F0-9]{64}$" }),
         byteLength: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+        format: Type.Optional(Type.Union([Type.Literal("pdf"), Type.Literal("docx"), Type.Literal("pptx")])),
+        previewSha256: Type.Optional(Type.String({ pattern: "^[a-fA-F0-9]{64}$" })),
+        previewByteLength: Type.Optional(Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER })),
       }, { additionalProperties: false }),
-      ({ res }, body) => {
+      async ({ res }, body) => {
         try {
-          const review = capabilities.confirmArtifactReview(body.id, USER, { sha256: body.sha256, byteLength: body.byteLength });
+          const { id, ...expected } = body;
+          const review = await capabilities.confirmArtifactReview(id, USER, expected);
           send(res, 200, { ok: true, review });
         } catch (error) {
           sendArtifactReviewError(res, error);
         }
       },
     ),
-    route("GET", "/api/capabilities/artifact/review/export", ({ res, query }) => {
+    route("GET", "/api/capabilities/artifact/review/export", async ({ res, query }) => {
       try {
         const reviewId = query.get("reviewId");
         if (!reviewId || query.size !== 1) throw new ArtifactReviewError(400, "导出需要一个审阅编号。");
-        capabilities.exportReviewedArtifact(res, reviewId, USER);
+        await capabilities.exportReviewedArtifact(res, reviewId, USER);
       } catch (error) {
         sendArtifactReviewError(res, error);
       }

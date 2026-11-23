@@ -45,6 +45,20 @@ test('file rows escape imported metadata and encode identifiers',()=>{
   assert.match(html,/未记录时间/);
 });
 
+test('the file library exposes reviewed export only for a package with a recorded byte fingerprint',()=>{
+  const files=api('file-library','ClownfishFileLibrary');
+  const proof={version:1,algorithm:'sha256',contentHash:'a'.repeat(64),byteLength:4096};
+  const eligible={id:'word',title:'Word 成果',format:'doc',file:'word.docx',proof};
+  for (const artifact of [eligible,{...eligible,id:'pdf',format:'pdf',file:'original.pdf'}]) {
+    assert.match(files.row(files.entries([artifact],[],[])[0]),/data-review-artifact/);
+  }
+  for (const artifact of [{...eligible,proof:undefined},{...eligible,file:'word.docm'},{...eligible,format:'pptx',file:'deck.pptx'}]) {
+    assert.doesNotMatch(files.row(files.entries([artifact],[],[])[0]),/data-review-artifact/);
+  }
+  const deck=files.entries([{...eligible,format:'pptx',file:'deck.pptx'}],[],[])[0];
+  assert.match(files.row(deck,true),/data-review-artifact/);
+});
+
 test('file rows show persisted DOCX and PNG checks without claiming visual review',()=>{
   const files=api('file-library','ClownfishFileLibrary');
   for(const format of ['doc','png']){
