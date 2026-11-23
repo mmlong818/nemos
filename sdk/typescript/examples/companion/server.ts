@@ -3704,6 +3704,24 @@ function sendWebAsset(res: ServerResponse, assetUrl: string): boolean {
     send(res, 404, { error: "asset not found" });
     return true;
   }
+  if (rel === "artifact-docx-preview.html") {
+    const nonce = randomBytes(18).toString("base64");
+    // The opaque preview cannot request loopback assets. Embed only these bundled scripts.
+    const scripts = ["vendor/jszip.min.js", "vendor/docx-preview.min.js", "artifact-docx-preview.js"].map((name) => {
+      const script = readFileSync(WEB_VENDOR_ASSETS.get(name) || join(WEB_DIR, "assets", name), "utf8")
+        .replace(/<\/script/gi, (tag) => tag.replace("/", "\\/"));
+      return `<script nonce="${nonce}">\n${script}\n</script>`;
+    }).join("\n");
+    const html = readFileSync(path, "utf8").replace("</body>", () => `${scripts}\n</body>`);
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": `sandbox allow-scripts; default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'`,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end(html);
+    return true;
+  }
   res.writeHead(200, { "Content-Type": contentType(path), "Cache-Control": "no-store" });
   createReadStream(path).pipe(res);
   return true;

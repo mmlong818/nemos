@@ -218,12 +218,13 @@
         <p id="artifactReviewTitle"></p>
         <p id="artifactReviewMeta"></p>
       </header>
-      <p class="artifact-review-note">审阅生成时的 PDF 原件。工作台中尚未重新生成的修改和备注保留在工作台。</p>
+      <p class="artifact-review-note" id="artifactReviewNote"></p>
       <div id="artifactReviewPreview" hidden></div>
       <a id="artifactReviewOpen" target="_blank" rel="noopener noreferrer" hidden>在新标签查看同一份 PDF</a>
       <p id="artifactReviewStatus" role="status" aria-live="polite"></p>
       <footer class="artifact-review-actions">
         <button type="button" id="artifactReviewRetry" hidden>重新加载</button>
+        <button type="button" class="primary" id="artifactReviewPrepare" hidden disabled>生成静态预览</button>
         <button type="button" class="primary" id="artifactReviewConfirm" disabled>确认此版本</button>
         <button type="button" class="primary" id="artifactReviewExport" hidden disabled>导出已审版本</button>
       </footer>

@@ -1,17 +1,34 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 
-export interface ReviewedPdfIdentity {
+export type ReviewedArtifactFormat = "pdf" | "docx" | "pptx";
+
+export interface ArtifactFingerprint {
   sha256: string;
   byteLength: number;
 }
 
-export interface ArtifactReviewReceipt extends ReviewedPdfIdentity {
+export interface ArtifactPreviewIdentity extends ArtifactFingerprint {
+  pages: number;
+}
+
+export interface ReviewedArtifactIdentity extends ArtifactFingerprint {
+  format: ReviewedArtifactFormat;
+}
+
+export interface ExpectedArtifactIdentity extends ArtifactFingerprint {
+  // The original PDF client did not send a format. An omitted format still means PDF.
+  format?: string;
+  previewSha256?: string;
+  previewByteLength?: number;
+}
+
+export interface ArtifactReviewReceipt extends ReviewedArtifactIdentity {
   reviewId: string;
   artifactId: string;
-  format: "pdf";
   reviewedBy: string;
   reviewedAt: string;
+  preview?: ArtifactPreviewIdentity;
 }
 
 export class ArtifactReviewError extends Error {
@@ -20,38 +37,52 @@ export class ArtifactReviewError extends Error {
   }
 }
 
-export function validPdfIdentity(identity: ReviewedPdfIdentity): boolean {
+export function validArtifactFingerprint(identity: ArtifactFingerprint): boolean {
   return typeof identity.sha256 === "string" && /^[a-f0-9]{64}$/i.test(identity.sha256)
     && Number.isSafeInteger(identity.byteLength) && identity.byteLength > 0;
 }
 
-export function samePdfIdentity(a: ReviewedPdfIdentity, b: ReviewedPdfIdentity): boolean {
+export function isReviewedArtifactFormat(format: unknown): format is ReviewedArtifactFormat {
+  return format === "pdf" || format === "docx" || format === "pptx";
+}
+
+export function sameArtifactIdentity(a: ReviewedArtifactIdentity, b: ReviewedArtifactIdentity): boolean {
+  return a.format === b.format && sameArtifactFingerprint(a, b);
+}
+
+export function sameArtifactFingerprint(a: ArtifactFingerprint, b: ArtifactFingerprint): boolean {
   return a.sha256.toLowerCase() === b.sha256.toLowerCase() && a.byteLength === b.byteLength;
+}
+
+function samePreview(a: ArtifactPreviewIdentity | undefined, b: ArtifactPreviewIdentity | undefined): boolean {
+  return a && b ? sameArtifactFingerprint(a, b) && a.pages === b.pages : !a && !b;
 }
 
 export class ArtifactReviewStore {
   constructor(private readonly file: string) {}
 
-  findVersion(artifactId: string, reviewedBy: string, identity: ReviewedPdfIdentity): ArtifactReviewReceipt | null {
-    return findVersion(this.read(), artifactId, reviewedBy, identity) ?? null;
+  findVersion(artifactId: string, reviewedBy: string, identity: ReviewedArtifactIdentity, preview?: ArtifactPreviewIdentity): ArtifactReviewReceipt | null {
+    return findVersion(this.read(), artifactId, reviewedBy, identity, preview) ?? null;
   }
 
   get(reviewId: string, reviewedBy: string): ArtifactReviewReceipt | null {
     return this.read().find((item) => item.reviewId === reviewId && item.reviewedBy === reviewedBy) ?? null;
   }
 
-  confirm(artifactId: string, reviewedBy: string, identity: ReviewedPdfIdentity): ArtifactReviewReceipt {
+  confirm(artifactId: string, reviewedBy: string, identity: ReviewedArtifactIdentity, preview?: ArtifactPreviewIdentity): ArtifactReviewReceipt {
+    if ((identity.format === "pptx") !== !!preview) throw new ArtifactReviewError(409, "没有可绑定此文件的审阅预览。");
     const receipts = this.read();
-    const existing = findVersion(receipts, artifactId, reviewedBy, identity);
+    const existing = findVersion(receipts, artifactId, reviewedBy, identity, preview);
     if (existing) return existing;
     const receipt: ArtifactReviewReceipt = {
       reviewId: `artifact-review-${randomUUID()}`,
       artifactId,
-      format: "pdf",
+      format: identity.format,
       sha256: identity.sha256,
       byteLength: identity.byteLength,
       reviewedBy,
       reviewedAt: new Date().toISOString(),
+      ...(preview ? { preview } : {}),
     };
     const temporary = `${this.file}.${process.pid}.${randomUUID()}.tmp`;
     try {
@@ -78,17 +109,19 @@ export class ArtifactReviewStore {
   }
 }
 
-function findVersion(receipts: ArtifactReviewReceipt[], artifactId: string, reviewedBy: string, identity: ReviewedPdfIdentity) {
-  return receipts.find((item) => item.artifactId === artifactId && item.reviewedBy === reviewedBy && samePdfIdentity(item, identity));
+function findVersion(receipts: ArtifactReviewReceipt[], artifactId: string, reviewedBy: string, identity: ReviewedArtifactIdentity, preview?: ArtifactPreviewIdentity) {
+  return receipts.find((item) => item.artifactId === artifactId && item.reviewedBy === reviewedBy && sameArtifactIdentity(item, identity) && samePreview(item.preview, preview));
 }
 
 function isReceipt(value: unknown): value is ArtifactReviewReceipt {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<ArtifactReviewReceipt>;
   return typeof item.reviewId === "string" && /^artifact-review-[0-9a-f-]{36}$/i.test(item.reviewId)
-    && typeof item.artifactId === "string" && item.artifactId.length > 0 && item.format === "pdf"
+    && typeof item.artifactId === "string" && item.artifactId.length > 0 && isReviewedArtifactFormat(item.format)
     && typeof item.reviewedBy === "string" && item.reviewedBy.length > 0
     && typeof item.reviewedAt === "string" && Number.isFinite(Date.parse(item.reviewedAt))
     && typeof item.sha256 === "string" && typeof item.byteLength === "number"
-    && validPdfIdentity({ sha256: item.sha256, byteLength: item.byteLength });
+    && validArtifactFingerprint({ sha256: item.sha256, byteLength: item.byteLength })
+    && (item.format === "pptx" ? !!item.preview && validArtifactFingerprint(item.preview)
+      && Number.isSafeInteger(item.preview.pages) && item.preview.pages > 0 : item.preview === undefined);
 }

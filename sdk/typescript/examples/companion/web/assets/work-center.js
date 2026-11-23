@@ -989,7 +989,7 @@ function renderArtifactCard(item) {
 function renderArtifacts() {
   const artifacts = state.snapshot?.artifacts || [];
   $("#content").innerHTML = '<div id="artifactList"></div>';
-  window.ClownfishFileLibrary.mount({root:$("#artifactList"),artifacts,documents:state.documents||[],knowledge:state.knowledge,warnings:state.fileWarnings||[],onPreview:id=>{
+  window.ClownfishFileLibrary.mount({root:$("#artifactList"),artifacts,documents:state.documents||[],knowledge:state.knowledge,warnings:state.fileWarnings||[],pptxReviewAvailable:state.snapshot?.pptxReviewAvailable===true,onPreview:id=>{
     const trigger = $$('[data-preview-resource]').find(button => button.dataset.previewResource === id);
     return openResourcePreview(id, trigger);
   }});
