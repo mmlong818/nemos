@@ -72,96 +72,206 @@ export async function selfCheckWidget(file: string, options: { timeoutMs?: numbe
     });
     socket = new WebSocket(endpoint);
     await new Promise<void>((resolve, reject) => { socket!.onopen = () => resolve(); socket!.onerror = () => reject(new Error("连不上浏览器调试端口")); });
-    let nextId = 1;
-    const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
-    const errors: string[] = [];
-    const requests = new Map<string, string>();
-    let dialogs = 0;
-    let page = "";
-    let loaded: () => void = () => {};
-    const loadedPromise = new Promise<void>((resolve) => { loaded = resolve; });
-    socket.onmessage = (event) => {
-      const message = JSON.parse(String(event.data));
-      if (message.id && pending.has(message.id)) {
-        const waiter = pending.get(message.id)!; pending.delete(message.id);
-        if (message.error) waiter.reject(new Error(message.error.message)); else waiter.resolve(message.result);
-        return;
-      }
-      if (message.method === "Runtime.exceptionThrown") {
-        const details = message.params.exceptionDetails;
-        errors.push(String(details.exception?.description || details.text || "脚本异常").split("\n")[0]);
-      } else if (message.method === "Runtime.consoleAPICalled" && message.params.type === "error") {
-        errors.push(message.params.args.map((arg: { value?: unknown; description?: string }) => String(arg.value ?? arg.description ?? "")).join(" ").slice(0, 200));
-      } else if (message.method === "Log.entryAdded" && message.params.entry.level === "error") {
-        const entry = message.params.entry;
-        errors.push(/BLOCKED_BY_CLIENT|blocked/i.test(entry.text) ? `页面想加载外部资源：${String(entry.url || "").slice(0, 120)}` : String(entry.text).slice(0, 200));
-      } else if (message.method === "Network.requestWillBeSent") {
-        requests.set(message.params.requestId, String(message.params.request?.url || ""));
-      } else if (message.method === "Network.loadingFailed" && message.params.blockedReason) {
-        const url = requests.get(message.params.requestId) || "";
-        if (!url.startsWith("file:")) errors.push(`页面想加载外部资源：${url.slice(0, 120)}`);
-      } else if (message.method === "Fetch.requestPaused") {
-        // 页面本身由这里送出，带和线上相同的沙箱响应头；其余请求一律是想联网，拦下并记一笔。
-        const { requestId, request } = message.params;
-        if (request.url === SELF_CHECK_URL) {
-          send("Fetch.fulfillRequest", { requestId, responseCode: 200, body: Buffer.from(page, "utf8").toString("base64"), responseHeaders: [
-            { name: "Content-Type", value: "text/html; charset=utf-8" },
-            ...Object.entries(ARTIFACT_SANDBOX_HEADERS).map(([name, value]) => ({ name, value })),
-          ] }, message.sessionId).catch(() => {});
-        } else {
-          errors.push(`页面想加载外部资源：${String(request.url).slice(0, 120)}`);
-          send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" }, message.sessionId).catch(() => {});
-        }
-      } else if (message.method === "Page.javascriptDialogOpening") {
-        // 弹框会把无头浏览器卡住：自动点确定，记一笔（手机上弹框体验差，约定里不许用）。
-        dialogs++;
-        send("Page.handleJavaScriptDialog", { accept: true }, message.sessionId).catch(() => {});
-      } else if (message.method === "Page.loadEventFired") {
-        loaded();
-      }
-    };
-    const send = (method: string, params: Record<string, unknown> = {}, sessionId?: string) => new Promise<any>((resolve, reject) => {
+    return runWidgetCheckSession(socket, () => readFileSync(file, "utf8"));
+  }
+}
+
+type WidgetCdpSocket = Pick<WebSocket, "onmessage" | "onerror" | "onclose" | "send">;
+type EvaluationSummary = { controls: number; clicked: number; text: number };
+type InitialNavigation = { frameId: string; loaderId: string };
+
+/** Run the same CDP session with either a browser socket or a scripted protocol peer. */
+export async function runWidgetCheckSession(
+  socket: WidgetCdpSocket,
+  readWidgetHtml: () => string,
+  pause = delay,
+): Promise<WidgetSelfCheck> {
+  let nextId = 1;
+  const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  const errors: string[] = [];
+  const requests = new Map<string, string>();
+  const loadedDocuments = new Set<string>();
+  const committedDocuments = new Set<string>();
+  let sessionId: string | undefined;
+  let initial: InitialNavigation | undefined;
+  let observing = false;
+  let navigations = 0;
+  let dialogs = 0;
+  let page = "";
+  let markLoaded!: () => void;
+  const initialLoaded = new Promise<void>((resolve) => { markLoaded = resolve; });
+  let connectionError: Error | undefined;
+  let markDisconnected!: () => void;
+  const disconnected = new Promise<void>((resolve) => { markDisconnected = resolve; });
+  const documentKey = (frameId: string, loaderId: string) => JSON.stringify([frameId, loaderId]);
+  function closeSession(message: string): void {
+    if (connectionError) return;
+    const error = new Error(message);
+    connectionError = error;
+    markDisconnected();
+    for (const entry of pending.values()) entry.reject(error);
+    pending.clear();
+  }
+  function requireConnection(): void {
+    if (connectionError) throw connectionError;
+  }
+  function send(method: string, params: Record<string, unknown> = {}, targetSession?: string): Promise<any> {
+    if (connectionError) return Promise.reject(connectionError);
+    return new Promise((resolve, reject) => {
       const id = nextId++;
       pending.set(id, { resolve, reject });
-      socket!.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+      try {
+        socket.send(JSON.stringify({ id, method, params, ...(targetSession ? { sessionId: targetSession } : {}) }));
+      } catch (error) {
+        pending.delete(id);
+        reject(error);
+      }
     });
+  }
+  socket.onmessage = (event) => {
+    let message: any;
+    try { message = JSON.parse(String(event.data)); }
+    catch { closeSession("浏览器调试协议消息无效"); return; }
+    if (message.id && pending.has(message.id)) {
+      const waiter = pending.get(message.id)!; pending.delete(message.id);
+      if (message.error) waiter.reject(new Error(message.error.message)); else waiter.resolve(message.result);
+      return;
+    }
+    if (sessionId && message.method === "Target.detachedFromTarget" && message.params?.sessionId === sessionId) {
+      closeSession("浏览器调试会话已断开");
+      return;
+    }
+    if (!sessionId || message.sessionId !== sessionId) return;
+    if (message.method === "Inspector.detached") {
+      closeSession("浏览器调试会话已断开");
+    } else if (message.method === "Page.lifecycleEvent" && message.params.name === "load" && !observing) {
+      const { frameId, loaderId } = message.params;
+      loadedDocuments.add(documentKey(frameId, loaderId));
+      if (initial && frameId === initial.frameId && loaderId === initial.loaderId) markLoaded();
+    } else if (message.method === "Page.frameNavigated") {
+      const frame = message.params.frame;
+      if (frame.parentId || !frame.id || !frame.loaderId) return;
+      const key = documentKey(frame.id, frame.loaderId);
+      if (committedDocuments.has(key)) return;
+      committedDocuments.add(key);
+      if (observing && initial && frame.id === initial.frameId && frame.loaderId !== initial.loaderId) navigations++;
+    } else if (message.method === "Runtime.exceptionThrown") {
+      errors.push(exceptionMessage(message.params.exceptionDetails));
+    } else if (message.method === "Runtime.consoleAPICalled" && message.params.type === "error") {
+      errors.push(message.params.args.map((arg: { value?: unknown; description?: string }) => String(arg.value ?? arg.description ?? "")).join(" ").slice(0, 200));
+    } else if (message.method === "Log.entryAdded" && message.params.entry.level === "error") {
+      const entry = message.params.entry;
+      errors.push(/BLOCKED_BY_CLIENT|blocked/i.test(entry.text) ? `页面想加载外部资源：${String(entry.url || "").slice(0, 120)}` : String(entry.text).slice(0, 200));
+    } else if (message.method === "Network.requestWillBeSent") {
+      requests.set(message.params.requestId, String(message.params.request?.url || ""));
+    } else if (message.method === "Network.loadingFailed" && message.params.blockedReason) {
+      const url = requests.get(message.params.requestId) || "";
+      if (!url.startsWith("file:")) errors.push(`页面想加载外部资源：${url.slice(0, 120)}`);
+    } else if (message.method === "Fetch.requestPaused") {
+      // 页面本身由这里送出，带和线上相同的沙箱响应头；其余请求一律是想联网，拦下并记一笔。
+      const { requestId, request } = message.params;
+      if (request.url === SELF_CHECK_URL) {
+        send("Fetch.fulfillRequest", { requestId, responseCode: 200, body: Buffer.from(page, "utf8").toString("base64"), responseHeaders: [
+          { name: "Content-Type", value: "text/html; charset=utf-8" },
+          ...Object.entries(ARTIFACT_SANDBOX_HEADERS).map(([name, value]) => ({ name, value })),
+        ] }, sessionId).catch(() => {});
+      } else {
+        errors.push(`页面想加载外部资源：${String(request.url).slice(0, 120)}`);
+        send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" }, sessionId).catch(() => {});
+      }
+    } else if (message.method === "Page.javascriptDialogOpening") {
+      // 弹框会把无头浏览器卡住：自动点确定，记一笔（手机上弹框体验差，约定里不许用）。
+      dialogs++;
+      send("Page.handleJavaScriptDialog", { accept: true }, sessionId).catch(() => {});
+    }
+  };
+  socket.onerror = () => closeSession("浏览器调试连接出错");
+  socket.onclose = () => closeSession("浏览器调试连接已关闭");
+  try {
     const { targetId } = await send("Target.createTarget", { url: "about:blank" });
-    const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
+    ({ sessionId } = await send("Target.attachToTarget", { targetId, flatten: true }));
     for (const method of ["Runtime.enable", "Page.enable", "Log.enable", "Network.enable"]) await send(method, {}, sessionId);
+    await send("Page.setLifecycleEventsEnabled", { enabled: true }, sessionId);
     // 按线上的样子打开：注入同一份桥接脚本（它会换掉 localStorage），并带同一份沙箱响应头。
     // 直接开本地文件时没有沙箱：表单提交、localStorage 在那里能用、线上却不行，自测就会说假话。
     // 自测时一律断网：构件约定不联网，除页面本身外的请求都在 Fetch.requestPaused 里拦下。
-    page = injectWidgetBridge(readFileSync(file, "utf8"), "self-check");
+    page = injectWidgetBridge(readWidgetHtml(), "self-check");
     await send("Fetch.enable", { patterns: [{ urlPattern: "*" }] }, sessionId);
-    await send("Page.navigate", { url: SELF_CHECK_URL }, sessionId);
-    await Promise.race([loadedPromise, delay(8000)]);
-    await delay(600);
-    // 点到"重置"之类的按钮时页面可能自己刷新或跳转，求值会随之中断：这不算没做自测，记下来，照已收集到的报错下结论。
-    let navigated = false;
-    let result: any;
-    try {
-      result = await send("Runtime.evaluate", { expression: CLICK_THROUGH, awaitPromise: true, returnByValue: true }, sessionId);
-    } catch (error) {
-      if (!/navigat|closed|destroyed/i.test(error instanceof Error ? error.message : String(error))) throw error;
-      navigated = true;
+    const navigation = await send("Page.navigate", { url: SELF_CHECK_URL }, sessionId);
+    if (navigation.errorText || !navigation.frameId || !navigation.loaderId) throw new Error("构件初始页面未能加载");
+    initial = { frameId: navigation.frameId, loaderId: navigation.loaderId };
+    // The initial document's load can arrive before Page.navigate's reply.
+    if (!loadedDocuments.has(documentKey(initial.frameId, initial.loaderId))) {
+      const loaded = await Promise.race([
+        initialLoaded.then(() => true),
+        pause(8000).then(() => false),
+        disconnected.then(() => false),
+      ]);
+      requireConnection();
+      if (!loaded) throw new Error("等待构件初始页面加载超时");
     }
-    await delay(400);
-    const summary = (result?.result?.value ?? { controls: 1, clicked: 1, text: 1 }) as { controls: number; clicked: number; text: number };
-    const navigatedNote = navigated ? "；点控件时页面刷新或跳转了一次，之后的控件没点到" : "";
+    await Promise.race([pause(600), disconnected]);
+    requireConnection();
+
+    // Observe the attached main frame before evaluation. The original context
+    // may complete evaluation before Chromium commits a replacement document.
+    observing = true;
+    let summary: EvaluationSummary | undefined;
+    let evaluationError: unknown;
+    try {
+      const result = await send("Runtime.evaluate", { expression: CLICK_THROUGH, awaitPromise: true, returnByValue: true }, sessionId);
+      if (result.exceptionDetails) errors.push(exceptionMessage(result.exceptionDetails));
+      summary = evaluationSummary(result.result?.value);
+    } catch (error) {
+      evaluationError = error;
+    }
+    if (!connectionError) await Promise.race([pause(400), disconnected]);
+    observing = false;
+    const navigatedNote = navigations
+      ? `；观察到主页面刷新或跳转了${navigations === 1 ? "一次" : `${navigations} 次`}，跳转后的页面未自测`
+      : "";
+    const counts = { controls: summary?.controls ?? 0, clicked: summary?.clicked ?? 0 };
     const unique = [...new Set(errors)].slice(0, 5);
     if (unique.length) {
-      return { status: "failed", detail: `自测发现 ${unique.length} 处问题：${unique.join("；")}${navigatedNote}`, errors: unique, controls: summary.controls, clicked: summary.clicked };
+      return { status: "failed", detail: `自测发现 ${unique.length} 处问题：${unique.join("；")}${navigatedNote}`, errors: unique, ...counts };
     }
-    if (!summary.text && !summary.controls) {
-      return { status: "failed", detail: "页面打开后是空的", errors: [], controls: 0, clicked: 0 };
+    if (connectionError) throw new Error(connectionError.message + navigatedNote);
+    if (evaluationError) {
+      const message = evaluationError instanceof Error ? evaluationError.message : String(evaluationError);
+      if (!navigations || !/execution context|cannot find context|inspected target navigated/i.test(message)) {
+        throw new Error(message + navigatedNote);
+      }
+    } else if (!summary) {
+      throw new Error("未获得有效的控件自测统计" + navigatedNote);
+    }
+    if (summary && !summary.text && !summary.controls) {
+      return { status: "failed", detail: "页面打开后是空的" + navigatedNote, errors: [], controls: 0, clicked: 0 };
     }
     const dialogNote = dialogs ? `；页面弹了 ${dialogs} 次确认框` : "";
     return {
       status: "passed",
-      detail: (navigated ? "在浏览器里打开并点了控件，没有脚本报错" : summary.clicked ? `在浏览器里打开并点了 ${summary.clicked} 个控件，没有脚本报错` : "在浏览器里打开了，没有脚本报错（页面上没有可点的控件）") + dialogNote + navigatedNote,
-      errors: [], controls: summary.controls, clicked: summary.clicked,
+      detail: (!summary ? "已在浏览器里打开，控件自测未能完成，未核对点击次数"
+        : summary.clicked ? `在浏览器里打开并点了 ${summary.clicked} 个控件，没有脚本报错`
+        : "在浏览器里打开了，没有脚本报错（页面上没有可点的控件）") + dialogNote + navigatedNote,
+      errors: [], ...counts,
     };
+  } finally {
+    socket.onmessage = null;
+    socket.onerror = null;
+    socket.onclose = null;
   }
+}
+
+function exceptionMessage(details: { exception?: { description?: string }; text?: string }): string {
+  return String(details.exception?.description || details.text || "脚本异常").split("\n")[0]!;
+}
+
+function evaluationSummary(value: unknown): EvaluationSummary | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const summary = value as EvaluationSummary;
+  if ([summary.controls, summary.clicked, summary.text].every((count) => Number.isSafeInteger(count) && count >= 0)
+    && summary.clicked <= summary.controls) return summary;
+  return undefined;
 }
 
 function notRun(detail: string): WidgetSelfCheck {

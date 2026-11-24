@@ -82,7 +82,7 @@ _Each idea names its deliverable type and basis; the basis can only come from go
 Ask for "a tickable packing list for Iceland", "a pomodoro timer", or "a mortgage calculator", and Clownfish writes a single-file, offline interactive page embedded directly in the reply:
 
 - ticks and inputs are saved locally and stay the same after a refresh or on the overview;
-- before delivery, the page is opened in the local Edge or Chrome the way it will actually run, offline, and its controls are clicked; script errors and attempts to load external resources are reported in the reply. Without a local browser the reply says no self-check ran, and an unfinished page does not pass;
+- before delivery, a local Edge or Chrome opens the widget in a sandbox and tries a sample of the available controls. The reply reports script errors, blocked requests for external resources, and reloads or navigations of the main page confirmed during the check, including same-URL reloads. If the browser is unavailable, the reply says the self-check could not run. An unfinished page does not pass;
 - widgets can be pinned to the overview and used there.
 
 ### Tasks and skills
