@@ -188,6 +188,25 @@
     </form>
   </dialog>
 
+  <dialog class="new-document-dialog office-version-review-dialog" id="officeVersionReviewDialog" aria-labelledby="officeVersionReviewTitle">
+    <form method="dialog">
+      <header>
+        <div><p class="section-label">版本记录</p><h2 id="officeVersionReviewTitle">生成审阅稿</h2></div>
+        <button id="closeOfficeVersionReview" type="button" aria-label="关闭">×</button>
+      </header>
+      <p class="office-version-review-selection" id="officeVersionReviewSelection"></p>
+      <p class="office-version-review-hint" id="officeVersionReviewLegacyName" hidden></p>
+      <p class="office-version-review-hint">从选中的保存版本生成独立文件。生成稿保留文字和基础结构，图片、附件和复杂排版不会带入。</p>
+      <div class="new-document-options">
+        <button type="button" data-office-review-format="docx"><strong>生成 DOCX</strong><span>用 Word 文稿格式审阅</span></button>
+        <button type="button" data-office-review-format="pptx" aria-describedby="officeVersionReviewPowerPointHint" disabled><strong>生成 PPTX</strong><span>用静态幻灯片预览审阅</span></button>
+      </div>
+      <p class="office-version-review-hint" id="officeVersionReviewPowerPointHint"></p>
+      <p class="office-version-review-status" id="officeVersionReviewStatus" role="status" aria-live="polite"></p>
+      <a class="toolbar-button primary" id="openOfficeVersionReview" target="_blank" rel="noopener noreferrer" hidden>打开审阅（新标签）</a>
+    </form>
+  </dialog>
+
   <dialog class="app-search-dialog" id="fileSearchDialog" aria-labelledby="fileSearchTitle">
     <form class="app-search-surface" method="dialog">
       <header class="app-search-head"><div><p>文件记录</p><h2 id="fileSearchTitle">搜索文件</h2></div><button class="app-search-close" id="closeFileSearch" type="button" aria-label="关闭搜索">×</button></header>
@@ -204,6 +223,7 @@
   <script src="/assets/office-capabilities.js"></script>
   <script src="/assets/office-source-preview.js"></script>
   <script src="/assets/office-editor-engines.js"></script>
+  <script src="/assets/office-version-review.js"></script>
   <script src="/assets/office-workbench.js"></script>
   <script src="/assets/scramble-confetti.js" defer></script>
 </body>

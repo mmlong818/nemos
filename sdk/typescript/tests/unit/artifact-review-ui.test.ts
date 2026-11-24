@@ -74,12 +74,14 @@ class FakeElement {
   closest() { return this; }
 }
 
-function harness(fetchHandler: (path: string, opts: RequestInit) => Promise<Response> | Response) {
+function harness(fetchHandler: (path: string, opts: RequestInit) => Promise<Response> | Response, initialUrl = "/artifacts") {
   const ids = new Map<string, FakeElement>();
   const urls = new Map<string, Blob>();
   const revoked: string[] = [];
   const downloads: Array<{ href: string; filename: string; blob?: Blob }> = [];
   const requests: Array<{ path: string; opts: RequestInit }> = [];
+  const location = new URL(initialUrl, "http://localhost");
+  const urlUpdates: string[] = [];
   let active: FakeElement | undefined;
   let counter = 0;
   const create = () => new FakeElement((node) => { active = node; }, (node) => {
@@ -100,7 +102,11 @@ function harness(fetchHandler: (path: string, opts: RequestInit) => Promise<Resp
     document.emit("click", trigger);
   }
   runInNewContext(script, {
-    document, URLSearchParams, AbortController, Blob, MessageChannel, crypto: webcrypto, TextDecoder,
+    document, location, URLSearchParams, AbortController, Blob, MessageChannel, crypto: webcrypto, TextDecoder,
+    history: { replaceState(_state: unknown, _title: string, href: string) {
+      urlUpdates.push(href);
+      location.href = new URL(href, location.origin).href;
+    } },
     URL: {
       createObjectURL(blob: Blob) { const url = `blob:${++counter}`; urls.set(url, blob); return url; },
       revokeObjectURL(url: string) { urls.delete(url); revoked.push(url); },
@@ -109,13 +115,26 @@ function harness(fetchHandler: (path: string, opts: RequestInit) => Promise<Resp
     clearTimeout() {},
     fetch: async (path: string, opts: RequestInit) => { requests.push({ path, opts }); return fetchHandler(path, opts); },
   });
-  return { get, open, trigger, requests, downloads, revoked, focused: () => active };
+  return { get, open, trigger, requests, downloads, revoked, urlUpdates, focused: () => active };
 }
 
 async function until(condition: () => unknown) {
   for (let i = 0; !condition() && i < 200; i++) await delay(5);
   assert.ok(condition(), "review mode did not reach the expected state");
 }
+
+test("saved-version artifact links open the exact review without a file-list row", async () => {
+  const url = "/artifacts?" + new URLSearchParams({ kind: "artifact", review: info.artifactId }) + "#files";
+  const view = harness((path) => path.includes("/preview?") ? pdf() : json({ ...info, review: null }), url);
+  await until(() => view.get("artifactReviewPreview").children.length);
+  assert.equal(view.get("artifactReviewDialog").open, true);
+  assert.equal(view.requests[0].path, receiptPath + "?" + new URLSearchParams({ id: info.artifactId }));
+  assert.equal(view.requests.length, 2);
+  assert.equal(view.requests.some(({ opts }) => opts.method === "POST"), false);
+  view.get("closeArtifactReview").click();
+  assert.deepEqual(view.urlUpdates, ["/artifacts?kind=artifact#files"]);
+  assert.equal(view.focused(), view.get("workSearchToggle"));
+});
 
 test("review confirmation and export use the exact verified preview fingerprint and receipt", async () => {
   const view = harness((path, opts) => {

@@ -128,6 +128,13 @@ button, a, label { touch-action: manipulation; }
 .new-document-options button:focus-visible { outline: 2px solid var(--office-accent); outline-offset: 2px; }
 .new-document-options strong { font-size: 13px; }
 .new-document-options span { color: var(--office-muted); font-size: 11px; line-height: 1.4; }
+.office-version-review-dialog { max-height: calc(100dvh - 32px); }
+.office-version-review-selection { margin: 0 0 8px; font-weight: 650; overflow-wrap: anywhere; }
+.office-version-review-hint, .office-version-review-status { margin: 8px 0; color: var(--office-muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.office-version-review-hint:empty, .office-version-review-status:empty { display: none; }
+.office-version-review-status.is-error { color: var(--danger, #9b3147); }
+.office-version-review-dialog .new-document-options button:disabled { opacity: .55; cursor: default; }
+.office-version-review-dialog #openOfficeVersionReview:not([hidden]) { display: inline-flex; text-decoration: none; }
 
 .office-layout {
   height: calc(100vh - 56px);
@@ -886,6 +893,7 @@ body[data-page="office"] .document-surface {
   border-top: 1px solid #e9e2d8;
 }
 .version-row-copy { min-width: 0; display: grid; gap: 2px; }
+.version-row-workbench { grid-template-columns: minmax(0, 1fr) auto auto auto; }
 .version-row-copy strong { overflow: hidden; color: var(--office-ink); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .version-row-copy small { color: var(--office-subtle); font-size: 9.5px; letter-spacing: .015em; }
 .version-row button {

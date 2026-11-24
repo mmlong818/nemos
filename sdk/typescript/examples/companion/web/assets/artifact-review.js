@@ -14,6 +14,7 @@
   const close = document.getElementById("closeArtifactReview");
   const note = document.getElementById("artifactReviewNote");
   const endpoint = "/api/capabilities/artifact/review";
+  const linkedId = location.pathname === "/artifacts" ? new URLSearchParams(location.search).get("review") : null;
   const contentTypes = {
     pdf: "application/pdf",
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -357,12 +358,21 @@
     controller.abort();
     clearPreview(current);
     current = undefined;
+    if (id === linkedId) {
+      const params = new URLSearchParams(location.search);
+      if (params.get("review") === id) {
+        params.delete("review");
+        const query = params.toString();
+        history.replaceState(null, "", location.pathname + (query ? "?" + query : "") + location.hash);
+      }
+    }
     const target = trigger?.isConnected ? trigger : [...document.querySelectorAll("[data-review-artifact]")]
       .find((button) => button.dataset.reviewArtifact === id);
-    target?.focus();
+    (target || document.getElementById("workSearchToggle"))?.focus();
   });
   document.addEventListener("click", (event) => {
     const trigger = event.target.closest?.("[data-review-artifact]");
     if (trigger?.dataset.reviewArtifact) void openReview(trigger.dataset.reviewArtifact, trigger);
   });
+  if (linkedId) void openReview(linkedId);
 })();

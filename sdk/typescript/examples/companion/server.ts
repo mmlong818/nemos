@@ -4923,6 +4923,8 @@ function buildApiRoutes(): RouteTable {
   taskFiles,
   officeFileSessions,
   officeWorkbenchState,
+  capabilities,
+  userId: USER,
   agentUserActions,
 }))
   .add(...createCapabilityRoutes({ USER, WEB_DIR, agentJobQueue, agentUserActions, autoLearnFromWork, backgroundScheduler, capabilities, collaborationLedger, capabilityExtensionSummaries, capabilityProviderSummaries, capabilityReply, capabilityTools, deliveryOutbox, extensionToolSummaries, fetchSkillMarkdownFromUrl, knowledgeLibrary, readBody, send, teamConnectionFingerprint }))
