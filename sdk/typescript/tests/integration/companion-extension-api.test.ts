@@ -1,81 +1,14 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 
 import type { AgentExtensionManifest } from "../../src/agent/index.js";
+import { CompanionTestLaunchError, launchCompanionForTest } from "../fixtures/companion-test-launch.js";
 
 const root = resolve(__dirname, "..", "..");
-const serverEntry = join(root, "examples", "companion", "server.ts");
-const tsxEntry = join(root, "node_modules", "tsx", "dist", "cli.mjs");
 const fixture = join(root, "tests", "fixtures", "mcp-session-server.cjs");
-
-async function freePort(): Promise<number> {
-  const server = createServer();
-  await new Promise<void>((resolveListen, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolveListen);
-  });
-  const address = server.address();
-  assert(address && typeof address === "object");
-  const port = address.port;
-  await new Promise<void>((resolveClose, reject) => {
-    server.close((error) => error ? reject(error) : resolveClose());
-  });
-  return port;
-}
-
-function startCompanion(port: number, home: string): {
-  child: ChildProcessWithoutNullStreams;
-  logs: () => string;
-} {
-  const child = spawn(process.execPath, [tsxEntry, serverEntry], {
-    cwd: root,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      NEMOS_COMPANION_HOME: home,
-      ZHIPU_API_KEY: "",
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  let output = "";
-  const append = (chunk: Buffer) => {
-    output = (output + chunk.toString("utf8")).slice(-20_000);
-  };
-  child.stdout.on("data", append);
-  child.stderr.on("data", append);
-  return { child, logs: () => output };
-}
-
-async function stopCompanion(child: ChildProcessWithoutNullStreams): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  child.kill();
-  await Promise.race([
-    new Promise<void>((resolveExit) => child.once("exit", () => resolveExit())),
-    new Promise<void>((resolveTimeout) => setTimeout(resolveTimeout, 5_000)),
-  ]);
-}
-
-async function waitForCompanion(baseUrl: string, child: ChildProcessWithoutNullStreams, logs: () => string): Promise<void> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error("Companion exited during startup:\n" + logs());
-    }
-    try {
-      const response = await fetch(baseUrl + "/api/runtime");
-      if (response.ok) return;
-    } catch {
-      // Startup may still be initializing the local database.
-    }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-  }
-  throw new Error("Companion startup timed out:\n" + logs());
-}
 
 async function request(
   baseUrl: string,
@@ -140,12 +73,13 @@ function executableManifest(): AgentExtensionManifest {
 
 test("Companion extension API closes the install, trust, and provider lifecycle", { timeout: 60_000 }, async () => {
   const home = mkdtempSync(join(tmpdir(), "nemos-companion-extension-api-"));
-  const port = await freePort();
-  const baseUrl = `http://127.0.0.1:${port}`;
-  const { child, logs } = startCompanion(port, home);
+  let app: Awaited<ReturnType<typeof launchCompanionForTest>> | undefined;
+  let failed = false;
+  let cleanupIncomplete = false;
 
   try {
-    await waitForCompanion(baseUrl, child, logs);
+    app = await launchCompanionForTest({ home, timeoutMs: 30_000 });
+    const { base: baseUrl } = app;
 
     const readiness = await request(baseUrl, "/api/platform/readiness");
     assert.equal(readiness.status, 200);
@@ -241,10 +175,19 @@ test("Companion extension API closes the install, trust, and provider lifecycle"
     assert.equal(removed.status, 200);
     const finalList = await request(baseUrl, "/api/agent/extensions");
     assert.equal(finalList.data.extensions.some((item: any) => item.manifest.id === executable.id), false);
+  } catch (error) {
+    failed = true;
+    cleanupIncomplete = error instanceof CompanionTestLaunchError && error.cleanupIncomplete;
+    throw error;
   } finally {
-    await stopCompanion(child);
     try {
-      rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 });
+      await app?.stop();
+    } catch (error) {
+      cleanupIncomplete = true;
+      if (!failed) throw error;
+    }
+    try {
+      if (!cleanupIncomplete) rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 });
     } catch {
       // Windows may keep a just-stopped extension child handle alive until this test process exits.
     }
