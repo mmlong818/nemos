@@ -1,9 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { CompanionTestLaunchError, launchCompanionForTest } from "./companion-test-launch.js";
 
 async function listen(server: Server): Promise<number> {
   server.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -23,8 +23,9 @@ export function requestsMentioning(requests: ReadonlyArray<{ body: any }>, marke
 export async function startModelHarness() {
   const dir = mkdtempSync(join(tmpdir(), "clownfish-model-check-"));
   const requests: Array<{ url: string; authorization?: string; body: any }> = [];
-  let child: ChildProcess | undefined;
-  let logs = "";
+  let app: Awaited<ReturnType<typeof launchCompanionForTest>> | undefined;
+  let port = 0;
+  let cleanupIncomplete = false;
   let stopHarness: (() => Promise<void>) | undefined;
   const state = { status: 0, delayMs: 0, catalogDelayMs: 0, beforeReply: undefined as (() => Promise<void>) | undefined, replyFor: undefined as ((body: any) => string) | undefined };
   const provider = createServer(async (req, res) => {
@@ -70,36 +71,40 @@ export async function startModelHarness() {
     } else res.end(JSON.stringify({ choices: [{ message: probe ? { content: "", tool_calls: [tool] } : { content: text } }] }));
   });
   const modelPort = await listen(provider);
-  const reservation = createServer(); const port = await listen(reservation);
-  await new Promise<void>((done) => reservation.close(() => done()));
-  const base = `http://127.0.0.1:${port}`;
   const modelBase = `http://127.0.0.1:${modelPort}`;
-  const stopApp = async (signal: NodeJS.Signals = "SIGTERM") => {
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    const exited = once(child, "exit"); child.kill(signal); await exited;
+  const stopApp = async (signal?: NodeJS.Signals) => {
+    if (!app) return;
+    await app.stop(signal);
+    app = undefined;
   };
   const startApp = async () => {
-    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^COMPANION_|^CLOWNFISH_HOME$|^NEMOS_COMPANION_HOME$|^ZHIPU_API_KEY$|^NODE_USE_ENV_PROXY$/.test(key)));
-    child = spawn(process.execPath, ["--import", "tsx", "examples/companion/server.ts"], {
-      cwd: resolve(__dirname, "../.."), env: { ...env, CLOWNFISH_HOME: dir, PORT: String(port), ZHIPU_API_KEY: "", NODE_USE_ENV_PROXY: "0" },
-      windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    });
-    child.stdout?.on("data", (chunk) => { logs = (logs + chunk).slice(-4000); });
-    child.stderr?.on("data", (chunk) => { logs = (logs + chunk).slice(-4000); });
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      if (child.exitCode !== null) throw new Error("Fixture app exited: " + logs);
-      try { if ((await fetch(base + "/api/runtime")).ok) return; } catch { /* starting */ }
-      await new Promise((done) => setTimeout(done, 100));
+    try {
+      const started = await launchCompanionForTest({ home: dir, timeoutMs: 20_000, port });
+      // Preserve the original URL for callers that hold it across a restart.
+      port = started.port;
+      app = started;
+      return started;
+    } catch (error) {
+      if (error instanceof CompanionTestLaunchError && error.cleanupIncomplete) cleanupIncomplete = true;
+      throw error;
     }
-    throw new Error("Fixture app startup timed out: " + logs);
   };
   stopHarness = async () => {
-    await stopApp(); provider.closeAllConnections();
-    await new Promise<void>((done) => provider.close(() => done()));
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    try {
+      await stopApp();
+    } finally {
+      await new Promise<void>((done) => {
+        provider.close(() => done());
+        provider.closeAllConnections();
+      });
+    }
+    if (!cleanupIncomplete) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   };
-  try { await startApp(); } catch (error) { await stopHarness(); throw error; }
+  const { base } = await startApp().catch(async (error: unknown) => {
+    // Cleanup must not replace the launcher's startup diagnostic.
+    await stopHarness?.().catch(() => undefined);
+    throw error;
+  });
   return { dir, base, modelBase, requests, state, stop: stopHarness,
     crashAndRestart: async () => { await stopApp("SIGKILL"); await startApp(); },
     restart: async (whileStopped?: () => void | Promise<void>) => { await stopApp(); await whileStopped?.(); await startApp(); } };
