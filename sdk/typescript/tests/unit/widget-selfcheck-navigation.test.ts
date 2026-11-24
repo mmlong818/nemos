@@ -11,32 +11,60 @@ const NAVIGATION_NOTE = /页面刷新或跳转/;
 
 interface Command {
   id: number;
-  method: string;
-  params: Record<string, unknown>;
   sessionId?: string;
+}
+
+function captureCommand() {
+  let resolve!: (command: Command) => void;
+  const promise = new Promise<Command>((done) => { resolve = done; });
+  return { promise, resolve };
 }
 
 class FakeCdp {
   onmessage: WebSocket["onmessage"] = null;
   onerror: WebSocket["onerror"] = null;
   onclose: WebSocket["onclose"] = null;
-  private commands: Command[] = [];
-  private commandWaiters = new Map<string, (command: Command) => void>();
+  private readonly navigation = captureCommand();
+  private readonly evaluation = captureCommand();
 
   send(raw: string) {
-    const command = JSON.parse(raw) as Command;
-    this.commands.push(command);
-    this.commandWaiters.get(command.method)?.(command);
-    this.commandWaiters.delete(command.method);
-    if (command.method === "Target.createTarget") this.reply(command, { targetId: "widget-target" });
-    else if (command.method === "Target.attachToTarget") this.reply(command, { sessionId: SESSION });
-    else if (command.method !== "Page.navigate" && command.method !== "Runtime.evaluate") this.reply(command, {});
+    const message = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!message || typeof message.id !== "number" || !Number.isSafeInteger(message.id)
+      || (message.sessionId !== undefined && typeof message.sessionId !== "string")) {
+      throw new Error("Invalid fake CDP command");
+    }
+    const command = { id: message.id, sessionId: message.sessionId };
+    switch (message.method) {
+      case "Target.createTarget":
+        this.reply(command, { targetId: "widget-target" });
+        break;
+      case "Target.attachToTarget":
+        this.reply(command, { sessionId: SESSION });
+        break;
+      case "Page.navigate":
+        this.navigation.resolve(command);
+        break;
+      case "Runtime.evaluate":
+        this.evaluation.resolve(command);
+        break;
+      case "Runtime.enable":
+      case "Page.enable":
+      case "Log.enable":
+      case "Network.enable":
+      case "Page.setLifecycleEventsEnabled":
+      case "Fetch.enable":
+      case "Fetch.fulfillRequest":
+      case "Fetch.failRequest":
+      case "Page.handleJavaScriptDialog":
+        this.reply(command, {});
+        break;
+      default:
+        throw new Error(`Unsupported fake CDP command: ${String(message.method)}`);
+    }
   }
 
-  waitForCommand(method: string): Promise<Command> {
-    const command = this.commands.find((item) => item.method === method);
-    if (command) return Promise.resolve(command);
-    return new Promise((resolve) => this.commandWaiters.set(method, resolve));
+  waitForCommand(method: "Page.navigate" | "Runtime.evaluate"): Promise<Command> {
+    return method === "Page.navigate" ? this.navigation.promise : this.evaluation.promise;
   }
 
   reply(command: Command, result: Record<string, unknown>) {
