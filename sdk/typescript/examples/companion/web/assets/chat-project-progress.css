@@ -1,3 +1,14 @@
+#projectProgressStatus {
+  margin: 0;
+  color: var(--text-2, #5d6059);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+#projectProgressStatus:not(:empty) {
+  padding: 0.25rem 0.75rem 0.5rem;
+}
+
 .chat-project-progress-row .chat-project-progress-bubble {
   box-sizing: border-box;
   width: min(100%, 32rem);

@@ -3179,6 +3179,7 @@
   <div id="main" class="task-workbench-main">
     <div id="msgs" class="task-workbench-stage"></div>
       <div id="modelMissingNotice" class="model-missing-notice" role="status" hidden><p><b>还没有连接模型</b>现在只能做基础回复。填一个 OpenAI 或智谱的 Key，就能正常对话和办事。</p><a class="model-missing-action" href="/settings">去连接</a></div>
+      <p id="projectProgressStatus" role="status"></p>
       <div id="composer" class="task-workbench-composer">
         <div id="txtWrap" class="task-workbench-input-wrap">
           <div id="attachmentPreview" class="attachment-preview" aria-live="polite">
@@ -3832,9 +3833,12 @@ function saveConversationTrees() {
 function activeConversationId(key = logKey()) {
   return ensureConversationTree(key)?.activeId || "";
 }
+function currentComposerInput() {
+  return $("#heroTxt") || $("#txt");
+}
 function saveConversationDraft() {
   const id = activeConversationId();
-  const input = $("#txt");
+  const input = currentComposerInput();
   if (!id || !input) return;
   const value = input.value.slice(0, 12000);
   if (value) conversationDrafts[id] = value;
@@ -3851,9 +3855,10 @@ function flushConversationDraft() {
   saveConversationDraft();
 }
 function restoreConversationDraft() {
-  const input = $("#txt");
+  const input = currentComposerInput();
   if (!input) return;
   input.value = conversationDrafts[activeConversationId()] || "";
+  if (input.id === "heroTxt") $("#txt").value = "";
 }
 function switchConversation(id) {
   const key = logKey();
@@ -3995,6 +4000,7 @@ function deleteConversation(id) {
   if (!node) return;
   const title = conversationTitle(node.messages, node.title || "对话");
   if (!confirm("删除“" + title + "”？\n这会删除此对话记录，但不会删除长期记忆或已经生成的文件。")) return;
+  if (tree.activeId !== id) flushConversationDraft();
   delete tree.nodes[id];
   delete conversationDrafts[id];
   try { localStorage.setItem(CONVERSATION_DRAFTS_KEY, JSON.stringify(conversationDrafts)); } catch {}
@@ -4010,6 +4016,7 @@ function deleteConversation(id) {
   saveConversationTrees();
   saveLogs();
   renderLog();
+  restoreConversationDraft();
   renderContacts();
   renderConversationHeader();
 }
@@ -4147,6 +4154,7 @@ function syncTaskModelSelector() {
 function setActiveWorkMode(mode) {
   const node = activeConversation("persona:" + APP_PERSONA_ID);
   if (!node || (node.messages || []).some((entry) => entry.side === "me" || entry.side === "user")) return;
+  flushConversationDraft();
   const normalized = normalizeWorkMode(mode);
   node.config = { ...(node.config || {}), ...conversationDefaults(normalized), model: node.config?.model || "default", reasoningEffort: node.config?.reasoningEffort || "auto" };
   node.title = WORK_MODES[normalized].title;
@@ -4154,6 +4162,7 @@ function setActiveWorkMode(mode) {
   saveConversationTrees();
   saveLogs();
   renderLog();
+  restoreConversationDraft();
   renderContacts();
   renderConversationHeader();
   $("#txt").focus();
@@ -4463,6 +4472,7 @@ function scheduleScrollToBottom(container) {
   });
 }
 function renderLog() {
+  setProjectProgressStatus("");
   chatProjectPicker.closeIfStale();
   const m = $("#msgs"); m.innerHTML = "";
   ensureConversationTree(logKey());
@@ -5235,6 +5245,8 @@ async function sendMsg(voiceFlag, overrideText) {
   const image = state.pendingImage;
   const attachment = state.pendingFile;
   if ((!text && !image && !attachment) || !state.target) return;
+  chatProjectPicker.cancelBackground();
+  setProjectProgressStatus("");
   sending = true;
   if (overrideText == null) {
     $("#txt").value = "";
@@ -5270,45 +5282,76 @@ async function sendMsg(voiceFlag, overrideText) {
   }
 }
 
-$("#send").onclick = () => {
-  if (!runTypedProjectProgress($("#txt"))) sendMsg();
-};
+function sendComposerInput(input) {
+  if (!input || runTypedProjectProgress(input)) return;
+  const value = input.value;
+  const query = state.pendingFile || state.pendingImage ? null : window.ClownfishChatProjectProgress.parseProgressQuery(value);
+  if (query && state.target) {
+    if (!projectProgressNaturalLanguageAvailable()) {
+      setProjectProgressStatus("项目进展卡仅支持单聊。");
+      return;
+    }
+    if (sending) return;
+    const key = logKey();
+    const conversationId = activeConversationId(key);
+    flushConversationDraft();
+    chatProjectPicker.open({ key, conversationId, naturalLanguage: true }, {
+      projectTitle: query.projectTitle,
+      onInserted(previousInput) {
+        const activeInput = currentComposerInput();
+        if (key !== logKey() || conversationId !== activeConversationId(key) ||
+            previousInput !== input || input.value !== value || activeInput?.value !== value) return;
+        activeInput.value = "";
+        flushConversationDraft();
+      },
+    });
+    return;
+  }
+  if (input.id !== "heroTxt") { sendMsg(); return; }
+  if (sending || !state.target || (!value.trim() && !state.pendingFile)) return;
+  input.value = "";
+  flushConversationDraft();
+  sendMsg(false, value);
+}
+
+$("#send").onclick = () => sendComposerInput($("#txt"));
 document.addEventListener("click", (e) => {
   if (e.target && e.target.closest && e.target.closest("#heroFileBtn")) { $("#chatfile").click(); return; }
   const heroBtn = e.target && e.target.closest ? e.target.closest("#heroSend") : null;
   if (!heroBtn) return;
-  const heroTxt = document.getElementById("heroTxt");
-  if (heroTxt && runTypedProjectProgress(heroTxt)) return;
-  const heroText = heroTxt ? heroTxt.value.trim() : "";
-  if (!heroText && !state.pendingFile) return;
-  sendMsg(false, heroText);
-});
-document.addEventListener("keydown", (e) => {
-  if (e.target && e.target.id === "heroTxt" && e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    const heroBtn = document.getElementById("heroSend");
-    if (heroBtn) heroBtn.click();
-  }
+  sendComposerInput($("#heroTxt"));
 });
 // 斜杠命令：敲 / 弹菜单，选中后在本机执行，不发给模型；匹配不到就照常发送。
 // 空对话时用的是首页大输入框 #heroTxt，有对话后是 #txt：两个都接，菜单挪到当前输入框上方。
 const slashMenu = { items: [], index: 0, input: null };
 const isSlashInput = (node) => !!node && (node.id === "txt" || node.id === "heroTxt");
 const projectProgressAvailable = () => state.target?.kind === "persona";
+const projectProgressNaturalLanguageAvailable = () => projectProgressAvailable() && effectiveConversationTarget().kind === "persona";
 const slashCommandAvailable = (command) => command.action.type !== "project-progress" || projectProgressAvailable();
+function setProjectProgressStatus(text) {
+  $("#projectProgressStatus").textContent = text;
+}
 const chatProjectPicker = window.ClownfishChatProjectProgress.createPicker($("#chatProjectPicker"), {
   read: api,
-  current: ({ key, conversationId }) => {
+  current: ({ key, conversationId, naturalLanguage }) => {
     const tree = conversationTrees[key];
     return projectProgressAvailable() && key === logKey() &&
-      tree?.activeId === conversationId && !!tree.nodes[conversationId];
+      tree?.activeId === conversationId && !!tree.nodes[conversationId] &&
+      (!naturalLanguage || projectProgressNaturalLanguageAvailable());
   },
   insert({ key }, projectProgress, text) {
+    const previousInput = currentComposerInput();
     const entry = { kind: "project-progress", side: "other", who: "项目进展", text, projectProgress };
     record(key, entry);
     addRow(entry.side, entry.who, entry.text, { messageId: entry.id, projectProgress });
+    if (previousInput?.id === "heroTxt") {
+      $("#txt").value = previousInput.value;
+      flushConversationDraft();
+    }
+    return previousInput;
   },
-  restoreFocus: () => (document.getElementById("heroTxt") || $("#txt"))?.focus(),
+  restoreFocus: () => currentComposerInput()?.focus(),
+  notify: setProjectProgressStatus,
 });
 
 function runTypedProjectProgress(input) {
@@ -5392,11 +5435,16 @@ function runSlashCommand(command) {
   if (target) target.click();
   else addRow("other", "系统", "这个入口现在不在页面上，命令没能执行。");
 }
-document.addEventListener("input", (e) => { if (isSlashInput(e.target)) updateSlashMenu(e.target); });
+document.addEventListener("input", (e) => {
+  if (!isSlashInput(e.target)) return;
+  setProjectProgressStatus("");
+  updateSlashMenu(e.target);
+  scheduleSaveConversationDraft();
+});
 document.addEventListener("focusout", (e) => { if (isSlashInput(e.target)) setTimeout(closeSlashMenu, 120); });
 // 捕获阶段先处理：命令键在这里吃掉，就不会再走到下面"Enter 发送"的监听。
 document.addEventListener("keydown", (e) => {
-  if (!isSlashInput(e.target)) return;
+  if (!isSlashInput(e.target) || e.isComposing || e.keyCode === 229) return;
   const handled = () => { e.preventDefault(); e.stopPropagation(); };
   if (slashMenu.items.length && slashMenu.input === e.target) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -5414,12 +5462,10 @@ document.addEventListener("keydown", (e) => {
     if (exact) { handled(); slashMenu.input = e.target; runSlashCommand(exact); }
   }
 }, true);
-$("#txt").addEventListener("input", scheduleSaveConversationDraft);
-$("#txt").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendMsg();
-  }
+document.addEventListener("keydown", (e) => {
+  if (!isSlashInput(e.target) || e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  sendComposerInput(e.target);
 });
 window.addEventListener("beforeunload", flushConversationDraft);
 window.addEventListener("pagehide", flushConversationDraft);
@@ -6302,6 +6348,7 @@ async function clearMemory(who) {
 function clearChat() {
   if (!state.target) { alert("先打开一个对话再清空它的聊天"); return; }
   if (!confirm("清空与「" + state.target.name + "」的聊天记录？\n（只清这段聊天气泡，不影响 TA 的记忆）")) return;
+  chatProjectPicker.cancelBackground();
   delete chatLogs[logKey()]; saveLogs(); renderLog();
 }
 function openMemory() { fillMemWho(); viewMemory(); }

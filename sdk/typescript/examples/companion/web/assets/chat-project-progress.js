@@ -11,6 +11,21 @@
   const object = (value) => value && typeof value === "object" && !Array.isArray(value);
   const countKeys = [["tasks", "任务"], ["materials", "资料"], ["artifacts", "成果"]];
 
+  function parseProgressQuery(value) {
+    if (typeof value !== "string" || value.length > 140 || /[\r\n\u2028\u2029]/u.test(value)) return null;
+    const query = value.trim().replace(/[。？！?.!]$/u, "").trimEnd();
+    if (/^(?:(?:请|帮我)\s*)?(?:看看?|查看|显示|打开)\s*项目进展(?:卡)?$/u.test(query) ||
+        /^(?:这个)?项目(?:现在|目前)?进展(?:如何|怎么样)$/u.test(query)) {
+      return { projectTitle: null };
+    }
+
+    const named = /^(?:(?:请|帮我)\s*)?(?:看看?|查看|显示|打开)\s*([『「“"'《])([^『』「」“”"'《》]{1,60})([』」”"'》])\s*项目(?:的)?进展(?:卡)?$/u.exec(query);
+    const closingQuote = { "『": "』", "「": "」", "“": "”", '"': '"', "'": "'", "《": "》" };
+    if (!named || closingQuote[named[1]] !== named[3]) return null;
+    const projectTitle = named[2].trim();
+    return projectTitle && !/[\x00-\x1f\x7f]/u.test(projectTitle) ? { projectTitle } : null;
+  }
+
   function snapshot(value) {
     if (!object(value) || value.version !== 1 || !timestamp(value.capturedAt)) return null;
     const { space, counts, tasks, artifacts, nextAction } = value;
@@ -154,7 +169,7 @@
     container.append(article);
   }
 
-  function createPicker(dialog, { read, current, insert, restoreFocus }) {
+  function createPicker(dialog, { read, current, insert, restoreFocus, notify = () => {} }) {
     const form = dialog.querySelector("form");
     const select = dialog.querySelector("select");
     const status = dialog.querySelector('[role="status"]');
@@ -162,75 +177,134 @@
     const retry = dialog.querySelector("[data-retry-projects]");
     const cancel = dialog.querySelector("[data-close-projects]");
     let session = null;
-    const valid = (request) => dialog.open && request === session && current(request.scope);
+    const valid = (request) => request === session && (!request.usesDialog || dialog.open) && current(request.scope);
     const refreshSubmit = () => { submit.disabled = !session || session.pending || !select.value; };
 
-    function load(request) {
-      request.pending = true;
-      select.disabled = true;
+    function resetOptions() {
       select.replaceChildren(element("option", "请选择项目"));
       select.options[0].value = "";
-      retry.hidden = true;
-      status.textContent = "正在读取项目…";
+    }
+
+    function showDialog(request) {
+      request.usesDialog = true;
+      if (dialog.open) return;
+      notify("");
+      dialog.showModal();
+      cancel.focus();
+    }
+
+    function showOptions(listed, titles, message) {
+      resetOptions();
+      const counts = new Map();
+      for (const title of titles) counts.set(title, (counts.get(title) || 0) + 1);
+      for (const [index, space] of listed.entries()) {
+        const title = titles[index];
+        const duplicate = counts.get(title) > 1 ? " · " + space.id : "";
+        const archived = space.status === "archived" ? "（已归档）" : "";
+        const option = element("option", title + archived + duplicate);
+        option.value = space.id;
+        select.append(option);
+      }
+      status.textContent = listed.length ? message : "还没有可选择的项目。";
+      select.disabled = !listed.length;
+      if (listed.length && root.document.activeElement === cancel) select.focus();
+    }
+
+    function finishReading(request) {
+      if (session !== request) return;
+      request.pending = false;
       refreshSubmit();
-      void read("/api/capabilities").then((result) => {
+    }
+
+    async function load(request, message = "") {
+      request.pending = true;
+      if (request.usesDialog) {
+        select.disabled = true;
+        resetOptions();
+        retry.hidden = true;
+        status.textContent = "正在读取项目…";
+        refreshSubmit();
+      }
+      try {
+        const result = await read("/api/capabilities");
         if (!valid(request)) return;
         if (!Array.isArray(result?.spaces)) throw new Error("Invalid projects");
         const listed = result.spaces.filter((space) => id(space?.id) && text(space.title, 160));
-        const titles = listed.map((space) => text(space.title, 160));
-        const counts = new Map();
-        for (const title of titles) counts.set(title, (counts.get(title) || 0) + 1);
-        for (const [index, space] of listed.entries()) {
-          const title = titles[index];
-          const duplicate = counts.get(title) > 1 ? " · " + space.id : "";
-          const archived = space.status === "archived" ? "（已归档）" : "";
-          const option = element("option", title + archived + duplicate);
-          option.value = space.id;
-          select.append(option);
+        if (!request.usesDialog) {
+          const matches = listed.filter((space) => space.title.trim() === request.projectTitle);
+          if (matches.length === 1) {
+            await readProgress(request, matches[0].id);
+            return;
+          }
+          message = matches.length ? "有多个同名项目，请选择。" : "未找到同名项目，请从列表中选择。";
+          showDialog(request);
+          retry.hidden = true;
         }
-        status.textContent = listed.length ? "" : "还没有可选择的项目。";
-        select.disabled = !listed.length;
-        if (listed.length && root.document.activeElement === cancel) select.focus();
-      }).catch(() => {
+        showOptions(listed, listed.map((space) => text(space.title, 160)), message);
+      } catch {
         if (!valid(request)) return;
-        status.textContent = "项目列表暂时无法读取。";
-        retry.hidden = false;
-      }).finally(() => {
-        if (session !== request) return;
-        request.pending = false;
-        refreshSubmit();
-      });
+        if (request.usesDialog) {
+          status.textContent = "项目列表暂时无法读取。";
+          retry.hidden = false;
+        } else {
+          session = null;
+          notify("项目列表暂时无法读取，请重试。");
+        }
+      } finally {
+        finishReading(request);
+      }
     }
 
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const request = session;
-      if (!request || !valid(request) || request.pending || !id(select.value)) return;
-      const selected = select.value;
+    async function readProgress(request, selected) {
       request.pending = true;
-      select.disabled = true;
-      status.textContent = "正在读取项目进展…";
-      retry.hidden = true;
-      refreshSubmit();
+      if (request.usesDialog) {
+        select.disabled = true;
+        status.textContent = "正在读取项目进展…";
+        retry.hidden = true;
+        refreshSubmit();
+      }
       try {
         const response = await read("/api/capabilities/space?" + new URLSearchParams({ id: selected, view: "chat-progress" }));
         if (!valid(request)) return;
         const card = snapshot(response);
         if (!card || card.space.id !== selected) throw new Error("Invalid project progress");
-        insert(request.scope, card, summary(card));
+        if (!request.usesDialog && card.space.title !== request.projectTitle) {
+          await reopenAfterMissingProject(request);
+          return;
+        }
+        const previousInput = insert(request.scope, card, summary(card));
+        request.onInserted?.(previousInput);
         session = null;
-        dialog.close("inserted");
+        if (request.usesDialog) dialog.close("inserted");
+        else { notify(""); restoreFocus(); }
       } catch (error) {
         if (!valid(request)) return;
+        if (!request.usesDialog) {
+          if (error?.status === 404) await reopenAfterMissingProject(request);
+          else {
+            session = null;
+            notify("项目进展暂时无法读取，请重试。");
+          }
+          return;
+        }
         status.textContent = error?.status === 404 ? "项目已不可用，请重新选择或重新读取列表。" : "项目进展暂时无法读取，请重试。";
         retry.hidden = error?.status !== 404;
         select.disabled = false;
       } finally {
-        if (session === request) {
-          request.pending = false;
-          refreshSubmit();
-        }
+        finishReading(request);
       }
+    }
+
+    function reopenAfterMissingProject(request) {
+      showDialog(request);
+      return load(request, "项目已不可用，请重新选择。");
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const request = session;
+      if (!request || !dialog.open || !valid(request) || request.pending || !id(select.value)) return;
+      return readProgress(request, select.value);
     });
     select.addEventListener("change", () => {
       status.textContent = "";
@@ -242,28 +316,35 @@
     });
     cancel.addEventListener("click", () => dialog.close("cancel"));
     dialog.addEventListener("close", () => {
-      if (dialog.open) return;
+      if (dialog.open || (session && !session.usesDialog)) return;
       session = null;
       restoreFocus();
     });
 
+    function discard() {
+      session = null;
+      notify("");
+      if (dialog.open) dialog.close("cancel");
+    }
+
     return {
-      open(scope) {
-        if (dialog.open || !current(scope)) return;
-        session = { scope, pending: false };
-        dialog.showModal();
-        cancel.focus();
-        load(session);
+      open(scope, { projectTitle, onInserted } = {}) {
+        if (session || dialog.open || !current(scope)) return;
+        session = { scope, projectTitle, onInserted, pending: false, usesDialog: false };
+        if (projectTitle) notify("正在读取项目进展…");
+        else showDialog(session);
+        void load(session);
       },
       closeIfStale() {
-        if (!session || current(session.scope)) return;
-        session = null;
-        if (dialog.open) dialog.close("cancel");
+        if (session && !current(session.scope)) discard();
+      },
+      cancelBackground() {
+        if (session && !session.usesDialog) discard();
       },
     };
   }
 
-  const api = { snapshot, render, createPicker };
+  const api = { snapshot, render, createPicker, parseProgressQuery };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ClownfishChatProjectProgress = api;
 })(typeof window !== "undefined" ? window : globalThis);

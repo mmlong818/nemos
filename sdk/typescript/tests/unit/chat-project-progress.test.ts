@@ -5,6 +5,7 @@ import { setImmediate } from "node:timers/promises";
 import { runInNewContext } from "node:vm";
 
 const asset = readFileSync("examples/companion/web/assets/chat-project-progress.js", "utf8");
+const chatPage = readFileSync("examples/companion/web/index.html", "utf8");
 const now = "2026-11-24T09:14:00.000Z";
 const markup = "<img src=x onerror=alert(1)>";
 const sample = {
@@ -74,6 +75,7 @@ function renderer() {
   const window = {
     document: { createElement: (tag: string) => new Element(tag) },
     ClownfishChatProjectProgress: null as null | {
+      parseProgressQuery: (text: string) => { projectTitle: string | null } | null;
       snapshot: (value: unknown) => unknown;
       render: (container: Element, value: unknown, fallback?: string) => void;
       createPicker: (dialog: PickerDialog, options: {
@@ -81,7 +83,11 @@ function renderer() {
         current(scope: Scope): boolean;
         insert(scope: Scope, snapshot: typeof sample, summary: string): void;
         restoreFocus(): void;
-      }) => { open(scope: Scope): void; closeIfStale(): void };
+        notify?(message: string): void;
+      }) => {
+        open(scope: Scope, options?: { projectTitle?: string | null; onInserted?: () => void }): void;
+        closeIfStale(): void;
+      };
     },
   };
   runInNewContext(asset, { window, URLSearchParams });
@@ -161,6 +167,318 @@ function deferred<T>() {
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
 }
+
+test("natural-language project progress recognizes complete questions and only explicit quoted names", () => {
+  const { parseProgressQuery } = renderer();
+  for (const text of ["这个项目现在进展如何？", "看看项目进展", "  这个项目现在进展如何？  "]) {
+    assert.equal(parseProgressQuery(text)?.projectTitle, null, text);
+  }
+  for (const text of ["查看『星河』项目的进展", "查看《星河》项目的进展"]) {
+    assert.equal(parseProgressQuery(text)?.projectTitle, "星河", text);
+  }
+  for (const text of [
+    "/项目进展", "你好", "查看星河项目的进展", "查看『星河》项目的进展",
+    "他说：“这个项目现在进展如何？”", "查看『星河』项目的进展，然后启动任务",
+    "这个项目现在进展如何？\n同时启动任务", "怎么实现一个项目进展卡？", "> 看看项目进展",
+  ]) assert.equal(parseProgressQuery(text), null, text);
+});
+
+test("the real manual composer dispatcher preserves slash, ordinary, attachment, and blocked-mode behavior", () => {
+  const dispatcher = chatPage.match(/^function sendComposerInput\(input\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(dispatcher, "manual composer dispatch must stay separate from automatic sends");
+  const ordinarySend = chatPage.match(/^async function sendMsg\([\s\S]*?^\}/m)?.[0];
+  assert.ok(ordinarySend);
+  assert.doesNotMatch(ordinarySend, /sendComposerInput|parseProgressQuery/);
+  const availability = chatPage.match(/^const projectProgress(?:NaturalLanguage)?Available = [^\r\n]+/gm);
+  assert.equal(availability?.length, 2);
+
+  const input = { id: "txt", value: "" };
+  const hero = { id: "heroTxt", value: "" };
+  const state = { target: { kind: "persona" }, pendingFile: null as object | null, pendingImage: null as object | null };
+  const messages: string[] = [];
+  const opened: Array<{ projectTitle?: string | null; onInserted?: (previousInput: typeof input) => void }> = [];
+  let effectiveKind = "persona";
+  let activeInput = input;
+  let flushed = 0;
+  const send = runInNewContext(availability!.join("\n") + "\n" + dispatcher + "\nsendComposerInput", {
+    window: { ClownfishChatProjectProgress: renderer() },
+    state,
+    sending: false,
+    $: (selector: string) => selector === "#txt" ? input : hero,
+    document: { getElementById: (id: string) => id === "txt" ? input : hero },
+    runTypedProjectProgress: (node: typeof input) => {
+      if (node.value !== "/项目进展") return false;
+      messages.push("slash");
+      return true;
+    },
+    effectiveConversationTarget: () => ({ kind: effectiveKind }),
+    currentComposerInput: () => activeInput,
+    setProjectProgressStatus: () => messages.push("local"),
+    logKey: () => "persona:test",
+    activeConversationId: () => "conversation-a",
+    chatProjectPicker: {
+      open(scope: { key: string; conversationId: string }, options: typeof opened[number]) {
+        assert.equal(scope.key, "persona:test");
+        assert.equal(scope.conversationId, "conversation-a");
+        opened.push(options);
+      },
+    },
+    flushConversationDraft: () => { flushed++; },
+    scheduleSaveConversationDraft: () => { flushed++; },
+    sendMsg: () => messages.push("chat"),
+  }) as (node: typeof input) => void;
+
+  input.value = "/项目进展";
+  send(input);
+  input.value = "我们聊聊项目进展卡的技术方案";
+  send(input);
+  state.pendingFile = {};
+  input.value = "看看项目进展";
+  send(input);
+  state.pendingFile = null;
+  state.pendingImage = {};
+  send(input);
+  state.pendingImage = null;
+  assert.deepEqual(messages, ["slash", "chat", "chat", "chat"]);
+  assert.equal(opened.length, 0);
+
+  state.target.kind = "group";
+  send(input);
+  state.target.kind = "persona";
+  effectiveKind = "group";
+  send(input);
+  assert.deepEqual(messages.slice(-2), ["local", "local"]);
+  assert.equal(opened.length, 0);
+  assert.equal(input.value, "看看项目进展");
+
+  effectiveKind = "persona";
+  send(input);
+  hero.value = "查看『星河』项目的进展";
+  send(hero);
+  assert.deepEqual(opened.map(option => option.projectTitle), [null, "星河"]);
+  assert.equal(input.value, "看看项目进展");
+  assert.equal(hero.value, "查看『星河』项目的进展");
+  input.value = "我随后输入的其他内容";
+  opened[0]!.onInserted?.(input);
+  assert.equal(input.value, "我随后输入的其他内容");
+  // Insertion removes the hero composer and retains its draft in the regular input.
+  activeInput = input;
+  input.value = hero.value;
+  opened[1]!.onInserted?.(hero);
+  assert.equal(input.value, "");
+  assert.equal(flushed, 3);
+  assert.deepEqual(messages, ["slash", "chat", "chat", "chat", "local", "local"]);
+});
+
+test("actual chat button and Enter listeners share the dispatcher, preserve slash priority and ignore IME and Shift+Enter", () => {
+  const clickListeners = chatPage.match(/^\$\("#send"\)\.onclick = [^\n]+\ndocument\.addEventListener\("click", \(e\) => \{[\s\S]*?^\}\);/m)?.[0];
+  const keyboardListeners = chatPage.match(/^document\.addEventListener\("keydown", \(e\) => \{\s+if \(!isSlashInput\(e\.target\)[\s\S]*?^\}, true\);\s+^document\.addEventListener\("keydown", \(e\) => \{[\s\S]*?^\}\);/m)?.[0];
+  assert.ok(clickListeners);
+  assert.ok(keyboardListeners);
+  const input = { id: "txt", value: "看看项目进展" };
+  const hero = { id: "heroTxt", value: "看看项目进展" };
+  const button = { onclick: () => {} };
+  type KeyEvent = { target: typeof input; key: string; keyCode: number; isComposing: boolean; shiftKey: boolean };
+  const listeners: Record<string, Array<(event: unknown) => void>> = {};
+  const calls: string[] = [];
+  runInNewContext(clickListeners + "\n" + keyboardListeners, {
+    document: {
+      addEventListener(name: string, listener: (event: unknown) => void) {
+        (listeners[name] ??= []).push(listener);
+      },
+    },
+    $: (selector: string) => ({ "#txt": input, "#heroTxt": hero, "#send": button }[selector]),
+    isSlashInput: (node: typeof input) => node === input || node === hero,
+    slashMenu: { items: [] },
+    window: { ClownfishSlashCommands: { exactSlashCommand: (value: string) => value === "/项目进展" } },
+    runSlashCommand: () => calls.push("slash"),
+    sendComposerInput: (node: typeof input) => calls.push(node.id),
+  });
+  const press = (target: typeof input, options: Partial<KeyEvent> = {}) => {
+    let stopped = false;
+    const event = { target, key: "Enter", keyCode: 13, isComposing: false, shiftKey: false, ...options,
+      preventDefault() {}, stopPropagation() { stopped = true; } };
+    for (const listener of listeners.keydown!) {
+      if (stopped) break;
+      listener(event);
+    }
+  };
+  button.onclick();
+  listeners.click![0]!({ target: { closest: (selector: string) => selector === "#heroSend" } });
+  press(input);
+  press(hero);
+  assert.deepEqual(calls, ["txt", "heroTxt", "txt", "heroTxt"]);
+  for (const composer of [input, hero]) {
+    press(composer, { shiftKey: true });
+    press(composer, { isComposing: true });
+    press(composer, { keyCode: 229 });
+    composer.value = "/项目进展";
+    press(composer, { isComposing: true });
+    press(composer);
+  }
+  assert.deepEqual(calls, ["txt", "heroTxt", "txt", "heroTxt", "slash", "slash"]);
+});
+
+const listedProject = { id: "space-a", title: "星河", status: "active" };
+const progressPath = (id: string) =>
+  "/api/capabilities/space?" + new URLSearchParams({ id, view: "chat-progress" });
+const progressFor = (space: { id: string; title: string; status: string }) => ({ ...sample, space });
+
+test("one exact named project reads one snapshot and a single successful insertion clears its draft", async () => {
+  const { createPicker } = renderer();
+  const project = { ...listedProject, id: "项目&来源" };
+  const dialog = new PickerDialog();
+  const reads: string[] = [];
+  const saved: string[] = [];
+  let cleared = 0;
+  const response = deferred<unknown>();
+  const picker = createPicker(dialog, {
+    async read(path) {
+      reads.push(path);
+      if (path === "/api/capabilities") return { spaces: [{ ...listedProject, title: "旧星河" }, project] };
+      assert.equal(path, progressPath(project.id));
+      return response.promise;
+    },
+    current: () => true,
+    insert: (_scope, card) => saved.push(card.space.id),
+    restoreFocus() {},
+  });
+  const scope = { conversationId: "first" };
+  const options = { projectTitle: "星河", onInserted: () => { cleared++; } };
+  picker.open(scope, options);
+  await setImmediate();
+  picker.open(scope, options);
+  assert.equal(dialog.open, false);
+  assert.deepEqual(reads, ["/api/capabilities", progressPath(project.id)]);
+  assert.equal(cleared, 0);
+  response.resolve(progressFor(project));
+  await setImmediate();
+  assert.deepEqual(saved, [project.id]);
+  assert.equal(cleared, 1);
+});
+
+test("unnamed, ambiguous, and missing names require confirmation and cancellation leaves the draft", async () => {
+  const { createPicker } = renderer();
+  const archived = { ...listedProject, id: "space-archived", status: "archived" };
+  for (const title of [null, "星河", "不存在"]) {
+    const dialog = new PickerDialog();
+    const select = dialog.querySelector("select");
+    const reads: string[] = [];
+    const picker = createPicker(dialog, {
+      async read(path) {
+        reads.push(path);
+        return { spaces: [listedProject, archived] };
+      },
+      current: () => true,
+      insert: () => assert.fail("the selector requires an explicit confirmation"),
+      restoreFocus() {},
+    });
+    picker.open({ conversationId: "first" }, {
+      projectTitle: title,
+      onInserted: () => assert.fail("draft cleared before successful insertion"),
+    });
+    await setImmediate();
+    assert.equal(dialog.open, true);
+    assert.equal(select.value, "");
+    assert.deepEqual(select.options.map(option => option.value), ["", listedProject.id, archived.id]);
+    assert.notEqual(select.options[1].textContent, select.options[2].textContent);
+    assert.match(select.options[2].textContent, /已归档/);
+    await dialog.querySelector("form").emit("submit");
+    dialog.querySelector("[data-close-projects]").emit("click");
+    assert.deepEqual(reads, ["/api/capabilities"]);
+  }
+});
+
+test("a deleted named project reloads the choices without substituting another ID", async () => {
+  const { createPicker } = renderer();
+  const replacement = { ...listedProject, id: "space-replacement" };
+  const dialog = new PickerDialog();
+  const select = dialog.querySelector("select");
+  const reads: string[] = [];
+  let listReads = 0;
+  const picker = createPicker(dialog, {
+    async read(path) {
+      reads.push(path);
+      if (path === "/api/capabilities") return { spaces: [listReads++ ? replacement : listedProject] };
+      throw Object.assign(new Error("missing"), { status: 404 });
+    },
+    current: () => true,
+    insert: () => assert.fail("a same-title replacement is not a validated selection"),
+    restoreFocus() {},
+  });
+  picker.open({ conversationId: "first" }, {
+    projectTitle: listedProject.title,
+    onInserted: () => assert.fail("a missing project cannot consume the draft"),
+  });
+  await setImmediate();
+  assert.equal(dialog.open, true);
+  assert.equal(select.value, "");
+  assert.deepEqual(select.options.map(option => option.value), ["", replacement.id]);
+  assert.deepEqual(reads, ["/api/capabilities", progressPath(listedProject.id), "/api/capabilities"]);
+});
+
+test("a failed or mismatched detail response never inserts a card or consumes the draft", async () => {
+  const { createPicker } = renderer();
+  for (const mismatch of [false, true]) {
+    const dialog = new PickerDialog();
+    const reads: string[] = [];
+    const notices: string[] = [];
+    let saved = 0;
+    let cleared = 0;
+    const picker = createPicker(dialog, {
+      async read(path) {
+        reads.push(path);
+        if (path === "/api/capabilities") return { spaces: [listedProject] };
+        if (mismatch) return progressFor({ ...listedProject, id: "different-space" });
+        throw Object.assign(new Error("temporarily unavailable"), { status: 503 });
+      },
+      current: () => true,
+      insert: () => { saved++; },
+      restoreFocus() {},
+      notify: (message) => notices.push(message),
+    });
+    picker.open({ conversationId: "first" }, {
+      projectTitle: listedProject.title,
+      onInserted: () => { cleared++; },
+    });
+    await setImmediate();
+    assert.deepEqual(reads, ["/api/capabilities", progressPath(listedProject.id)]);
+    assert.equal(saved, 0);
+    assert.equal(cleared, 0);
+    assert.equal(dialog.open, false);
+    assert.match(notices.at(-1)!, /读取.*重试/);
+  }
+});
+
+test("a late named query cannot insert or consume a draft after its conversation was removed", async () => {
+  const { createPicker } = renderer();
+  const dialog = new PickerDialog();
+  const late = deferred<unknown>();
+  const next = { ...listedProject, id: "space-next", title: "远山" };
+  const saved: Array<[string, string]> = [];
+  let current = "old";
+  const picker = createPicker(dialog, {
+    async read(path) {
+      if (path === "/api/capabilities") return { spaces: [listedProject, next] };
+      return path === progressPath(listedProject.id) ? late.promise : progressFor(next);
+    },
+    current: ({ conversationId }) => conversationId === current,
+    insert: ({ conversationId }, card) => saved.push([conversationId, card.space.id]),
+    restoreFocus() {},
+  });
+  picker.open({ conversationId: "old" }, {
+    projectTitle: listedProject.title,
+    onInserted: () => assert.fail("late result cleared a deleted conversation's draft"),
+  });
+  await setImmediate();
+  current = "new";
+  picker.closeIfStale();
+  picker.open({ conversationId: "new" }, { projectTitle: next.title });
+  late.resolve(progressFor(listedProject));
+  await setImmediate();
+  assert.deepEqual(saved, [["new", next.id]]);
+  assert.equal(dialog.open, false);
+});
 
 test("duplicate confirmation and a late response cannot insert into a different conversation", async () => {
   const { createPicker } = renderer();
