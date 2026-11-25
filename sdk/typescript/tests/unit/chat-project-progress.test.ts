@@ -26,6 +26,7 @@ const sample = {
 
 type TestEvent = { preventDefault(): void };
 type Scope = { conversationId: string };
+type ListedSpace = { id: string; title: string; status: string };
 
 class Element {
   className = "";
@@ -75,7 +76,8 @@ function renderer() {
   const window = {
     document: { createElement: (tag: string) => new Element(tag) },
     ClownfishChatProjectProgress: null as null | {
-      parseProgressQuery: (text: string) => { projectTitle: string | null } | null;
+      parseProgressQuery: (text: string) => { projectTitle: string | null; useBoundProject?: boolean } | null;
+      normalizeProjectId: (value: unknown) => string;
       snapshot: (value: unknown) => unknown;
       render: (container: Element, value: unknown, fallback?: string) => void;
       createPicker: (dialog: PickerDialog, options: {
@@ -84,9 +86,14 @@ function renderer() {
         insert(scope: Scope, snapshot: typeof sample, summary: string): void;
         restoreFocus(): void;
         notify?(message: string): void;
+        bind?(scope: Scope, space: ListedSpace): boolean;
+        rememberProject?(scope: Scope, space: ListedSpace): void;
+        markUnavailable?(scope: Scope, projectId: string): void;
       }) => {
-        open(scope: Scope, options?: { projectTitle?: string | null; onInserted?: () => void }): void;
+        open(scope: Scope, options?: { projectTitle?: string | null; projectId?: string;
+          mode?: "binding" | "progress"; onInserted?: () => void }): void;
         closeIfStale(): void;
+        invalidate(): void;
       };
     },
   };
@@ -175,7 +182,10 @@ test("natural-language project progress recognizes complete questions and only e
   }
   for (const text of ["查看『星河』项目的进展", "查看《星河》项目的进展"]) {
     assert.equal(parseProgressQuery(text)?.projectTitle, "星河", text);
+    assert.equal(parseProgressQuery(text)?.useBoundProject, undefined, text);
   }
+  assert.equal(parseProgressQuery("这个项目现在进展如何？")?.useBoundProject, true);
+  assert.equal(parseProgressQuery("看看项目进展")?.useBoundProject, undefined);
   for (const text of [
     "/项目进展", "你好", "查看星河项目的进展", "查看『星河》项目的进展",
     "他说：“这个项目现在进展如何？”", "查看『星河』项目的进展，然后启动任务",
@@ -196,7 +206,7 @@ test("the real manual composer dispatcher preserves slash, ordinary, attachment,
   const hero = { id: "heroTxt", value: "" };
   const state = { target: { kind: "persona" }, pendingFile: null as object | null, pendingImage: null as object | null };
   const messages: string[] = [];
-  const opened: Array<{ projectTitle?: string | null; onInserted?: (previousInput: typeof input) => void }> = [];
+  const opened: Array<{ projectTitle?: string | null; projectId?: string; onInserted?: (previousInput: typeof input) => void }> = [];
   let effectiveKind = "persona";
   let activeInput = input;
   let flushed = 0;
@@ -216,6 +226,10 @@ test("the real manual composer dispatcher preserves slash, ordinary, attachment,
     setProjectProgressStatus: () => messages.push("local"),
     logKey: () => "persona:test",
     activeConversationId: () => "conversation-a",
+    projectScope: () => ({ key: "persona:test", conversationId: "conversation-a", generation: 0 }),
+    currentProjectScope: () => true,
+    boundProjectId: (node: { projectSpaceId?: string }) => node?.projectSpaceId || "",
+    conversationTrees: { "persona:test": { nodes: { "conversation-a": { projectSpaceId: "bound-id" } } } },
     chatProjectPicker: {
       open(scope: { key: string; conversationId: string }, options: typeof opened[number]) {
         assert.equal(scope.key, "persona:test");
@@ -267,7 +281,111 @@ test("the real manual composer dispatcher preserves slash, ordinary, attachment,
   opened[1]!.onInserted?.(hero);
   assert.equal(input.value, "");
   assert.equal(flushed, 3);
+  input.value = "这个项目现在进展如何？";
+  send(input);
+  assert.deepEqual(opened.map(option => option.projectId), ["", "", "bound-id"]);
   assert.deepEqual(messages, ["slash", "chat", "chat", "chat", "local", "local"]);
+});
+
+function chatPageFunction(name: string) {
+  const start = chatPage.indexOf("\nfunction " + name + "(");
+  const end = chatPage.indexOf("\n}", start);
+  assert.ok(start >= 0 && end > start, name);
+  return chatPage.slice(start, end + 2);
+}
+
+test("the real conversation lifecycle scopes and persists a binding without adding it to model request options", () => {
+  const oldCard = { kind: "project-progress", projectProgress: sample };
+  type Node = { id: string; messages: typeof oldCard[]; projectSpaceId?: string };
+  const first: Node = { id: "conversation-a", messages: [] };
+  const second: Node = { id: "conversation-b", messages: [oldCard] };
+  const tree = { activeId: first.id, nodes: { [first.id]: first, [second.id]: second } };
+  const key = "persona:test";
+  const conversationTrees = { [key]: tree };
+  let saved = "";
+  let storageUnavailable = false;
+  const js = [
+    "let projectBindingGeneration = 0; const projectBindingLabels = new Map();",
+    ...["boundProjectId", "conversationHasContent", "projectScope", "currentProjectScope", "saveConversationTrees",
+      "setConversationProject", "conversationRequestOptions", "createConversation", "deleteConversation"].map(chatPageFunction),
+    "({ binding: boundProjectId, hasContent: conversationHasContent, scope: projectScope, current: currentProjectScope,",
+    "set: setConversationProject, options: conversationRequestOptions, create: createConversation, remove: deleteConversation })",
+  ].join("\n");
+  type CapturedScope = { key: string; conversationId: string; naturalLanguage: boolean; generation: number };
+  const actions = runInNewContext(js, {
+    window: { ClownfishChatProjectProgress: renderer() },
+    conversationTrees, conversationDrafts: {}, chatLogs: {}, CONVERSATION_TREE_KEY: "stored-trees", CONVERSATION_DRAFTS_KEY: "drafts",
+    localStorage: { setItem(name: string, data: string) {
+      if (storageUnavailable) throw new Error("storage unavailable");
+      if (name === "stored-trees") saved = data;
+    } },
+    logKey: () => key,
+    activeConversation: () => tree.nodes[tree.activeId],
+    activeConversationId: () => tree.activeId,
+    ensureConversationTree: () => tree,
+    switchConversation: (id: string) => { tree.activeId = id; },
+    projectProgressAvailable: () => true,
+    projectProgressNaturalLanguageAvailable: () => true,
+    renderConversationProject() {}, renderContacts() {}, renderConversationHeader() {}, openAppIfNeeded() {},
+    renderLog() {}, restoreConversationDraft() {}, flushConversationDraft() {}, saveLogs() {},
+    conversationTitle: () => "Conversation", confirm: () => true,
+    modelConnectionState: null, conversationDefaults: () => ({}), normalizeWorkMode: () => "chat",
+    APP_PERSONA_ID: "test", makeConversationNode: (): Node => ({ id: "new-conversation", messages: [] }),
+    $: () => ({ focus() {} }),
+  }) as {
+    binding(node: Node): string;
+    hasContent(node: Node): boolean;
+    scope(naturalLanguage: boolean): CapturedScope;
+    current(scope: CapturedScope): boolean;
+    set(scope: CapturedScope, space: ListedSpace | null): boolean;
+    options(key: string): object;
+    create(): void;
+    remove(id: string): void;
+  };
+
+  assert.equal(actions.hasContent(first), false);
+  const original = actions.scope(true);
+  assert.equal(actions.set(original, listedProject), true);
+  assert.equal(actions.current(original), false);
+  assert.equal(actions.hasContent(first), true);
+  assert.match(chatPage, /nodes\.filter\(conversationHasContent\)/);
+  assert.equal(actions.binding(second), "");
+  const reloaded = JSON.parse(saved)[key].nodes as Record<string, Node>;
+  assert.equal(actions.binding(reloaded[first.id]!), listedProject.id);
+  assert.deepEqual(reloaded[second.id]!.messages, [oldCard]);
+  assert.doesNotMatch(JSON.stringify(actions.options(key)), /projectSpaceId|space-a/);
+
+  const originalBinding = actions.scope(true);
+  const alternate = { ...listedProject, id: "space-b" };
+  assert.equal(actions.set(originalBinding, alternate), true);
+  const alternateBinding = actions.scope(true);
+  assert.equal(actions.set(alternateBinding, listedProject), true);
+  assert.equal(actions.current(originalBinding), false);
+  assert.equal(actions.current(alternateBinding), false);
+  storageUnavailable = true;
+  const current = actions.scope(true);
+  assert.equal(actions.set(current, null), false);
+  assert.equal(actions.current(current), true);
+  assert.equal(actions.binding(first), listedProject.id);
+  storageUnavailable = false;
+
+  actions.create();
+  assert.equal(tree.activeId, "new-conversation");
+  assert.equal(actions.binding(tree.nodes[tree.activeId]!), "");
+  assert.equal(actions.binding(first), listedProject.id);
+  assert.equal(actions.current(current), false);
+  tree.activeId = first.id;
+  const beforeClear = actions.scope(true);
+  assert.equal(actions.set(beforeClear, null), true);
+  assert.equal(actions.binding(first), "");
+  assert.equal(actions.current(beforeClear), false);
+  assert.equal(actions.set(actions.scope(true), listedProject), true);
+  const beforeDelete = actions.scope(true);
+  actions.remove(first.id);
+  assert.equal(actions.current(beforeDelete), false);
+  assert.equal(actions.set(beforeDelete, listedProject), false);
+  assert.deepEqual(second.messages, [oldCard]);
+  assert.equal(actions.binding(second), "");
 });
 
 test("actual chat button and Enter listeners share the dispatcher, preserve slash priority and ignore IME and Shift+Enter", () => {
@@ -323,6 +441,185 @@ const listedProject = { id: "space-a", title: "星河", status: "active" };
 const progressPath = (id: string) =>
   "/api/capabilities/space?" + new URLSearchParams({ id, view: "chat-progress" });
 const progressFor = (space: { id: string; title: string; status: string }) => ({ ...sample, space });
+
+test("binding mode uses a separate explicit confirmation, including archived projects with the same name", async () => {
+  const dialog = new PickerDialog();
+  const archived = { ...listedProject, id: "space-archived", status: "archived" };
+  const reads: string[] = [];
+  const bound: string[] = [];
+  const picked: string[] = [];
+  const picker = renderer().createPicker(dialog, {
+    async read(path) {
+      reads.push(path);
+      if (path === "/api/capabilities") return { spaces: [listedProject, archived] };
+      if (path === progressPath(listedProject.id)) return progressFor(listedProject);
+      return { ...progressFor(archived), nextAction: null };
+    },
+    current: () => true,
+    bind: (_scope, space) => { bound.push(space.id); return true; },
+    insert: (_scope, card) => picked.push(card.space.id),
+    restoreFocus() {},
+  });
+  const scope = { conversationId: "first" };
+  const select = dialog.querySelector("select");
+  picker.open(scope, { mode: "binding" });
+  await setImmediate();
+  const form = dialog.querySelector("form");
+  await form.emit("submit");
+  assert.deepEqual(bound, []);
+  assert.notEqual(select.options[1].textContent, select.options[2].textContent);
+  assert.match(select.options[2].textContent, /已归档/);
+  select.value = listedProject.id;
+  await form.emit("submit");
+
+  picker.open(scope, { mode: "binding" });
+  await setImmediate();
+  select.value = archived.id;
+  await form.emit("submit");
+  picker.open(scope, { mode: "binding" });
+  await setImmediate();
+  select.value = listedProject.id;
+  dialog.querySelector("[data-close-projects]").emit("click");
+  assert.deepEqual(bound, [listedProject.id, archived.id]);
+  assert.deepEqual(picked, []);
+  assert.deepEqual(reads, [
+    "/api/capabilities", progressPath(listedProject.id),
+    "/api/capabilities", progressPath(archived.id),
+    "/api/capabilities",
+  ]);
+});
+
+test("a bound query reads one summary by ID and accepts its current renamed or archived label", async () => {
+  const reads: string[] = [];
+  const labels: Array<[string, string, string]> = [];
+  const cards: unknown[] = [];
+  const dialog = new PickerDialog();
+  const renamed = { ...listedProject, title: "更名后的星河" };
+  const archived = { ...renamed, status: "archived" };
+  const picker = renderer().createPicker(dialog, {
+    async read(path) {
+      reads.push(path);
+      return reads.length === 1 ? progressFor(renamed) : { ...progressFor(archived), nextAction: null };
+    },
+    current: () => true,
+    insert: (_scope, card) => cards.push(card),
+    rememberProject: (_scope, { id, title, status }) => labels.push([id, title, status]),
+    restoreFocus() {},
+  });
+  const scope = { conversationId: "first" };
+  picker.open(scope, { projectId: listedProject.id });
+  await setImmediate();
+  picker.open(scope, { projectId: listedProject.id });
+  await setImmediate();
+  assert.deepEqual(reads, [progressPath(listedProject.id), progressPath(listedProject.id)]);
+  assert.deepEqual(labels, [[renamed.id, renamed.title, "active"], [archived.id, archived.title, "archived"]]);
+  assert.deepEqual(cards.map(card => (card as typeof sample).space.status), ["active", "archived"]);
+  assert.equal(dialog.open, false);
+});
+
+test("a project-specific 404 offers a temporary selection without rebinding to a same-name replacement", async () => {
+  const dialog = new PickerDialog();
+  const replacement = { ...listedProject, id: "space-replacement" };
+  const reads: string[] = [];
+  const bound: string[] = [];
+  const unavailable: string[] = [];
+  const picked: string[] = [];
+  let draftClears = 0;
+  const picker = renderer().createPicker(dialog, {
+    async read(path) {
+      reads.push(path);
+      if (path === progressPath(listedProject.id)) {
+        throw Object.assign(new Error("missing"), { status: 404, data: { error: "not found", code: "project_not_found" } });
+      }
+      if (path === "/api/capabilities") return { spaces: [replacement] };
+      return progressFor(replacement);
+    },
+    current: () => true,
+    bind: (_scope, space) => { bound.push(space.id); return true; },
+    rememberProject: (_scope, space) => bound.push(space.id),
+    markUnavailable: (_scope, id) => unavailable.push(id),
+    insert: (_scope, card) => picked.push(card.space.id),
+    restoreFocus() {},
+  });
+  picker.open({ conversationId: "first" }, { projectId: listedProject.id, onInserted: () => { draftClears++; } });
+  await setImmediate();
+  assert.deepEqual(reads, [progressPath(listedProject.id), "/api/capabilities"]);
+  assert.deepEqual(unavailable, [listedProject.id]);
+  assert.deepEqual(picked, []);
+  assert.equal(draftClears, 0);
+  const select = dialog.querySelector("select");
+  assert.equal(select.value, "");
+  select.value = replacement.id;
+  await dialog.querySelector("form").emit("submit");
+  assert.deepEqual(reads, [progressPath(listedProject.id), "/api/capabilities", progressPath(replacement.id)]);
+  assert.deepEqual(bound, []);
+  assert.deepEqual(picked, [replacement.id]);
+  assert.equal(draftClears, 1);
+});
+
+test("unrelated HTTP failures and invalid summaries leave the current binding and draft untouched", async () => {
+  for (const failure of [401, 403, 404, 503, "offline", "malformed", "mismatched"]) {
+    const dialog = new PickerDialog();
+    const reads: string[] = [];
+    const changes: string[] = [];
+    const notices: string[] = [];
+    const picker = renderer().createPicker(dialog, {
+      async read(path) {
+        reads.push(path);
+        if (typeof failure === "number") throw Object.assign(new Error("request error"), { status: failure });
+        if (failure === "offline") throw new TypeError("failed to fetch");
+        return failure === "malformed" ? { ok: true } : progressFor({ ...listedProject, id: "wrong-id" });
+      },
+      current: () => true,
+      bind: () => { changes.push("bound"); return true; },
+      rememberProject: () => changes.push("label"),
+      markUnavailable: () => changes.push("unavailable"),
+      insert: () => changes.push("inserted"),
+      notify: (message) => notices.push(message),
+      restoreFocus() {},
+    });
+    picker.open({ conversationId: "first" }, { projectId: listedProject.id, onInserted: () => changes.push("draft") });
+    await setImmediate();
+    assert.deepEqual(reads, [progressPath(listedProject.id)], String(failure));
+    assert.deepEqual(changes, [], String(failure));
+    assert.equal(dialog.open, false, String(failure));
+    assert.match(notices.at(-1) ?? "", /访问|读取|重试/, String(failure));
+  }
+});
+
+test("invalidation discards late successes and 404s even when the same conversation binds the original ID again", async () => {
+  const first = deferred<unknown>();
+  const second = deferred<unknown>();
+  const changed: string[] = [];
+  const reads: string[] = [];
+  const picker = renderer().createPicker(new PickerDialog(), {
+    async read(path) {
+      reads.push(path);
+      if (reads.length === 1) return first.promise;
+      if (reads.length === 2) {
+        await second.promise;
+        throw Object.assign(new Error("missing"), { status: 404, data: { error: "not found", code: "project_not_found" } });
+      }
+      return progressFor(listedProject);
+    },
+    current: () => true,
+    markUnavailable: () => changed.push("unavailable"),
+    rememberProject: (_scope, space) => changed.push(space.id),
+    insert: (_scope, card) => changed.push(card.space.id),
+    restoreFocus() {},
+  });
+  const scope = { conversationId: "first" };
+  picker.open(scope, { projectId: listedProject.id, onInserted: () => changed.push("stale draft") });
+  picker.invalidate();
+  picker.open(scope, { projectId: "space-b", onInserted: () => changed.push("stale draft") });
+  picker.invalidate();
+  picker.open(scope, { projectId: listedProject.id, onInserted: () => changed.push("current draft") });
+  first.resolve(progressFor(listedProject));
+  second.resolve(undefined);
+  await setImmediate();
+  assert.deepEqual(reads, [progressPath(listedProject.id), progressPath("space-b"), progressPath(listedProject.id)]);
+  assert.deepEqual(changed, [listedProject.id, listedProject.id, "current draft"]);
+});
 
 test("one exact named project reads one snapshot and a single successful insertion clears its draft", async () => {
   const { createPicker } = renderer();

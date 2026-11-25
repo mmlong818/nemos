@@ -14,8 +14,9 @@
   function parseProgressQuery(value) {
     if (typeof value !== "string" || value.length > 140 || /[\r\n\u2028\u2029]/u.test(value)) return null;
     const query = value.trim().replace(/[。？！?.!]$/u, "").trimEnd();
+    if (/^这个项目(?:现在|目前)?进展(?:如何|怎么样)$/u.test(query)) return { projectTitle: null, useBoundProject: true };
     if (/^(?:(?:请|帮我)\s*)?(?:看看?|查看|显示|打开)\s*项目进展(?:卡)?$/u.test(query) ||
-        /^(?:这个)?项目(?:现在|目前)?进展(?:如何|怎么样)$/u.test(query)) {
+        /^项目(?:现在|目前)?进展(?:如何|怎么样)$/u.test(query)) {
       return { projectTitle: null };
     }
 
@@ -169,14 +170,20 @@
     container.append(article);
   }
 
-  function createPicker(dialog, { read, current, insert, restoreFocus, notify = () => {} }) {
+  function createPicker(dialog, {
+    read, current, insert, restoreFocus, notify = () => {},
+    bind = () => false, rememberProject = () => {}, markUnavailable = () => {},
+  }) {
     const form = dialog.querySelector("form");
+    const title = dialog.querySelector("#chatProjectPickerTitle");
+    const prompt = dialog.querySelector("#chatProjectPickerPrompt");
     const select = dialog.querySelector("select");
     const status = dialog.querySelector('[role="status"]');
     const submit = dialog.querySelector('[type="submit"]');
     const retry = dialog.querySelector("[data-retry-projects]");
     const cancel = dialog.querySelector("[data-close-projects]");
     let session = null;
+    let dialogMode = "progress";
     const valid = (request) => request === session && (!request.usesDialog || dialog.open) && current(request.scope);
     const refreshSubmit = () => { submit.disabled = !session || session.pending || !select.value; };
 
@@ -188,6 +195,11 @@
     function showDialog(request) {
       request.usesDialog = true;
       if (dialog.open) return;
+      dialogMode = request.mode;
+      const binding = dialogMode === "binding";
+      if (title) title.textContent = binding ? "设置本会话项目" : "选择项目";
+      if (prompt) prompt.textContent = binding ? "选择此会话默认查询的项目" : "在对话中插入项目进展";
+      submit.textContent = binding ? "确认绑定" : "插入进展卡";
       notify("");
       dialog.showModal();
       cancel.focus();
@@ -268,19 +280,31 @@
         if (!valid(request)) return;
         const card = snapshot(response);
         if (!card || card.space.id !== selected) throw new Error("Invalid project progress");
-        if (!request.usesDialog && card.space.title !== request.projectTitle) {
+        if (!request.usesDialog && request.projectTitle && card.space.title !== request.projectTitle) {
           await reopenAfterMissingProject(request);
           return;
         }
-        const previousInput = insert(request.scope, card, summary(card));
-        request.onInserted?.(previousInput);
+        if (request.mode === "binding") {
+          if (!bind(request.scope, card.space)) {
+            status.textContent = "无法保存本会话项目，请重试。";
+            select.disabled = false;
+            return;
+          }
+        } else {
+          if (request.projectId === selected) rememberProject(request.scope, card.space);
+          const previousInput = insert(request.scope, card, summary(card));
+          request.onInserted?.(previousInput);
+        }
         session = null;
-        if (request.usesDialog) dialog.close("inserted");
+        if (request.usesDialog) dialog.close(request.mode === "binding" ? "bound" : "inserted");
         else { notify(""); restoreFocus(); }
       } catch (error) {
         if (!valid(request)) return;
         if (!request.usesDialog) {
-          if (error?.status === 404) await reopenAfterMissingProject(request);
+          if (request.projectId && error?.status === 404 && error.data?.code === "project_not_found") {
+            markUnavailable(request.scope, request.projectId);
+            await reopenAfterMissingProject(request);
+          } else if (!request.projectId && error?.status === 404) await reopenAfterMissingProject(request);
           else {
             session = null;
             notify("项目进展暂时无法读取，请重试。");
@@ -318,7 +342,7 @@
     dialog.addEventListener("close", () => {
       if (dialog.open || (session && !session.usesDialog)) return;
       session = null;
-      restoreFocus();
+      restoreFocus(dialogMode);
     });
 
     function discard() {
@@ -328,12 +352,14 @@
     }
 
     return {
-      open(scope, { projectTitle, onInserted } = {}) {
+      open(scope, { projectId, projectTitle, mode = "progress", onInserted } = {}) {
         if (session || dialog.open || !current(scope)) return;
-        session = { scope, projectTitle, onInserted, pending: false, usesDialog: false };
-        if (projectTitle) notify("正在读取项目进展…");
+        const boundId = mode === "binding" ? "" : id(projectId);
+        session = { scope, projectId: boundId, projectTitle, mode, onInserted, pending: false, usesDialog: false };
+        if (boundId || projectTitle) notify("正在读取项目进展…");
         else showDialog(session);
-        void load(session);
+        if (boundId) void readProgress(session, boundId);
+        else void load(session);
       },
       closeIfStale() {
         if (session && !current(session.scope)) discard();
@@ -341,10 +367,11 @@
       cancelBackground() {
         if (session && !session.usesDialog) discard();
       },
+      invalidate: discard,
     };
   }
 
-  const api = { snapshot, render, createPicker, parseProgressQuery };
+  const api = { snapshot, render, createPicker, parseProgressQuery, normalizeProjectId: id };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ClownfishChatProjectProgress = api;
 })(typeof window !== "undefined" ? window : globalThis);

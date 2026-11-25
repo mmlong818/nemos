@@ -91,7 +91,7 @@ test("项目详情按持久关联过滤后再限量，仅返回可展示字段�
   const checkedFiles = [tasksFile, artifactsFile, join(dataDir, "capabilities", "spaces.json"), join(dataDir, "knowledge", "items.json")];
   const before = checkedFiles.map((file) => readFileSync(file));
   assert.equal((await get()).status, 400);
-  assert.equal((await get("missing-space")).status, 404);
+  assert.deepEqual(await get("missing-space"), { status: 404, body: { error: "未找到该项目" } });
   const resultA = await get(spaceA.id);
   assert.equal(resultA.status, 200);
   const a = resultA.body as Overview;
@@ -125,7 +125,9 @@ test("项目详情按持久关联过滤后再限量，仅返回可展示字段�
   }
   assert.equal((await get(spaceA.id, view, spaceB.id)).status, 400);
   for (const missing of ["missing-space", spaceA.title]) {
-    assert.deepEqual(await get(missing, view), { status: 404, body: { error: "未找到该项目" } });
+    assert.deepEqual(await get(missing, view), {
+      status: 404, body: { error: "未找到该项目", code: "project_not_found" },
+    });
   }
   const cardResponse = await get(spaceA.id, view);
   assert.equal(cardResponse.status, 200);
