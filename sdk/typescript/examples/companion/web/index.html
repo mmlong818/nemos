@@ -2590,6 +2590,7 @@
   <link rel="stylesheet" href="/assets/scramble-wallpaper.css">
   <link rel="stylesheet" href="/assets/flat-workbench.css">
   <link rel="stylesheet" href="/assets/app-search-overlay.css">
+  <link rel="stylesheet" href="/assets/chat-project-progress.css">
   <script src="/assets/scramble-wallpaper.js"></script>
   </head>
 <body data-page="home">
@@ -3236,6 +3237,23 @@
       <div class="app-search-results" id="conversationSearchResults" role="listbox" aria-live="polite"></div>
     </form>
   </dialog>
+  <dialog class="app-search-dialog" id="chatProjectPicker" aria-labelledby="chatProjectPickerTitle">
+    <form class="app-search-surface" method="dialog">
+      <header class="app-search-head">
+        <h2 id="chatProjectPickerTitle">选择项目</h2>
+        <button class="app-search-close" type="button" data-close-projects aria-label="关闭项目选择">×</button>
+      </header>
+      <div class="chat-project-picker-body">
+        <label for="chatProjectChoice">在对话中插入项目进展</label>
+        <select id="chatProjectChoice" disabled></select>
+        <p role="status"></p>
+        <div class="chat-project-picker-actions">
+          <button type="button" data-retry-projects hidden>重新读取项目</button>
+          <button type="submit" disabled>插入进展卡</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
 <script src="/assets/app-icons.js"></script>
 <script src="/assets/model-shortlist.js"></script>
 <script src="/assets/model-picker.js"></script>
@@ -3245,6 +3263,7 @@
 <script src="/assets/activity-rail.js"></script>
 <script src="/assets/quick-replies.js"></script>
 <script src="/assets/chat-memory-evidence.js"></script>
+<script src="/assets/chat-project-progress.js"></script>
 <script src="/assets/slash-commands.js"></script>
 <script src="/assets/widget-host.js"></script>
 <script>
@@ -4444,6 +4463,7 @@ function scheduleScrollToBottom(container) {
   });
 }
 function renderLog() {
+  chatProjectPicker.closeIfStale();
   const m = $("#msgs"); m.innerHTML = "";
   ensureConversationTree(logKey());
   const log = chatLogs[logKey()] || [];
@@ -4452,7 +4472,9 @@ function renderLog() {
   for (let messageIndex = 0; messageIndex < log.length; messageIndex += 1) {
     const e = log[messageIndex];
     const messageId = e.id || ("legacy-" + messageIndex);
-    if (e.longform && isSubstantialExpertLongform(e.longform.sections)) {
+    if (e.kind === "project-progress") {
+      addRow("other", "项目进展", e.text, { messageId, projectProgress: e.projectProgress ?? null });
+    } else if (e.longform && isSubstantialExpertLongform(e.longform.sections)) {
       addExpertLongform(e.longform, messageId);
     } else if (e.longform && Array.isArray(e.longform.sections)) {
       for (const section of e.longform.sections) {
@@ -4463,7 +4485,7 @@ function renderLog() {
       let nextIndex = messageIndex + 1;
       while (nextIndex < log.length && !run[run.length - 1].memoryReceipt) {
         const next = log[nextIndex];
-        if (!next || next.side !== "other" || next.who || next.artifact || next.longform || next.goalCheckIn || next.pid !== e.pid) break;
+        if (!next || next.side !== "other" || next.kind === "project-progress" || next.who || next.artifact || next.longform || next.goalCheckIn || next.pid !== e.pid) break;
         run.push(next);
         nextIndex += 1;
       }
@@ -4898,6 +4920,7 @@ function addRow(side, who, text, opts = {}) {
   if (empty) $("#composer")?.classList.remove("hero-mode");
   const row = document.createElement("div");
   row.className = "row " + side;
+  if (opts.projectProgress !== undefined) row.classList.add("chat-project-progress-row");
   if (opts.messageId) row.dataset.messageId = String(opts.messageId);
   const inner = document.createElement("div");
   inner.className = "msg-body";
@@ -4909,7 +4932,8 @@ function addRow(side, who, text, opts = {}) {
   }
   const bub = document.createElement("div");
   bub.className = "bub" + (opts.voice ? " voice" : "");
-  renderBubbleContent(bub, text, { ...opts, render: opts.render !== false && side !== "me" });
+  if (opts.projectProgress !== undefined) window.ClownfishChatProjectProgress.render(bub, opts.projectProgress, text);
+  else renderBubbleContent(bub, text, { ...opts, render: opts.render !== false && side !== "me" });
   if (opts.goalCheckIn) {
     const actions = document.createElement("div");
     actions.className = "artifact-actions";
@@ -5246,12 +5270,15 @@ async function sendMsg(voiceFlag, overrideText) {
   }
 }
 
-$("#send").onclick = () => sendMsg();
+$("#send").onclick = () => {
+  if (!runTypedProjectProgress($("#txt"))) sendMsg();
+};
 document.addEventListener("click", (e) => {
   if (e.target && e.target.closest && e.target.closest("#heroFileBtn")) { $("#chatfile").click(); return; }
   const heroBtn = e.target && e.target.closest ? e.target.closest("#heroSend") : null;
   if (!heroBtn) return;
   const heroTxt = document.getElementById("heroTxt");
+  if (heroTxt && runTypedProjectProgress(heroTxt)) return;
   const heroText = heroTxt ? heroTxt.value.trim() : "";
   if (!heroText && !state.pendingFile) return;
   sendMsg(false, heroText);
@@ -5267,6 +5294,31 @@ document.addEventListener("keydown", (e) => {
 // 空对话时用的是首页大输入框 #heroTxt，有对话后是 #txt：两个都接，菜单挪到当前输入框上方。
 const slashMenu = { items: [], index: 0, input: null };
 const isSlashInput = (node) => !!node && (node.id === "txt" || node.id === "heroTxt");
+const projectProgressAvailable = () => state.target?.kind === "persona";
+const slashCommandAvailable = (command) => command.action.type !== "project-progress" || projectProgressAvailable();
+const chatProjectPicker = window.ClownfishChatProjectProgress.createPicker($("#chatProjectPicker"), {
+  read: api,
+  current: ({ key, conversationId }) => {
+    const tree = conversationTrees[key];
+    return projectProgressAvailable() && key === logKey() &&
+      tree?.activeId === conversationId && !!tree.nodes[conversationId];
+  },
+  insert({ key }, projectProgress, text) {
+    const entry = { kind: "project-progress", side: "other", who: "项目进展", text, projectProgress };
+    record(key, entry);
+    addRow(entry.side, entry.who, entry.text, { messageId: entry.id, projectProgress });
+  },
+  restoreFocus: () => (document.getElementById("heroTxt") || $("#txt"))?.focus(),
+});
+
+function runTypedProjectProgress(input) {
+  const command = window.ClownfishSlashCommands.exactSlashCommand(input.value);
+  if (command?.action.type !== "project-progress") return false;
+  slashMenu.input = input;
+  runSlashCommand(command);
+  return true;
+}
+
 function renderSlashMenu() {
   const menu = $("#slashMenu");
   if (!menu) return;
@@ -5297,7 +5349,7 @@ function renderSlashMenu() {
 function updateSlashMenu(input) {
   const api = window.ClownfishSlashCommands;
   slashMenu.input = input;
-  slashMenu.items = api ? api.matchSlashCommands(input.value) : [];
+  slashMenu.items = api ? api.matchSlashCommands(input.value).filter(slashCommandAvailable) : [];
   slashMenu.index = Math.min(slashMenu.index, Math.max(0, slashMenu.items.length - 1));
   renderSlashMenu();
 }
@@ -5308,6 +5360,12 @@ function runSlashCommand(command) {
   scheduleSaveConversationDraft();
   closeSlashMenu();
   const action = command.action;
+  if (action.type === "project-progress") {
+    if (!projectProgressAvailable() || sending) return;
+    const key = logKey();
+    chatProjectPicker.open({ key, conversationId: activeConversationId(key) });
+    return;
+  }
   // 命令的结果是本机直接回的一条消息，不经过模型，也不存进对话记录。
   const localReply = (text) => {
     addRow("other", null, text, { pid: APP_PERSONA_ID });
@@ -5316,7 +5374,7 @@ function runSlashCommand(command) {
     if (composer) composer.classList.remove("hero-mode");
     $("#txt").focus();
   };
-  if (action.type === "help") { localReply(api.helpText()); return; }
+  if (action.type === "help") { localReply(api.helpText(slashCommandAvailable)); return; }
   if (action.type === "status") {
     Promise.all([fetch("/api/llm-usage").then((r) => r.json()), fetch("/api/llm").then((r) => r.json())])
       .then(([usage, llm]) => localReply(api.statusText(usage.today, llm && llm.hasKey ? (llm.dailyChatModel || llm.model || "") : "还没有连接模型")))

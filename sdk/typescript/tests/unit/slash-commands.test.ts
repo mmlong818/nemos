@@ -15,6 +15,8 @@ test("斜杠命令匹配：只敲 / 列全部；中文名、英文别名都按�
   }
   assert.equal(slash.exactSlashCommand("/new").name, "新对话");
   assert.equal(slash.exactSlashCommand(" /盯着 ").name, "盯着");
+  assert.equal(slash.exactSlashCommand("/项目进展").action.type, "project-progress");
+  assert.equal(slash.exactSlashCommand("/project-progress").name, "项目进展");
   assert.equal(slash.exactSlashCommand("/usr"), null);
   assert.equal(slash.exactSlashCommand("/"), null);
 });
@@ -27,6 +29,7 @@ test("斜杠命令名字和别名不重复；帮助里每条都有", () => {
     assert.ok(command.hint, command.name);
     assert.match(help, new RegExp(`/${command.name}（`));
   }
+  assert.doesNotMatch(slash.helpText((command: { name: string }) => command.name !== "项目进展"), /项目进展/);
 });
 
 test("/状态 讲今天调了几次模型、用在哪；没返回用量的不算成 0；账本被挤掉过要说；一次没调过也照说", () => {

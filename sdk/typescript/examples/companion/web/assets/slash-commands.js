@@ -2,7 +2,7 @@
  * 聊天输入框里的斜杠命令：敲 / 弹出菜单，选中后直接在本机执行，不发给模型。
  *
  * 命令只是现有入口的快捷方式（新对话、对话记录、本机状态、活动栏、目标、动态、点子、帮我盯着），
- * 不新增能力。匹配不到任何命令时照常当普通消息发出去，免得 /usr/bin 这类文字被吞掉。
+ * 匹配不到任何命令时照常当普通消息发出去，免得 /usr/bin 这类文字被吞掉。
  */
 (function (root) {
   "use strict";
@@ -13,6 +13,7 @@
     { name: "记录", aliases: ["history", "对话记录"], hint: "打开对话记录", action: { type: "click", text: "对话记录" } },
     { name: "状态", aliases: ["status", "用量"], hint: "今天调了几次模型、用在哪、用了多少", action: { type: "status" } },
     { name: "活动", aliases: ["activity"], hint: "打开右侧活动栏：在做什么、等你批准什么、接下来排了什么", action: { type: "open-rail", selector: ".ar-toggle" } },
+    { name: "项目进展", aliases: ["project-progress"], hint: "选择项目，在聊天中插入进展卡", action: { type: "project-progress" } },
     { name: "目标", aliases: ["goal", "goals"], hint: "去目标页", action: { type: "navigate", href: "/matters?view=goals" } },
     { name: "动态", aliases: ["feed"], hint: "去总览看动态", action: { type: "navigate", href: "/overview" } },
     { name: "点子", aliases: ["ideas", "idea"], hint: "去技能库看小丑鱼想到能帮你做的事", action: { type: "navigate", href: "/bots?view=bots" } },
@@ -40,8 +41,8 @@
     return SLASH_COMMANDS.find((command) => [command.name, ...command.aliases].some((name) => name.toLowerCase() === word)) || null;
   }
 
-  function helpText() {
-    return "可以用的命令：\n" + SLASH_COMMANDS.map((command) => `/${command.name}（/${command.aliases[0]}）：${command.hint}`).join("\n");
+  function helpText(available = () => true) {
+    return "可以用的命令：\n" + SLASH_COMMANDS.filter(available).map((command) => `/${command.name}（/${command.aliases[0]}）：${command.hint}`).join("\n");
   }
 
   // 账本的用途归成用户看得懂的几类。

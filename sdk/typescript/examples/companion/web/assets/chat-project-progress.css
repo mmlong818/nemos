@@ -1,0 +1,184 @@
+.chat-project-progress-row .chat-project-progress-bubble {
+  box-sizing: border-box;
+  width: min(100%, 32rem);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chat-project-progress {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.chat-project-progress :is(h3, h4, p, dl, dd) {
+  margin: 0;
+}
+
+.chat-project-progress h3 {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.chat-project-progress h4 {
+  font-size: 0.85rem;
+}
+
+.chat-project-progress :is(time, .chat-project-progress-note) {
+  color: var(--text-2, #5d6059);
+  font-size: 0.8rem;
+}
+
+.chat-project-progress a {
+  color: var(--page-accent, var(--accent, #1f6f5f));
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.chat-project-progress :is(a, select):focus-visible,
+#chatProjectPicker :is(select, button):focus-visible {
+  outline: 2px solid var(--page-accent, var(--accent, #1f6f5f));
+  outline-offset: 2px;
+}
+
+.chat-project-progress-head,
+.chat-project-progress-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.chat-project-progress-head > div {
+  flex: 1 1 11rem;
+  min-width: 0;
+}
+
+.chat-project-progress-head > a {
+  font-size: 0.8rem;
+}
+
+.chat-project-progress .chat-project-progress-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0.55rem 0;
+  border-block: 1px solid var(--line, #e2dbd0);
+}
+
+.chat-project-progress-totals div {
+  font-size: 0.8rem;
+  color: var(--text-2, #5d6059);
+}
+
+.chat-project-progress-totals dd {
+  color: var(--text, #253331);
+  font-size: 1rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-project-progress-next a {
+  font-size: 0.9rem;
+}
+
+.chat-project-progress-section-head select {
+  max-width: 100%;
+  min-height: 32px;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--line, #e2dbd0);
+  border-radius: 6px;
+  color: inherit;
+  background: var(--surface, #fff);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.chat-project-progress .chat-project-progress-rows {
+  display: grid;
+  gap: 0.38rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.chat-project-progress-rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 0.7rem;
+}
+
+.chat-project-progress-rows a {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chat-project-progress-rows span {
+  color: var(--text-2, #5d6059);
+  font-size: 0.78rem;
+}
+
+.chat-project-progress-fallback {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+#chatProjectPicker {
+  max-width: 27rem;
+}
+
+.chat-project-picker-body {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem;
+}
+
+.chat-project-picker-body select {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  min-height: 42px;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line, #e2dbd0);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--surface, #fff);
+  font: inherit;
+}
+
+.chat-project-picker-body [role="status"] {
+  margin: 0;
+  color: var(--text-2, #5d6059);
+  font-size: 0.85rem;
+}
+
+.chat-project-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.chat-project-picker-actions button {
+  min-height: 42px;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line, #e2dbd0);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--surface, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chat-project-picker-actions button[type="submit"] {
+  color: var(--page-accent, var(--accent, #1f6f5f));
+  font-weight: 650;
+}
+
+.chat-project-picker-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
