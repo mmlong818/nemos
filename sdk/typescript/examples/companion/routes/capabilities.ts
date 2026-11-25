@@ -42,7 +42,7 @@ export interface CapabilityDeps {
   readonly deliveryOutbox: FileDeliveryOutbox;
   readonly extensionToolSummaries: () => CapabilityToolSummary[];
   readonly fetchSkillMarkdownFromUrl: (url: string, signal?: AbortSignal) => Promise<string>;
-  readonly knowledgeLibrary: Pick<KnowledgeLibrary, "list">;
+  readonly knowledgeLibrary: Pick<KnowledgeLibrary, "list" | "countInSpace">;
   readonly readBody: (req: IncomingMessage, maxBytes?: number) => Promise<unknown>;
   readonly send: (res: ServerResponse, code: number, body: unknown, type?: string) => void;
   readonly teamConnectionFingerprint: () => string;
@@ -646,10 +646,33 @@ export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
       return;
     }),
     route("GET", "/api/capabilities/space", ({ query, res }) => {
-      const id = query.get("id")?.trim();
+      const chatProgress = query.get("view") === "chat-progress";
+      const requestedId = query.get("id");
+      if (chatProgress && (!requestedId || requestedId !== requestedId.trim()
+        || requestedId.length > 120 || query.getAll("id").length !== 1 || /[\x00-\x1f\x7f]/u.test(requestedId))) {
+        send(res, 400, { error: "请提供有效的项目编号" });
+        return;
+      }
+      const id = requestedId?.trim();
       if (!id) { send(res, 400, { error: "请提供项目编号" }); return; }
       const overview = capabilities.spaceOverview(id);
       if (!overview) { send(res, 404, { error: "未找到该项目" }); return; }
+      if (chatProgress) {
+        const { space, tasks, artifacts, counts, nextAction } = overview;
+        send(res, 200, {
+          ok: true,
+          version: 1,
+          capturedAt: new Date().toISOString(),
+          space: { id: space.id, title: space.title.slice(0, 60), status: space.status },
+          counts: { ...counts, materials: knowledgeLibrary.countInSpace(id) },
+          tasks: tasks.slice(0, 3).map(({ id, title, status, updatedAt, archivedAt }) =>
+            ({ id, title: title.slice(0, 60), status, updatedAt, archivedAt })),
+          artifacts: artifacts.slice(0, 2).map(({ id, taskId, title, format, createdAt }) =>
+            ({ id, taskId, title: title.slice(0, 120), format, createdAt })),
+          nextAction: nextAction ? { taskId: nextAction.taskId, text: nextAction.text.slice(0, 200) } : null,
+        });
+        return;
+      }
       const materials = knowledgeLibrary.list().filter((material) => material.spaceId === id)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
       send(res, 200, {

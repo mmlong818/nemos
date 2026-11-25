@@ -49,6 +49,14 @@ export class KnowledgeLibrary {
       }));
   }
 
+  countInSpace(spaceId: string): number {
+    let count = 0;
+    for (const item of this.items) {
+      if (item.spaceId === spaceId && !item.archivedAt) count++;
+    }
+    return count;
+  }
+
   get(id: string): KnowledgeItem | undefined {
     const item = this.items.find((entry) => entry.id === id);
     return item ? { ...item } : undefined;
