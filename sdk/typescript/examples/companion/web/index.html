@@ -3179,6 +3179,12 @@
   <div id="main" class="task-workbench-main">
     <div id="msgs" class="task-workbench-stage"></div>
       <div id="modelMissingNotice" class="model-missing-notice" role="status" hidden><p><b>还没有连接模型</b>现在只能做基础回复。填一个 OpenAI 或智谱的 Key，就能正常对话和办事。</p><a class="model-missing-action" href="/settings">去连接</a></div>
+      <div id="chatProjectScope" class="chat-project-scope" hidden>
+        <span class="chat-project-scope-heading">本会话项目</span>
+        <span id="conversationProjectLabel" aria-live="polite">未设置</span>
+        <button id="setConversationProject" type="button" aria-haspopup="dialog">设置项目</button>
+        <button id="clearConversationProject" type="button" aria-label="清除本会话项目" hidden>清除</button>
+      </div>
       <p id="projectProgressStatus" role="status"></p>
       <div id="composer" class="task-workbench-composer">
         <div id="txtWrap" class="task-workbench-input-wrap">
@@ -3245,7 +3251,7 @@
         <button class="app-search-close" type="button" data-close-projects aria-label="关闭项目选择">×</button>
       </header>
       <div class="chat-project-picker-body">
-        <label for="chatProjectChoice">在对话中插入项目进展</label>
+        <label id="chatProjectPickerPrompt" for="chatProjectChoice">在对话中插入项目进展</label>
         <select id="chatProjectChoice" disabled></select>
         <p role="status"></p>
         <div class="chat-project-picker-actions">
@@ -3827,8 +3833,18 @@ function activeConversation(key) {
   const tree = ensureConversationTree(key);
   return tree ? tree.nodes[tree.activeId] : null;
 }
+function boundProjectId(node) {
+  return window.ClownfishChatProjectProgress.normalizeProjectId(node?.projectSpaceId);
+}
+function conversationHasContent(node) {
+  return Boolean((Array.isArray(node?.messages) && node.messages.length) ||
+    String(conversationDrafts[node?.id] || "").trim() || boundProjectId(node));
+}
 function saveConversationTrees() {
-  try { localStorage.setItem(CONVERSATION_TREE_KEY, JSON.stringify(conversationTrees)); } catch {}
+  try {
+    localStorage.setItem(CONVERSATION_TREE_KEY, JSON.stringify(conversationTrees));
+    return true;
+  } catch { return false; }
 }
 function activeConversationId(key = logKey()) {
   return ensureConversationTree(key)?.activeId || "";
@@ -3918,7 +3934,7 @@ function createConversation(mode = "chat") {
   const tree = ensureConversationTree(key);
   if (!tree) return;
   const active = tree.nodes[tree.activeId];
-  if (active && !active.messages?.length && !String(conversationDrafts[active.id] || "").trim()) {
+  if (active && !conversationHasContent(active)) {
     active.config = { ...conversationDefaults(mode), ...(active.config || {}), workMode: normalizeWorkMode(mode) };
     active.title = "";
     saveConversationTrees();
@@ -4474,6 +4490,7 @@ function scheduleScrollToBottom(container) {
 function renderLog() {
   setProjectProgressStatus("");
   chatProjectPicker.closeIfStale();
+  renderConversationProject();
   const m = $("#msgs"); m.innerHTML = "";
   ensureConversationTree(logKey());
   const log = chatLogs[logKey()] || [];
@@ -4642,7 +4659,7 @@ function renderContacts() {
   const tree = ensureConversationTree("persona:" + APP_PERSONA_ID);
   if (!tree) return;
   const nodes = Object.values(tree.nodes).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
-  const visibleNodes = nodes.filter((node) => (Array.isArray(node.messages) && node.messages.length) || String(conversationDrafts[node.id] || "").trim());
+  const visibleNodes = nodes.filter(conversationHasContent);
   if (visibleNodes.length) {
     const label = document.createElement("div");
     label.className = "task-list-label";
@@ -4664,7 +4681,7 @@ function renderConversationSearchResults(queryText) {
   const query = String(queryText || "").trim().toLowerCase();
   const nodes = Object.values(tree?.nodes || {}).sort((left, right) => Number(right.updatedAt || right.createdAt || 0) - Number(left.updatedAt || left.createdAt || 0));
   const visible = nodes.filter((node) => {
-    if ((!Array.isArray(node.messages) || !node.messages.length) && !String(conversationDrafts[node.id] || "").trim()) return false;
+    if (!conversationHasContent(node)) return false;
     const mode = WORK_MODES[normalizeWorkMode(node.config?.workMode)];
     const title = conversationTitle(node.messages, node.title || "新任务");
     const preview = threadPreview(node.messages, mode.label);
@@ -5292,14 +5309,16 @@ function sendComposerInput(input) {
       return;
     }
     if (sending) return;
-    const key = logKey();
-    const conversationId = activeConversationId(key);
+    const scope = projectScope(true);
+    const { key, conversationId } = scope;
+    const projectId = query.useBoundProject ? boundProjectId(conversationTrees[key]?.nodes[conversationId]) : "";
     flushConversationDraft();
-    chatProjectPicker.open({ key, conversationId, naturalLanguage: true }, {
+    chatProjectPicker.open(scope, {
+      projectId,
       projectTitle: query.projectTitle,
       onInserted(previousInput) {
         const activeInput = currentComposerInput();
-        if (key !== logKey() || conversationId !== activeConversationId(key) ||
+        if (!currentProjectScope(scope) ||
             previousInput !== input || input.value !== value || activeInput?.value !== value) return;
         activeInput.value = "";
         flushConversationDraft();
@@ -5331,13 +5350,70 @@ const slashCommandAvailable = (command) => command.action.type !== "project-prog
 function setProjectProgressStatus(text) {
   $("#projectProgressStatus").textContent = text;
 }
+let projectBindingGeneration = 0;
+const projectBindingLabels = new Map();
+
+function projectScope(naturalLanguage = false) {
+  const key = logKey();
+  return { key, conversationId: activeConversationId(key), naturalLanguage, generation: projectBindingGeneration };
+}
+
+function currentProjectScope({ key, conversationId, naturalLanguage, generation }) {
+  const tree = conversationTrees[key];
+  return projectProgressAvailable() && key === logKey() && generation === projectBindingGeneration &&
+    tree?.activeId === conversationId && !!tree.nodes[conversationId] &&
+    (!naturalLanguage || projectProgressNaturalLanguageAvailable());
+}
+
+function renderConversationProject() {
+  const bar = $("#chatProjectScope");
+  bar.hidden = !projectProgressNaturalLanguageAvailable();
+  if (bar.hidden) return;
+  const projectId = boundProjectId(activeConversation(logKey()));
+  const known = projectBindingLabels.get(projectId);
+  let label = projectId ? (known?.title || "已设置") : "未设置";
+  if (known?.unavailable) label = known.title ? known.title + "（已失效）" : "已失效";
+  else if (known?.status === "archived") label += "（已归档）";
+  $("#conversationProjectLabel").textContent = label;
+  $("#setConversationProject").textContent = projectId ? "更换项目" : "设置项目";
+  $("#clearConversationProject").hidden = !projectId;
+}
+
+function rememberConversationProject(scope, space) {
+  if (!currentProjectScope(scope) || boundProjectId(conversationTrees[scope.key].nodes[scope.conversationId]) !== space.id) return;
+  projectBindingLabels.set(space.id, { title: space.title, status: space.status });
+  renderConversationProject();
+}
+
+function setConversationProject(scope, space) {
+  if (!currentProjectScope(scope) || !projectProgressNaturalLanguageAvailable()) return false;
+  const node = conversationTrees[scope.key].nodes[scope.conversationId];
+  const previous = node.projectSpaceId;
+  const projectId = boundProjectId({ projectSpaceId: space?.id });
+  if (space && !projectId) return false;
+  if (projectId) node.projectSpaceId = projectId;
+  else delete node.projectSpaceId;
+  if (!saveConversationTrees()) {
+    if (previous === undefined) delete node.projectSpaceId;
+    else node.projectSpaceId = previous;
+    return false;
+  }
+  projectBindingGeneration += 1;
+  if (space) projectBindingLabels.set(projectId, { title: space.title, status: space.status });
+  renderConversationProject();
+  renderContacts();
+  return true;
+}
+
 const chatProjectPicker = window.ClownfishChatProjectProgress.createPicker($("#chatProjectPicker"), {
   read: api,
-  current: ({ key, conversationId, naturalLanguage }) => {
-    const tree = conversationTrees[key];
-    return projectProgressAvailable() && key === logKey() &&
-      tree?.activeId === conversationId && !!tree.nodes[conversationId] &&
-      (!naturalLanguage || projectProgressNaturalLanguageAvailable());
+  current: currentProjectScope,
+  bind: setConversationProject,
+  rememberProject: rememberConversationProject,
+  markUnavailable(scope, projectId) {
+    if (!currentProjectScope(scope) || boundProjectId(conversationTrees[scope.key].nodes[scope.conversationId]) !== projectId) return;
+    projectBindingLabels.set(projectId, { ...projectBindingLabels.get(projectId), unavailable: true });
+    renderConversationProject();
   },
   insert({ key }, projectProgress, text) {
     const previousInput = currentComposerInput();
@@ -5350,9 +5426,26 @@ const chatProjectPicker = window.ClownfishChatProjectProgress.createPicker($("#c
     }
     return previousInput;
   },
-  restoreFocus: () => currentComposerInput()?.focus(),
+  restoreFocus: (mode) => {
+    if (mode === "binding" && !$("#chatProjectScope").hidden) $("#setConversationProject").focus();
+    else currentComposerInput()?.focus();
+  },
   notify: setProjectProgressStatus,
 });
+
+$("#setConversationProject").onclick = () => {
+  if (!projectProgressNaturalLanguageAvailable()) return;
+  chatProjectPicker.invalidate();
+  chatProjectPicker.open(projectScope(true), { mode: "binding" });
+};
+$("#clearConversationProject").onclick = () => {
+  if (!setConversationProject(projectScope(true), null)) {
+    setProjectProgressStatus("无法清除本会话项目，请重试。");
+    return;
+  }
+  chatProjectPicker.invalidate();
+  $("#setConversationProject").focus();
+};
 
 function runTypedProjectProgress(input) {
   const command = window.ClownfishSlashCommands.exactSlashCommand(input.value);
@@ -5405,8 +5498,7 @@ function runSlashCommand(command) {
   const action = command.action;
   if (action.type === "project-progress") {
     if (!projectProgressAvailable() || sending) return;
-    const key = logKey();
-    chatProjectPicker.open({ key, conversationId: activeConversationId(key) });
+    chatProjectPicker.open(projectScope());
     return;
   }
   // 命令的结果是本机直接回的一条消息，不经过模型，也不存进对话记录。

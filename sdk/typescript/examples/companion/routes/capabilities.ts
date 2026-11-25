@@ -656,7 +656,10 @@ export function createCapabilityRoutes(deps: CapabilityDeps): RouteEntry[] {
       const id = requestedId?.trim();
       if (!id) { send(res, 400, { error: "请提供项目编号" }); return; }
       const overview = capabilities.spaceOverview(id);
-      if (!overview) { send(res, 404, { error: "未找到该项目" }); return; }
+      if (!overview) {
+        send(res, 404, { error: "未找到该项目", ...(chatProgress ? { code: "project_not_found" } : {}) });
+        return;
+      }
       if (chatProgress) {
         const { space, tasks, artifacts, counts, nextAction } = overview;
         send(res, 200, {

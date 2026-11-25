@@ -1,3 +1,45 @@
+.chat-project-scope {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.45rem;
+  max-inline-size: min(100%, 45rem);
+  padding: 0.15rem 0.75rem;
+  color: var(--text-2, #5d6059);
+  font-size: 0.85rem;
+}
+
+.chat-project-scope[hidden],
+.chat-project-scope button[hidden] {
+  display: none;
+}
+
+.chat-project-scope-heading {
+  font-weight: 600;
+}
+
+#conversationProjectLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chat-project-scope button {
+  min-height: 32px;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--line, #e2dbd0);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--page-accent, var(--accent, #1f6f5f));
+  font: inherit;
+  cursor: pointer;
+}
+
+.chat-project-scope button:focus-visible {
+  outline: 2px solid var(--page-accent, var(--accent, #1f6f5f));
+  outline-offset: 2px;
+}
+
 #projectProgressStatus {
   margin: 0;
   color: var(--text-2, #5d6059);
