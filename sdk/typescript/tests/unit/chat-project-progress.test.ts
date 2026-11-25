@@ -156,13 +156,19 @@ test("legacy card rendering leaves an unsupported snapshot as non-interactive pl
   assert.equal(bubble.findAll("img").length, 0);
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 test("duplicate confirmation and a late response cannot insert into a different conversation", async () => {
   const { createPicker } = renderer();
   const dialog = new PickerDialog();
   const select = dialog.querySelector("select");
   const form = dialog.querySelector("form");
-  const first = Promise.withResolvers<unknown>();
-  const second = Promise.withResolvers<unknown>();
+  const first = deferred<unknown>();
+  const second = deferred<unknown>();
   const reads: string[] = [];
   const saved: Array<[string, string, string]> = [];
   let current = "first";
@@ -198,7 +204,7 @@ test("duplicate confirmation and a late response cannot insert into a different 
   first.resolve(sample);
   await late;
   assert.equal(dialog.open, true);
-  assert.deepEqual(saved, []);
+  assert.equal(saved.length, 0);
   second.resolve({ ...sample, space: { ...sample.space, id: "space-b" } });
   await latest;
 
