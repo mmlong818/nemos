@@ -3271,6 +3271,7 @@
 <script src="/assets/quick-replies.js"></script>
 <script src="/assets/chat-memory-evidence.js"></script>
 <script src="/assets/chat-project-progress.js"></script>
+<script src="/assets/project-chat-handoff.js"></script>
 <script src="/assets/slash-commands.js"></script>
 <script src="/assets/widget-host.js"></script>
 <script>
@@ -3778,7 +3779,12 @@ dedupeAppOnboarding();
 const CONVERSATION_TREE_KEY = "clownfish-conversation-trees-v20260813b";
 const CONVERSATION_DRAFTS_KEY = "clownfish-conversation-drafts-v20260813b";
 let conversationTrees = {};
-try { conversationTrees = JSON.parse(localStorage.getItem(CONVERSATION_TREE_KEY) || "{}"); } catch { conversationTrees = {}; }
+let conversationTreesReadable = true;
+try {
+  const stored = JSON.parse(localStorage.getItem(CONVERSATION_TREE_KEY) || "{}");
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) throw new Error("Invalid conversation trees");
+  conversationTrees = stored;
+} catch { conversationTreesReadable = false; }
 let conversationDrafts = {};
 try { conversationDrafts = JSON.parse(localStorage.getItem(CONVERSATION_DRAFTS_KEY) || "{}"); } catch { conversationDrafts = {}; }
 const WORK_MODES = {
@@ -3841,6 +3847,7 @@ function conversationHasContent(node) {
     String(conversationDrafts[node?.id] || "").trim() || boundProjectId(node));
 }
 function saveConversationTrees() {
+  if (!conversationTreesReadable && projectChatHandoff) return false;
   try {
     localStorage.setItem(CONVERSATION_TREE_KEY, JSON.stringify(conversationTrees));
     return true;
@@ -3884,6 +3891,7 @@ function switchConversation(id) {
     $("#txt")?.focus();
     return;
   }
+  projectChatNavigation += 1;
   flushConversationDraft();
   tree.activeId = id;
   chatLogs[key] = tree.nodes[id].messages;
@@ -3935,6 +3943,7 @@ function createConversation(mode = "chat") {
   if (!tree) return;
   const active = tree.nodes[tree.activeId];
   if (active && !conversationHasContent(active)) {
+    projectChatNavigation += 1;
     active.config = { ...conversationDefaults(mode), ...(active.config || {}), workMode: normalizeWorkMode(mode) };
     active.title = "";
     saveConversationTrees();
@@ -4016,6 +4025,7 @@ function deleteConversation(id) {
   if (!node) return;
   const title = conversationTitle(node.messages, node.title || "对话");
   if (!confirm("删除“" + title + "”？\n这会删除此对话记录，但不会删除长期记忆或已经生成的文件。")) return;
+  if (tree.activeId === id) projectChatNavigation += 1;
   if (tree.activeId !== id) flushConversationDraft();
   delete tree.nodes[id];
   delete conversationDrafts[id];
@@ -4170,6 +4180,7 @@ function syncTaskModelSelector() {
 function setActiveWorkMode(mode) {
   const node = activeConversation("persona:" + APP_PERSONA_ID);
   if (!node || (node.messages || []).some((entry) => entry.side === "me" || entry.side === "user")) return;
+  projectChatNavigation += 1;
   flushConversationDraft();
   const normalized = normalizeWorkMode(mode);
   node.config = { ...(node.config || {}), ...conversationDefaults(normalized), model: node.config?.model || "default", reasoningEffort: node.config?.reasoningEffort || "auto" };
@@ -4560,6 +4571,7 @@ async function loadState() {
     showEmptyState();
     showOnboardingModal();
   }
+  captureProjectChatView();
   refreshRuntimePanel();
   await refreshLLMStatus(false);
 }
@@ -4742,6 +4754,7 @@ function renderConversationHeader() {
 }
 
 function selectTarget(kind, id, name) {
+  if (logKey() !== logKey({ kind, id })) projectChatNavigation += 1;
   flushConversationDraft();
   state.target = { kind, id, name };
   renderConversationHeader();
@@ -5262,6 +5275,7 @@ async function sendMsg(voiceFlag, overrideText) {
   const image = state.pendingImage;
   const attachment = state.pendingFile;
   if ((!text && !image && !attachment) || !state.target) return;
+  projectChatNavigation += 1;
   chatProjectPicker.cancelBackground();
   setProjectProgressStatus("");
   sending = true;
@@ -5352,6 +5366,136 @@ function setProjectProgressStatus(text) {
 }
 let projectBindingGeneration = 0;
 const projectBindingLabels = new Map();
+const projectChatHandoff = consumeProjectChatHandoff();
+let projectChatNavigation = 0;
+let projectChatView = null;
+let openedProjectChatId = "";
+let projectChatDeliveryScope = projectChatHandoff?.spaceId
+  ? new Map(Object.entries(conversationTrees).map(([key, tree]) => [key, tree?.activeId]))
+  : null;
+
+function consumeProjectChatHandoff() {
+  let storage = null;
+  try { storage = window.sessionStorage; } catch {}
+  return window.ClownfishProjectChatHandoff.consume(window.location, window.history, storage);
+}
+
+function captureProjectChatView() {
+  const key = "persona:" + APP_PERSONA_ID;
+  if (!projectChatDeliveryScope || projectChatView || logKey() !== key || !isOnboardingComplete()) return;
+  const conversationId = activeConversationId(key);
+  if (!projectChatDeliveryScope.has(key) || projectChatDeliveryScope.get(key) === "main") {
+    projectChatDeliveryScope.set(key, conversationId);
+  }
+  projectChatView = { key, conversationId, navigation: projectChatNavigation, binding: projectBindingGeneration };
+}
+
+function projectChatViewIsCurrent(view) {
+  const tree = conversationTrees[view?.key];
+  return !!view?.conversationId && view.navigation === projectChatNavigation && view.binding === projectBindingGeneration &&
+    view.key === logKey() &&
+    tree?.activeId === view.conversationId && tree.nodes?.[view.conversationId]?.id === view.conversationId;
+}
+
+function captureProjectChatDelivery() {
+  const activeId = conversationTrees["persona:" + APP_PERSONA_ID]?.activeId;
+  return !openedProjectChatId || activeId === openedProjectChatId ? projectChatDeliveryScope : null;
+}
+
+function recordProjectChatDelivery(scope, key, explicitId, entries) {
+  const tree = conversationTrees[key];
+  const nodes = tree?.nodes;
+  const verified = (id) => typeof id === "string" && Object.hasOwn(nodes || {}, id) && nodes[id]?.id === id;
+  const id = verified(explicitId) ? explicitId : scope.get(key);
+  if (!verified(id) || !Array.isArray(nodes[id].messages)) return false;
+  const node = nodes[id];
+  const previous = { messages: node.messages, title: node.title, updatedAt: node.updatedAt };
+  const fresh = entries.filter((entry) => !entry.deliveryId || !previous.messages.some((item) => item?.deliveryId === entry.deliveryId))
+    .map((entry) => ({ ...entry, ts: Date.now(), id: "message-" + crypto.randomUUID() }));
+  if (!fresh.length) return true;
+  node.messages = [...node.messages, ...fresh].slice(-MAX_LOG_MESSAGES);
+  node.title = conversationTitle(node.messages, node.title);
+  node.updatedAt = fresh.at(-1).ts;
+  if (!saveConversationTrees()) { Object.assign(node, previous); return false; }
+  if (tree.activeId === id) chatLogs[key] = node.messages;
+  saveLogs();
+  try {
+    if (logKey() === key && tree.activeId === id) {
+      const input = currentComposerInput();
+      for (const entry of fresh) addRow(entry.side, entry.who, entry.text, {
+        pid: entry.pid, artifact: entry.artifact, goalCheckIn: entry.goalCheckIn, messageId: entry.id,
+      });
+      if (input?.id === "heroTxt") {
+        $("#txt").value = input.value;
+        flushConversationDraft();
+      }
+    }
+    updateRailStats();
+    renderContacts();
+    renderConversationHeader();
+  } catch { /* Receipt is durable and can be redrawn from its conversation. */ }
+  return true;
+}
+
+function installProjectChat(view, space) {
+  if (!projectChatViewIsCurrent(view)) return false;
+  const tree = conversationTrees[view.key];
+  const node = makeConversationNode("chat");
+  node.projectSpaceId = space.id;
+  const previousLabel = projectBindingLabels.get(space.id);
+  flushConversationDraft();
+  tree.nodes[node.id] = node;
+  tree.activeId = node.id;
+  chatLogs[view.key] = node.messages;
+  projectBindingLabels.set(space.id, { title: space.title, status: space.status });
+  try {
+    renderLog();
+    renderContacts();
+    renderConversationHeader();
+    restoreConversationDraft();
+    if (!saveConversationTrees()) throw new Error("Could not save project chat");
+  } catch {
+    delete tree.nodes[node.id];
+    tree.activeId = view.conversationId;
+    chatLogs[view.key] = tree.nodes[view.conversationId].messages;
+    if (previousLabel) projectBindingLabels.set(space.id, previousLabel);
+    else projectBindingLabels.delete(space.id);
+    try { renderLog(); renderContacts(); renderConversationHeader(); restoreConversationDraft(); } catch {}
+    return false;
+  }
+  saveLogs();
+  openedProjectChatId = node.id;
+  projectChatNavigation += 1;
+  currentComposerInput()?.focus();
+  return true;
+}
+
+async function maybeOpenProjectChat() {
+  if (!projectChatHandoff) { maybeStartGoalConversation(); return; }
+  const fail = (message) => {
+    projectChatDeliveryScope = null;
+    setProjectProgressStatus(message);
+  };
+  const unavailable = "无法打开项目对话，请返回项目详情重试。";
+  const view = projectChatView;
+  const spaceId = window.ClownfishChatProjectProgress.normalizeProjectId(projectChatHandoff.spaceId);
+  if (!spaceId || !conversationTreesReadable || !projectChatViewIsCurrent(view)) {
+    if (view && !projectChatViewIsCurrent(view)) { projectChatDeliveryScope = null; return; }
+    fail(unavailable);
+    return;
+  }
+  setProjectProgressStatus("正在打开项目对话…");
+  try {
+    const result = await api("/api/capabilities/space?" + new URLSearchParams({ id: spaceId, view: "chat-progress" }));
+    if (!projectChatViewIsCurrent(view)) { projectChatDeliveryScope = null; return; }
+    const card = window.ClownfishChatProjectProgress.snapshot(result);
+    if (!card || card.space.id !== spaceId || !installProjectChat(view, card.space)) fail(unavailable);
+  } catch (error) {
+    if (!projectChatViewIsCurrent(view)) { projectChatDeliveryScope = null; return; }
+    fail(error?.status === 404 && error.data?.code === "project_not_found"
+      ? "项目已不存在，请回项目详情重试。" : unavailable);
+  }
+}
 
 function projectScope(naturalLanguage = false) {
   const key = logKey();
@@ -5560,7 +5704,10 @@ document.addEventListener("keydown", (e) => {
   sendComposerInput(e.target);
 });
 window.addEventListener("beforeunload", flushConversationDraft);
-window.addEventListener("pagehide", flushConversationDraft);
+window.addEventListener("pagehide", () => {
+  projectChatNavigation += 1;
+  flushConversationDraft();
+});
 
 // 把录音（webm/ogg/mp4）解码后重编码为 16k 单声道 16bit WAV，ASR 才认
 async function blobToWav(blob) {
@@ -6610,23 +6757,34 @@ function openConversationByKey(key, fallbackPersonaId) {
   const personaId = key.startsWith("persona:") ? key.slice("persona:".length) : fallbackPersonaId;
   openPersonaById(personaId);
 }
-async function pushCapabilityNotifications(items) {
+async function pushCapabilityNotifications(items, projectScope = null) {
+  let delivered = false;
   for (const n of items || []) {
     const requestedKey = String(n.conversationKey || "");
     const key = /^(persona|group):[^:][^\r\n]{0,180}$/.test(requestedKey) ? requestedKey : "persona:" + n.personaId;
-    if (n.deliveryId && (chatLogs[key] || []).some((entry) => entry.deliveryId === n.deliveryId)) continue;
-    openConversationByKey(key, n.personaId);
     const groupReply = key.startsWith("group:");
     const persona = state.personas.find((item) => item.id === n.personaId);
     const who = groupReply ? ((avatarOf("persona", n.personaId).e + " " + (persona?.name || n.name || "小丑鱼")).trim()) : null;
     const msgs = (n.messages && n.messages.length) ? n.messages : [n.reply || "任务已完成。"];
+    if (projectScope) {
+      const entries = msgs.map((text, index) => ({
+        side: "other", who, text, pid: n.personaId,
+        artifact: index === msgs.length - 1 ? n.artifact : null, deliveryId: n.deliveryId || undefined,
+      }));
+      if (recordProjectChatDelivery(projectScope, key, n.conversationId || n.sessionId, entries)) delivered = true;
+      continue;
+    }
+    if (n.deliveryId && (chatLogs[key] || []).some((entry) => entry.deliveryId === n.deliveryId)) { delivered = true; continue; }
+    openConversationByKey(key, n.personaId);
     for (let i = 0; i < msgs.length; i++) {
       if (i > 0) await sleep(Math.min(1300, 450 + msgs[i].length * 28));
       const artifact = i === msgs.length - 1 ? n.artifact : null;
       addRow("other", who, msgs[i], { pid: n.personaId, artifact });
       record(key, { side: "other", who, text: msgs[i], pid: n.personaId, artifact, deliveryId: n.deliveryId || undefined });
     }
+    delivered = true;
   }
+  return delivered;
 }
 function purgeDetachedAgentDeliveries(jobIds) {
   const blocked = new Set((jobIds || []).map((id) => "agent-job:" + String(id || "")).filter((id) => id !== "agent-job:"));
@@ -6651,7 +6809,7 @@ function purgeDetachedAgentDeliveries(jobIds) {
   renderConversationHeader();
   return removed;
 }
-async function deliverCompletedAgentJobs(jobs) {
+async function deliverCompletedAgentJobs(jobs, projectScope = null) {
   const pending = (jobs || []).filter((job) =>
     /^(persona|group):[^:][^\r\n]{0,180}$/.test(String(job.payload?.conversationKey || ""))
       && job.payload?.surface !== "capabilities"
@@ -6663,7 +6821,12 @@ async function deliverCompletedAgentJobs(jobs) {
   for (const job of pending) {
     const deliveryId = job.delivery && job.delivery.id;
     try {
-      await pushCapabilityNotifications([{ ...job.result.data, deliveryId: "agent-job:" + job.id }]);
+      const notification = { ...job.result.data, deliveryId: "agent-job:" + job.id };
+      if (projectScope) {
+        notification.conversationKey = job.payload.conversationKey;
+        notification.conversationId = job.payload.conversationId || notification.conversationId;
+      }
+      if (!await pushCapabilityNotifications([notification], projectScope)) continue;
       await api("/api/agent/delivery/ack", { id: job.id, deliveryId });
       delivered++;
     } catch (error) {
@@ -6691,7 +6854,7 @@ function agentRunTarget(run) {
   const personaId = metadata.personaId || APP_PERSONA_ID;
   return { key: "persona:" + personaId, personaId, group: false };
 }
-function deliverAgentRun(run) {
+function deliverAgentRun(run, projectScope = null) {
   if (!run || !run.runId || !run.output) return false;
   const delivered = deliveredAgentRunIds();
   if (delivered.has(run.runId)) return false;
@@ -6699,13 +6862,20 @@ function deliverAgentRun(run) {
   const who = target.group
     ? (avatarOf("persona", target.personaId).e + " " + personaName(target.personaId)).trim()
     : null;
-  record(target.key, { side: "other", who, text: run.output, pid: target.personaId, recoveredRunId: run.runId });
-  if (logKey() === target.key) addRow("other", who, run.output, { pid: target.personaId });
+  const entry = { side: "other", who, text: run.output, pid: target.personaId, recoveredRunId: run.runId };
+  if (projectScope) {
+    if (!recordProjectChatDelivery(projectScope, target.key, run.sessionId, [
+      { ...entry, deliveryId: "agent-run:" + run.runId },
+    ])) return false;
+  } else {
+    record(target.key, entry);
+    if (logKey() === target.key) addRow("other", who, run.output, { pid: target.personaId });
+  }
   delivered.add(run.runId);
   localStorage.setItem(AGENT_RUN_DELIVERED_KEY, JSON.stringify(Array.from(delivered).slice(-200)));
   return true;
 }
-async function deliverCompletedAgentRuns(runs) {
+async function deliverCompletedAgentRuns(runs, projectScope = null) {
   const delivered = deliveredAgentRunIds();
   const pending = (runs || []).filter((run) =>
     run.metadata?.surface !== "capability"
@@ -6717,7 +6887,7 @@ async function deliverCompletedAgentRuns(runs) {
   for (const summary of pending) {
     try {
       const detail = await api("/api/agent/run?id=" + encodeURIComponent(summary.runId));
-      if (deliverAgentRun(detail.run)) count++;
+      if (deliverAgentRun(detail.run, projectScope)) count++;
     } catch { /* 单条恢复记录读取失败不阻塞其他交付 */ }
   }
   return count;
@@ -7308,6 +7478,7 @@ async function refreshAgentOps() {
     return;
   }
   agentOpsRefreshBusy = true;
+  const projectScope = captureProjectChatDelivery();
   const requestedMutationVersion = agentOpsMutationVersion;
   try {
     const [jobs, runs, approvals, extensions, deliveries] = await Promise.all([
@@ -7330,8 +7501,8 @@ async function refreshAgentOps() {
       runtimeSecurity: extensions.runtimeSecurity || null
     };
     purgeDetachedAgentDeliveries(deliveries.quarantinedJobIds || []);
-    const delivered = await deliverCompletedAgentJobs(deliveries.jobs || []);
-    await deliverCompletedAgentRuns(agentOpsState.runs);
+    const delivered = await deliverCompletedAgentJobs(deliveries.jobs || [], projectScope);
+    await deliverCompletedAgentRuns(agentOpsState.runs, projectScope);
     if (delivered && $("#capmodal").classList.contains("show")) {
       capState = await api("/api/capabilities");
       renderCapabilityLists();
@@ -7364,7 +7535,7 @@ function startAgentEventStream() {
         sessionId: payload.sessionId,
         output: payload.output,
         metadata: { personaId: payload.personaId, scope: payload.scope, mode: payload.mode, surface: payload.surface },
-      });
+      }, captureProjectChatDelivery());
     }
   } });
 }
@@ -7752,10 +7923,11 @@ async function deleteSkill(id, name) {
 async function pollCapabilityTasks() {
   if (capPollBusy) return;
   capPollBusy = true;
+  const projectScope = captureProjectChatDelivery();
   try {
     const data = await api("/api/capabilities/due");
     if (data.notifications && data.notifications.length) {
-      await pushCapabilityNotifications(data.notifications);
+      await pushCapabilityNotifications(data.notifications, projectScope);
       if ($("#capmodal").classList.contains("show")) await refreshCapabilities();
     }
   } catch { /* 后台任务轮询失败不打断聊天 */ }
@@ -8230,7 +8402,11 @@ $("#onboardName").addEventListener("keydown", (e) => {
 
 applyDeveloperMode();
 refreshToolSettings().catch(() => {});
-loadState().then(maybeStartGoalConversation).catch(() => {});
+loadState().then(maybeOpenProjectChat).catch(() => {
+  if (!projectChatHandoff) return;
+  projectChatDeliveryScope = null;
+  setProjectProgressStatus("无法打开项目对话，请返回项目详情重试。");
+});
 refreshAgentOps().catch(() => {});
 if (location.hash === "#settings") {
   setTimeout(() => {
@@ -8246,15 +8422,23 @@ let goalCheckInBusy = false;
 async function pollGoalCheckIns() {
   if (goalCheckInBusy || !isOnboardingComplete()) return;
   goalCheckInBusy = true;
+  const projectScope = captureProjectChatDelivery();
   try {
     const data = await api("/api/personal-work/goals/checkins");
     const key = "persona:" + APP_PERSONA_ID;
     for (const c of data.checkIns || []) {
       const text = "到了和你对进度的时间：「" + c.title + "」最近怎么样？想聊就点下面，不想聊忽略就好。";
       const goalCheckIn = { id: c.id, title: c.title, category: c.category, sessionId: c.sessionId || "" };
-      if (logKey() === key) addRow("other", null, text, { pid: APP_PERSONA_ID, goalCheckIn });
-      record(key, { side: "other", who: null, text, pid: APP_PERSONA_ID, goalCheckIn });
-      saveLogs();
+      const entry = { side: "other", who: null, text, pid: APP_PERSONA_ID, goalCheckIn };
+      if (projectScope) {
+        if (!recordProjectChatDelivery(projectScope, key, c.sessionId, [
+          { ...entry, deliveryId: "goal-checkin:" + c.id + ":" + c.pendingSince },
+        ])) continue;
+      } else {
+        if (logKey() === key) addRow("other", null, text, { pid: APP_PERSONA_ID, goalCheckIn });
+        record(key, entry);
+        saveLogs();
+      }
       await api("/api/personal-work/goals/checkin-ack", { id: c.id });
     }
   } catch { /* 读不到就等下一分钟 */ }
@@ -8265,15 +8449,21 @@ let watchAlertBusy = false;
 async function pollWatchAlerts() {
   if (watchAlertBusy || !isOnboardingComplete()) return;
   watchAlertBusy = true;
+  const projectScope = captureProjectChatDelivery();
   try {
     const data = await api("/api/watch/alerts");
     const key = "persona:" + APP_PERSONA_ID;
     for (const a of data.alerts || []) {
       const sources = (a.sources || []).map((s) => s.url).filter(Boolean);
       const text = "你让我盯着的「" + a.itemText + "」有新情况：" + a.message + (sources.length ? "\n来源：" + sources.join(" ") : "");
-      if (logKey() === key) addRow("other", null, text, { pid: APP_PERSONA_ID });
-      record(key, { side: "other", who: null, text, pid: APP_PERSONA_ID });
-      saveLogs();
+      const entry = { side: "other", who: null, text, pid: APP_PERSONA_ID };
+      if (projectScope) {
+        if (!recordProjectChatDelivery(projectScope, key, a.sessionId, [{ ...entry, deliveryId: "watch-alert:" + a.id }])) continue;
+      } else {
+        if (logKey() === key) addRow("other", null, text, { pid: APP_PERSONA_ID });
+        record(key, entry);
+        saveLogs();
+      }
       await api("/api/watch/ack", { id: a.id });
     }
   } catch { /* 读不到就等下一分钟 */ }
