@@ -175,6 +175,7 @@ test('项目聚合使用原有详情地址，并转义标题、下一步和资�
     ${source.slice(source.indexOf('function projectSection('), source.indexOf('async function continueOneOffTask('))}
     renderProjectOverview(project);`, {
     project, document: {}, $: (key: string) => nodes[key] ||= {},
+    projectIdFromLocation: () => project.space.id,
     storylineStatusLabel: () => '推进中', resourceKindLabel: () => '文字笔记',
   });
   assert.equal(nodes['#pageTitle']?.textContent, '<项目>');
@@ -186,4 +187,65 @@ test('项目聚合使用原有详情地址，并转义标题、下一步和资�
   assert.match(html, /\/bots\?task=t%261/);
   assert.match(html, /显示 1 \/ 7/);
   assert.doesNotMatch(html, /<任务>|<资料>|<成果>/);
+});
+
+test('已加载的项目入口绑定真实 ID，防重复点击并可在后退或存储失败后再试', () => {
+  const html = readFileSync('examples/companion/web/work.html', 'utf8');
+  assert.match(html, /<button[^>]+id="workChatProject"[^>]+type="button"[^>]+hidden>聊聊这个项目<\/button>/);
+  const handoffScript = html.indexOf('/assets/project-chat-handoff.js');
+  assert.ok(handoffScript >= 0 && handoffScript < html.indexOf('/assets/work-center.js'));
+  const pageshow = source.match(/window\.addEventListener\("pageshow", \(event\) => \{[\s\S]*?\n\}\);/)?.[0];
+  assert.ok(pageshow);
+  const project = { space: { id: 'space?exact', title: '同名项目' }, tasks: [], materials: [], artifacts: [],
+    nextAction: null, counts: { tasks: 0, materials: 0, artifacts: 0 } };
+  const control = { hidden: true, disabled: false, onclick() {} };
+  const projectIds: string[] = [];
+  const navigations: string[] = [];
+  const notices: Array<[string, boolean]> = [];
+  let requested = project.space.id;
+  let blockedStorage = false;
+  let restorePage = (_event: { persisted: boolean }) => {};
+  const page = runInNewContext(`${source.slice(source.indexOf('function projectSection('), source.indexOf('async function continueOneOffTask('))}
+    ${pageshow}
+    ({ renderProjectOverview, renderProjectError });`, {
+    document: {}, $: (key: string) => key === '#workChatProject' ? control : {}, escapeHtml: String,
+    closeResourcePreview() {}, projectIdFromLocation: () => requested,
+    location: { assign: (href: string) => navigations.push(href) },
+    sessionStorage: {},
+    window: {
+      addEventListener(_name: string, callback: typeof restorePage) { restorePage = callback; },
+      ClownfishProjectChatHandoff: { start(_storage: unknown, id: string) {
+        if (blockedStorage) throw new Error('storage blocked');
+        projectIds.push(id);
+        return '/?projectTransfer=fixture';
+      } },
+    },
+    toast: (message: string, error: boolean) => notices.push([message, error]),
+  });
+  page.renderProjectOverview(project);
+  assert.equal(control.hidden, false);
+  control.onclick();
+  control.onclick();
+  assert.deepEqual(projectIds, [project.space.id]);
+  assert.deepEqual(navigations, ['/?projectTransfer=fixture']);
+  assert.equal(control.disabled, true);
+  restorePage({ persisted: true });
+  assert.equal(control.disabled, false);
+  requested = 'new-project';
+  control.onclick();
+  page.renderProjectOverview(project);
+  assert.equal(control.hidden, true);
+  assert.equal(navigations.length, 1);
+  requested = project.space.id;
+  page.renderProjectOverview(project);
+  blockedStorage = true;
+  control.onclick();
+  assert.equal(navigations.length, 1);
+  assert.equal(control.disabled, false);
+  assert.deepEqual(notices, [['暂时无法从此项目打开聊天，请重试。', true]]);
+  blockedStorage = false;
+  control.onclick();
+  assert.deepEqual(projectIds, [project.space.id, project.space.id]);
+  page.renderProjectError(404);
+  assert.equal(control.hidden, true);
 });

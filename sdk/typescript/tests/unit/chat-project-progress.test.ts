@@ -314,7 +314,8 @@ test("the real conversation lifecycle scopes and persists a binding without addi
   type CapturedScope = { key: string; conversationId: string; naturalLanguage: boolean; generation: number };
   const actions = runInNewContext(js, {
     window: { ClownfishChatProjectProgress: renderer() },
-    conversationTrees, conversationDrafts: {}, chatLogs: {}, CONVERSATION_TREE_KEY: "stored-trees", CONVERSATION_DRAFTS_KEY: "drafts",
+    conversationTrees, conversationTreesReadable: true, projectChatNavigation: 0, conversationDrafts: {}, chatLogs: {},
+    CONVERSATION_TREE_KEY: "stored-trees", CONVERSATION_DRAFTS_KEY: "drafts",
     localStorage: { setItem(name: string, data: string) {
       if (storageUnavailable) throw new Error("storage unavailable");
       if (name === "stored-trees") saved = data;

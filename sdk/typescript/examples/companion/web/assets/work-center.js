@@ -80,6 +80,7 @@ function setPage() {
   createButton.setAttribute('aria-label',createLabel || '新建');createButton.title=createLabel || '新建';
   $("#workStartTask").hidden=view!=="tasks";
   $("#workBackToProjects").hidden=!projectDetail;
+  $("#workChatProject").hidden=true;
   $("#workSearchToggle").hidden=projectDetail||view==="memory"||view==="artifacts";
   window.ClownfishNavigation.sync();
   $("#workSearchEyebrow").textContent = copy[1];
@@ -119,6 +120,7 @@ function renderWorkSearchResults(queryText) {
 
 function showLoading() {
   const content = $("#content");
+  $("#workChatProject").hidden = true;
   content.setAttribute("aria-busy", "true");
   content.innerHTML = '<div class="loading" role="status" aria-label="正在读取本机数据"><span class="cf-skeleton"></span><span class="cf-skeleton is-mid"></span><span class="cf-skeleton is-short"></span></div>';
 }
@@ -257,6 +259,9 @@ $(".tabs")?.addEventListener("click", (event) => {
 });
 
 window.addEventListener("popstate", () => activateView(viewFromLocation()));
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) $("#workChatProject").disabled = false;
+});
 
 function abilityName(id) {
   const labels = {
@@ -474,6 +479,18 @@ function renderProjectOverview({ space, tasks, materials, artifacts, nextAction,
   $("#pageTitle").textContent = title;
   $("#pageDescription").textContent = space.description || "尚未填写目标说明";
   document.title = `${title} · 小丑鱼`;
+  const chat = $("#workChatProject");
+  chat.hidden = space.id !== projectIdFromLocation();
+  chat.onclick = () => {
+    if (chat.hidden || chat.disabled || space.id !== projectIdFromLocation()) return;
+    chat.disabled = true;
+    try {
+      location.assign(window.ClownfishProjectChatHandoff.start(sessionStorage, space.id));
+    } catch {
+      chat.disabled = false;
+      toast("暂时无法从此项目打开聊天，请重试。", true);
+    }
+  };
 
   const taskSection = projectSection({
     id: "project-tasks", title: "任务", count: counts.tasks,
@@ -526,6 +543,7 @@ function renderProjectError(status) {
   $("#pageEyebrow").textContent = "";
   $("#pageTitle").textContent = "项目概览";
   $("#pageDescription").textContent = "";
+  $("#workChatProject").hidden = true;
   document.title = "项目概览 · 小丑鱼";
   closeResourcePreview({ restoreFocus: false });
   content.innerHTML = unavailable
